@@ -95,6 +95,9 @@ async function fixture(t, extra = {}) {
         workspace: directory,
         interfaceName: "test",
         sessionIds: ["one"],
+        allowInput: true,
+        allowCreate: true,
+        allowBrowser: true,
         allowClose: true,
         ...overrides,
       },
@@ -155,6 +158,15 @@ async function fixture(t, extra = {}) {
     renames,
   };
 }
+
+test("a paired device gets no input, creation, close or browser grants by default", async (t) => {
+  const f = await fixture(t);
+  const config = f.controller.state().config;
+  assert.equal(config.allowInput, false);
+  assert.equal(config.allowCreate, false);
+  assert.equal(config.allowClose, false);
+  assert.equal(config.allowBrowser, false);
+});
 
 test("integration defaults off; the short code creates no access before desktop approval", async (t) => {
   const f = await fixture(t);

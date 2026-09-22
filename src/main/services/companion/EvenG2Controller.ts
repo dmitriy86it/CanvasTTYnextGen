@@ -74,10 +74,10 @@ const defaultConfig = (): EvenG2Config => ({
   interfaceName: "",
   publicOrigin: "",
   sessionIds: [],
-  allowInput: true,
-  allowCreate: true,
+  allowInput: false,
+  allowCreate: false,
   allowClose: false,
-  allowBrowser: true,
+  allowBrowser: false,
   speechExecutable:
     process.platform === "darwin" &&
     existsSync("/Applications/Handy.app/Contents/MacOS/handy")
