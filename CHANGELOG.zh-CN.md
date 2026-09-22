@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md) · [简体中文](CHANGELOG.zh-CN.md)
 
+## 未发布
+
+- 安全:打包版本启用 Electron fuses——忽略 `NODE_OPTIONS` 与 `--inspect`,校验 `app.asar` 完整性且只从其中加载应用。为代理辅助进程保留 `runAsNode`。
+- 安全:主窗口的每个 IPC 通道都会验证发送方。
+- 安全:打包版本忽略 `ELECTRON_RENDERER_URL` 以及提供方冒烟测试的覆盖变量。
+- 安全(Even G2):每次配对握手为设备签发独立的链路密钥,仅在 Mac 批准后可用,拒绝或撤销时销毁。新设备默认只读,局域网 API 仅通过加密链路响应。旧版本配对的眼镜需要重新配对。
+
 ## 1.5.2
 
 - 修复调整卡片大小后，Codex 清空并重新绘制历史时终端跳到历史开头的问题。阅读时保留相对滚动位置，位于底部的终端继续跟随新输出。

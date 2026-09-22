@@ -14,6 +14,17 @@ files:
   - "!**/*.map"
 
 asar: true
+# Fuses are flipped at package time. runAsNode stays on for the ELECTRON_RUN_AS_NODE helper
+# contract (docs/adr/ADR-20260913-packaged-fuses-keep-run-as-node.md). grantFileProtocolExtraPrivileges
+# stays at its default because the main window loads from file://. enableCookieEncryption is
+# deliberately absent: it is a one-way transition.
+electronFuses:
+  runAsNode: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
 asarUnpack:
   - node_modules/node-pty/**/*
 extraResources:
@@ -87,5 +98,5 @@ mac:
 
 publish:
   provider: github
-  owner: howdeploy
-  repo: CanvasTTY
+  owner: dmitriy86it
+  repo: CanvasTTYnextGen

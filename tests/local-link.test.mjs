@@ -93,20 +93,16 @@ test("local address fallback probes without credentials and never retries an unc
   assert.equal(actual, 1);
   assert.equal(probes, 3);
 });
-test("local encrypted duplicate is idempotent and identity survives restart", async (t) => {
+const homeProbe = () => ({ path: "/g2/api/home", method: "GET", token: "", sentAt: Date.now() });
+const unauthorized = async () => ({ status: 401, body: {} });
+
+test("local encrypted duplicate is idempotent", async (t) => {
   const path = await mkdtemp(join(tmpdir(), "local-link-"));
   t.after(() => rm(path, { recursive: true, force: true }));
   const link = new LocalLink(path);
   await link.load();
-  const c = link.connection(["http://192.168.1.2:3481"]);
-  const next = new LocalLink(path);
-  await next.load();
-  assert.deepEqual(next.connection(c.origins), c);
-  const packet = await sealLocal(
-    c,
-    { path: "/g2/api/home", method: "GET", token: "", sentAt: Date.now() },
-    "request",
-  );
+  const c = link.issue(["http://192.168.1.2:3481"], Date.now() + 60_000);
+  const packet = await sealLocal(c, homeProbe(), "request");
   let calls = 0;
   const forward = async () => {
     calls++;
@@ -118,6 +114,72 @@ test("local encrypted duplicate is idempotent and identity survives restart", as
   ]);
   assert.equal(calls, 1);
 });
+
+test("every handshake gets its own key; only an approved key survives restart and revocation removes it", async (t) => {
+  const path = await mkdtemp(join(tmpdir(), "local-link-"));
+  t.after(() => rm(path, { recursive: true, force: true }));
+  const origins = ["http://192.168.1.2:3481"];
+  const link = new LocalLink(path);
+  await link.load();
+  const approved = link.issue(origins, Date.now() + 60_000);
+  const rejected = link.issue(origins, Date.now() + 60_000);
+  assert.notEqual(approved.key, rejected.key);
+  assert.notEqual(approved.computer, rejected.computer);
+
+  // A rejected handshake's key cannot open packets sealed for another device.
+  const packet = await sealLocal(approved, homeProbe(), "request");
+  const reply = await link.receive(packet, async (_request, device) => {
+    assert.equal(device.computer, approved.computer);
+    assert.equal(device.peerId, undefined);
+    return { status: 401, body: {} };
+  });
+  await assert.rejects(unsealLocal(rejected, reply, "response"));
+  assert.equal((await unsealLocal(approved, reply, "response")).status, 401);
+
+  const peerId = randomLocalHex(16);
+  link.claim(approved.computer, peerId);
+  await link.approve(peerId);
+  link.discardUnbound();
+  await assert.rejects(link.receive(await sealLocal(rejected, homeProbe(), "request"), unauthorized), /invalid-local-packet/);
+
+  const next = new LocalLink(path);
+  await next.load();
+  const restarted = await next.receive(await sealLocal(approved, homeProbe(), "request"), async (_request, device) => {
+    assert.equal(device.peerId, peerId);
+    return { status: 401, body: {} };
+  });
+  assert.equal((await unsealLocal(approved, restarted, "response")).status, 401);
+
+  await next.revoke(undefined);
+  await next.revoke("");
+  assert.equal((await unsealLocal(approved, await next.receive(await sealLocal(approved, homeProbe(), "request"), unauthorized), "response")).status, 401);
+  await next.revoke(peerId);
+  await assert.rejects(next.receive(await sealLocal(approved, homeProbe(), "request"), unauthorized), /invalid-local-packet/);
+  const afterRevoke = new LocalLink(path);
+  await afterRevoke.load();
+  await assert.rejects(afterRevoke.receive(await sealLocal(approved, homeProbe(), "request"), unauthorized), /invalid-local-packet/);
+});
+
+test("an unclaimed handshake key expires with its pairing window", async (t) => {
+  const path = await mkdtemp(join(tmpdir(), "local-link-"));
+  t.after(() => rm(path, { recursive: true, force: true }));
+  const link = new LocalLink(path);
+  await link.load();
+  const expired = link.issue(["http://192.168.1.2:3481"], Date.now() - 1);
+  await assert.rejects(link.receive(await sealLocal(expired, homeProbe(), "request"), unauthorized), /invalid-local-packet/);
+});
+
+test("the shared install-wide key of the previous format is never accepted again", async (t) => {
+  const path = await mkdtemp(join(tmpdir(), "local-link-"));
+  t.after(() => rm(path, { recursive: true, force: true }));
+  const legacy = { computer: randomLocalHex(), key: randomLocalHex() };
+  await writeFile(join(path, "even-g2-local.json"), JSON.stringify(legacy));
+  const link = new LocalLink(path);
+  await link.load();
+  const packet = await sealLocal({ version: 1, ...legacy, origins: [] }, homeProbe(), "request");
+  await assert.rejects(link.receive(packet, unauthorized), /invalid-local-packet/);
+});
+
 test("speech preparation checks model bytes before accepting a download; bad download stays unavailable", async (t) => {
   const path = await mkdtemp(join(tmpdir(), "speech-setup-"));
   t.after(() => rm(path, { recursive: true, force: true }));

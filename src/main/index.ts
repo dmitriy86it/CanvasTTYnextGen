@@ -157,6 +157,10 @@ async function createWindow(): Promise<BrowserWindow> {
     const currentUrl = window.webContents.getURL();
     if (currentUrl && url !== currentUrl) event.preventDefault();
   });
+  // The shell loads only local content, which never redirects; a redirect is never followed.
+  window.webContents.on("will-redirect", (event) => {
+    if (event.isMainFrame) event.preventDefault();
+  });
   canvasNavigationInput?.attach(window.webContents, { preventMouseBindings: false });
   window.on("blur", () => {
     canvasNavigationInput?.reset();
@@ -235,7 +239,7 @@ async function initializeServices(): Promise<void> {
     restoreTabs: settings.get().browserRestoreTabs,
     canvasWheelCaptureMode: settings.get().canvasWheelCaptureMode,
     canvasNavigationInput,
-    ...(process.env.CANVASTTY_BROWSER_SMOKE_URL
+    ...(developmentEnv("CANVASTTY_BROWSER_SMOKE_URL")
       ? { downloadRoot: join(userDataPath, "browser-smoke-downloads") }
       : {})
   });
@@ -408,8 +412,9 @@ async function initializeServices(): Promise<void> {
 async function loadApplication(window: BrowserWindow): Promise<void> {
   if (shellWindowGone(window)) return;
   try {
-    if (process.env.ELECTRON_RENDERER_URL) {
-      await window.loadURL(process.env.ELECTRON_RENDERER_URL);
+    const rendererUrl = developmentEnv("ELECTRON_RENDERER_URL");
+    if (rendererUrl) {
+      await window.loadURL(rendererUrl);
     } else {
       await window.loadFile(join(__dirname, "../renderer/index.html"));
     }
@@ -427,13 +432,13 @@ async function loadApplication(window: BrowserWindow): Promise<void> {
     console.log("CANVASTTY_SMOKE_READY");
     app.quit();
   }
-  const browserSmokeUrl = process.env.CANVASTTY_BROWSER_SMOKE_URL;
+  const browserSmokeUrl = developmentEnv("CANVASTTY_BROWSER_SMOKE_URL");
   if (browserSmokeUrl && browserService) {
     await runBrowserElectronSmoke(browserService, browserSmokeUrl, app.getPath("userData"));
     console.log("CANVASTTY_BROWSER_SMOKE_READY");
     app.quit();
   }
-  const providerSmoke = process.env.CANVASTTY_PROVIDER_SMOKE;
+  const providerSmoke = developmentEnv("CANVASTTY_PROVIDER_SMOKE");
   if (providerSmoke) {
     if (!agentBrowserBridge || !agentBrowserHelper) {
       throw new Error("Provider smoke requires the local agent browser gateway.");
@@ -442,13 +447,19 @@ async function loadApplication(window: BrowserWindow): Promise<void> {
     await runProviderElectronSmoke({
       bridge: agentBrowserBridge,
       helper: agentBrowserHelper,
-      cwd: process.env.CANVASTTY_PROVIDER_SMOKE_CWD || app.getPath("temp"),
+      cwd: developmentEnv("CANVASTTY_PROVIDER_SMOKE_CWD") || app.getPath("temp"),
       targets,
       providerClis: providerClis!
     });
     console.log("CANVASTTY_PROVIDER_SMOKE_READY");
     app.quit();
   }
+}
+
+// Overrides that load a URL into the privileged main window or replace provider CLIs are for
+// development and unpackaged smoke runs only; a packaged build ignores them.
+function developmentEnv(name: string): string | undefined {
+  return app.isPackaged ? undefined : process.env[name];
 }
 
 function parseProviderSmokeTargets(value: string): ProviderSmokeTarget[] {
@@ -502,25 +513,25 @@ async function startApplication(): Promise<void> {
 }
 
 function buildProviderCliRegistry(): ProviderCliRegistry {
-  const providerSmoke = process.env.CANVASTTY_PROVIDER_SMOKE;
+  const providerSmoke = developmentEnv("CANVASTTY_PROVIDER_SMOKE");
   const smokeOverrides = providerSmoke ? {
-    ...(process.env.CANVASTTY_PROVIDER_SMOKE_KIMI_COMMAND
-      ? { kimi: process.env.CANVASTTY_PROVIDER_SMOKE_KIMI_COMMAND }
+    ...(developmentEnv("CANVASTTY_PROVIDER_SMOKE_KIMI_COMMAND")
+      ? { kimi: developmentEnv("CANVASTTY_PROVIDER_SMOKE_KIMI_COMMAND") }
       : {}),
-    ...(process.env.CANVASTTY_PROVIDER_SMOKE_CLAUDE_COMMAND
-      ? { claude: process.env.CANVASTTY_PROVIDER_SMOKE_CLAUDE_COMMAND }
+    ...(developmentEnv("CANVASTTY_PROVIDER_SMOKE_CLAUDE_COMMAND")
+      ? { claude: developmentEnv("CANVASTTY_PROVIDER_SMOKE_CLAUDE_COMMAND") }
       : {}),
-    ...(process.env.CANVASTTY_PROVIDER_SMOKE_CODEX_COMMAND
-      ? { codex: process.env.CANVASTTY_PROVIDER_SMOKE_CODEX_COMMAND }
+    ...(developmentEnv("CANVASTTY_PROVIDER_SMOKE_CODEX_COMMAND")
+      ? { codex: developmentEnv("CANVASTTY_PROVIDER_SMOKE_CODEX_COMMAND") }
       : {}),
-    ...(process.env.CANVASTTY_PROVIDER_SMOKE_QWEN_COMMAND
-      ? { qwen: process.env.CANVASTTY_PROVIDER_SMOKE_QWEN_COMMAND }
+    ...(developmentEnv("CANVASTTY_PROVIDER_SMOKE_QWEN_COMMAND")
+      ? { qwen: developmentEnv("CANVASTTY_PROVIDER_SMOKE_QWEN_COMMAND") }
       : {}),
-    ...(process.env.CANVASTTY_PROVIDER_SMOKE_OPENCODE_COMMAND
-      ? { opencode: process.env.CANVASTTY_PROVIDER_SMOKE_OPENCODE_COMMAND }
+    ...(developmentEnv("CANVASTTY_PROVIDER_SMOKE_OPENCODE_COMMAND")
+      ? { opencode: developmentEnv("CANVASTTY_PROVIDER_SMOKE_OPENCODE_COMMAND") }
       : {}),
-    ...(process.env.CANVASTTY_PROVIDER_SMOKE_HERMES_COMMAND
-      ? { hermes: process.env.CANVASTTY_PROVIDER_SMOKE_HERMES_COMMAND }
+    ...(developmentEnv("CANVASTTY_PROVIDER_SMOKE_HERMES_COMMAND")
+      ? { hermes: developmentEnv("CANVASTTY_PROVIDER_SMOKE_HERMES_COMMAND") }
       : {})
   } : undefined;
   const resolutionSmoke = process.env.CANVASTTY_CLI_RESOLUTION_SMOKE === "1";

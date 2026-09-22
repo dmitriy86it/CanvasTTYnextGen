@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md) · [简体中文](CHANGELOG.zh-CN.md)
 
+## Unreleased
+
+- Security: packaged builds enable Electron fuses — `NODE_OPTIONS` and `--inspect` are ignored, and `app.asar` is integrity-checked and the only app source. `runAsNode` stays on for the agent helpers.
+- Security: every main-renderer IPC channel now verifies its sender.
+- Security: packaged builds ignore `ELECTRON_RENDERER_URL` and the provider smoke overrides.
+- Security (Even G2): each paired device gets its own link key, issued per handshake and usable only after Mac approval; rejection and revocation destroy it. Devices start read-only, and the LAN API answers only through the encrypted link. Glasses paired with an earlier version must pair again.
+
 ## 1.5.2
 
 - Fixed terminal history jumping to the beginning when Codex clears and redraws its history after a card resize. Readers retain their relative scroll position, while terminals at the bottom continue following new output.

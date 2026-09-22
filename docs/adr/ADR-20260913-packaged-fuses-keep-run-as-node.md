@@ -169,3 +169,25 @@ This block is appended; the decision body above stays as the historical record.
 - [`agent-browser/ProviderLaunch.ts`](../../src/main/services/agent-browser/ProviderLaunch.ts)
 - [`agent-runtime/ProviderRuntimeLaunch.ts`](../../src/main/services/agent-runtime/ProviderRuntimeLaunch.ts)
 - [Architecture](../ARCHITECTURE.md)
+
+## Amendment 2026-09-22
+
+This block is appended; the decision body above stays as the historical record.
+
+- **The fuse configuration is now enabled on this line.** `electron-builder.yml` carries an
+  `electronFuses` block; the "pending PR #35" clarification in the header no longer describes this
+  branch. `tests/packaging-fuses.test.mjs` pins the values.
+- **`onlyLoadAppFromAsar` is now enabled.** Electron's ASAR integrity guidance pairs
+  `enableEmbeddedAsarIntegrityValidation` with `onlyLoadAppFromAsar`, because otherwise an unpacked
+  `app/` directory next to `app.asar` bypasses validation. The helper `.mjs` files are launched by
+  absolute path under `resourcesPath` with `ELECTRON_RUN_AS_NODE`, which does not use the app
+  search path, so the flip does not affect them. The recorded reason for leaving it off ("no
+  packaged build has exercised the flip") is resolved by the packaged smoke required below.
+- **`loadBrowserProcessSpecificV8Snapshot` is set to `false`** explicitly; the app ships no custom
+  snapshot.
+- **`grantFileProtocolExtraPrivileges` stays at its default.** The main window is loaded with
+  `loadFile`, so revoking `file://` privileges requires a custom-protocol migration first. TODO:
+  record that migration as its own decision.
+- **Validation.** Before a release, `npx @electron/fuses read --app <packaged app>` must report the
+  configured values, an agent session must start in the packaged app, and a modified `app.asar`
+  must stop the app from starting.

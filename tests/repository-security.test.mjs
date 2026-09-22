@@ -175,3 +175,21 @@ async function collectModulePaths(repositoryRoot, directory) {
 
   return paths;
 }
+
+test("packaged builds ignore development overrides that load code or URLs", async () => {
+  const source = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+  // The renderer URL gets the terminal-capable preload; provider smoke commands replace CLI binaries.
+  for (const name of ["ELECTRON_RENDERER_URL", "CANVASTTY_BROWSER_SMOKE_URL", "CANVASTTY_PROVIDER_SMOKE"]) {
+    assert.doesNotMatch(source, new RegExp(`process\\.env\\.${name}\\b`), `${name} must be read through developmentEnv`);
+  }
+  assert.match(source, /function developmentEnv\(name: string\): string \| undefined \{\n\s+return app\.isPackaged \? undefined : process\.env\[name\];/);
+});
+
+test("the main window refuses redirects and the packaged renderer CSP drops ws:", async () => {
+  const main = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+  assert.match(main, /on\("will-redirect", \(event\) => \{\n\s+if \(event\.isMainFrame\) event\.preventDefault\(\);/);
+  const html = await readFile(new URL("../src/renderer/index.html", import.meta.url), "utf8");
+  assert.match(html, /connect-src 'self' ws:;/, "the build-time CSP rewrite relies on this exact directive");
+  const vite = await readFile(new URL("../electron.vite.config.ts", import.meta.url), "utf8");
+  assert.match(vite, /apply: "build"[\s\S]*connect-src 'self';/);
+});
