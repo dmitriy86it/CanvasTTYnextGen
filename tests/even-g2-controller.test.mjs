@@ -595,18 +595,15 @@ test("voice used for a rename is only a preview and cannot be replayed as a shel
 });
 
 test("local encrypted pairing and session rename use the real controller with unchanged authorization", async (t) => {
-  const { LocalLink } =
-    await import("../src/main/services/companion/LocalLink.ts");
-  const { localFetcher } =
+  const { connectionFromCode, localFetcher } =
     await import("../integrations/even-g2/src/local-fetch.mjs");
   const f = await fixture(t);
   await f.enable();
-  const link = new LocalLink(f.directory);
-  await link.load();
   const origin = f.controller.state().transport.origin;
-  const connection = link.connection([origin]);
-  const send = localFetcher(connection, { allowLoopback: true });
   await f.controller.command({ type: "begin-pairing" });
+  const { connection } = await connectionFromCode(f.controller.state().pairing.code,
+    { origins: [origin], allowLoopback: true });
+  const send = localFetcher(connection, { allowLoopback: true });
   const pairedResponse = await send(origin + "/g2/api/pair", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -639,7 +636,52 @@ test("local encrypted pairing and session rename use the real controller with un
   assert.equal((await renamed.json()).session.title, "Локальная сессия");
   assert.deepEqual(f.writes, []);
   await f.controller.command({ type: "revoke", id: pair.id });
-  assert.equal((await send(origin + "/g2/api/home", options)).status, 401);
+  // Revocation destroys the device's link key, so the packet no longer opens at all.
+  await assert.rejects(send(origin + "/g2/api/home", options));
+});
+
+test("a second handshake gets its own key and cannot speak for the approved device", async (t) => {
+  const { connectionFromCode, localFetcher } = await import("../integrations/even-g2/src/local-fetch.mjs");
+  const { pairComputer } = await import("../integrations/even-g2/src/connect.mjs");
+  const f = await fixture(t);
+  await f.enable();
+  const origin = f.controller.state().transport.origin;
+  const options = { origins: [origin], allowLoopback: true };
+  await f.controller.command({ type: "begin-pairing" });
+  let code = f.controller.state().pairing.code;
+  const first = await connectionFromCode(code, options);
+  const send = localFetcher(first.connection, { allowLoopback: true });
+  let deviceId = "";
+  const paired = await pairComputer(origin, code, { fetcher: send,
+    onPending: () => {
+      deviceId = f.controller.state().pairing.pending.id;
+      void f.controller.command({ type: "approve", id: deviceId });
+    } });
+  const bearer = { headers: { Authorization: "Bearer " + paired.token } };
+  assert.equal((await send(origin + "/g2/api/home", bearer)).status, 200);
+
+  await f.controller.command({ type: "begin-pairing" });
+  code = f.controller.state().pairing.code;
+  const second = await connectionFromCode(code, options);
+  assert.notEqual(second.connection.key, first.connection.key);
+  const intruder = localFetcher(second.connection, { allowLoopback: true });
+  assert.equal((await intruder(origin + "/g2/api/home", bearer)).status, 401);
+  await f.controller.command({ type: "reject" });
+  await assert.rejects(intruder(origin + "/g2/api/home", bearer));
+
+  assert.equal((await send(origin + "/g2/api/home", bearer)).status, 200);
+  await f.controller.command({ type: "revoke", id: deviceId });
+  await assert.rejects(send(origin + "/g2/api/home", bearer));
+});
+
+test("on a LAN the plain HTTP API answers only this host", async (t) => {
+  const f = await fixture(t);
+  await f.enable();
+  const from = (remoteAddress) => f.controller.fromThisHost({ socket: { remoteAddress } });
+  assert.equal(from("127.0.0.1"), true);
+  assert.equal(from("::ffff:127.0.0.1"), true);
+  assert.equal(from("192.168.1.50"), false);
+  assert.equal(from("fe80::1"), false);
 });
 
 test("six digits establish SRP keys but terminal access still requires desktop approval", async (t) => {

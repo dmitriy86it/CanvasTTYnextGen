@@ -319,6 +319,11 @@ export class EvenG2Controller {
       speechModel: value.speechModel,
     };
   }
+  private fromThisHost(req: IncomingMessage): boolean {
+    const remote = (req.socket.remoteAddress || "").replace(/^::ffff:/, "");
+    return remote === "127.0.0.1" || remote === "::1" ||
+      remote === this.boundAddress || this.extraServers.has(remote);
+  }
   private grant(id: string, ids = this.config.sessionIds): CompanionGrant {
     return this.access.share({
       deviceId: id,
@@ -447,8 +452,10 @@ export class EvenG2Controller {
           local: new LocalPairing(code, expiresAt),
           pending: null,
         };
-      } else if (command.type === "cancel-pairing" || command.type === "reject")
+      } else if (command.type === "cancel-pairing" || command.type === "reject") {
         this.pairing = null;
+        this.localLink.discardUnbound();
+      }
       else if (command.type === "approve") {
         const pending = this.pairing?.pending;
         if (
@@ -462,10 +469,14 @@ export class EvenG2Controller {
         this.pairing = null;
         try {
           await this.save();
+          await this.localLink.approve(pending.id);
         } catch (error) {
           this.access.revoke(pending.id);
           this.peers = this.peers.filter((peer) => peer.id !== pending.id);
+          await this.localLink.revoke(pending.id).catch(() => {});
           throw error;
+        } finally {
+          this.localLink.discardUnbound();
         }
       } else if (command.type === "revoke") {
         this.access.revoke(command.id);
@@ -473,6 +484,7 @@ export class EvenG2Controller {
         this.peers = this.peers.filter((p) => p.id !== command.id);
         this.seen.delete(command.id);
         await this.save();
+        await this.localLink.revoke(command.id);
       } else throw new Error("unknown-command");
       if (!this.config.enabled || this.server?.listening) this.error = "";
       return this.state();
@@ -707,7 +719,8 @@ export class EvenG2Controller {
         if (url.pathname === "/g2/pair-start")
           return this.json(res, 200, pair.local.start(data.public));
         const session = pair.local.finish(data.id, data.proof);
-        const connection = this.localLink.connection(this.localOrigins());
+        // A key of its own for this handshake; it opens only pairing until the desktop approves.
+        const connection = this.localLink.issue(this.localOrigins(), pair.expiresAt);
         const packet = await sealLocal({ version: 1, computer: String(data.id),
           key: session.key, origins: connection.origins }, { connection, code: pair.code }, "response");
         if (this.pairing !== pair || pair.expiresAt <= Date.now())
@@ -723,9 +736,15 @@ export class EvenG2Controller {
       const packet = await this.body(req, LOCAL_LINK_LIMIT + 1024);
       const result = await this.localLink.receive(
         packet as unknown as LocalPacket,
-        async (request: LocalRequest) => {
+        async (request: LocalRequest, device) => {
           if (!this.config.enabled || !this.server?.listening)
             throw new Error("integration-disabled");
+          // A link key speaks only for its own device: another device's bearer is refused.
+          const owner = request.token
+            ? this.peers.find((p) => p.tokenHash === hash(request.token))?.id
+            : undefined;
+          if (owner && owner !== (device.peerId ?? device.claimedBy))
+            return { status: 401, body: { error: "unauthorized" } };
           const response = await fetch(
             addressOrigin(this.boundAddress, this.port) + request.path,
             {
@@ -742,7 +761,10 @@ export class EvenG2Controller {
               signal: AbortSignal.timeout(65_000),
             },
           );
-          return { status: response.status, body: await response.json() };
+          const body = await response.json();
+          if (request.path === "/g2/api/pair" && response.status === 202 && typeof body?.id === "string")
+            this.localLink.claim(device.computer, body.id);
+          return { status: response.status, body };
         },
       );
       return this.json(res, 200, result);
@@ -771,6 +793,10 @@ export class EvenG2Controller {
       res.end(readFileSync(path));
       return;
     }
+    // On a LAN the API is reachable only through the encrypted /g2/link, which forwards from this
+    // host. Plain HTTP bearers from other devices are refused; HTTPS mode serves the API directly.
+    if (url.pathname.startsWith("/g2/api/") && !this.config.publicOrigin && !this.fromThisHost(req))
+      return this.json(res, 404, { error: "not-found" });
     if (req.method === "POST" && url.pathname === "/g2/api/pair") {
       const data = await this.body(req),
         pair = this.pairing;
