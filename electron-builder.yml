@@ -98,5 +98,5 @@ mac:
 
 publish:
   provider: github
-  owner: howdeploy
-  repo: CanvasTTY
+  owner: dmitriy86it
+  repo: CanvasTTYnextGen

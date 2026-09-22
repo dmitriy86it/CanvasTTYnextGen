@@ -184,3 +184,12 @@ test("packaged builds ignore development overrides that load code or URLs", asyn
   }
   assert.match(source, /function developmentEnv\(name: string\): string \| undefined \{\n\s+return app\.isPackaged \? undefined : process\.env\[name\];/);
 });
+
+test("the main window refuses redirects and the packaged renderer CSP drops ws:", async () => {
+  const main = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+  assert.match(main, /on\("will-redirect", \(event\) => \{\n\s+if \(event\.isMainFrame\) event\.preventDefault\(\);/);
+  const html = await readFile(new URL("../src/renderer/index.html", import.meta.url), "utf8");
+  assert.match(html, /connect-src 'self' ws:;/, "the build-time CSP rewrite relies on this exact directive");
+  const vite = await readFile(new URL("../electron.vite.config.ts", import.meta.url), "utf8");
+  assert.match(vite, /apply: "build"[\s\S]*connect-src 'self';/);
+});

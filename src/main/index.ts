@@ -157,6 +157,10 @@ async function createWindow(): Promise<BrowserWindow> {
     const currentUrl = window.webContents.getURL();
     if (currentUrl && url !== currentUrl) event.preventDefault();
   });
+  // The shell loads only local content, which never redirects; a redirect is never followed.
+  window.webContents.on("will-redirect", (event) => {
+    if (event.isMainFrame) event.preventDefault();
+  });
   canvasNavigationInput?.attach(window.webContents, { preventMouseBindings: false });
   window.on("blur", () => {
     canvasNavigationInput?.reset();

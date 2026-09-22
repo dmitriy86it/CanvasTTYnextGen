@@ -36,6 +36,18 @@ export default defineConfig({
   },
   renderer: {
     root: resolve("src/renderer"),
-    plugins: [react()]
+    plugins: [
+      react(),
+      {
+        // ws: exists only for the dev server's hot reload; the packaged renderer opens no sockets.
+        name: "canvastty-production-csp",
+        apply: "build",
+        transformIndexHtml: (html) => {
+          const next = html.replace("connect-src 'self' ws:;", "connect-src 'self';");
+          if (next === html) throw new Error("Renderer CSP connect-src was not found.");
+          return next;
+        }
+      }
+    ]
   }
 });
