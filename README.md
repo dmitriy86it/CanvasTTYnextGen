@@ -2,15 +2,14 @@ https://github.com/user-attachments/assets/444612f7-cda1-4fd6-8514-2f4fac9cc520
 
 <p align="center">
   <a href="README.md"><strong>English</strong></a> ·
-  <a href="README.ru.md">Русский</a> ·
-  <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.ru.md">Русский</a>
 </p>
 
 <table>
   <tr>
     <td>
       <strong>Your terminals are places, not tabs.</strong><br>
-      CanvasTTY is an Electron spatial desktop for real local PTYs and AI-agent CLI sessions. Keep a fixed Home zone, arrange live terminals on an infinite canvas, and see provider limits backed by real data sources.
+      Raoden Loom (formerly CanvasTTY) is an Electron spatial desktop for real local PTYs and AI-agent CLI sessions. Keep a fixed Home zone, arrange live terminals on an infinite canvas, and see provider limits backed by real data sources.
     </td>
   </tr>
 </table>
@@ -25,13 +24,13 @@ The application interface currently supports English and Russian. This documenta
 
 ## One canvas, real sessions
 
-Launch a shell or agent in a project directory, move and resize its live terminal, zoom out to navigate semantically, and return to Home for sessions, limits, media, and launch shortcuts. CanvasTTY keeps PTY state in the trusted main process and exposes only typed, allow-listed capabilities to the renderer.
+Launch a shell or agent in a project directory, move and resize its live terminal, zoom out to navigate semantically, and return to Home for sessions, limits, media, and launch shortcuts. Raoden Loom keeps PTY state in the trusted main process and exposes only typed, allow-listed capabilities to the renderer.
 
 ## Windows shells and provider CLIs
 
 On Windows, the Terminal launcher uses the built-in Windows PowerShell with a clean `-NoLogo -NoProfile` session, then falls back to `pwsh` or `cmd.exe`. Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, and Grok Build are resolved to a concrete `.exe`, `.com`, `.cmd`, or `.bat` launcher from the user's `PATH` or standard per-user CLI directories before they are passed to `node-pty`/ConPTY.
 
-CanvasTTY does not install provider CLIs. If a provider is missing, the launch dialog reports which CLI was not found and which directories were checked. Install the required CLI and restart CanvasTTY so the desktop process receives the updated environment.
+Raoden Loom does not install provider CLIs. If a provider is missing, the launch dialog reports which CLI was not found and which directories were checked. Install the required CLI and restart Raoden Loom so the desktop process receives the updated environment.
 
 ## Install
 
@@ -46,7 +45,7 @@ npm run dev
 
 ## Docs
 
-| Start here | Build on CanvasTTY |
+| Start here | Build on Raoden Loom |
 |:--|:--|
 | [Documentation hub](docs/README.md) | [Widget authoring](docs/widget-authoring.md) |
 | [Getting started](docs/getting-started.md) | [Metrics and telemetry](docs/metrics-and-telemetry.md) |
@@ -58,21 +57,21 @@ npm run dev
 
 ## Even G2 companion
 
-The opt-in **Settings → Controls → Even G2** integration adapts CanvasTTY's terminal and AI-agent workflows to Even G2 glasses. Pair with six digits on the same local network, approve access on the computer, then read responses on the glasses HUD, dictate through local Nemotron speech recognition, and create, rename or close shared sessions. The companion includes a More agents picker and supports the desktop's provider list. Its source lives in `integrations/even-g2` and builds with the desktop. See [setup, distribution status and acceptance limits](docs/even-g2.md); a compatible public installer and Even Hub approval are still pending.
+The opt-in **Settings → Controls → Even G2** integration adapts Raoden Loom's terminal and AI-agent workflows to Even G2 glasses. Pair with six digits on the same local network, approve access on the computer, then read responses on the glasses HUD, dictate through local Nemotron speech recognition, and create, rename or close shared sessions. The companion includes a More agents picker and supports the desktop's provider list. Its source lives in `integrations/even-g2` and builds with the desktop. See [setup, distribution status and acceptance limits](docs/even-g2.md); a compatible public installer and Even Hub approval are still pending.
 
 ## Runtime plugins
 
-CanvasTTY includes a permissioned runtime for ready-to-run static GitHub packages: HOME widgets, canvas apps, and separate sandboxed windows. The host SDK now supports persistent user-selected music-library grants, seekable local audio streams, and bounded playlist import/export for full player plugins. See the [authoring and security guide](docs/plugins.md), [manifest schema](docs/canvastty-plugin.schema.json), and [TypeScript SDK declarations](docs/plugin-api.d.ts).
+Raoden Loom includes a permissioned runtime for ready-to-run static GitHub packages: HOME widgets, canvas apps, and separate sandboxed windows. The host SDK now supports persistent user-selected music-library grants, seekable local audio streams, and bounded playlist import/export for full player plugins. See the [authoring and security guide](docs/plugins.md), [manifest schema](docs/canvastty-plugin.schema.json), and [TypeScript SDK declarations](docs/plugin-api.d.ts).
 
 Plugin examples:
 
-- [canvastty-plugin-hermes-hud](https://github.com/howdeploy/canvastty-plugin-hermes-hud) — from the CanvasTTY author: a HOME widget that starts and stops an installed Hermes Desktop in HUD mode and shows the confirmed live process state; it uses only the narrow `hermes:hud` permission.
+- [canvastty-plugin-hermes-hud](https://github.com/howdeploy/canvastty-plugin-hermes-hud) — from the Raoden Loom author: a HOME widget that starts and stops an installed Hermes Desktop in HUD mode and shows the confirmed live process state; it uses only the narrow `hermes:hud` permission.
 - [canvastty-music](https://github.com/Alitryel/canvastty-music) — by [@Alitryel](https://github.com/Alitryel): a compact player for local audio folders and Yandex Music with a separate full-size library workspace, playlists, queues, and an optional animated pet.
-- [canvastty-plugin-hermes-dashboard](https://github.com/4444cjtr/canvastty-plugin-hermes-dashboard) — by [@4444cjtr](https://github.com/4444cjtr): a HOME widget that checks whether the local Hermes Agent dashboard is running, starts it through a small loopback helper, and opens it inside CanvasTTY as an embedded browser card.
+- [canvastty-plugin-hermes-dashboard](https://github.com/4444cjtr/canvastty-plugin-hermes-dashboard) — by [@4444cjtr](https://github.com/4444cjtr): a HOME widget that checks whether the local Hermes Agent dashboard is running, starts it through a small loopback helper, and opens it inside Raoden Loom as an embedded browser card.
 
 ## Built-in agent browser
 
-CanvasTTY includes a core browser rather than a plugin capability: trusted React chrome backed by sandboxed Electron `WebContentsView` tabs in one persistent Chromium profile. It is available from HOME, restores safe HTTP(S) tabs, keeps website credentials inside Chromium, manages downloads/uploads, and exposes typed browser actions to Claude Code, Codex, Kimi, OpenCode, and Hermes sessions launched by CanvasTTY.
+Raoden Loom includes a core browser rather than a plugin capability: trusted React chrome backed by sandboxed Electron `WebContentsView` tabs in one persistent Chromium profile. It is available from HOME, restores safe HTTP(S) tabs, keeps website credentials inside Chromium, manages downloads/uploads, and exposes typed browser actions to Claude Code, Codex, Kimi, OpenCode, and Hermes sessions launched by Raoden Loom.
 
 The browser card participates in the same canvas selection, hover-focus, drag, resize, and semantic-zoom model as terminals. Settings controls agent access, tab restore, recent downloads/activity, and browser-data clearing. Agent access uses an authenticated local socket or named pipe and a bundled stdio MCP helper; it does not open a TCP or remote-debugging port and never exports cookies, passwords, auth headers, local storage, arbitrary JavaScript, or raw CDP.
 
@@ -89,4 +88,4 @@ npm run build
 
 ## License
 
-CanvasTTY is released under the [MIT License](LICENSE).
+Raoden Loom is released under the [MIT License](LICENSE).

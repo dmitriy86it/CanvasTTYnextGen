@@ -1,9 +1,27 @@
 # Changelog
 
-[English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md) · [简体中文](CHANGELOG.zh-CN.md)
+[English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md)
 
 ## Unreleased
 
+## 1.5.6
+
+- Fixed a false "protocol error" after a correct answer: when the CLI finished and exited but left a process behind (for example an MCP server or a hook) that did not hold its output, the turn failed about 2 s later. The per-turn supervisor now relays the CLI output itself and decides whether a stream closed before or only after its cleanup; a process that really holds the output (stdout, and now also stderr) still fails the turn. The run panel and the Log name the step where a turn ended, and application-side failures are no longer blamed on the CLI. No retry is promised as safe.
+
+## 1.5.5
+
+- A run paused before a restart can be stopped again when the installed Codex or Claude CLI is missing or of another version: Stop no longer asks for the CLIs, the login shell or the project's dependencies, so its cards and link can then be deleted. Resume and new runs still require the verified versions.
+
+## 1.5.4
+
+- Renamed the application to **Raoden Loom** (formerly CanvasTTY). Only what you read changes: the window and About titles, the macOS menu, interface texts and the installer file names (`Raoden-Loom-<version>-…`). The technical identity stays `canvastty`: the same `appId`, the same data folder (`~/Library/Application Support/canvastty` on macOS), browser profile, plugin API, `CANVASTTY_*` variables, MCP name and Git refs, so your settings, workspaces, history, plugins and browser data are opened as before.
+- Added project workspaces on macOS: separate canvases per project with their own camera, a switcher with work counters, moving cards between workspaces, per-workspace run history, and hiding a workspace with an explicit "Stop and hide" that reports each terminal and run as stopped only after its exit is confirmed. Known open items: see `docs/agent-orchestration/ROADMAP.md`.
+- A terminal whose card is closed after a stop that saw no exit stays visible, marked "closed, its end not confirmed", until the process really ends.
+- The saved GitHub sign-in is no longer lost when the system key store cannot decrypt it: the file is kept, a new sign-in keeps a copy, and Settings shows that the saved sign-in is unavailable.
+
+## 1.5.3
+
+- Added agent orchestration on macOS (MVP): a Codex lead card and a Claude executor card on the canvas, a lead → executor link, and a goal that runs plan → edit → project checks in a sandbox → review → checkpoint automatically. The run panel offers Pause after turn, Step, Resume, Stop and recovery after a crash. Results stay in `refs/canvastty/<runId>/stage-<n>` of the project and are taken with git; the user's branch is never changed. Requires Codex CLI 0.155.1 and Claude Code 2.1.281. Limits: macOS only; the Claude executor mode is a candidate; see `docs/agent-orchestration/FIRST-USE.md`.
 - Security: packaged builds enable Electron fuses — `NODE_OPTIONS` and `--inspect` are ignored, and `app.asar` is integrity-checked and the only app source. `runAsNode` stays on for the agent helpers.
 - Security: every main-renderer IPC channel now verifies its sender.
 - Security: packaged builds ignore `ELECTRON_RENDERER_URL` and the provider smoke overrides.

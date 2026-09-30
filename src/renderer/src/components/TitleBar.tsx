@@ -37,7 +37,7 @@ export function TitleBar({ locale, windowState, onWindowStateChange }: TitleBarP
         <div className="titlebar__macos-controls-space" aria-hidden="true" />
         <div className="titlebar__brand">
           <span className="titlebar__logo"><ProviderIcon provider="terminal" size="small" /></span>
-          <strong>CanvasTTY</strong>
+          <strong>Raoden Loom</strong>
           <span className={`titlebar__build titlebar__build--${BUILD_CHANNEL.toLowerCase()}`}>{BUILD_LABEL}</span>
           <span className="titlebar__subtitle">{t(locale, "appSubtitle")}</span>
         </div>
@@ -50,7 +50,7 @@ export function TitleBar({ locale, windowState, onWindowStateChange }: TitleBarP
     <header className="titlebar">
       <div className="titlebar__brand">
         <span className="titlebar__logo"><ProviderIcon provider="terminal" size="small" /></span>
-        <strong>CanvasTTY</strong>
+        <strong>Raoden Loom</strong>
         <span className={`titlebar__build titlebar__build--${BUILD_CHANNEL.toLowerCase()}`}>{BUILD_LABEL}</span>
         <span className="titlebar__subtitle">{t(locale, "appSubtitle")}</span>
       </div>

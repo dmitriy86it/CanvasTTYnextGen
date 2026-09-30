@@ -196,7 +196,7 @@ export function TerminalCard({
       (data) => terminal.write(data),
       (error) => {
         console.error("CanvasTTY could not load terminal history.", error);
-        terminal.write(`\r\n[CanvasTTY] ${t(locale, "terminalHistoryFailed")}\r\n`);
+        terminal.write(`\r\n[Raoden Loom] ${t(locale, "terminalHistoryFailed")}\r\n`);
       }
     );
     const fit = (): void => {
@@ -473,7 +473,7 @@ export function TerminalCard({
           terminal.focus();
           terminal.paste(text);
         } catch {
-          terminal.write(`\r\n[CanvasTTY] ${t(locale, "terminalFileDropFailed")}\r\n`);
+          terminal.write(`\r\n[Raoden Loom] ${t(locale, "terminalFileDropFailed")}\r\n`);
         }
       }}
       style={{

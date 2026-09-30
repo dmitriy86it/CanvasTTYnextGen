@@ -388,7 +388,9 @@ export function normalizeSettings(
       : fallback.canvasColor;
 
   return {
-    locale: LOCALES.has(source.locale as LocaleId) ? source.locale as LocaleId : fallback.locale,
+    // The Chinese interface was withdrawn: a saved "zh…" locale opens in Russian instead of the system default.
+    locale: LOCALES.has(source.locale as LocaleId) ? source.locale as LocaleId
+      : typeof source.locale === "string" && /^zh(?:[-_]|$)/i.test(source.locale) ? "ru" : fallback.locale,
     restoreTerminalSessions: typeof source.restoreTerminalSessions === "boolean"
       ? source.restoreTerminalSessions
       : fallback.restoreTerminalSessions ?? false,

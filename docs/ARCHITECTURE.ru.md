@@ -1,10 +1,10 @@
 # Архитектура
 
-[English](ARCHITECTURE.md) · [Русский](ARCHITECTURE.ru.md) · [简体中文](ARCHITECTURE.zh-CN.md)
+[English](ARCHITECTURE.md) · [Русский](ARCHITECTURE.ru.md)
 
 ## Границы процессов
 
-CanvasTTY использует трёхслойную модель Electron:
+Raoden Loom использует трёхслойную модель Electron:
 
 ```text
 React renderer
@@ -21,6 +21,7 @@ Electron main process
     ├── PluginSecretsService → защищённое системное шифрование credentials плагинов с fail-closed поведением
     ├── PluginMediaService → разрешённые медиапапки, ranged audio streams, плейлисты
     ├── BrowserService → встроенные вкладки и lifecycle изолированных WebContentsView
+    ├── RunManager     → запуски оркестрации агентов, карточки и связи (см. «Оркестрация агентов»)
     ├── canvastty-plugin:// → статические plugin resources под CSP
     ├── canvastty-media:// → локальные аудиопотоки с проверкой разрешений
     └── нативные dialogs/window controls
@@ -37,9 +38,9 @@ Electron main process
 - `src/main/services/PluginMediaService.ts` сохраняет разрешения только после нативного выбора папки, скрывает абсолютные пути, пропускает symlinks и отдаёт аудио с HTTP Range. Чтение плейлистов остаётся внутри разрешённых библиотек; ограниченная атомарная запись разрешена только в `Playlists/`.
 - `src/main/services/BrowserService.ts` владеет вкладками встроенного браузера в `WebContentsView`. Удалённые страницы используют отдельный persistent partition с выключенным Node, включёнными context isolation/sandbox и отклонением website permissions по умолчанию. Это core service, а не возможность runtime-плагина.
 - `src/main/services/agent-runtime/` — отдельная всегда включённая lifecycle-граница, не зависящая от переключателя Browser access. Каждый agent PTY получает собственный capability для защищённого user-local socket/pipe. Provider command hooks и OpenCode event plugin могут передать только фиксированный status enum, ограниченное имя события и необязательный opaque turn/prompt ID; точная schema Gateway отклоняет prompt text, ответы, tool input и произвольную telemetry. При завершении PTY capability и временные файлы отзываются.
-- Claude, Codex, Qwen и OpenCode получают lifecycle hooks только на текущий запуск. Для Kimi, Hermes и Grok, которые ищут hooks в home-конфигурации, используются ownership-checked временные записи с совместным владением живых сессий. Kimi и Hermes используют recovery journals и точные backups, Grok — отдельный owned hook file; cleanup восстанавливает исходные байты или удаляет только записи CanvasTTY при конкурентных изменениях.
-- `TerminalManager` подмешивает MCP helper, не оставляя постоянных изменений в provider-конфигах. Claude Code, Codex и Qwen Code получают CLI arguments; Qwen получает одну inline-запись `--mcp-config`, которая переопределяет только имя сервера CanvasTTY и не скрывает сторонние user servers. OpenCode — объединённый launch-only `OPENCODE_CONFIG_CONTENT` с одной scoped browser-tool permission, Kimi — per-run MCP config или временную запись с compare-and-swap и recovery journal для старых версий. Hermes получает временную запись `mcp_servers.canvastty_browser` в `HERMES_HOME/config.yaml` (по умолчанию `~/.hermes/config.yaml` в POSIX или `%LOCALAPPDATA%\hermes\config.yaml` в Windows); чувствительные capability-значения остаются ссылками на окружение дочернего процесса. Временная конфигурация Kimi и Hermes живёт до завершения последней владеющей PTY-сессии, после чего исходные байты точно восстанавливаются, если файл не менялся параллельно. Journal восстанавливает Hermes после прерванного запуска при следующем старте CanvasTTY, а compare-and-swap сохраняет одновременные пользовательские изменения. Сторонние MCP-записи, credentials и file/shell permissions не затрагиваются. Qwen, OpenCode и Hermes YOLO остаются launch-only и не меняют постоянные permission-настройки.
-- `src/main/services/providerCliRegistry.ts` — единственный владелец обнаружения provider CLI. При запуске main-процесса он создаёт один неизменяемый snapshot для Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes и Grok Build, последовательно проверяя smoke-only overrides, унаследованный `PATH`, системные каталоги платформы и известные пользовательские/provider-каталоги. Доступная запись хранит абсолютный executable, тип launcher-а и дополненный дочерний `PATH`; POSIX-кандидат обязан быть исполняемым файлом, а Windows-кандидат — поддерживаемым native или batch launcher-ом. `TerminalManager`, `LimitsService`, agent-browser probes и provider smoke используют один и тот же snapshot и не повторяют поиск команды. Недоступный CLI создаёт failed-сессию с копируемой диагностикой проверенных путей до создания PTY или временной browser-конфигурации, а соответствующий HOME limit остаётся `cli-not-found`. CanvasTTY не читает shell startup scripts; после установки или перемещения CLI приложение нужно перезапустить.
+- Claude, Codex, Qwen и OpenCode получают lifecycle hooks только на текущий запуск. Для Kimi, Hermes и Grok, которые ищут hooks в home-конфигурации, используются ownership-checked временные записи с совместным владением живых сессий. Kimi и Hermes используют recovery journals и точные backups, Grok — отдельный owned hook file; cleanup восстанавливает исходные байты или удаляет только записи Raoden Loom при конкурентных изменениях.
+- `TerminalManager` подмешивает MCP helper, не оставляя постоянных изменений в provider-конфигах. Claude Code, Codex и Qwen Code получают CLI arguments; Qwen получает одну inline-запись `--mcp-config`, которая переопределяет только имя сервера Raoden Loom и не скрывает сторонние user servers. OpenCode — объединённый launch-only `OPENCODE_CONFIG_CONTENT` с одной scoped browser-tool permission, Kimi — per-run MCP config или временную запись с compare-and-swap и recovery journal для старых версий. Hermes получает временную запись `mcp_servers.canvastty_browser` в `HERMES_HOME/config.yaml` (по умолчанию `~/.hermes/config.yaml` в POSIX или `%LOCALAPPDATA%\hermes\config.yaml` в Windows); чувствительные capability-значения остаются ссылками на окружение дочернего процесса. Временная конфигурация Kimi и Hermes живёт до завершения последней владеющей PTY-сессии, после чего исходные байты точно восстанавливаются, если файл не менялся параллельно. Journal восстанавливает Hermes после прерванного запуска при следующем старте Raoden Loom, а compare-and-swap сохраняет одновременные пользовательские изменения. Сторонние MCP-записи, credentials и file/shell permissions не затрагиваются. Qwen, OpenCode и Hermes YOLO остаются launch-only и не меняют постоянные permission-настройки.
+- `src/main/services/providerCliRegistry.ts` — единственный владелец обнаружения provider CLI. При запуске main-процесса он создаёт один неизменяемый snapshot для Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes и Grok Build, последовательно проверяя smoke-only overrides, унаследованный `PATH`, системные каталоги платформы и известные пользовательские/provider-каталоги. Доступная запись хранит абсолютный executable, тип launcher-а и дополненный дочерний `PATH`; POSIX-кандидат обязан быть исполняемым файлом, а Windows-кандидат — поддерживаемым native или batch launcher-ом. `TerminalManager`, `LimitsService`, agent-browser probes и provider smoke используют один и тот же snapshot и не повторяют поиск команды. Недоступный CLI создаёт failed-сессию с копируемой диагностикой проверенных путей до создания PTY или временной browser-конфигурации, а соответствующий HOME limit остаётся `cli-not-found`. Raoden Loom не читает shell startup scripts; после установки или перемещения CLI приложение нужно перезапустить.
 
 Основной `BrowserWindow` создаётся и показывается с лёгкой локальной стартовой страницей до инициализации settings, plugins, media и IPC. Успешная инициализация заменяет её доверенным renderer; bootstrap failure показывает видимую error page и сохраняет fallback на native dialog. Main process удерживает single-instance lock и восстанавливает/фокусирует существующее окно при повторном запуске.
 
@@ -95,7 +96,115 @@ Session counters, progress bars и statuses всегда выводятся из
 2. `LimitsService` дедуплицирует refresh и хранит 60-секундный cache.
 3. Codex опрашивается через `codex app-server` методом `account/rateLimits/read`. Claude, Kimi, OpenCode Go и Grok Build используют read-only usage/billing endpoints и credentials установленных CLI. Qwen Code возвращает явный unavailable reason: одна Qwen-сессия может работать с разными облачными или локальными провайдерами, а универсального quota-read protocol у CLI нет. OpenCode Go даёт настоящие rolling, weekly и monthly windows, Grok Build — настоящий общий billing period. Реальные ответы структурно проверяются и сокращаются до percentage, window и reset time.
 4. Если refresh не удался после успешного чтения, последний валидный snapshot возвращается как stale. Отсутствующие/неподдерживаемые adapters возвращают явную unavailable reason, а не `0%`.
-5. CanvasTTY запрашивает Claude usage с OAuth-токеном из CLI credentials текущего пользователя. Отсутствующие или нечитаемые credentials дают `not-authenticated`; локальное состояние credentials не считается доказательством отсутствия подписки. Provider TUI screens не разбираются.
+5. Raoden Loom запрашивает Claude usage с OAuth-токеном из CLI credentials текущего пользователя. Отсутствующие или нечитаемые credentials дают `not-authenticated`; локальное состояние credentials не считается доказательством отсутствия подписки. Provider TUI screens не разбираются.
+
+## Оркестрация агентов (лид Codex → исполнитель Claude)
+
+Статус: **MVP принят для macOS с известными ограничениями** (2026-09-24). Этапы 1–10 и финальная реальная серия приняты. Реальные CLI прошли цикл вне интерфейса (этап 6) и через UI проверенной упакованной сборки. Реальная серия R1–R3: цель до завершения, «Стоп» во время хода Claude, выход во время хода и «Продолжить» (`agent-orchestration/evidence/real-ui/`). Проверенная сборка — `/private/tmp/canvastty-r10-pkg-wrc5/release/mac-arm64/CanvasTTY.app` (локальная, подпись ad-hoc, без нотарификации). Первое использование: [agent-orchestration/FIRST-USE.md](agent-orchestration/FIRST-USE.md). Приёмка, доказательства и границы проверки: ROADMAP, «Приёмка MVP». История решений и все результаты проверок: [agent-orchestration/](agent-orchestration/) (ROADMAP, VALIDATION-MATRIX, TROUBLESHOOTING, контракты этапов). Исходный проект `ARCHITECTURE-PROPOSAL.md` отмечает, где реализация от него отличается (§0).
+
+```text
+renderer features/orchestration (карточки, связь, диалог цели, панель запуска)
+    │ window.canvasTTY.orchestration (preload/orchestrationClient.ts)
+    ▼ каналы orchestration:* через handleMain (только верхний фрейм главного окна, каждый аргумент проверяется)
+main RunManager (manager.ts) — единственный владелец запусков; сам ничего не открывает
+    ├── canvasStore  → <userData>/orchestration/canvas.json (карточки и связи)
+    └── OrchestrationService на каждый run (машина состояний, лимиты, восстановление)
+        ├── Store     → runs/<runId>/journal.jsonl (хэш-цепочка) и texts/
+        ├── Workspace → runs/<runId>/workspace/ (рабочая копия + control.git)
+        ├── ходы      → supervisor.mjs (ELECTRON_RUN_AS_NODE) → codex / claude CLI в своей группе процессов
+        └── проверки  → supervisor.mjs внутри профиля Seatbelt → node --test
+```
+
+Функция оркестрации единолично владеет своей IPC-возможностью (`useOrchestration.ts`), поэтому не идёт через `App.tsx`. Источник истины для запусков, карточек и связей — main. Renderer только сводит снимки и события `(seq, tick)` и предлагает команды, которые разрешает `availableActions()`.
+
+### Запуск цели
+
+1. Правый клик по пустому холсту → «Агент Codex (лид)» и «Агент Claude (исполнитель)» (интерфейс есть только на английском и русском), у обоих одна папка проекта.
+2. Порт карточки лида тянется на карточку исполнителя. С клавиатуры: Enter на порту, затем «Связать сюда». Связь идёт только Codex → Claude в пределах одного проекта; на ту же карточку и повторную пару связь не создаётся.
+3. «Новая цель» на плашке связи открывает диалог:
+   - задача и критерии (по строке);
+   - проверки из каталога приложения (только `node-test`, то есть `node --test`, 600 с, вывод 64 КиБ);
+   - лимиты, по желанию; по умолчанию ходов 40, раундов на этап 8, перепланирований 3, время 240 мин;
+   - «Показать план перед выполнением» (выключено по умолчанию).
+4. Лид разбивает задачу на этапы. На каждом этапе исполнитель правит код, проходит проверка, лид делает ревью. Принятый этап получает checkpoint. Финальное ревью завершает run как `completed`.
+
+У связи не больше одного активного run. Пока он идёт, «Новая цель» и «×» скрыты, и main тоже отказывает.
+
+### Управление
+
+Панель показывает только допустимые в текущем состоянии команды:
+- «Пауза после хода» / «Не останавливаться»;
+- «Продолжить», «Один шаг» (ровно одна операция, затем пауза), «Стоп»;
+- ответ на вопрос, «Уточнить», увеличение лимита;
+- восстановление.
+
+«Стоп» отвечает сразу. Он останавливает активный ход или проверку; если результата нет, run завершается через 20 с. После принятого Stop ни одна операция не начинается. Запуск, который приложение не держит (например, поставленный на паузу до перезапуска), ничего не выполняет, поэтому его остановка — только запись в журнал: для неё не нужны CLI проверенной версии, login shell и подготовленные зависимости проекта. «Продолжить» и новый старт по-прежнему их требуют.
+
+Каждая команда несёт `commandId` и `expectedRevision`. Если ответ потерян, панель хранит запрос (и после перезагрузки окна) и предлагает «Повторить». Main отвечает на повтор записанным результатом, поэтому ничего не выполняется дважды.
+
+### Восстановление
+
+- **Штатный выход.** Активная операция останавливается, run становится `paused(user_request)`.
+- **Сбой или принудительное завершение.** Run показывается таким, каким его запишет открытие:
+  - `paused(outcome_unknown)`, если был ход в полёте. Доступно: принять результат хода, повторить ход (новая сессия), вернуть к последнему checkpoint (с подтверждением; изменения после него сохраняются в `refs/canvastty/<runId>/recovery-<k>`), или «Стоп»;
+  - `paused(recovered)` — во всех остальных случаях. Прерванная проверка получает `not_verified(interrupted)` и запускается снова только по «Продолжить» или «Один шаг».
+- В обоих случаях после перезапуска ничего не продолжается само. Supervisor завершает группу CLI или песочницу проверки, когда умирает main (EOF lifeline).
+
+Поиска осиротевших процессов при старте нет. Если убить всю группу процессов main, погибнет и supervisor, и группа CLI может его пережить.
+
+### Где результаты
+
+- **Данные запусков** лежат в `<userData>/orchestration/` (на macOS `~/Library/Application Support/<имя приложения>/orchestration/`):
+  - `canvas.json`;
+  - `runs/<runId>/journal.jsonl`, `texts/`, `checks/<checkRunId>/`, `workspace/` (рабочая копия `repo/` и `control.git`);
+  - `attempts/` (схема и отчёт каждого хода лида).
+- **История** (отчёты, замечания лида, вывод проверок) показывается на панели запуска из журнала.
+- **Исходный репозиторий** получает только объекты и ссылки, которые создаются и больше не меняются:
+  - `refs/canvastty/<runId>/baseline` — дерево исходного проекта на старте, включая незакоммиченные и неотслеживаемые, но не игнорируемые файлы;
+  - `refs/canvastty/<runId>/stage-<n>` — checkpoint после принятого этапа n;
+  - `recovery-<k>` — сохраняется при возврате к checkpoint.
+  
+  HEAD, ветки, индекс и рабочее дерево не меняются никогда.
+
+### Как забрать изменения
+
+Приложение никогда не сливает изменения в вашу ветку. В исходном репозитории:
+
+```sh
+git log --oneline refs/canvastty/<runId>/stage-<n>
+git diff refs/canvastty/<runId>/baseline refs/canvastty/<runId>/stage-<n>   # только работа агентов
+git switch -c agents/<имя> refs/canvastty/<runId>/stage-<n>                  # посмотреть на новой ветке
+git cherry-pick refs/canvastty/<runId>/baseline..refs/canvastty/<runId>/stage-<n>   # или перенести на текущую ветку
+```
+
+Сравнивайте с `baseline`, а не с `HEAD`: если на старте были незакоммиченные правки, baseline их содержит.
+
+### Требования и ограничения
+
+- **Платформы.**
+  - Run может завершиться только на macOS: песочница проверок — Seatbelt (`sandbox-exec`).
+  - На Linux ходы идут, но каждая проверка ставит run на паузу `sandbox_unavailable`, где доступен только «Стоп».
+  - Windows получает отказ `unsupported_platform`, хотя пункты меню видны.
+- **CLI** зафиксированы:
+  - Codex CLI 0.155.1: модель `gpt-6-astra`, reasoning high, песочница `read-only`, без пользовательского конфига и правил.
+  - Claude Code 2.1.281: модель `claude-sonnet-5`, `structured-edit` (кандидатный режим: Read/Edit/Write/Glob/Grep, без shell, `--max-budget-usd 1` на ход).
+  
+  Другие версии отклоняются до создания run. Ограничения правок исполнителя — политика CLI, а не граница ОС.
+- **Проект.**
+  - Нужен корень git-репозитория. Отказ получают: submodules, LFS, вложенные репозитории, связанные worktree, sparse checkout, незавершённый merge/rebase.
+  - В корне нужны `package-lock.json` и настоящая папка `node_modules`. Оркестратор не устанавливает зависимости: копия подключает `node_modules` проекта только для чтения.
+- **Интерфейс (минимальный).**
+  - Панель показывает последний run связи; выбрать более старый нельзя.
+  - Панель не показывает имена checkpoint-ссылок и не предлагает их слить: забирайте изменения git-командами выше. Id запуска — код в заголовке панели (первые 8 символов); полные имена выводит `git for-each-ref refs/canvastty/`.
+  - Карточки агентов не следуют за регионами и не показываются на миникарте, в палитре команд и радиальном меню.
+  - Связь удаляется только кнопкой «×» после остановки run. Карточка со связью спрашивает подтверждение; запуски и их история остаются.
+- **Процессы и данные CLI.** Поиска оставшихся процессов при старте нет (см. «Восстановление»). Реальные CLI сохраняют свои сессии в домашнем каталоге пользователя (`~/.claude/projects/`, `~/.codex/sessions/`), вне `userData` приложения; приложение это не ограничивает.
+- **Границы проверки.**
+  - Реальные модели выполняли только одноэтапные планы. Многоэтапный цикл с checkpoint каждого этапа проверен только на тестовых CLI.
+  - Выход во время реального хода (R3) — SIGTERM процессу main, Electron обрабатывает его как `app.quit()`. Cmd+Q отдельно не проверялся.
+  - Аварии и потеря ответов IPC проверены только на тестовых CLI.
+  - Стоимость Claude в R1–R3 ($0.0871) — только за два завершённых хода, это не полная стоимость серии.
+- **Тестовые механизмы** — только для сборок разработки: тестовые провайдеры `CANVASTTY_ORCHESTRATION_TEST_PROVIDERS`, IPC smoke и потеря ответов `CANVASTTY_ORCHESTRATION_TEST_DROP_REPLIES`. Все читаются через `developmentEnv()`, который упакованная сборка игнорирует (проверено на упакованном приложении на этапе 10).
 
 ## Точки расширения
 

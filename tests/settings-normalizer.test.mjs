@@ -561,6 +561,22 @@ test("existing settings migrate to wheel zoom and preserve legacy widget capture
   }
 });
 
+test("a saved Chinese locale opens in Russian; the other settings stay as saved", async () => {
+  for (const zh of ["zh-CN", "zh", "zh_TW", "ZH-hans"]) assert.equal(normalizeSettings({ locale: zh }, fallback).locale, "ru", zh);
+  assert.equal(normalizeSettings({ locale: "zhx" }, fallback).locale, "en", "not a Chinese tag: the fallback");
+  assert.equal(normalizeSettings({ locale: "de" }, fallback).locale, "en");
+  const dir = await mkdtemp(join(tmpdir(), "canvastty-settings-zh-"));
+  try {
+    const saved = { locale: "zh-CN", palette: "night", snapToGrid: false, persistStickyNotes: false };
+    await writeFile(join(dir, "settings.json"), JSON.stringify(saved), "utf8");
+    const loaded = await new SettingsStore(dir, "en").load();
+    assert.deepEqual({ locale: loaded.locale, palette: loaded.palette, snapToGrid: loaded.snapToGrid, persistStickyNotes: loaded.persistStickyNotes },
+      { locale: "ru", palette: "night", snapToGrid: false, persistStickyNotes: false });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("existing settings without the legacy key use key mode and keep the legacy key absent", async () => {
   const dir = await mkdtemp(join(tmpdir(), "canvastty-settings-legacy-wheel-"));
   try {

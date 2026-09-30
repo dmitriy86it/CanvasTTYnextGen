@@ -1,10 +1,10 @@
 # Architecture
 
-[English](ARCHITECTURE.md) · [Русский](ARCHITECTURE.ru.md) · [简体中文](ARCHITECTURE.zh-CN.md)
+[English](ARCHITECTURE.md) · [Русский](ARCHITECTURE.ru.md)
 
 ## Process boundaries
 
-CanvasTTY follows Electron's three-layer model:
+Raoden Loom follows Electron's three-layer model:
 
 ```text
 React renderer
@@ -26,6 +26,7 @@ Electron main process
     │   ├── BrowserStore / BrowserPolicyService / BrowserAuditStore
     │   ├── BrowserCore / BrowserCommandDispatcher / BrowserAutomationService
     │   └── AgentGateway → authenticated UDS/named pipe for the bundled stdio MCP helper
+    ├── RunManager     → agent orchestration runs, cards and links (see Agent orchestration)
     ├── canvastty-plugin:// → CSP-constrained static plugin resources
     ├── canvastty-media:// → permission-checked local audio streams
     └── native dialogs/window controls
@@ -45,10 +46,10 @@ Electron main process
 - `src/main/services/BrowserService.ts` is the only owner of the built-in browser's `WebContentsView` tabs and shared persistent partition. Remote pages have no preload or Node access, keep context isolation and sandbox enabled, and cannot request hardware, location, notification, clipboard-read, certificate-bypass, or external-protocol capabilities. HTTP(S) popups are adopted as internal tabs; other schemes are rejected.
 - `src/main/services/browser/` contains the browser kernel. `BrowserStore` atomically persists only tab order, active tab, and safe restore URLs. `BrowserPolicyService` centralizes URL, permission, download, and upload rules; validated uploads are copied through an already-open no-follow file descriptor into private staging before Chromium sees them. `BrowserAutomationService` attaches Electron's internal debugger to the existing live tab without a remote-debugging port. `BrowserCommandDispatcher` adds revisions, revision-bound refs, mutation request deduplication, per-tab FIFO mutation lanes, bounded concurrency, typed errors, and redacted fail-closed audit for agent mutations.
 - `src/main/services/agent-browser/` exposes the kernel only through an authenticated user-local Unix socket (`0600`) or Windows named pipe. The Windows pipe is created by the bundled native host with a protected DACL containing only the exact current-user SID and rejects remote clients. Each agent PTY receives a one-use bootstrap capability through its child environment. A successful authentication rotates it to a session-scoped reconnect capability held only in helper memory; duplicate bootstrap authentication is accepted only while the same `connectionId` is already live, and every capability is revoked when the PTY ends. The bundled stdio MCP helper is the only protocol adapter; no TCP listener, cookie/storage endpoint, arbitrary evaluation tool, or raw CDP surface exists.
-- `src/main/services/agent-runtime/` is a separate lifecycle boundary and is not controlled by the Browser access switch. When CanvasTTY status hooks are enabled, every agent PTY receives a distinct capability for a protected user-local socket/pipe. Provider command hooks and the OpenCode event plugin may report only the fixed status enum, bounded event name, and optional opaque turn/prompt ID; prompt text, responses, tool input, and arbitrary telemetry are rejected by the exact gateway schema. Electron helper commands carry `ELECTRON_RUN_AS_NODE=1` inside the exact hook command only; the provider PTY never inherits that process-mode flag, so a provider cannot accidentally launch a second CanvasTTY GUI instance. The user can revoke this capability from Agents settings, immediately returning live agent status to `unavailable`; re-enabling requires a new/restarted PTY. Explicitly trusted plugin hooks use a separate process runner which re-checks the private PluginManager registry on every invocation and strips CanvasTTY internal capabilities before passing the provider payload to third-party code. Provider-native review remains an independent gate; CanvasTTY does not bypass Codex hook trust globally.
-- Lifecycle adapters use launch-only settings for Claude, Codex, Qwen, and OpenCode. Kimi, Hermes, and Grok, whose hook discovery is home-config based, receive ownership-checked temporary entries shared across live CanvasTTY sessions. Kimi and Hermes keep recovery journals and exact backups; Grok uses a dedicated owned hook file. Cleanup restores exact original bytes when no concurrent edit occurred and otherwise removes only CanvasTTY-owned entries.
-- `TerminalManager` injects the MCP helper per launch without leaving permanent provider configuration. Claude Code, Codex, and Qwen Code receive CLI arguments; Qwen gets one inline `--mcp-config` entry that overrides only the CanvasTTY server name and leaves unrelated user servers available. OpenCode receives a merged launch-only `OPENCODE_CONFIG_CONTENT` entry plus one scoped browser-tool permission; Kimi uses its per-run MCP configuration when supported. Older Kimi versions receive a compare-and-swap temporary CanvasTTY entry and one exact permission rule with an atomic recovery journal. Hermes receives a temporary `mcp_servers.canvastty_browser` entry in `HERMES_HOME/config.yaml` (defaulting to `~/.hermes/config.yaml` on POSIX or `%LOCALAPPDATA%\hermes\config.yaml` on Windows); sensitive capability values stay as child-environment placeholders. Temporary Kimi and Hermes configuration remains until the final owning PTY session ends, then exact original bytes are restored when safe. A journal repairs an interrupted Hermes launch at the next CanvasTTY startup, while compare-and-swap checks preserve concurrent user edits. Unrelated MCP entries, credentials, and file/shell permissions are preserved. Qwen, OpenCode, and Hermes YOLO remain launch-only and do not change persistent permission settings.
-- `src/main/services/providerCliRegistry.ts` is the single owner of provider CLI discovery. During main-process startup it creates one immutable snapshot for Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, and Grok Build by checking smoke-only overrides, the inherited `PATH`, platform defaults, and known per-user/provider directories in that order. Available entries retain an absolute executable, launcher kind, and supplemented child `PATH`; POSIX entries must be executable files and Windows entries must be supported native or batch launchers. `TerminalManager`, `LimitsService`, agent-browser probes, and provider smoke tests consume that same snapshot and never repeat command lookup. Missing entries produce a failed session with copyable checked-path diagnostics before PTY or temporary browser configuration creation, and the matching HOME limit stays `cli-not-found`. CanvasTTY never reads shell startup scripts, and installing or moving a CLI requires restarting the app.
+- `src/main/services/agent-runtime/` is a separate lifecycle boundary and is not controlled by the Browser access switch. When Raoden Loom status hooks are enabled, every agent PTY receives a distinct capability for a protected user-local socket/pipe. Provider command hooks and the OpenCode event plugin may report only the fixed status enum, bounded event name, and optional opaque turn/prompt ID; prompt text, responses, tool input, and arbitrary telemetry are rejected by the exact gateway schema. Electron helper commands carry `ELECTRON_RUN_AS_NODE=1` inside the exact hook command only; the provider PTY never inherits that process-mode flag, so a provider cannot accidentally launch a second Raoden Loom GUI instance. The user can revoke this capability from Agents settings, immediately returning live agent status to `unavailable`; re-enabling requires a new/restarted PTY. Explicitly trusted plugin hooks use a separate process runner which re-checks the private PluginManager registry on every invocation and strips Raoden Loom internal capabilities before passing the provider payload to third-party code. Provider-native review remains an independent gate; Raoden Loom does not bypass Codex hook trust globally.
+- Lifecycle adapters use launch-only settings for Claude, Codex, Qwen, and OpenCode. Kimi, Hermes, and Grok, whose hook discovery is home-config based, receive ownership-checked temporary entries shared across live Raoden Loom sessions. Kimi and Hermes keep recovery journals and exact backups; Grok uses a dedicated owned hook file. Cleanup restores exact original bytes when no concurrent edit occurred and otherwise removes only Raoden Loom-owned entries.
+- `TerminalManager` injects the MCP helper per launch without leaving permanent provider configuration. Claude Code, Codex, and Qwen Code receive CLI arguments; Qwen gets one inline `--mcp-config` entry that overrides only the Raoden Loom server name and leaves unrelated user servers available. OpenCode receives a merged launch-only `OPENCODE_CONFIG_CONTENT` entry plus one scoped browser-tool permission; Kimi uses its per-run MCP configuration when supported. Older Kimi versions receive a compare-and-swap temporary Raoden Loom entry and one exact permission rule with an atomic recovery journal. Hermes receives a temporary `mcp_servers.canvastty_browser` entry in `HERMES_HOME/config.yaml` (defaulting to `~/.hermes/config.yaml` on POSIX or `%LOCALAPPDATA%\hermes\config.yaml` on Windows); sensitive capability values stay as child-environment placeholders. Temporary Kimi and Hermes configuration remains until the final owning PTY session ends, then exact original bytes are restored when safe. A journal repairs an interrupted Hermes launch at the next Raoden Loom startup, while compare-and-swap checks preserve concurrent user edits. Unrelated MCP entries, credentials, and file/shell permissions are preserved. Qwen, OpenCode, and Hermes YOLO remain launch-only and do not change persistent permission settings.
+- `src/main/services/providerCliRegistry.ts` is the single owner of provider CLI discovery. During main-process startup it creates one immutable snapshot for Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, and Grok Build by checking smoke-only overrides, the inherited `PATH`, platform defaults, and known per-user/provider directories in that order. Available entries retain an absolute executable, launcher kind, and supplemented child `PATH`; POSIX entries must be executable files and Windows entries must be supported native or batch launchers. `TerminalManager`, `LimitsService`, agent-browser probes, and provider smoke tests consume that same snapshot and never repeat command lookup. Missing entries produce a failed session with copyable checked-path diagnostics before PTY or temporary browser configuration creation, and the matching HOME limit stays `cli-not-found`. Raoden Loom never reads shell startup scripts, and installing or moving a CLI requires restarting the app.
 
 The primary `BrowserWindow` is created and shown with a lightweight local startup page before settings, plugins, media, and IPC services initialize. Successful initialization replaces that page with the trusted renderer; bootstrap failures replace it with a visible error page and retain a native-dialog fallback. The main process holds Electron's single-instance lock; a rejected second launch raises the running window through the `second-instance` handler so the app never appears to ignore a launch, while background plugin and browser requests never restore, show, or focus an existing window. Native browser contents are focused programmatically only while their owner `BrowserWindow` is already focused; explicit user pointer input remains the only cross-surface focus route.
 
@@ -91,7 +92,7 @@ Keep domain decisions in pure selectors such as `homeModel.ts`, orchestration in
 
 ## Session flow
 
-When terminal restore is enabled, startup loads validated window descriptors before the renderer and relaunches each saved agent through its provider's native continue mode. Stable CanvasTTY session IDs preserve card identity, while region membership remains spatial and requires the complete card bounds to be inside the region at region-drag start. Grok restoration still waits for the renderer-measured xterm grid before spawning. Turning restore off clears the descriptor store immediately; it remains off by default.
+When terminal restore is enabled, startup loads validated window descriptors before the renderer and relaunches each saved agent through its provider's native continue mode. Stable Raoden Loom session IDs preserve card identity, while region membership remains spatial and requires the complete card bounds to be inside the region at region-drag start. Grok restoration still waits for the renderer-measured xterm grid before spawning. Turning restore off clears the descriptor store immediately; it remains off by default.
 
 1. Home requests a terminal or opens a provider-specific launch card.
 2. `App` sends a typed `terminal:create` request.
@@ -119,7 +120,111 @@ Session counters, progress bars, and statuses must always derive from actual `Se
 2. `LimitsService` deduplicates refreshes and keeps a 60-second cache.
 3. Codex is queried through `codex app-server` using `account/rateLimits/read`. Claude, Kimi, OpenCode Go, and Grok Build use their read-only usage or billing endpoints with credentials already managed by each installed CLI. Qwen Code reports an explicit unavailable reason because one Qwen CLI session may use unrelated cloud or local providers and the CLI has no universal quota-read protocol. OpenCode Go contributes its real rolling, weekly, and monthly windows; Grok Build contributes its real shared billing period. Real responses are structurally validated and reduced to percentage, window, and reset time.
 4. If a refresh fails after a successful read, the last valid snapshot is returned as stale. Missing or unsupported adapters return an explicit unavailable reason, never `0%`.
-5. Claude usage is requested with the OAuth token from the current user's Claude CLI credentials. Missing or unreadable credentials are `not-authenticated`; CanvasTTY never infers a missing subscription from local credential state and never parses provider TUI screens.
+5. Claude usage is requested with the OAuth token from the current user's Claude CLI credentials. Missing or unreadable credentials are `not-authenticated`; Raoden Loom never infers a missing subscription from local credential state and never parses provider TUI screens.
+
+## Agent orchestration (Codex lead → Claude executor)
+
+Status: **the MVP is accepted for macOS with known limits** (2026-09-24). Stages 1–10 and the final real series are accepted. The real CLIs ran the cycle outside the UI (stage 6) and through the UI of the checked packaged build (real series R1–R3: goal to completion, Stop during a Claude turn, quit during a turn and Resume; `agent-orchestration/evidence/real-ui/`). The checked build is `/private/tmp/canvastty-r10-pkg-wrc5/release/mac-arm64/CanvasTTY.app` (local, ad-hoc signed, not notarized). First use: [agent-orchestration/FIRST-USE.md](agent-orchestration/FIRST-USE.md) (Russian). Acceptance, evidence and verification bounds: ROADMAP, "Приёмка MVP". Design history, decisions and every check result: [agent-orchestration/](agent-orchestration/) (ROADMAP, VALIDATION-MATRIX, TROUBLESHOOTING, stage contracts). The original design, `ARCHITECTURE-PROPOSAL.md`, lists where the implementation differs (§0).
+
+```text
+renderer features/orchestration (cards, link, goal dialog, run panel)
+    │ window.canvasTTY.orchestration (preload/orchestrationClient.ts)
+    ▼ orchestration:* channels via handleMain (main window top frame only, every argument checked)
+main RunManager (manager.ts) — the only owner of runs; opens nothing by itself
+    ├── canvasStore  → <userData>/orchestration/canvas.json (cards and links)
+    └── OrchestrationService per run (state machine, limits, recovery)
+        ├── Store     → runs/<runId>/journal.jsonl (hash-chained) and texts/
+        ├── Workspace → runs/<runId>/workspace/ (working copy + control.git)
+        ├── turns     → supervisor.mjs (ELECTRON_RUN_AS_NODE) → codex / claude CLI in its own process group
+        └── checks    → supervisor.mjs inside a Seatbelt profile → node --test
+```
+
+The orchestration feature owns its IPC capability exclusively (`useOrchestration.ts`), so it does not go through `App.tsx`. Main is the source of truth for runs, cards and links. The renderer only reconciles `(seq, tick)` snapshots and events and offers the commands `availableActions()` allows.
+
+### Starting a goal
+
+1. Right-click empty canvas → "Codex agent (lead)" and "Claude agent (executor)", each with the same project folder.
+2. Drag the lead card's port onto the executor card, or use the keyboard: Enter on the port, then "Link here". A link is Codex → Claude only, within one project; it cannot point at the same card or repeat a pair.
+3. "New goal" on the link chip opens a dialog with:
+   - the task and the criteria (one per line);
+   - checks from the application's catalog (only `node-test`, i.e. `node --test`, 600 s, 64 KiB output);
+   - optional limits: turns 40, rounds per stage 8, replans 3, run time 240 min by default;
+   - "Show the plan before running" (off by default).
+4. The lead splits the task into stages. For each stage the executor edits, the check runs, and the lead reviews. When a stage is accepted, a checkpoint is created. A final review ends the run as `completed`.
+
+A link has at most one active run. "New goal" and "×" are hidden while one is active, and main refuses them as well.
+
+### Controls
+
+The panel shows only commands that are valid in the current state:
+- "Pause after turn" / "Keep running";
+- "Resume", "One step" (exactly one operation, then pause), "Stop";
+- answering a question, "Clarify", raising a limit;
+- recovery.
+
+"Stop" returns at once. It stops the active turn or check; if no result arrives, the run is finished after a 20 s grace period, and no operation starts after an accepted Stop. A run the application does not hold (for example, one paused before a restart) runs nothing, so stopping it only records the stop: it needs no CLI of a verified version, no login shell and no prepared project dependencies. "Resume" and a new start still require them.
+
+Every command carries a `commandId` and the `expectedRevision`. If the reply is lost, the panel keeps the request (also across a window reload) and offers "Repeat". Main answers a repeat with the result it recorded, so nothing is done twice.
+
+### Recovery
+
+- **Clean quit.** The active operation is stopped and the run becomes `paused(user_request)`.
+- **Crash or forced quit.** The run is shown the way opening it will record it:
+  - `paused(outcome_unknown)` if a turn was in flight. Offered: "Accept the turn's result", "Retry the turn" (a new session), reset to the last checkpoint (with a confirmation; later changes are kept in `refs/canvastty/<runId>/recovery-<k>`), or Stop.
+  - `paused(recovered)` otherwise. An interrupted check becomes `not_verified(interrupted)` and runs again only after Resume or One step.
+- In both cases nothing continues by itself after a restart. The supervisor ends the CLI group or the check sandbox when main dies (lifeline EOF).
+
+There is no startup sweep for orphaned processes. If main's whole process group is killed, the supervisor dies too, and a CLI group can outlive it.
+
+### Where results are
+
+- **Run data** lives under `<userData>/orchestration/` (on macOS `~/Library/Application Support/<app name>/orchestration/`):
+  - `canvas.json`;
+  - `runs/<runId>/journal.jsonl`, `texts/`, `checks/<checkRunId>/`, `workspace/` (the working copy `repo/` and `control.git`);
+  - `attempts/` (the lead's per-turn schema and report).
+- **The history** (reports, the lead's findings, check output) is shown in the run panel from the journal.
+- **The source repository** gains only objects and create-only refs:
+  - `refs/canvastty/<runId>/baseline`: the source tree at start, including uncommitted and untracked, non-ignored files;
+  - `refs/canvastty/<runId>/stage-<n>`: the checkpoint after the accepted stage n;
+  - `recovery-<k>`: kept by a reset.
+  
+  Its HEAD, branches, index and working tree are never changed.
+
+### Taking the changes
+
+The application never merges into your branch. In the source repository:
+
+```sh
+git log --oneline refs/canvastty/<runId>/stage-<n>
+git diff refs/canvastty/<runId>/baseline refs/canvastty/<runId>/stage-<n>   # the agents' work only
+git switch -c agents/<name> refs/canvastty/<runId>/stage-<n>                 # review it on a new branch
+git cherry-pick refs/canvastty/<runId>/baseline..refs/canvastty/<runId>/stage-<n>   # or apply it onto the current branch
+```
+
+Diff against `baseline`, not `HEAD`. If you had uncommitted work at start, the baseline contains it.
+
+### Requirements and limits
+
+- **Platforms.**
+  - A run can complete on macOS only. The check sandbox is Seatbelt (`sandbox-exec`).
+  - On Linux, turns start but every check pauses the run with `sandbox_unavailable`, where only Stop is allowed.
+  - Windows is refused (`unsupported_platform`); the menu items are still shown.
+- **CLIs**, pinned:
+  - Codex CLI 0.155.1: model `gpt-6-astra`, reasoning high, `read-only` sandbox, no user config or rules.
+  - Claude Code 2.1.281: model `claude-sonnet-5`, `structured-edit` (a candidate mode: Read/Edit/Write/Glob/Grep, no shell, `--max-budget-usd 1` per turn).
+  
+  Other versions are refused before a run is created. The executor's edit limits are CLI permission policy, not an OS boundary.
+- **Project.**
+  - It must be the root of a git repository. Refused: submodules, LFS, nested repositories, linked worktrees, sparse checkouts, unfinished merge/rebase.
+  - `package-lock.json` and a real `node_modules` directory are required in the root. The orchestrator never installs dependencies: the copy links the project's `node_modules` read-only.
+- **Interface (minimal).**
+  - The panel shows the link's latest run; there is no choice of an older run.
+  - The panel does not show checkpoint ref names or offer to merge them: take them with git as above. The run id is the code shown in the panel's header (first 8 characters); `git for-each-ref refs/canvastty/` lists the full names.
+  - Agent cards do not follow regions and are not shown on the minimap, in the command palette or in the radial menu.
+  - Links are deleted only with "×" after the run has stopped. A linked card asks before it is deleted; runs and their history stay.
+- **Processes and CLI data.** There is no startup sweep for leftover processes (see Recovery). The real CLIs keep their own sessions in the user's home directory (`~/.claude/projects/`, `~/.codex/sessions/`), outside the app's `userData`; the app does not limit this.
+- **Verification bounds.** Real models have run only one-stage plans; multi-stage runs (a checkpoint per stage) are checked with test CLIs only. Quit during a real turn (R3) was SIGTERM to main, which Electron handles as `app.quit()`; Cmd+Q was not checked separately. Crashes and lost IPC replies are checked with test CLIs only. The Claude cost reported in R1–R3 ($0.0871) covers only its two finished turns and is not the full cost of the series.
+- **Test mechanisms**, development builds only: test providers `CANVASTTY_ORCHESTRATION_TEST_PROVIDERS`, the IPC smoke, and lost replies `CANVASTTY_ORCHESTRATION_TEST_DROP_REPLIES`. All are read through `developmentEnv()`, which a packaged build ignores (checked on the packaged app in stage 10).
 
 ## Extension points
 

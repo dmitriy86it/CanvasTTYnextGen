@@ -1,6 +1,6 @@
 # Getting started
 
-[English](getting-started.md) · [Русский](getting-started.ru.md) · [简体中文](getting-started.zh-CN.md) · [Docs home](README.md)
+[English](getting-started.md) · [Русский](getting-started.ru.md) · [Docs home](README.md)
 
 ## Requirements
 
@@ -9,7 +9,7 @@
 - A graphical desktop session capable of running Electron.
 - Optional agent CLIs — `codex`, `claude`, `qwen`, `kimi`, `opencode`, `hermes`, or `grok` — installed and available in `PATH` for the launchers you intend to use.
 
-CanvasTTY does not install or authenticate agent CLIs for you. Complete each provider's own login flow before expecting its sessions or subscription limits to work.
+Raoden Loom does not install or authenticate agent CLIs for you. Complete each provider's own login flow before expecting its sessions or subscription limits to work.
 
 ## Install and run
 
@@ -24,12 +24,12 @@ npm run dev
 
 1. Open **Terminal** on Home to start a shell immediately in the last project directory.
 2. Open **Codex**, **Claude**, **Kimi**, **OpenCode**, **Hermes**, or **Grok Build** to choose a project folder and launch profile for that fixed provider.
-3. Open **Browser** on Home to create or restore the built-in browser card. Agent sessions launched by CanvasTTY can use its open tabs while **Settings → Browser → Agent access** is enabled.
+3. Open **Browser** on Home to create or restore the built-in browser card. Agent sessions launched by Raoden Loom can use its open tabs while **Settings → Browser → Agent access** is enabled.
 4. Move or resize the live terminal and browser on the same canvas.
 5. Zoom out to use semantic summaries as navigation targets; zoom back in to interact with xterm or the native browser page.
 6. Return to Home to inspect real sessions, connected browser agents, and any provider quota windows that their adapters expose.
 
-The **YOLO** profile disables provider safety prompts where the provider supports such a mode. For OpenCode, CanvasTTY applies a launch-only inline `permission: "allow"` override while preserving the rest of the merged OpenCode configuration. Hermes receives its native `--yolo` flag, while Grok Build receives its native `--always-approve` flag for that launch. CanvasTTY presents an explicit danger confirmation; use it only in a directory you are willing to let the agent modify.
+The **YOLO** profile disables provider safety prompts where the provider supports such a mode. For OpenCode, Raoden Loom applies a launch-only inline `permission: "allow"` override while preserving the rest of the merged OpenCode configuration. Hermes receives its native `--yolo` flag, while Grok Build receives its native `--always-approve` flag for that launch. Raoden Loom presents an explicit danger confirmation; use it only in a directory you are willing to let the agent modify.
 
 ## Terminal input and controls
 
@@ -75,10 +75,10 @@ Install the compiler, Python, and platform headers required by your operating sy
 
 ### A provider launches but limits are unavailable
 
-A working CLI session and a readable subscription-quota API are separate capabilities. Re-authenticate the CLI, then inspect the explicit reason exposed by CanvasTTY. Some account types do not provide a subscription window; the UI must show unavailable rather than `0%`.
+A working CLI session and a readable subscription-quota API are separate capabilities. Re-authenticate the CLI, then inspect the explicit reason exposed by Raoden Loom. Some account types do not provide a subscription window; the UI must show unavailable rather than `0%`.
 
 ### A terminal exists but is not marked working
 
-CanvasTTY shows live `idle`/`working`/`needs_approval` for Codex, Claude Code, Qwen Code, Kimi Code, OpenCode, Hermes, and Grok Build from provider lifecycle hooks. An agent stays `unavailable` until its first machine-readable signal; terminal text and PTY existence are not activity telemetry.
+Raoden Loom shows live `idle`/`working`/`needs_approval` for Codex, Claude Code, Qwen Code, Kimi Code, OpenCode, Hermes, and Grok Build from provider lifecycle hooks. An agent stays `unavailable` until its first machine-readable signal; terminal text and PTY existence are not activity telemetry.
 
 Next: read the [browser and audit-log guide](browser.md), [author a widget](widget-authoring.md), or study [metrics and telemetry](metrics-and-telemetry.md).

@@ -1,8 +1,8 @@
 # Widget authoring
 
-[English](widget-authoring.md) · [Русский](widget-authoring.ru.md) · [简体中文](widget-authoring.zh-CN.md) · [Docs home](README.md)
+[English](widget-authoring.md) · [Русский](widget-authoring.ru.md) · [Docs home](README.md)
 
-This guide covers trusted source-level widgets compiled with CanvasTTY. For third-party packages installed at runtime, use the permissioned [runtime plugin API](plugins.md). Source-level work remains appropriate when a feature needs a new trusted main-process adapter or changes core product ownership.
+This guide covers trusted source-level widgets compiled with Raoden Loom. For third-party packages installed at runtime, use the permissioned [runtime plugin API](plugins.md). Source-level work remains appropriate when a feature needs a new trusted main-process adapter or changes core product ownership.
 
 ## Choose the smallest extension shape
 
@@ -30,7 +30,7 @@ For a main-backed widget, implement the path in this order:
 
 ## Visual grammar
 
-New widgets should look native to CanvasTTY:
+New widgets should look native to Raoden Loom:
 
 - Start from a calm spatial desktop, not a dashboard packed with controls.
 - Use large flat tiles, soft radii, restrained shadows, and generous spacing.
@@ -49,10 +49,10 @@ Home has fixed ownership rules: media controls remain inside `HomeMediaWidget`. 
 Copy this into the agent task and replace the bracketed fields:
 
 ```text
-Add a CanvasTTY widget called [NAME] that shows [USER VALUE].
+Add a Raoden Loom widget called [NAME] that shows [USER VALUE].
 
 Before editing, read docs/ARCHITECTURE.md and docs/UI_CONTRACT.md and find the
-closest existing feature pattern. CanvasTTY is an Electron MVP with context
+closest existing feature pattern. Raoden Loom is an Electron MVP with context
 isolation: privileged work stays in main, cross-process data is declared in
 src/shared/contracts.ts, IPC is allow-listed, and preload exposes only a typed,
 sanitized capability.

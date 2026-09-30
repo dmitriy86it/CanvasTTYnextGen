@@ -1,8 +1,8 @@
-# CanvasTTY documentation
+# Raoden Loom documentation
 
-[English](README.md) · [Русский](README.ru.md) · [简体中文](README.zh-CN.md)
+[English](README.md) · [Русский](README.ru.md)
 
-CanvasTTY is a spatial Electron desktop for real local terminals and AI-agent CLI sessions. This documentation explains how to run the MVP, preserve its process and visual contracts, and extend it with honest source-backed widgets.
+Raoden Loom is a spatial Electron desktop for real local terminals and AI-agent CLI sessions. This documentation explains how to run the MVP, preserve its process and visual contracts, and extend it with honest source-backed widgets.
 
 ## Guides
 
@@ -26,7 +26,7 @@ CanvasTTY is a spatial Electron desktop for real local terminals and AI-agent CL
 
 ## Current extension model
 
-CanvasTTY supports static runtime plugins through manifest API v1. Untrusted UI stays inside sandboxed frames/windows and receives only explicitly approved capabilities. Trusted core integrations that need new main-process services remain source-level contributions compiled with the app.
+Raoden Loom supports static runtime plugins through manifest API v1. Untrusted UI stays inside sandboxed frames/windows and receives only explicitly approved capabilities. Trusted core integrations that need new main-process services remain source-level contributions compiled with the app.
 
 ## Non-negotiable data rule
 
@@ -34,4 +34,4 @@ Never invent session status, counters, quota, token usage, cost, countdowns, or 
 
 Back to the [repository overview](../README.md).
 
-CanvasTTY is released under the [MIT License](../LICENSE).
+Raoden Loom is released under the [MIT License](../LICENSE).

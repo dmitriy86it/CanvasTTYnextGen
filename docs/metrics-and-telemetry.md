@@ -1,8 +1,8 @@
 # Metrics and telemetry
 
-[English](metrics-and-telemetry.md) · [Русский](metrics-and-telemetry.ru.md) · [简体中文](metrics-and-telemetry.zh-CN.md) · [Docs home](README.md)
+[English](metrics-and-telemetry.md) · [Русский](metrics-and-telemetry.ru.md) · [Docs home](README.md)
 
-CanvasTTY treats telemetry as a truth problem before it treats it as a visualization problem. A polished progress rail is incorrect if its source cannot prove the value.
+Raoden Loom treats telemetry as a truth problem before it treats it as a visualization problem. A polished progress rail is incorrect if its source cannot prove the value.
 
 ## Do not mix different measurements
 
@@ -25,9 +25,9 @@ A subscription percentage cannot be derived from session tokens. Token counts do
 - A 60-second cache with stale fallback after a previously successful read.
 - Sanitized `available`, `stale`, or `unavailable` snapshots; raw credentials and provider payloads never cross IPC.
 
-CanvasTTY never parses a provider's terminal UI to recover limits. Unsupported subscription types remain explicitly unavailable.
+Raoden Loom never parses a provider's terminal UI to recover limits. Unsupported subscription types remain explicitly unavailable.
 
-Per-session token accounting is **not implemented as a public CanvasTTY API yet**. The following model is a safe extension pattern, not a claim about current telemetry.
+Per-session token accounting is **not implemented as a public Raoden Loom API yet**. The following model is a safe extension pattern, not a claim about current telemetry.
 
 ## Source priority
 
@@ -109,7 +109,7 @@ pure renderer selector
 Home widget or terminal-card summary
 ```
 
-The main adapter owns authentication, timeouts, provider-specific schemas, deduplication, and cleanup. The renderer owns only presentation and local selection. If a provider cannot bind usage to the exact CanvasTTY session, do not assign account-wide tokens to that session.
+The main adapter owns authentication, timeouts, provider-specific schemas, deduplication, and cleanup. The renderer owns only presentation and local selection. If a provider cannot bind usage to the exact Raoden Loom session, do not assign account-wide tokens to that session.
 
 ## Widget behavior
 

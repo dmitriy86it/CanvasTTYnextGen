@@ -296,7 +296,7 @@ export function App(): React.JSX.Element {
           if (active) setMediaData(data);
         }
       })
-      .catch((error) => showToast(error instanceof Error ? error.message : "CanvasTTY initialization failed"))
+      .catch((error) => showToast(error instanceof Error ? error.message : "Raoden Loom initialization failed"))
       .finally(() => active && setReady(true));
 
     return () => {

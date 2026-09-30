@@ -411,7 +411,7 @@ export function EvenG2Controls({
           </nav>
           {stage === "transport" && (
             <div className="g2-settings__body">
-              <h4>{text("Connect to CanvasTTY", "Подключение к CanvasTTY")}</h4>
+              <h4>{text("Connect to Raoden Loom", "Подключение к Raoden Loom")}</h4>
               <span className="g2-tag">
                 {text(
                   "Direct local connection",
@@ -420,8 +420,8 @@ export function EvenG2Controls({
               </span>
               <p className="g2-muted">
                 {text(
-                  "CanvasTTY chooses a local network automatically. Both devices must be on the same network.",
-                  "CanvasTTY выбирает локальную сеть автоматически. Телефон и Mac должны быть в одной сети.",
+                  "Raoden Loom chooses a local network automatically. Both devices must be on the same network.",
+                  "Raoden Loom выбирает локальную сеть автоматически. Телефон и Mac должны быть в одной сети.",
                 )}
               </p>
               {!draft.publicOrigin && (
@@ -754,8 +754,8 @@ export function EvenG2Controls({
                     <div>
                       <p className="g2-muted">
                         {text(
-                          "CanvasTTY pairing code",
-                          "Код подключения CanvasTTY",
+                          "Raoden Loom pairing code",
+                          "Код подключения Raoden Loom",
                         )}
                       </p>
                       <strong className="g2-pair-code">

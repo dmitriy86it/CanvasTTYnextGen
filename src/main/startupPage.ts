@@ -9,15 +9,15 @@ export function startupPageUrl({ locale, isMacOS, error }: StartupPageOptions): 
   const titlebarHeight = isMacOS ? 32 : 44;
   const failed = typeof error === "string";
   const title = failed
-    ? (russian ? "CanvasTTY не удалось запустить" : "CanvasTTY could not start")
-    : (russian ? "CanvasTTY запускается" : "CanvasTTY is starting");
+    ? (russian ? "Raoden Loom не удалось запустить" : "Raoden Loom could not start")
+    : (russian ? "Raoden Loom запускается" : "Raoden Loom is starting");
   const message = failed
     ? (russian ? "Проверьте подробности ниже и перезапустите приложение." : "Review the details below and restart the application.")
     : (russian ? "Подготавливаем локальные сервисы…" : "Preparing local services…");
   const detail = failed ? `<pre>${escapeHtml(error)}</pre>` : '<span class="spinner" aria-hidden="true"></span>';
   const titleBar = isMacOS
-    ? '<header class="macos-titlebar"><strong>CanvasTTY</strong><div class="drag"></div></header>'
-    : '<header><strong>CanvasTTY</strong><button type="button" aria-label="Close" onclick="window.close()">×</button></header>';
+    ? '<header class="macos-titlebar"><strong>Raoden Loom</strong><div class="drag"></div></header>'
+    : '<header><strong>Raoden Loom</strong><button type="button" aria-label="Close" onclick="window.close()">×</button></header>';
 
   const html = `<!doctype html>
 <html lang="${russian ? "ru" : "en"}">
@@ -25,7 +25,7 @@ export function startupPageUrl({ locale, isMacOS, error }: StartupPageOptions): 
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CanvasTTY</title>
+    <title>Raoden Loom</title>
     <style>
       * { box-sizing: border-box; }
       html, body { width: 100%; height: 100%; margin: 0; }

@@ -469,7 +469,7 @@ export function PluginSettingsSection({
       : "";
     return (
       <span className={`plugin-showcase-tile__host ${hostClass}`}>
-        CanvasTTY:{minHostVersion}
+        Raoden Loom:{minHostVersion}
       </span>
     );
   };
@@ -483,7 +483,7 @@ export function PluginSettingsSection({
       : "";
     return (
       <span className={`installed-plugin__host ${hostClass}`}>
-        CanvasTTY:{minHostVersion}
+        Raoden Loom:{minHostVersion}
       </span>
     );
   };

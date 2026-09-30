@@ -1,6 +1,6 @@
 # Installing, releases, and local data
 
-[English](installing-and-security.md) · [Русский](installing-and-security.ru.md) · [简体中文](installing-and-security.zh-CN.md) · [Docs home](README.md)
+[English](installing-and-security.md) · [Русский](installing-and-security.ru.md) · [Docs home](README.md)
 
 ## User-facing packages
 
@@ -24,9 +24,9 @@ Download artifacts only from the repository's [GitHub Releases](https://github.c
 
 | Data | Location and lifetime |
 |:--|:--|
-| CanvasTTY settings | Electron's per-user `userData` directory (`~/.config/canvastty` on typical Linux desktops, `%APPDATA%\canvastty` on Windows, `~/Library/Application Support/canvastty` on macOS) |
-| Provider credentials | The local credential store owned by the installed Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, or Grok Build CLI; CanvasTTY does not copy it |
-| Temporary provider browser bridge | Kimi fallback and Hermes MCP entries are journaled, scoped to owning CanvasTTY sessions, and restored on final PTY exit or recovered after an interrupted launch; capability secrets are never written as literals |
+| Raoden Loom settings | Electron's per-user `userData` directory (`~/.config/canvastty` on typical Linux desktops, `%APPDATA%\canvastty` on Windows, `~/Library/Application Support/canvastty` on macOS) |
+| Provider credentials | The local credential store owned by the installed Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, or Grok Build CLI; Raoden Loom does not copy it |
+| Temporary provider browser bridge | Kimi fallback and Hermes MCP entries are journaled, scoped to owning Raoden Loom sessions, and restored on final PTY exit or recovered after an interrupted launch; capability secrets are never written as literals |
 | PTY scrollback | Bounded main-process memory for the live app session; not saved in the repository |
 | Home media | The user's original local file; settings retain only its local path |
 | Runtime plugins | Static packages and the enabled registry below `userData/plugins`; isolated JSON storage below `userData/plugin-storage` is capped at 64 KB per plugin and removed on uninstall |
@@ -36,13 +36,13 @@ Download artifacts only from the repository's [GitHub Releases](https://github.c
 | Built-in browser profile | Cookies, cache, and site storage in the persistent `canvastty-browser` Electron partition; the browser is available from HOME in `1.0.2` |
 | Browser restore state | Safe HTTP(S) tab URLs, tab order, and active-tab ID in `userData/browser-state.json`; disabled/cleared when tab restore is turned off |
 | Browser audit log | Redacted hash-chain JSONL below `userData/browser/audit`; the active file rotates at 100 MB and rotated files older than 30 days are pruned during store initialization or rotation |
-| Other logs | Local stdout/stderr only; CanvasTTY has no remote log collector or project-operated telemetry endpoint |
+| Other logs | Local stdout/stderr only; Raoden Loom has no remote log collector or project-operated telemetry endpoint |
 
-Exact `userData` paths may vary with OS configuration. CanvasTTY asks Electron for the correct per-user directory and never uses the source checkout as runtime storage.
+Exact `userData` paths may vary with OS configuration. Raoden Loom asks Electron for the correct per-user directory and never uses the source checkout as runtime storage.
 
 ## Credential boundary
 
-Provider credentials are read only in the trusted main process when a source-backed quota request needs them. They are sent only to that provider's matching endpoint, are not logged, are not persisted by CanvasTTY, and never cross the typed preload bridge. Kimi's loopback usage token remains in process memory and its child stderr is discarded.
+Provider credentials are read only in the trusted main process when a source-backed quota request needs them. They are sent only to that provider's matching endpoint, are not logged, are not persisted by Raoden Loom, and never cross the typed preload bridge. Kimi's loopback usage token remains in process memory and its child stderr is discarded.
 
 Sanitized percentages, window metadata, timestamps, and explicit unavailable reasons may cross IPC. Raw provider responses, bearer headers, cookies, and credential files may not. Runtime-plugin secrets are a separate opt-in boundary: they cross only the owning sandbox's request path when its manifest declares `secrets` and are encrypted at rest through Electron `safeStorage`.
 

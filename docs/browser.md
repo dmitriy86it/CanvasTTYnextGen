@@ -1,16 +1,16 @@
 # Built-in browser and audit log
 
-[English](browser.md) · [Русский](browser.ru.md) · [简体中文](browser.zh-CN.md) · [Docs home](README.md)
+[English](browser.md) · [Русский](browser.ru.md) · [Docs home](README.md)
 
-CanvasTTY `1.0.2` exposes its built-in browser from HOME as a trusted canvas application. It uses sandboxed Electron `WebContentsView` tabs and one persistent Chromium profile; it is not a runtime-plugin capability.
+Raoden Loom `1.0.2` exposes its built-in browser from HOME as a trusted canvas application. It uses sandboxed Electron `WebContentsView` tabs and one persistent Chromium profile; it is not a runtime-plugin capability.
 
 ## Open and use the browser
 
-1. Open **Browser** on HOME. CanvasTTY creates or restores the browser card on the canvas.
+1. Open **Browser** on HOME. Raoden Loom creates or restores the browser card on the canvas.
 2. Use the trusted tab bar and address field for HTTP(S) navigation or search. Back, forward, reload, new-tab, close-tab, and close-all controls stay outside the remote page.
 3. Move or resize the card like a terminal. Zooming out below semantic scale replaces the native page with a stable summary; at live scale the page keeps rendering while the camera or card moves.
 4. Clicking the live page selects it and restores keyboard focus. The configured single/double-click mode controls only camera focusing. **Settings → Controls → Focus on hover** applies the same delay to terminals and the browser. Clicking empty canvas clears the active application.
-5. The downloads panel shows recent progress. JavaScript alert/confirm/prompt dialogs are suspended until the trusted CanvasTTY dialog answers them.
+5. The downloads panel shows recent progress. JavaScript alert/confirm/prompt dialogs are suspended until the trusted Raoden Loom dialog answers them.
 
 Hiding the browser card does not close its tabs. **Close all** removes the tabs after confirmation. **Settings → Browser → Restore tabs** controls whether safe URLs return after restart.
 
@@ -18,7 +18,7 @@ Hiding the browser card does not close its tabs. **Close all** removes the tabs 
 
 | Setting | Behavior |
 |:--|:--|
-| **Agent access** | Allows CanvasTTY-launched Claude Code, Codex, Kimi, OpenCode, and Hermes sessions to use the typed browser tool surface; enabled by default |
+| **Agent access** | Allows Raoden Loom-launched Claude Code, Codex, Kimi, OpenCode, and Hermes sessions to use the typed browser tool surface; enabled by default |
 | **Agent indicators** | Shows trusted-chrome badges after an agent actually uses a browser command and cursors only after a real pointer position exists; enabled by default |
 | **Restore tabs** | Persists tab order, active tab, and safe restore URLs; enabled by default |
 | **Downloads** | Shows up to six recent downloads and their local progress/status |
@@ -29,7 +29,7 @@ Clearing browser data does **not** delete the persistent audit log described bel
 
 ## Agent access
 
-Only agent sessions launched by CanvasTTY receive a per-launch browser connection. The main process passes a one-use bootstrap capability through the child environment to a bundled stdio MCP helper. Claude and Codex receive per-run CLI arguments, OpenCode receives a launch-only `OPENCODE_CONFIG_CONTENT` MCP entry, Kimi uses a per-run file or recoverable temporary configuration, and Hermes receives a recoverable temporary `mcp_servers.canvastty_browser` entry whose capability fields reference the child environment. Successful authentication rotates the capability to a session-scoped reconnect capability held only in helper memory; duplicate bootstrap authentication is accepted only while the same launch is already connected, and all access is revoked when its PTY ends. Linux/macOS use a current-user Unix socket; Windows uses a bundled native named-pipe host with a DACL for the exact current-user SID. Connecting and sending heartbeats does not mark an agent as active in the browser; presence begins with its first browser command.
+Only agent sessions launched by Raoden Loom receive a per-launch browser connection. The main process passes a one-use bootstrap capability through the child environment to a bundled stdio MCP helper. Claude and Codex receive per-run CLI arguments, OpenCode receives a launch-only `OPENCODE_CONFIG_CONTENT` MCP entry, Kimi uses a per-run file or recoverable temporary configuration, and Hermes receives a recoverable temporary `mcp_servers.canvastty_browser` entry whose capability fields reference the child environment. Successful authentication rotates the capability to a session-scoped reconnect capability held only in helper memory; duplicate bootstrap authentication is accepted only while the same launch is already connected, and all access is revoked when its PTY ends. Linux/macOS use a current-user Unix socket; Windows uses a bundled native named-pipe host with a DACL for the exact current-user SID. Connecting and sending heartbeats does not mark an agent as active in the browser; presence begins with its first browser command.
 
 The tool surface covers tabs, navigation, observation/read, screenshot, click/hover/type/select/press, scroll/drag, waits, dialogs, downloads, and the calling agent's activity. It does not expose cookies, saved passwords, authorization headers, local/session storage, arbitrary JavaScript, filesystem or shell access, raw CDP, a TCP listener, or a remote-debugging port.
 
@@ -39,11 +39,11 @@ If the browser view has zero width or height, `browser_observe` returns `VIEWPOR
 
 ## Website and file boundaries
 
-- Remote pages run sandboxed with context isolation and no Node.js or CanvasTTY preload.
+- Remote pages run sandboxed with context isolation and no Node.js or Raoden Loom preload.
 - Top-level navigation is limited to canonical HTTP(S) URLs. HTTP(S) popups become internal tabs; privileged/external schemes are rejected.
 - Hardware, geolocation, notifications, clipboard read, insecure certificate bypass, webviews, client certificates, and HTTP-auth prompts are denied.
-- Downloads go to a CanvasTTY-managed directory below the user's Downloads folder. Uploads must pass path, file-count, and total-size checks and are copied through a no-follow descriptor into private staging before Chromium receives them.
-- Website data can still leave the computer through the website itself. CanvasTTY's local-only boundary is not a privacy promise made on behalf of visited sites.
+- Downloads go to a Raoden Loom-managed directory below the user's Downloads folder. Uploads must pass path, file-count, and total-size checks and are copied through a no-follow descriptor into private staging before Chromium receives them.
+- Website data can still leave the computer through the website itself. Raoden Loom's local-only boundary is not a privacy promise made on behalf of visited sites.
 
 ## Activity feed and persistent audit log
 
@@ -57,6 +57,6 @@ The active file is created with mode `0600`. Records include actor/provider/sess
 
 The active file rotates at 100 MB. Rotated files remain chained; files older than 30 days are pruned when the store initializes or rotates. Existing files are verified when the store opens, and an invalid chain makes subsequent appends fail. If an agent mutation's pre-action record cannot be stored, the agent receives `AUDIT_UNAVAILABLE` and the mutation side effect is not executed.
 
-There is no remote log collector or CanvasTTY-operated telemetry endpoint. The **Clear browser data** button leaves audit evidence intact. To remove it manually, fully quit CanvasTTY first and delete the whole `userData/browser/audit` directory, understanding that this permanently discards the local audit history.
+There is no remote log collector or Raoden Loom-operated telemetry endpoint. The **Clear browser data** button leaves audit evidence intact. To remove it manually, fully quit Raoden Loom first and delete the whole `userData/browser/audit` directory, understanding that this permanently discards the local audit history.
 
 For implementation ownership, read [Architecture](ARCHITECTURE.md). For canvas and interaction invariants, read the [UI contract](UI_CONTRACT.md). For installation paths and other local data, read [Installing, releases, and local data](installing-and-security.md).

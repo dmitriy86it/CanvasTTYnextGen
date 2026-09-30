@@ -14,7 +14,7 @@ const root = await mkdtemp(join(tmpdir(), "canvastty-cli-resolution-"));
 
 try {
   const appPath = await packagedApplication();
-  const executable = join(appPath, "Contents", "MacOS", "CanvasTTY");
+  const executable = join(appPath, "Contents", "MacOS", "Raoden Loom");
   const platformRoot = join(root, "platform-root");
   const home = join(root, "home");
   const homebrewBin = join(platformRoot, "opt", "homebrew", "bin");
@@ -62,17 +62,17 @@ async function findApplication(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory() && entry.name === "CanvasTTY.app") return path;
+    if (entry.isDirectory() && entry.name === "Raoden Loom.app") return path;
     if (entry.isDirectory()) {
       const nested = await findApplication(path).catch(() => null);
       if (nested) return nested;
     }
   }
-  throw new Error(`CanvasTTY.app was not found below ${directory}.`);
+  throw new Error(`Raoden Loom.app was not found below ${directory}.`);
 }
 
 async function packagedApplication() {
-  const preferred = join(process.cwd(), "release", "mac-arm64", "CanvasTTY.app");
+  const preferred = join(process.cwd(), "release", "mac-arm64", "Raoden Loom.app");
   try {
     await access(preferred);
     return preferred;

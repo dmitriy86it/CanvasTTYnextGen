@@ -1,5 +1,5 @@
 appId: io.github.howdeploy.canvastty
-productName: CanvasTTY
+productName: Raoden Loom
 
 directories:
   buildResources: build
@@ -49,8 +49,11 @@ extraResources:
     filter:
       - SKILL.md
 npmRebuild: true
+# No Chinese interface: Electron's zh* locale resources are removed from the package (scripts/after-pack-drop-zh.cjs).
+afterPack: scripts/after-pack-drop-zh.cjs
 compression: normal
-artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+# Raoden Loom, formerly CanvasTTY: the file names avoid the space of productName (rename-raoden-loom.md §3 row 4).
+artifactName: Raoden-Loom-${version}-${os}-${arch}.${ext}
 
 # Avoid the maximum-XZ startup stall while retaining AppImageLauncher 2.x compatibility.
 appImage:
@@ -75,14 +78,14 @@ win:
     - portable
 
 nsis:
-  artifactName: ${productName}-${version}-windows-${arch}-setup.${ext}
+  artifactName: Raoden-Loom-${version}-windows-${arch}-setup.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   createStartMenuShortcut: true
 
 portable:
-  artifactName: ${productName}-${version}-windows-${arch}-portable.${ext}
+  artifactName: Raoden-Loom-${version}-windows-${arch}-portable.${ext}
 
 mac:
   extraResources:

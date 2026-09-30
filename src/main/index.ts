@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { isAbsolute } from "node:path";
 import { EvenG2Controller } from "./services/companion/EvenG2Controller";
 import { join } from "node:path";
-import { app, BrowserWindow, dialog, net, protocol, safeStorage } from "electron";
+import { app, BrowserWindow, dialog, Menu, net, protocol, safeStorage } from "electron";
 import { IPC, type PluginCanvasRequest } from "../shared/contracts";
 import { registerIpc } from "./ipc/registerIpc";
 import { SettingsStore } from "./services/SettingsStore";
@@ -588,7 +588,7 @@ async function startApplication(): Promise<void> {
     else {
       const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       console.error("CanvasTTY could not create its startup window.", error);
-      dialog.showErrorBox("CanvasTTY startup failed", detail);
+      dialog.showErrorBox("Raoden Loom startup failed", detail);
     }
   } finally {
     startupRunning = false;
@@ -633,7 +633,7 @@ async function showStartupFailure(window: BrowserWindow, error: unknown): Promis
   const detail = error instanceof Error ? error.stack ?? error.message : String(error);
   if (window.isDestroyed()) {
     console.error("CanvasTTY startup failed.", error);
-    dialog.showErrorBox("CanvasTTY startup failed", detail);
+    dialog.showErrorBox("Raoden Loom startup failed", detail);
     return;
   }
 
@@ -652,17 +652,33 @@ async function showStartupFailure(window: BrowserWindow, error: unknown): Promis
       return;
     }
     console.error("CanvasTTY startup failed.", error);
-    dialog.showErrorBox("CanvasTTY startup failed", detail);
+    dialog.showErrorBox("Raoden Loom startup failed", detail);
   }
+}
+
+// The internal name stays "canvastty" (userData, Keychain: rename-raoden-loom.md §3), so the macOS menu and the About
+// panel name the product explicitly instead of taking app.name. Same items as Electron's default menu, minus Help.
+function showProductName(): void {
+  if (process.platform !== "darwin") return;
+  const name = "Raoden Loom";
+  app.setAboutPanelOptions({ applicationName: name, applicationVersion: app.getVersion() });
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: name, submenu: [
+      { role: "about", label: `About ${name}` }, { type: "separator" }, { role: "services" }, { type: "separator" },
+      { role: "hide", label: `Hide ${name}` }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" },
+      { role: "quit", label: `Quit ${name}` }
+    ] },
+    { role: "fileMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }
+  ]));
 }
 
 if (hasSingleInstanceLock) {
   void app.whenReady()
-    .then(startApplication)
+    .then(() => { showProductName(); return startApplication(); })
     .catch((error) => {
       const detail = error instanceof Error ? error.stack ?? error.message : String(error);
       console.error("CanvasTTY could not create its startup window.", error);
-      dialog.showErrorBox("CanvasTTY startup failed", detail);
+      dialog.showErrorBox("Raoden Loom startup failed", detail);
       app.quit();
     });
 

@@ -1,6 +1,6 @@
 # UI-контракт
 
-[English](UI_CONTRACT.md) · [Русский](UI_CONTRACT.ru.md) · [简体中文](UI_CONTRACT.zh-CN.md)
+[English](UI_CONTRACT.md) · [Русский](UI_CONTRACT.ru.md)
 
 Этот контракт сохраняет утверждённую концепцию MVP и не даёт ответственности фич расползаться.
 
@@ -38,7 +38,7 @@
 - В semantic summary нажатие по карточке по-прежнему выбирает её с видимой рамкой, а camera focus подчиняется только Off/Single click/Double click. Renderer-, xterm- и plugin-карточки используют ту же wheel focus-матрицу, что и при нормальном масштабе: только focused input-карточка может оставить wheel себе в Off или при отпущенном Key; On, активный Key binding или полный navigation override передаёт его канвасу. Browser summary и другие non-native placeholder-поверхности всегда передают wheel/pinch канвасу.
 - Любая грань/угол terminal — resize target. Минимальный размер `420 × 260`; resize обновляет viewport xterm и сохраняет противоположную грань.
 - Selection живого терминала следует за видимой позицией указателя при любом canvas zoom. При непустом выделении `Ctrl+C`/`Ctrl+Shift+C` или `Cmd+C` копирует; `Ctrl+Shift+V`/`Cmd+V` и `Shift+Insert` вставляют из system clipboard. Обычный `Ctrl+C` без выделения остаётся PTY interrupt. `Shift+Enter` отправляет line-break sequence (`ESC [ 13 ; 2 u`) в PTY вместо отправки строки.
-- Canvas plugin apps используют ту же movable card grammar, header `54px`, resize/snap и semantic summary ниже `0.5×`. Contribution `window` открывает отдельное sandboxed окно под управлением CanvasTTY; произвольные native windows не встраиваются.
+- Canvas plugin apps используют ту же movable card grammar, header `54px`, resize/snap и semantic summary ниже `0.5×`. Contribution `window` открывает отдельное sandboxed окно под управлением Raoden Loom; произвольные native windows не встраиваются.
 - Built-in Browser — одна movable/resizable core canvas card, а не plugin contribution. Она использует тот же внешний header `54px`, что и другие canvas cards: identity и hide-card action отделены от внутренней полосы вкладок ниже. Trusted DOM chrome владеет tabs/favicons, address/search, back/forward/reload, downloads, per-tab provider badges, site dialogs и явными Close tab/Close all. Скрытие карточки сохраняет вкладки и общий аутентифицированный Chromium profile. Ниже `0.5×`, в Edit HOME и за trusted dialogs/popovers native page скрывается и заменяется стабильной semantic surface. Во время движения карточки или камеры он остаётся live и следует за frame-coalesced viewport geometry.
 - Само authenticated connection или heartbeat не показывает agent presence. Branded badge появляется только после реальной browser-команды агента, а cursor — только после появления настоящей pointer position. Claude использует `#D97757`, Codex — `#10A37F`, Qwen — `#6D44E8`, Kimi — `#7C5CFC`, OpenCode — `#5A5858`, Hermes — `#D6A700`, unknown provider — `#7A8291`. Browser Settings отдельно управляет видимостью индикаторов, не отзывая доступ; kill switch доступа агентов отзывает само подключение.
 - При включённом snapping drag/resize используют скрытую сетку `10px`, magnetic threshold `10px` для соседних edges/centers и постоянный gap `20px`.
@@ -46,6 +46,15 @@
 - Мини-карта центрирует камеру по нажатию без изменения масштаба. В Controls выбирается **Клик** (по умолчанию, движение указателя игнорируется) или **Перетаскивание** (мини-карта захватывает указатель и непрерывно двигает камеру); клавиши-стрелки работают в обоих режимах.
 - Canvas двигается RTS-style, пока указатель находится в пределах `56px` от viewport edge над пустым canvas; скорость линейно возрастает до `900px/s` на самой границе. Edge panning выключен по умолчанию и включается в Settings. Motion останавливается над interactive surfaces и во время drag-pan.
 - Dialog close actions остаются внутри своей header/control row с одинаковым inset и не перекрывают field, outline или panel boundary.
+
+## Агенты оркестрации (Р8–Р9; MVP принят для macOS)
+
+- Карточки управляемых агентов — отдельный вид canvas card, не terminal card и не PTY: Codex — лид, Claude — исполнитель. Создаются из контекстного меню пустого canvas с выбором папки проекта. Card grammar как у заметки: фиксированный размер, перемещение за header, snapping, selection рамкой; resize нет. Карточка показывает provider mark, роль, папку проекта (полный путь в подсказке) и состояние запуска словами (свободен, работает, ждёт свой ход, пауза, остановлен, завершён, ошибка).
+- Связь создаётся перетаскиванием порта на правом крае карточки лида на карточку исполнителя или без мыши: Enter на порту, затем «Связать сюда» на карточке Claude; Escape отменяет. Отказ main (с собой, роли, повтор пары, разные проекты) показывается на карточке лида.
+- Плашка в середине связи показывает состояние последнего запуска и только допустимые действия: «Новая цель» и удаление — только когда запуск не активен; «Открыть запуск» — когда запуск есть. Удаление связи и карточки не удаляет историю запусков; карточка со связью спрашивает подтверждение на самой карточке.
+- Панель запуска справа: состояние и причина, этап, кто работает, кнопки только допустимых команд, ответ на вопрос, уточнение, увеличение лимита, восстановление с явным подтверждением сброса, план, результаты проверок, итог, история постранично. Действие не показывается выполненным до ответа main; транспортная ошибка и отказ различаются. После аварии приложения прерванный запуск показывается на паузе с причиной и действиями восстановления; ничего не продолжается само.
+- Пока открыты диалог агента, диалог цели или панель запуска, нативный вид встроенного Browser скрывается.
+- В заголовке панели — id запуска (первые 8 символов, полный — во всплывающей подсказке). Панель не показывает имена checkpoint-ссылок и никогда не сливает результат в ветку пользователя; пользователь забирает его git-командами (ARCHITECTURE, «Как забрать изменения»).
 
 ## Приёмочные проверки
 
@@ -58,3 +67,4 @@
 - Обычный терминал начинается как `idle`, а агент остаётся `unavailable` до lifecycle-сигнала provider hook. Codex, Claude Code, Qwen Code, Kimi Code, OpenCode, Hermes и Grok Build передают `idle`, `working` и `needs_approval` через машинные hooks; OSC title markers Claude/Qwen остаются fallback совместимости.
 - `needs_approval` показывается только после structured provider-adapter signal; человекочитаемый terminal output и существование PTY не используются для выдумывания активности.
 - Home, Focus Card, Settings, минимум один живой терминал и встроенный Browser проверены в изолированном настоящем Electron после build.
+- Агенты оркестрации проверены в настоящем Electron на тестовых провайдерах (`npm run smoke:orchestration-ui`, а сквозной сценарий с авариями, потерей ответов и целью из двух этапов — `npm run e2e:orchestration`); реальные модели в этих проверках не запускаются. Реальные запуски через UI упакованной сборки пройдены и приняты: R1 — цель до завершения, R2 — Stop во время хода Claude, R3 — выход во время хода, перезапуск и «Продолжить». Свидетельства — `docs/agent-orchestration/evidence/real-ui/`. MVP принят для macOS с известными ограничениями (`docs/agent-orchestration/ROADMAP.md`, «Приёмка MVP»). Границы проверки: реальные планы были одноэтапными, многоэтапный цикл проверен только на тестовых CLI; выход в R3 — SIGTERM процессу main, Cmd+Q отдельно не проверялся.

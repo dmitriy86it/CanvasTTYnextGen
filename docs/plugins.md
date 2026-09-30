@@ -1,14 +1,14 @@
 # Runtime plugins
 
-[English](plugins.md) · [Русский](plugins.ru.md) · [简体中文](plugins.zh-CN.md) · [Docs home](README.md)
+[English](plugins.md) · [Русский](plugins.ru.md) · [Docs home](README.md)
 
-CanvasTTY runtime plugins are installed from an HTTPS GitHub repository. A plugin can contribute sandboxed web surfaces and can optionally declare agent hook scripts. Web contributions run without Node.js. Agent hooks are a separate, explicit trust boundary and stay disabled until the user enables each hook in **Settings → Agents → Hooks**.
+Raoden Loom runtime plugins are installed from an HTTPS GitHub repository. A plugin can contribute sandboxed web surfaces and can optionally declare agent hook scripts. Web contributions run without Node.js. Agent hooks are a separate, explicit trust boundary and stay disabled until the user enables each hook in **Settings → Agents → Hooks**.
 
 ## Trust model
 
-Installing a plugin is equivalent to allowing third-party browser code to run locally. CanvasTTY reduces that trust surface, but cannot make unknown code trustworthy:
+Installing a plugin is equivalent to allowing third-party browser code to run locally. Raoden Loom reduces that trust surface, but cannot make unknown code trustworthy:
 
-- CanvasTTY downloads only the default-branch tar archive for a GitHub repository root URL and never runs `npm install`, build hooks, native modules, or repository scripts during install/update.
+- Raoden Loom downloads only the default-branch tar archive for a GitHub repository root URL and never runs `npm install`, build hooks, native modules, or repository scripts during install/update.
 - The package must contain no symlinks and is limited to 500 files or directories / 25 MB. Individual served assets are limited to 8 MB.
 - A plugin frame has an opaque sandbox origin, no access to the parent DOM, no `window.canvasTTY`, and no Node.js API.
 - The separate-window preload exposes no Node primitives. It forwards the same SDK messages through an identity-checked IPC handler.
@@ -17,7 +17,7 @@ Installing a plugin is equivalent to allowing third-party browser code to run lo
 - Disabling or uninstalling a plugin immediately stops serving its assets and closes its separate windows.
 - Declared agent hooks are never enabled by install, update, or module changes. Enabling one is equivalent to running that repository's JavaScript as a native application with the current user's OS privileges, access to the provider event payload, and potential access to user-readable configuration or credentials. Updating the plugin, replacing modules, or disabling the plugin revokes every enabled hook so changed code must be trusted again.
 
-CanvasTTY does not embed arbitrary native OS windows. A `window` contribution is a sandboxed CanvasTTY-owned `BrowserWindow`. Native reparenting is not portable or reliable across Wayland, macOS, Windows, DPI modes, popups, and GPU surfaces.
+Raoden Loom does not embed arbitrary native OS windows. A `window` contribution is a sandboxed Raoden Loom-owned `BrowserWindow`. Native reparenting is not portable or reliable across Wayland, macOS, Windows, DPI modes, popups, and GPU surfaces.
 
 ## Package layout
 
@@ -86,13 +86,13 @@ Editor tooling can use the [manifest JSON Schema](canvastty-plugin.schema.json) 
 }
 ```
 
-Plugin and contribution IDs are stable persistence keys. Do not rename them after publishing. Plugin versions use semantic version text. `settingsContribution` optionally references one `canvas-app`; CanvasTTY shows a dedicated **Settings** action for it in the Extensions menu. Every installed `home-widget` also appears beside the built-in widgets in **Settings → Appearance → HOME composition**, where it is added or removed. `minSize` is optional for `canvas-app` and `window` contributions, must not exceed `defaultSize`, and may be as small as 240 × 140 pixels. Older manifests keep the 320 × 220 host minimum. HOME starts with a spacious 16 × 12 logical grid while preserving the original 12 × 8 composition. The editor can resize its visible boundary up to 48 × 36 without shrinking cell dimensions, and adding a widget grows the boundary automatically when needed. Canvas apps use world-space pixels and participate in the same snapping system as terminal cards.
+Plugin and contribution IDs are stable persistence keys. Do not rename them after publishing. Plugin versions use semantic version text. `settingsContribution` optionally references one `canvas-app`; Raoden Loom shows a dedicated **Settings** action for it in the Extensions menu. Every installed `home-widget` also appears beside the built-in widgets in **Settings → Appearance → HOME composition**, where it is added or removed. `minSize` is optional for `canvas-app` and `window` contributions, must not exceed `defaultSize`, and may be as small as 240 × 140 pixels. Older manifests keep the 320 × 220 host minimum. HOME starts with a spacious 16 × 12 logical grid while preserving the original 12 × 8 composition. The editor can resize its visible boundary up to 48 × 36 without shrinking cell dimensions, and adding a widget grows the boundary automatically when needed. Canvas apps use world-space pixels and participate in the same snapping system as terminal cards.
 
 `platforms` is optional; when present it must include `"canvastty"` or direct install/update is rejected. `minHostVersion` is informational: the showcase marks plugins that target a newer host, but it does not block installation. This lets separately packaged release builds keep using compatible source packages without treating older minimum versions as mismatches.
 
 ### Optional modules
 
-A modular manifest declares integrity-checked coreFiles plus up to 16 optional modules. Every file entry contains path, exact bytes, and a SHA-256 digest. CanvasTTY downloads only the manifest for inspection, shows checkboxes, per-module size and permissions, then downloads only the core and selected module files. Changing the selection later replaces the installed package atomically and removes deselected files. A contribution may set module to disappear when that module is not installed.
+A modular manifest declares integrity-checked coreFiles plus up to 16 optional modules. Every file entry contains path, exact bytes, and a SHA-256 digest. Raoden Loom downloads only the manifest for inspection, shows checkboxes, per-module size and permissions, then downloads only the core and selected module files. Changing the selection later replaces the installed package atomically and removes deselected files. A contribution may set module to disappear when that module is not installed.
 
 Module file integrity (exact byte counts and SHA-256 digests) is verified against the hashes declared in the plugin manifest, and the manifest itself is fetched from GitHub over TLS without a separate signature. The trust anchor is therefore the plugin's GitHub repository: a compromised repository can ship a new manifest with matching hashes.
 
@@ -100,9 +100,9 @@ Module file integrity (exact byte counts and SHA-256 digests) is verified agains
 
 `hooks` declares up to 16 JavaScript entries. A hook has a stable `id`, a display `title`, an `entry` ending in `.js`, `.mjs`, or `.cjs`, one or more agent `providers`, and one or more semantic `events`: `session-start`, `prompt-submit`, `permission-request`, `permission-result`, `after-tool`, `stop`, or `session-end`. Providers that do not expose a requested semantic event simply do not invoke that event. In a modular plugin, a hook entry must be integrity-declared by its optional `module`, or by `coreFiles` when the hook has no module. A non-modular package must contain the validated entry path.
 
-A hook-only plugin uses an empty `contributions` array and a non-empty `hooks` array. Installation only copies and validates the file. The user must inspect the repository and complete a separate trust confirmation in **Settings → Agents → Hooks**. CanvasTTY's host-owned registry is consulted for every invocation, so disabling a hook prevents subsequent invocations even when the provider session is still running. Enabling a newly installed hook may require a new or restarted agent session when that provider's launch-time hook bridge is not already present.
+A hook-only plugin uses an empty `contributions` array and a non-empty `hooks` array. Installation only copies and validates the file. The user must inspect the repository and complete a separate trust confirmation in **Settings → Agents → Hooks**. Raoden Loom's host-owned registry is consulted for every invocation, so disabling a hook prevents subsequent invocations even when the provider session is still running. Enabling a newly installed hook may require a new or restarted agent session when that provider's launch-time hook bridge is not already present.
 
-Provider-native hook review remains in force. For example, Codex may additionally ask the user to review the launch-time CanvasTTY bridge in its own `/hooks` flow. CanvasTTY does not pass Codex's global `--dangerously-bypass-hook-trust` flag; enabling a plugin hook in CanvasTTY never weakens trust checks for unrelated provider hooks.
+Provider-native hook review remains in force. For example, Codex may additionally ask the user to review the launch-time Raoden Loom bridge in its own `/hooks` flow. Raoden Loom does not pass Codex's global `--dangerously-bypass-hook-trust` flag; enabling a plugin hook in Raoden Loom never weakens trust checks for unrelated provider hooks.
 
 The script runs as a separate process with the plugin directory as its working directory. It receives one JSON object on stdin:
 
@@ -119,7 +119,7 @@ interface CanvasTTYAgentHookInput {
 }
 ```
 
-Hook stdout/stderr is discarded, execution is time-bounded, and CanvasTTY's internal runtime/browser capability tokens are removed from the child environment. This is isolation from host internals, not a sandbox: the hook still has the user's normal filesystem and process privileges.
+Hook stdout/stderr is discarded, execution is time-bounded, and Raoden Loom's internal runtime/browser capability tokens are removed from the child environment. This is isolation from host internals, not a sandbox: the hook still has the user's normal filesystem and process privileges.
 
 host.onStorageChange(listener) notifies every live contribution of the same plugin — canvases, HOME widgets, and separate windows — of writes made through host.storage.set, avoiding polling when a plugin coordinates several surfaces.
 
@@ -133,12 +133,12 @@ host.onStorageChange(listener) notifies every live contribution of the same plug
 | `limits:read` | `limits.get` | The same sanitized `LimitsSnapshot` used by HOME |
 | `launcher:open` | `launcher.open` | Opens the built-in provider Focus Card or terminal action; it does not bypass user launch choices |
 | `external:open` | `external.open` | Opens only an explicit HTTP(S) URL through the OS |
-| `browser:open` | `browser.open` | Opens only an explicit HTTP(S) URL in CanvasTTY's embedded Browser card and its shared browser session, including localhost |
+| `browser:open` | `browser.open` | Opens only an explicit HTTP(S) URL in Raoden Loom's embedded Browser card and its shared browser session, including localhost |
 | `media:library` | `media.*` | User-selected music folders only; absolute paths are never exposed and audio is served through seekable `canvastty-media://` streams |
 | `playlists:read` | `playlists.list`, `playlists.read` | Reads `.m3u`, `.m3u8`, and `.pls` in a granted music folder plus `.json` under its `Playlists/` directory, up to 4 MB each |
 | `playlists:write` | `playlists.write` | Atomically writes a named playlist into the granted folder's `Playlists/` directory, up to 4 MB |
 | `hermes:hud` | `hermesHud.*` | Starts the installed Hermes Desktop in its real HUD mode, reads its live runtime state, or asks the app to quit; no arbitrary command or process API is exposed |
-| `network` | browser `fetch` | Allows HTTPS and loopback requests in the plugin CSP; no CanvasTTY credentials are attached |
+| `network` | browser `fetch` | Allows HTTPS and loopback requests in the plugin CSP; no Raoden Loom credentials are attached |
 
 Declaring a permission does not expose a generic IPC channel. Unknown methods and permissions are rejected.
 
@@ -199,7 +199,7 @@ A local-library player normally declares:
 "permissions": ["storage", "media:library", "playlists:read", "playlists:write"]
 ```
 
-Add `network` only for remote catalogs, radio, artwork, or streams; add `external:open` only for explicit links opened in the system browser; and add `browser:open` only for explicit HTTP(S) pages intended for CanvasTTY's shared embedded browser. `storage` is intended for player preferences, favorites, queue state, and other small JSON metadata; audio files remain in user-selected folders.
+Add `network` only for remote catalogs, radio, artwork, or streams; add `external:open` only for explicit links opened in the system browser; and add `browser:open` only for explicit HTTP(S) pages intended for Raoden Loom's shared embedded browser. `storage` is intended for player preferences, favorites, queue state, and other small JSON metadata; audio files remain in user-selected folders.
 
 | SDK call | Result and intended use |
 |:--|:--|
@@ -215,7 +215,7 @@ Scanned audio extensions are `.aac`, `.flac`, `.m4a`, `.mp3`, `.oga`, `.ogg`, `.
 
 Recommended startup flow: call `listLibraries()`, ask for a folder with `pickLibrary()` only when none is granted, scan the chosen library, restore queue/preferences from `storage`, then list and parse playlists. Treat revoked or moved folders as an explicit unavailable state and let the user choose them again.
 
-Context updates include the active CanvasTTY locale and palette. Plugins own their internal localization and styling; they should remain legible at the contribution's intended size and should not invent loading progress, sessions, status, limits, or telemetry.
+Context updates include the active Raoden Loom locale and palette. Plugins own their internal localization and styling; they should remain legible at the contribution's intended size and should not invent loading progress, sessions, status, limits, or telemetry.
 
 ## Install and manage
 
@@ -228,7 +228,7 @@ Context updates include the active CanvasTTY locale and palette. Plugins own the
 
 The current installer intentionally rejects private repositories, GitHub `/tree/branch/subdirectory` links, and repositories that require a build step. Publish a ready-to-run static package at the repository root.
 
-The optional showcase sign-in uses GitHub's OAuth device flow. Build maintainers can [register an OAuth App and enable Device Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app), then store its public client ID in the `CANVASTTY_GITHUB_CLIENT_ID` GitHub Actions repository variable. Official builds bake in that value when configured; local builds can use `GITHUB_OAUTH_CLIENT_ID` or `CANVASTTY_GITHUB_CLIENT_ID`, and either variable can also override the bundled value at runtime. No client secret is shipped or required. Sign-in opens GitHub in CanvasTTY's built-in Browser by default and offers the system browser as an explicit fallback. Without a client ID the UI reports that OAuth is unavailable, while direct repository inspection and installation continue to work. Signing out removes the encrypted local session; revoke the OAuth grant separately under [GitHub application settings](https://github.com/settings/applications) when needed.
+The optional showcase sign-in uses GitHub's OAuth device flow. Build maintainers can [register an OAuth App and enable Device Flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app), then store its public client ID in the `CANVASTTY_GITHUB_CLIENT_ID` GitHub Actions repository variable. Official builds bake in that value when configured; local builds can use `GITHUB_OAUTH_CLIENT_ID` or `CANVASTTY_GITHUB_CLIENT_ID`, and either variable can also override the bundled value at runtime. No client secret is shipped or required. Sign-in opens GitHub in Raoden Loom's built-in Browser by default and offers the system browser as an explicit fallback. Without a client ID the UI reports that OAuth is unavailable, while direct repository inspection and installation continue to work. Signing out removes the encrypted local session; revoke the OAuth grant separately under [GitHub application settings](https://github.com/settings/applications) when needed.
 
 ## Author checklist
 
@@ -239,4 +239,4 @@ The optional showcase sign-in uses GitHub's OAuth device flow. Build maintainers
 - Test the HOME widget at its smallest declared grid size and during canvas zoom.
 - Test canvas apps in semantic summary mode below `0.5×`.
 - Test the same SDK calls in both embedded and separate-window contributions.
-- Run CanvasTTY's `npm test`, `npm run typecheck`, and `npm run build` when contributing an example or host change.
+- Run Raoden Loom's `npm test`, `npm run typecheck`, and `npm run build` when contributing an example or host change.

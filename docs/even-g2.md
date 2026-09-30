@@ -1,11 +1,11 @@
 # Even G2 local companion
 
-CanvasTTY's **Settings → Controls → Even G2** connects the desktop to an installed Even App companion. Both live in this repository. The desktop retains the original CanvasTTY name, application ID, and desktop version. The companion version is **0.5.6**. Integration is off by default.
+Raoden Loom's **Settings → Controls → Even G2** connects the desktop to an installed Even App companion. Both live in this repository. The desktop keeps its application ID and version (the desktop app is Raoden Loom, formerly CanvasTTY; the companion keeps its own name). The companion version is **0.5.6**. Integration is off by default.
 
 ## Connect
 
-1. Build this integration branch of CanvasTTY and install its matching companion through an available Even Hub test channel. Open the companion in Even App with the glasses connected to the phone. The ordinary upstream release does not yet include this integration.
-2. Put the Mac and phone on the same local network. In CanvasTTY, open **Settings → Controls → Even G2 → Connect Even G2**. Existing valid settings open the connection code directly. The Access tab lets you choose a project folder, shared sessions and permissions.
+1. Build this integration branch of Raoden Loom and install its matching companion through an available Even Hub test channel. Open the companion in Even App with the glasses connected to the phone. The ordinary upstream release does not yet include this integration.
+2. Put the Mac and phone on the same local network. In Raoden Loom, open **Settings → Controls → Even G2 → Connect Even G2**. Existing valid settings open the connection code directly. The Access tab lets you choose a project folder, shared sessions and permissions.
 3. Enter the **six digits** shown on Mac into the companion’s Code field. Tap **Connect computer**.
 4. Approve the pending connection on Mac. The companion saves its connection using Even App storage. No camera, QR, domain, account with a relay service, ADB, USB forwarding or separately launched tunnel is required for app traffic.
 
@@ -17,7 +17,7 @@ The desktop listens only on the selected interface's private IPv4 and ULA IPv6 a
 
 ## Create sessions
 
-The phone offers every CanvasTTY hotbar provider: Terminal, Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, Grok Build, OMP and Pi. On glasses, New Codex and New Terminal retain their direct actions. More agents opens the other agent providers: swipe to choose, click to create, double-click to cancel. Holding while this picker is open does not start dictation.
+The phone offers every Raoden Loom hotbar provider: Terminal, Codex, Claude, Qwen Code, Kimi, OpenCode, Hermes, Grok Build, OMP and Pi. On glasses, New Codex and New Terminal retain their direct actions. More agents opens the other agent providers: swipe to choose, click to create, double-click to cancel. Holding while this picker is open does not start dictation.
 
 Creation uses the existing desktop launcher, the shared project folder and the normal launch profile. Each provider still needs its CLI and authentication on the Mac. The integration does not install providers or bypass their login.
 
@@ -69,7 +69,7 @@ The user confirmed local pairing, microphone input, terminal interaction, sessio
 
 Companion 0.5.6 was submitted for Even Hub review on 15 September 2026. Store approval is pending. GitHub source review is independent of that process. The submitted package is retained separately; rebuilding this branch after upstream integration produces a different artifact and does not replace the store submission.
 
-There is no published compatible installer yet. Build from this branch with the commands above. The Mac bundle uses ad-hoc signing without notarization; it has not been validated as a frictionless install on a clean Mac. Do not direct users to an ordinary CanvasTTY release as a compatible G2 build.
+There is no published compatible installer yet. Build from this branch with the commands above. The Mac bundle uses ad-hoc signing without notarization; it has not been validated as a frictionless install on a clean Mac. Do not direct users to an ordinary Raoden Loom release as a compatible G2 build.
 
 ## Security review boundaries
 

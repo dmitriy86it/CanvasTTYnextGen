@@ -84,7 +84,7 @@ test("startup failure page escapes diagnostic text", () => {
   const url = startupPageUrl({ locale: "ru", isMacOS: false, error: '<script>alert("x")</script>' });
   const html = decodeURIComponent(url.slice(url.indexOf(",") + 1));
 
-  assert.match(html, /CanvasTTY не удалось запустить/);
+  assert.match(html, /Raoden Loom не удалось запустить/);
   assert.match(html, /&lt;script&gt;alert\(&quot;x&quot;\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>alert/);
 });

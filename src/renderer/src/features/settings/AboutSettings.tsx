@@ -15,7 +15,7 @@ export function AboutSettings({ locale }: { locale: LocaleId }): React.JSX.Eleme
     <section className="about-settings">
       <header className="about-settings__header">
         <span>
-          <strong>CanvasTTY</strong>
+          <strong>Raoden Loom</strong>
           <small>v{appManifest.version}</small>
         </span>
         <p>{t(locale, "aboutDescription")}</p>
