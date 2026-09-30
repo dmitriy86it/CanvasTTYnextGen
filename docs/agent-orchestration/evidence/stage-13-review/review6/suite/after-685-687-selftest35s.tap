@@ -1,0 +1,24 @@
+# repro: orchestration-service.test.mjs.after selftest delay 35000 ms; 15:57  up 2 days,  1:20, 7 users, load averages: 150,74 88,78 45,64
+TAP version 13
+# Subtest: automatic start: plan → executor → checks → review → checkpoint per stage → final review → completed
+ok 1 - automatic start: plan → executor → checks → review → checkpoint per stage → final review → completed
+  ---
+  duration_ms: 83978.12725
+  type: 'test'
+  ...
+# Subtest: a failing check sends the stage back to the executor; the fix is accepted
+ok 2 - a failing check sends the stage back to the executor; the fix is accepted
+  ---
+  duration_ms: 86749.68775
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 171122.491625
+# end: 16:00  up 2 days,  1:23, 7 users, load averages: 38,57 60,98 41,81

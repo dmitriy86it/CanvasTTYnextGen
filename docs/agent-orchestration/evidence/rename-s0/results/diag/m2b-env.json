@@ -1,0 +1,40 @@
+{
+  "pid": 84326,
+  "argv": [],
+  "exe": "<S0>/diag-out-Alpha/mac-arm64/S0 Diag Alpha.app/Contents/MacOS/S0 Diag Alpha",
+  "name": "s0diag-q7",
+  "nameProp": "s0diag-q7",
+  "t0": 1790575425761,
+  "beforeProfileChoice": {
+    "userData": "~/Library/Application Support/s0diag-q7",
+    "sessionData": "~/Library/Application Support/s0diag-q7",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "~/Library/Application Support/s0diag-q7/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "afterProfileChoice": {
+    "userData": "<S0>/p-env2",
+    "sessionData": "<S0>/p-env2",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-env2/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "lock": true,
+  "atReady": {
+    "userData": "<S0>/p-env2",
+    "sessionData": "<S0>/p-env2",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-env2/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "partitionStoragePath": "<S0>/p-env2/Partitions/s0-browser",
+  "defaultStoragePath": "<S0>/p-env2",
+  "cookiesSeen": [
+    "cookie-1"
+  ],
+  "localStorageBefore": null,
+  "ready": true
+}

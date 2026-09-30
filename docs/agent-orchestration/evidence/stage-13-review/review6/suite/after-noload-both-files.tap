@@ -1,0 +1,146 @@
+# 16:02  up 2 days,  1:25, 7 users, load averages: 50,57 55,92 42,65
+TAP version 13
+# Subtest: runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached)
+ok 1 - runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached)
+  ---
+  duration_ms: 5714.184875
+  type: 'test'
+  ...
+# executor turn started; service clock released after 2020 ms of preparation (runMs 3000)
+# Subtest: runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+ok 2 - runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+  ---
+  duration_ms: 10185.753041
+  type: 'test'
+  ...
+# check started; service clock released after 2408 ms of preparation (runMs 6000)
+# Subtest: late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+ok 3 - late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+  ---
+  duration_ms: 14953.815708
+  type: 'test'
+  ...
+# Subtest: a run within its runMs budget completes as before
+ok 4 - a run within its runMs budget completes as before
+  ---
+  duration_ms: 11422.504292
+  type: 'test'
+  ...
+# Subtest: the timeoutMs given to an agent is min(role limit, time left of runMs)
+ok 5 - the timeoutMs given to an agent is min(role limit, time left of runMs)
+  ---
+  duration_ms: 10677.302167
+  type: 'test'
+  ...
+# Subtest: executorTurnMs is enforced by the service: stop() at the timeout, turn.finished(stopped), paused(environment_error)
+ok 6 - executorTurnMs is enforced by the service: stop() at the timeout, turn.finished(stopped), paused(environment_error)
+  ---
+  duration_ms: 3388.101875
+  type: 'test'
+  ...
+# Subtest: after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+ok 7 - after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+  ---
+  duration_ms: 11456.63375
+  type: 'test'
+  ...
+# Subtest: raise_limit runMs: a value with no future deadline is invalid_command; a sufficient one → user_request, resume completes
+ok 8 - raise_limit runMs: a value with no future deadline is invalid_command; a sufficient one → user_request, resume completes
+  ---
+  duration_ms: 13774.235084
+  type: 'test'
+  ...
+# Subtest: checkpoint 1 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+ok 9 - checkpoint 1 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+  ---
+  duration_ms: 11911.318459
+  type: 'test'
+  ...
+# Subtest: checkpoint 2 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+ok 10 - checkpoint 2 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+  ---
+  duration_ms: 14597.613667
+  type: 'test'
+  ...
+# Subtest: checkpoint 1 in Git rewritten after the failure (another tree and message): resume → paused(shared_git_tampered), nothing recorded
+ok 11 - checkpoint 1 in Git rewritten after the failure (another tree and message): resume → paused(shared_git_tampered), nothing recorded
+  ---
+  duration_ms: 10211.105375
+  type: 'test'
+  ...
+# Subtest: checkpoint 1 in Git rewritten after the failure (the same tree and parent, another message): resume → paused(shared_git_tampered), nothing recorded
+ok 12 - checkpoint 1 in Git rewritten after the failure (the same tree and parent, another message): resume → paused(shared_git_tampered), nothing recorded
+  ---
+  duration_ms: 10236.309125
+  type: 'test'
+  ...
+# Subtest: executable replaced while the lead reviews: a new check fails, the stage is not accepted on the old result
+ok 13 - executable replaced while the lead reviews: a new check fails, the stage is not accepted on the old result
+  ---
+  duration_ms: 18209.204792
+  type: 'test'
+  ...
+# Subtest: executable replaced, then close and reopen: resume does not reuse the old passed result
+ok 14 - executable replaced, then close and reopen: resume does not reuse the old passed result
+  ---
+  duration_ms: 19300.714792
+  type: 'test'
+  ...
+# Subtest: executable unchanged across close, reopen and resume: no repeated check
+ok 15 - executable unchanged across close, reopen and resume: no repeated check
+  ---
+  duration_ms: 8654.165458
+  type: 'test'
+  ...
+# Subtest: automatic start: plan → executor → checks → review → checkpoint per stage → final review → completed
+ok 16 - automatic start: plan → executor → checks → review → checkpoint per stage → final review → completed
+  ---
+  duration_ms: 18502.697542
+  type: 'test'
+  ...
+# Subtest: reviewPlan stops after the plan; resume continues to completion
+ok 17 - reviewPlan stops after the plan; resume continues to completion
+  ---
+  duration_ms: 11446.545166
+  type: 'test'
+  ...
+# Subtest: a failing check sends the stage back to the executor; the fix is accepted
+ok 18 - a failing check sends the stage back to the executor; the fix is accepted
+  ---
+  duration_ms: 18093.925416
+  type: 'test'
+  ...
+# Subtest: the lead cannot accept a stage while a required check fails; self-reports confirm nothing
+ok 19 - the lead cannot accept a stage while a required check fails; self-reports confirm nothing
+  ---
+  duration_ms: 17265.977084
+  type: 'test'
+  ...
+# Subtest: step runs exactly one external operation, then paused(step_done); pause and resume
+ok 20 - step runs exactly one external operation, then paused(step_done); pause and resume
+  ---
+  duration_ms: 19089.667083
+  type: 'test'
+  ...
+# Subtest: the real provider adapter refuses an executor turn and a non-Codex lead explicitly
+ok 21 - the real provider adapter refuses an executor turn and a non-Codex lead explicitly
+  ---
+  duration_ms: 1.377292
+  type: 'test'
+  ...
+# Subtest: production code never imports test fixtures or mocks
+ok 22 - production code never imports test fixtures or mocks
+  ---
+  duration_ms: 2.404875
+  type: 'test'
+  ...
+1..22
+# tests 22
+# suites 0
+# pass 22
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 205245.885708
+# end 16:05  up 2 days,  1:28, 7 users, load averages: 40,61 51,23 43,79

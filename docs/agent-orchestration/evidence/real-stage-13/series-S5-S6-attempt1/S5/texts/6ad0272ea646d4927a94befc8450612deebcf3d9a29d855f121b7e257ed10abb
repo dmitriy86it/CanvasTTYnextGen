@@ -1,0 +1,1 @@
+["Implementation correctly clamps x and throws RangeError when lo > hi.","CanvasTTY's required npm test passed: 3 tests, 0 failures.","Acceptance test SHA-256 matches the baseline exactly; existing tracked files are unchanged.","Changes remain uncommitted. Stage accepted; separate final review remains."]

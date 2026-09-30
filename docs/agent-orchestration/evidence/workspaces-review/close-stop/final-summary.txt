@@ -1,0 +1,9 @@
+targeted exit=0
+external-close exit=1
+typecheck exit=0
+build exit=0
+smoke-workspaces-close exit=0
+R-U05 exit=0
+smoke-workspaces-ui exit=0
+smoke-workspaces-background exit=0
+DONE

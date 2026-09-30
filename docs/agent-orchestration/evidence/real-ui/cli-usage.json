@@ -1,0 +1,18 @@
+{
+  "source": "numbers only, read after the series from the CLIs' own session files; no prompt or answer text copied. Cumulative per session: each session's last value, not summed again.",
+  "claude": {
+    "where": "~/.claude/projects/<escaped workspace path>/<session>.jsonl, record type cost-state",
+    "R1_executor_turn": { "model": "claude-sonnet-5", "totalCostUSD": 0.0515494, "outputTokens": 1473, "cacheReadInputTokens": 19757, "cacheCreationInputTokens": 8213, "inputTokens": 8, "apiDurationMs": 12745 },
+    "R3_resumed_executor_turn": { "model": "claude-sonnet-5", "totalCostUSD": 0.0355664, "outputTokens": 1530, "cacheReadInputTokens": 24192, "cacheCreationInputTokens": 3853, "inputTokens": 8, "apiDurationMs": 14319 },
+    "R2_stopped_turn_and_R3_turn_stopped_by_quit": "no session file was written (stopped within about 1 s of the process start); cost not reported by the CLI",
+    "sumOfReportedUSD": 0.0871158
+  },
+  "codex": {
+    "where": "~/.codex/sessions/2026/09/24/rollout-*.jsonl, last token_count.total_token_usage per session (one session per run: plan, reviews and final review resume it)",
+    "model": "gpt-6-astra (turn_context)",
+    "R1": { "input_tokens": 133041, "cached_input_tokens": 72576, "output_tokens": 731, "reasoning_output_tokens": 27, "total_tokens": 133772 },
+    "R2": { "input_tokens": 52406, "cached_input_tokens": 34048, "output_tokens": 357, "reasoning_output_tokens": 44, "total_tokens": 52763 },
+    "R3": { "input_tokens": 130750, "cached_input_tokens": 71552, "output_tokens": 679, "reasoning_output_tokens": 97, "total_tokens": 131429 },
+    "cost": "not reported by Codex CLI"
+  }
+}

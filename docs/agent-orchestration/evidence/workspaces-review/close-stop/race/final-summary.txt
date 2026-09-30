@@ -1,0 +1,11 @@
+typecheck=0 build=0
+ℹ tests 65
+ℹ pass 65
+ℹ fail 0
+smoke-workspaces-ui: exit 0, failures []
+# tests 1431
+# pass 1430
+# fail 0
+# skipped 1
+src/tests/scripts unchanged during npm test (sha list compared)
+external repro sha256: 958cf38d032b6fc250fc8faae96c3652b05a0667b8d8c5a8e7e61c83f6a5b154

@@ -191,3 +191,39 @@ This block is appended; the decision body above stays as the historical record.
 - **Validation.** Before a release, `npx @electron/fuses read --app <packaged app>` must report the
   configured values, an agent session must start in the packaged app, and a modified `app.asar`
   must stop the app from starting.
+
+## Amendment 2026-09-22 (orchestration turn supervisor)
+
+This block is appended; the decision body and earlier amendments stay as the historical record.
+
+- **A fourth `ELECTRON_RUN_AS_NODE` launch point is added: the orchestration turn supervisor.** The
+  agent-orchestration engine (`src/main/services/orchestration/`) runs every provider CLI turn under a
+  per-turn supervisor helper, `src/orchestration/supervisor.mjs`, shipped outside the asar by
+  `extraResources` as `orchestration/supervisor.mjs` next to the existing helpers. It is launched as
+  `{ command: process.execPath, args: [supervisorPath, <cli argv...>], env: { ELECTRON_RUN_AS_NODE: "1", ... } }`.
+  The reasons it cannot be an in-process child or a `utilityProcess` are recorded in
+  `docs/agent-orchestration/` (TROUBLESHOOTING T11: a `utilityProcess` dies with a SIGKILLed main
+  without cleanup; the supervisor's stdin lifeline is what stops the provider's process group).
+- **Invariant 4 is scoped for this helper.** The supervisor is a pass-through for the provider CLI's
+  environment: it receives the exact CLI environment chosen by the caller plus its own control keys
+  (`ELECTRON_RUN_AS_NODE`, `SUP_ENV_ALLOW`, `SUP_GRACE_*`) and spawns the CLI with only the names in
+  `SUP_ENV_ALLOW`, never `ELECTRON_RUN_AS_NODE` or `SUP_*`. The engine refuses caller environment names
+  starting with `ELECTRON_`, `NODE_` or `SUP_`, so a caller cannot configure the supervisor itself. The
+  provider CLI therefore never runs with `ELECTRON_RUN_AS_NODE`.
+- **Invariant 5 gains one more recorded exception:** `orchestration/supervisor.mjs` joins the helper
+  `.mjs` files under `resourcesPath`. Adding it to `extraResources` is part of this change; a missing
+  helper is a packaging bug, and the packaged smoke below catches it.
+  The earlier count ("seven `.mjs` files") and line reference (`electron-builder.yml:53-65`) above are
+  historical; after this amendment the helpers are eight `.mjs` files (plus the Windows pipe host), and the
+  new entry is `extraResources` `src/orchestration` → `orchestration`, filter `*.mjs`.
+- **No automatic agent launch.** Normal application start does not start orchestration turns. The only
+  packaged entry point is the smoke hook `CANVASTTY_ORCHESTRATION_SMOKE=1`, which runs a fixed, built-in
+  `/bin/sh` mock (no command, arguments or task taken from the environment), prints a result marker and
+  quits; like the existing `CANVASTTY_CLI_RESOLUTION_SMOKE` hook it is honoured in packaged builds so
+  that the packaged helper path is exercised.
+- **Platforms.** The engine supports macOS and Linux (process groups). On Windows it refuses before
+  starting any process; the rest of the application keeps its platform support.
+- **Validation.** `npm run smoke:orchestration` runs the Electron smoke (development build) and
+  `npm run smoke:orchestration -- --packaged` the packaged one; both must show task delivery, the
+  structured answer, a Stop, no `ELECTRON_RUN_AS_NODE`/`SUP_*` in the CLI environment and a cleared
+  process group. The fuse values are unchanged; `runAsNode` stays required by this helper as well.

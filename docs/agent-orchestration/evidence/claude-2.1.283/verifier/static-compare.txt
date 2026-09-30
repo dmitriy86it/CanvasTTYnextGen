@@ -1,0 +1,66 @@
+Static comparison Claude Code 2.1.282 vs 2.1.283 (verifier, no model calls)
+Date: 2026-09-26. Binaries: ~/.local/share/claude/versions/2.1.282, ~/.local/share/claude/versions/2.1.283
+sha256 2.1.282 fcfd837103965c64de34a6b9b94370d77a347ea71819715a27d5f0ef01775ea4 (same as in the 2.1.282 admission)
+sha256 2.1.283 d8cb1e5c79684cc12a8bfc813e3a2073406921b6245744b3009be3ab5651d21e
+--version: "2.1.282 (Claude Code)" / "2.1.283 (Claude Code)"
+Only --version and --help were run; binaries were read as bytes. Methods are those of the 2.1.282 verifier
+(byte search, windows with minified names <=3-4 chars replaced by I, key/literal token sets per window).
+
+1. --help: help-2.1.282.txt (306 lines, byte-identical to the one saved for the 2.1.282 admission) vs
+   help-2.1.283.txt (312 lines) -> help.diff: one addition, nothing changed or removed:
+     + --client-data-url <url>  (signed configuration document; env CLAUDE_CODE_CLIENT_DATA_URL)
+   Adapter does not pass it and does not set that variable. No impact.
+   Every adapter flag is present with the same count in both texts: -p/--print, --input-format, --output-format,
+   stream-json, --verbose, --permission-prompt-tool, --permission-prompts, --permission-mode,
+   --dangerously-skip-permissions, --resume, --session-id, --model, --max-budget-usd, --settings,
+   --setting-sources, --safe-mode, --restricted, --tools, --allowedTools, --disallowedTools, --json-schema,
+   --strict-mcp-config, --disable-slash-commands.
+   --permission-mode choices unchanged: acceptEdits, auto, bypassPermissions, manual, dontAsk, plan.
+   claudeModesFromHelp regex (access.ts:45-53) on both texts -> terminal,acceptEdits,auto,full.
+
+2. Identifier counts (whole binary): identifier-counts.txt. No identifier dropped or went to 0.
+   Unchanged: control_response, control_cancel_request, can_use_tool, elicitation, interrupt, mcp_status,
+   permission_suggestions, blocked_path, decision_reason_type, matched_ask_rule, requires_user_interaction,
+   mcp_server_name, requested_schema, updatedPermissions, permissionMode, mcp_servers, slash_commands,
+   output_style, apiKeySource, StructuredOutput, total_cost_usd, num_turns, permission_denials,
+   parent_tool_use_id, ExitPlanMode, multiSelect, tokenSource.
+   Grew: behavior +42, "allow" +31, "deny" +28, updatedInput +21, is_error +17, destination +15 -> new code of
+   the served/remote tool call feature (remote_tool_call, needs_approval, "served-calls-unattested"), not the
+   stdio host protocol. AskUserQuestion 72->70 and "result" 166->164: UI/bridge code, schemas below are equal.
+
+3. subtype literals: subtypes-*.txt / subtypes.diff (grep of subtype:X("..") | subtype:".." | subtype==="..";
+   regex slightly broader than the 2.1.282 run, so absolute counts differ from that file).
+   Name set identical (155 names both); zod set subtype:X("..") 124 = 124, type:X("..") 274 = 274, no new or
+   removed subtype of messages or requests. Only use counts moved: api_retry, informational, initialize,
+   remote_plumbing_call, remote_tool_call.
+
+4. Schemas (schema-windows.txt; token sets = property keys + string literals, minified names ignored):
+   IDENTICAL:
+   - can_use_tool request, all 3 variants (keys 11/27/18 identical; windows 3/3)
+   - permission result allow/deny union: behavior, updatedInput, updatedPermissions, toolUseID,
+     decisionClassification / behavior, message, interrupt, toolUseID, decisionClassification
+   - elicitation request (mcp_server_name, message, mode, url, elicitation_id, requested_schema, title)
+     and its answer (action accept|decline|cancel, content)
+   - control_request envelope, control_response success/error (request_id describe, error, error_code),
+     control_cancel_request, interrupt, initialize (request + handling), mcp_status (request + mcpServers),
+     set_permission_mode, request_user_dialog, CLI->host list ["can_use_tool","request_user_dialog"]
+   - result/success: 55 keys identical (result-success-keys.diff empty; subtype, is_error, num_turns, result,
+     total_cost_usd, permission_denials, structured_output, session_id, duration_ms ...)
+   - AskUserQuestion input (questions[].question/header/options/multiSelect), ExitPlanMode plan
+   CHANGED:
+   - system/init: plugin_errors[] item gains optional `path` (+ reworded describe, @internal dropped).
+     All keys the adapter reads (session_id, model, permissionMode, tools, mcp_servers{name,status}, skills,
+     plugins, slash_commands, agents, output_style, apiKeySource, cwd) unchanged. Adapter does not read
+     plugin_errors (activity.ts:99-110, sessions.ts:289, jsonl.ts:240). No impact.
+   - Remote-bridge synthetic result (Remote Control worker, sendResult/Dsn): for is_error without
+     structured_output `result` now carries the text instead of "". Not on the -p stdout path; adapter reads
+     subtype/is_error/structured_output/session_id only (sessions.ts:286,289,312; jsonl.ts:158,240;
+     activity.ts:151-155). No impact.
+   - New literals (669 new, 110 gone, mostly UI/telemetry/served calls): "dev mods" hot-reload ask via the
+     existing confirmWithUser path (AskUserQuestion-shaped can_use_tool with personOnly; only when a session
+     mods folder exists). If it ever reaches the host it arrives as can_use_tool/AskUserQuestion, handled by
+     sessions.ts:248-257. No impact.
+   Other window differences: chunk hashes, VERSION/BUILD_TIME/GIT_SHA, neighbouring code at window edges.
+
+Verdict: compatible. No divergence in the events the adapter needs; no adapter change required.
+Static analysis does not prove behaviour: the two real turns (probe.json/probe.log) decide.

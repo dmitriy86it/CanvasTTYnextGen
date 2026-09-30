@@ -1,0 +1,16 @@
+{
+  "dir": "<tmp>/s5-app",
+  "head": "7b1e45d65a851c8221ae4dd7bfc9f9e061f65a6d",
+  "branch": "main",
+  "status": "",
+  "diffStat": "",
+  "newFiles": [],
+  "accept": {
+    "path": "tests/clamp.accept.test.mjs",
+    "blobAtStart": "19e83964bbb44fbb2fb69a947d8e14300d265cbd",
+    "blobNow": "19e83964bbb44fbb2fb69a947d8e14300d265cbd",
+    "sha256Now": "a3866579c9feae251c72a0f37343c0910f4170f31180bd2ca2bdf3657883ce19",
+    "unchanged": true
+  },
+  "errors": []
+}

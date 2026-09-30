@@ -1,0 +1,1010 @@
+{
+  "tag": "before",
+  "at": "2026-09-25T18:52:29.356Z",
+  "build": {
+    "outRendererMtime": "2026-09-25T18:16:07.975Z"
+  },
+  "passed": 19,
+  "failed": 1,
+  "results": [
+    {
+      "name": "S0-driver-1280x800-repo-length-path",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 179,
+          "y": 124
+        },
+        "drop": {
+          "x": 105,
+          "y": 254,
+          "where": "driver:body-centre"
+        },
+        "lead": {
+          "left": 30,
+          "top": 80,
+          "right": 180,
+          "bottom": 168,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 30,
+          "top": 200,
+          "right": 180,
+          "bottom": 288,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 130
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S0r-driver-1280x800-this-repo",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 179,
+          "y": 124
+        },
+        "drop": {
+          "x": 105,
+          "y": 254,
+          "where": "driver:body-centre"
+        },
+        "lead": {
+          "left": 30,
+          "top": 80,
+          "right": 180,
+          "bottom": 168,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 30,
+          "top": 200,
+          "right": 180,
+          "bottom": 288,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 130
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S0b-natural-1280x800-repo-length-path",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 179,
+          "y": 124
+        },
+        "drop": {
+          "x": 105,
+          "y": 254,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 30,
+          "top": 80,
+          "right": 180,
+          "bottom": 168,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 30,
+          "top": 200,
+          "right": 180,
+          "bottom": 288,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 130
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S1-below-left-1280x800",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": "below-left",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 715,
+          "y": 335
+        },
+        "drop": {
+          "x": 641,
+          "y": 475,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 566,
+          "top": 291,
+          "right": 716,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 566,
+          "top": 421,
+          "right": 716,
+          "bottom": 509,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 140
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "button.launcher-button",
+        "section.tile.launcher-dock",
+        "div.home-widget-slot",
+        "section.home-zone"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S2-right",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": "right",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 715,
+          "y": 335
+        },
+        "drop": {
+          "x": 870,
+          "y": 345,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 566,
+          "top": 291,
+          "right": 716,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 795,
+          "top": 291,
+          "right": 945,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": 155,
+          "dy": 10
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "section.home-zone",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S3-left",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": "left",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 715,
+          "y": 335
+        },
+        "drop": {
+          "x": 390,
+          "y": 345,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 566,
+          "top": 291,
+          "right": 716,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 315,
+          "top": 291,
+          "right": 465,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -325,
+          "dy": 10
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "time.clock-tile__time",
+        "section.tile.clock-tile",
+        "div.home-widget-slot",
+        "section.home-zone"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S4-below",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": "below",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 715,
+          "y": 335
+        },
+        "drop": {
+          "x": 641,
+          "y": 495,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 566,
+          "top": 291,
+          "right": 716,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 566,
+          "top": 441,
+          "right": 716,
+          "bottom": 529,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 160
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "button.launcher-button",
+        "section.tile.launcher-dock",
+        "div.home-widget-slot",
+        "section.home-zone"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S5a-zoom-in-pan",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": "below-left",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.7442,
+        "port": {
+          "x": 749,
+          "y": 318
+        },
+        "drop": {
+          "x": 676,
+          "y": 504,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 527,
+          "top": 252,
+          "right": 750,
+          "bottom": 383,
+          "width": 223,
+          "height": 131
+        },
+        "exec": {
+          "left": 564,
+          "top": 423,
+          "right": 787,
+          "bottom": 554,
+          "width": 223,
+          "height": 131
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 186
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S5b-zoom-out-pan",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": "below-left",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.3362,
+        "port": {
+          "x": 690,
+          "y": 351
+        },
+        "drop": {
+          "x": 616,
+          "y": 456,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 590,
+          "top": 322,
+          "right": 690,
+          "bottom": 381,
+          "width": 101,
+          "height": 59
+        },
+        "exec": {
+          "left": 566,
+          "top": 419,
+          "right": 667,
+          "bottom": 479,
+          "width": 101,
+          "height": 59
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 104
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "button.mini-media__pick",
+        "section.tile.mini-media",
+        "div.home-widget-slot",
+        "section.home-zone"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S6-1440x900-natural",
+      "window": {
+        "width": 1440,
+        "height": 900
+      },
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.666667,
+        "port": {
+          "x": 970,
+          "y": 139
+        },
+        "drop": {
+          "x": 1110,
+          "y": 272,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 770,
+          "top": 80,
+          "right": 970,
+          "bottom": 197,
+          "width": 200,
+          "height": 117
+        },
+        "exec": {
+          "left": 1010,
+          "top": 200,
+          "right": 1210,
+          "bottom": 317,
+          "width": 200,
+          "height": 117
+        },
+        "execRelativeToPort": {
+          "dx": 141,
+          "dy": 134
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S6b-1440x900-below-left",
+      "window": {
+        "width": 1440,
+        "height": 900
+      },
+      "layout": "below-left",
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.666667,
+        "port": {
+          "x": 819,
+          "y": 371
+        },
+        "drop": {
+          "x": 746,
+          "y": 544,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 620,
+          "top": 312,
+          "right": 820,
+          "bottom": 429,
+          "width": 200,
+          "height": 117
+        },
+        "exec": {
+          "left": 646,
+          "top": 472,
+          "right": 846,
+          "bottom": 589,
+          "width": 200,
+          "height": 117
+        },
+        "execRelativeToPort": {
+          "dx": -73,
+          "dy": 174
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "section.home-zone",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S7a-short-path-natural",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "projectPathLength": 30,
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 179,
+          "y": 124
+        },
+        "drop": {
+          "x": 105,
+          "y": 254,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 30,
+          "top": 80,
+          "right": 180,
+          "bottom": 168,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 30,
+          "top": 200,
+          "right": 180,
+          "bottom": 288,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 130
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S7a-short-path-below-left",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "projectPathLength": 30,
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 715,
+          "y": 335
+        },
+        "drop": {
+          "x": 641,
+          "y": 475,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 566,
+          "top": 291,
+          "right": 716,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 566,
+          "top": 421,
+          "right": 716,
+          "bottom": 509,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 140
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "button.launcher-button",
+        "section.tile.launcher-dock",
+        "div.home-widget-slot",
+        "section.home-zone"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S7b-long-path-natural",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "projectPathLength": 111,
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 179,
+          "y": 124
+        },
+        "drop": {
+          "x": 105,
+          "y": 254,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 30,
+          "top": 80,
+          "right": 180,
+          "bottom": 168,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 30,
+          "top": 200,
+          "right": 180,
+          "bottom": 288,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 130
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "div.workspace.pattern-dots",
+        "main.app__content",
+        "div.app.app--sage.app--home-classic.app--canvas-sage.app--macos",
+        "div"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "S7b-long-path-below-left",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "projectPathLength": 111,
+      "portHit": true,
+      "dropHitsExecutor": true,
+      "geometry": {
+        "zoom": 0.5,
+        "port": {
+          "x": 715,
+          "y": 335
+        },
+        "drop": {
+          "x": 641,
+          "y": 475,
+          "where": "body-centre"
+        },
+        "lead": {
+          "left": 566,
+          "top": 291,
+          "right": 716,
+          "bottom": 379,
+          "width": 150,
+          "height": 88
+        },
+        "exec": {
+          "left": 566,
+          "top": 421,
+          "right": 716,
+          "bottom": 509,
+          "width": 150,
+          "height": 88
+        },
+        "execRelativeToPort": {
+          "dx": -74,
+          "dy": 140
+        }
+      },
+      "stackAtDrop": [
+        "div.agent-card__body",
+        "article.agent-card.agent-card--claude.agent-card--idle",
+        "button.launcher-button",
+        "section.tile.launcher-dock",
+        "div.home-widget-slot",
+        "section.home-zone"
+      ],
+      "linksAdded": [
+        {
+          "from": "lead",
+          "to": "exec"
+        }
+      ],
+      "linksTotal": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "K1-keyboard-link",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "tabsToPort": 20,
+      "hint": "Выберите карточку Claude «Связать сюда» или нажмите Escape",
+      "tabsToConnect": 2,
+      "linksAdded": 1,
+      "messages": [],
+      "ok": true
+    },
+    {
+      "name": "K2-escape-after-port-press",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "modeStarted": true,
+      "modeEnded": true,
+      "linksAdded": 0,
+      "ok": true
+    },
+    {
+      "name": "K4a-injected-lost-capture",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "injection": "releasePointerCapture() called by the test inside the page mid-drag",
+      "previewBefore": true,
+      "lostCaptureBeforeNextMove": 0,
+      "previewAfterIntervention": true,
+      "portEvents": [
+        {
+          "type": "pointerdown",
+          "pointerId": 1,
+          "buttons": 1
+        },
+        {
+          "type": "gotpointercapture",
+          "pointerId": 1,
+          "buttons": 1
+        },
+        {
+          "type": "lostpointercapture",
+          "pointerId": 1,
+          "buttons": 1
+        }
+      ],
+      "lostCaptureEvents": 1,
+      "linksAfterIntervention": 0,
+      "previewAfterRelease": false,
+      "retry": {
+        "ok": true,
+        "linksAdded": [
+          {
+            "from": "lead",
+            "to": "exec"
+          }
+        ],
+        "messages": []
+      },
+      "ok": false,
+      "reason": "{\"previewBefore\":true,\"previewAfter\":true,\"lost\":1,\"links\":0,\"retry\":{\"ok\":true,\"linksAdded\":[{\"from\":\"lead\",\"to\":\"exec\"}],\"messages\":[]}}"
+    },
+    {
+      "name": "K4b-buttonless-move-mid-drag",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "previewBefore": true,
+      "previewAfterIntervention": false,
+      "portEvents": [
+        {
+          "type": "pointerdown",
+          "pointerId": 1,
+          "buttons": 1
+        },
+        {
+          "type": "gotpointercapture",
+          "pointerId": 1,
+          "buttons": 1
+        },
+        {
+          "type": "lostpointercapture",
+          "pointerId": 1,
+          "buttons": 0
+        }
+      ],
+      "lostCaptureEvents": 1,
+      "linksAfterIntervention": 0,
+      "previewAfterRelease": false,
+      "retry": {
+        "ok": true,
+        "linksAdded": [
+          {
+            "from": "lead",
+            "to": "exec"
+          }
+        ],
+        "messages": []
+      },
+      "ok": true
+    },
+    {
+      "name": "K3-escape-mid-drag",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "previewBeforeEscape": true,
+      "previewAfterEscape": false,
+      "linksAdded": 0,
+      "ok": true
+    }
+  ]
+}

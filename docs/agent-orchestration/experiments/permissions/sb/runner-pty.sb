@@ -1,0 +1,2 @@
+; opt-in: PTY. openpty needs read+write on /dev/ttys*; this also opens other ttys of the same uid.
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx") (regex #"^/dev/ttys[0-9]+$"))

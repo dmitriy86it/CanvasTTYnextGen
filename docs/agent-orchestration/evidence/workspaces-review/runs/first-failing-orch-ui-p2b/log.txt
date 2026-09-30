@@ -1,0 +1,45 @@
+{
+  "ok": false,
+  "error": "Error: outside the window: [...document.querySelectorAll(\".canvas-menu [role=menuitem]\")].find((el) => el.textContent.trim() === \"Запустить агента\")\n    at Object.reveal (file://<REPO>/scripts/orchestration-app-kit.mjs:197:31)\n    at async Object.clickEl (file://<REPO>/scripts/orchestration-app-kit.mjs:172:9)\n    at async file://<REPO>/scripts/smoke-orchestration-ui.mjs:221:3",
+  "passed": [
+    "first: no CLI process at start",
+    "three cards held in main with their roles",
+    "three cards drawn",
+    "a new card is idle",
+    "only the lead has a link port",
+    "the canvas is zoomed out during the gestures",
+    "Enter on the port starts linking; executors offer Link here",
+    "Escape cancels linking",
+    "a link across projects is refused with a reason",
+    "no link after the refusal",
+    "a link onto the same card is refused",
+    "the port drag links lead → executor",
+    "a successful link clears the refusal",
+    "a repeated pair is refused",
+    "goal dialog: the plan review is off by default",
+    "while the executor works: its card and the panel say so, the lead waits",
+    "a busy link offers neither a new goal nor deletion",
+    "running: only Pause and Stop (and clarify)",
+    "the executor stays shown as working for the whole turn",
+    "completed: plan and check results in the overview",
+    "completed: the history is in its tab",
+    "completed: no run command offered",
+    "cards show the completed run",
+    "the failed check is in the history with its exit code",
+    "the lead's findings open as a list",
+    "the run panel scrolls with the mouse wheel (the canvas does not take the wheel over it)",
+    "the executor's report opens with its summary",
+    "goal dialog: the plan review is off by default",
+    "plan review: paused with its reason; Resume, Step, Stop offered",
+    "plan review: the plan is in the summary, in view",
+    "goal dialog: the plan review is off by default",
+    "stopping an active run: cards show it stopped",
+    "a turn without a stored report says that the journal kept no text",
+    "three runs on the link"
+  ],
+  "failures": [
+    "a header drag at zoom 0.82 after a pan moves the card and main keeps it: [{\"x\":1706,\"y\":-48},{\"x\":1706,\"y\":-48}]"
+  ],
+  "shots": "<WSR>/reviewer-ui/orch-par/p2b/shots"
+}
+exit=1

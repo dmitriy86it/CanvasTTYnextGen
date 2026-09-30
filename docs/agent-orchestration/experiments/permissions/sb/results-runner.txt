@@ -1,0 +1,175 @@
+# bash sb/validate.sh <scratch>   (2026-09-22, macOS 27.0 26A428, node v26.8.1, git version 2.50.1 (Apple Git-155))
+# rc=0; paths sanitized: <scratch> = scratchpad, <home> = real $HOME. Fixture removed by the script (trap).
+== guard: empty argument
+FAIL: empty argument
+probe rc=2 on empty argument
+== guard: unresolved path
+sb.sh: USERDATA must be an existing resolved dir: /tmp
+== positive control (outside sandbox, same probe, same env)
+deny.read-~/.ssh/id_ed25519: ALLOWED
+deny.read-~/.aws/credentials: ALLOWED
+deny.read-~/.codex/auth.json: ALLOWED
+deny.read-~/.claude/.credentials.json: ALLOWED
+deny.read-~/.claude.json: ALLOWED
+deny.read-~/.config/gh/hosts.yml: ALLOWED
+deny.read-~/.npmrc: ALLOWED
+deny.read-~/.gitconfig: ALLOWED
+deny.read-~/.config/git/config: ALLOWED
+deny.read-~/Library/Keychains/login.keychain-db: ALLOWED
+deny.read-~/.netrc: ALLOWED
+deny.read-~/.docker/config.json: ALLOWED
+deny.read-~/.kube/config: ALLOWED
+deny.read-~/.gnupg/pubring.kbx: ALLOWED
+deny.ls-~/.ssh: ALLOWED
+deny.read-userdata-state: ALLOWED
+deny.ls-userdata: ALLOWED
+deny.read-other-run: ALLOWED
+deny.read-srcrepo-src: ALLOWED
+deny.read-srcrepo-gitconfig: ALLOWED
+deny.write-userdata-state: ALLOWED
+deny.write-userdata-root: ALLOWED
+deny.write-other-run: ALLOWED
+deny.write-srcrepo: ALLOWED
+deny.write-node_modules: ALLOWED
+deny.write-realhome: ALLOWED
+deny.write-outside: ALLOWED
+deny.write-user-tmpdir: ALLOWED
+deny.net-localhost: ALLOWED
+deny.net-external-ip: ALLOWED
+deny.dns-lookup: ALLOWED
+deny.openpty: ALLOWED
+allow.read-work: ALLOWED
+allow.write-work: ALLOWED
+allow.write-tmp: ALLOWED
+allow.write-fakehome: ALLOWED
+allow.read-node_modules-symlink: ALLOWED
+allow.node-require-dep: ALLOWED
+allow.git-log-shared-clone: ALLOWED
+env-names: ELECTRON_RUN_AS_NODE FAKE_PARENT_TOKEN HOME LANG OLDPWD PATH PWD SHLVL TMPDIR _ 
+home: <scratch>/CTTYEXP-fx.0LHN/realhome/Library/Application Support/CanvasTTY/runs/r1/home
+== sandbox EXTRAS='': direct, grandchild, detached
+deny.read-~/.ssh/id_ed25519: denied
+deny.read-~/.aws/credentials: denied
+deny.read-~/.codex/auth.json: denied
+deny.read-~/.claude/.credentials.json: denied
+deny.read-~/.claude.json: denied
+deny.read-~/.config/gh/hosts.yml: denied
+deny.read-~/.npmrc: denied
+deny.read-~/.gitconfig: denied
+deny.read-~/.config/git/config: denied
+deny.read-~/Library/Keychains/login.keychain-db: denied
+deny.read-~/.netrc: denied
+deny.read-~/.docker/config.json: denied
+deny.read-~/.kube/config: denied
+deny.read-~/.gnupg/pubring.kbx: denied
+deny.ls-~/.ssh: denied
+deny.read-userdata-state: denied
+deny.ls-userdata: denied
+deny.read-other-run: denied
+deny.read-srcrepo-src: denied
+deny.read-srcrepo-gitconfig: denied
+deny.write-userdata-state: denied
+deny.write-userdata-root: denied
+deny.write-other-run: denied
+deny.write-srcrepo: denied
+deny.write-node_modules: denied
+deny.write-realhome: denied
+deny.write-outside: denied
+deny.write-user-tmpdir: denied
+deny.net-localhost: denied
+deny.net-external-ip: denied
+deny.dns-lookup: denied
+deny.openpty: denied
+allow.read-work: ALLOWED
+allow.write-work: ALLOWED
+allow.write-tmp: ALLOWED
+allow.write-fakehome: ALLOWED
+allow.read-node_modules-symlink: ALLOWED
+allow.node-require-dep: ALLOWED
+allow.git-log-shared-clone: ALLOWED
+env-names: HOME LANG OLDPWD PATH PWD SHLVL TMPDIR _ 
+home: <scratch>/CTTYEXP-fx.0LHN/realhome/Library/Application Support/CanvasTTY/runs/r1/home
+direct[]: 39 checks as expected
+grandchild[]: 39 checks as expected
+detached[]: 39 checks as expected
+== sandbox EXTRAS='denyhome': direct, grandchild, detached
+deny.read-~/.ssh/id_ed25519: denied
+deny.read-~/.aws/credentials: denied
+deny.read-~/.codex/auth.json: denied
+deny.read-~/.claude/.credentials.json: denied
+deny.read-~/.claude.json: denied
+deny.read-~/.config/gh/hosts.yml: denied
+deny.read-~/.npmrc: denied
+deny.read-~/.gitconfig: denied
+deny.read-~/.config/git/config: denied
+deny.read-~/Library/Keychains/login.keychain-db: denied
+deny.read-~/.netrc: denied
+deny.read-~/.docker/config.json: denied
+deny.read-~/.kube/config: denied
+deny.read-~/.gnupg/pubring.kbx: denied
+deny.ls-~/.ssh: denied
+deny.read-userdata-state: denied
+deny.ls-userdata: denied
+deny.read-other-run: denied
+deny.read-srcrepo-src: denied
+deny.read-srcrepo-gitconfig: denied
+deny.write-userdata-state: denied
+deny.write-userdata-root: denied
+deny.write-other-run: denied
+deny.write-srcrepo: denied
+deny.write-node_modules: denied
+deny.write-realhome: denied
+deny.write-outside: denied
+deny.write-user-tmpdir: denied
+deny.net-localhost: denied
+deny.net-external-ip: denied
+deny.dns-lookup: denied
+deny.openpty: denied
+allow.read-work: ALLOWED
+allow.write-work: ALLOWED
+allow.write-tmp: ALLOWED
+allow.write-fakehome: ALLOWED
+allow.read-node_modules-symlink: ALLOWED
+allow.node-require-dep: ALLOWED
+allow.git-log-shared-clone: ALLOWED
+env-names: HOME LANG OLDPWD PATH PWD SHLVL TMPDIR _ 
+home: <scratch>/CTTYEXP-fx.0LHN/realhome/Library/Application Support/CanvasTTY/runs/r1/home
+direct[denyhome]: 39 checks as expected
+grandchild[denyhome]: 39 checks as expected
+detached[denyhome]: 39 checks as expected
+== denyhome: toolchain inside fake HOME
+read-~/notes.txt: denied (control ok)
+read-~/notes.txt-without-denyhome: ALLOWED (control ok)
+node+lib-in-home-with-TOOLCHAIN: ALLOWED (control ok)
+node+lib-in-home-without-TOOLCHAIN: denied (control ok)
+exec-binary-in-denied-home-without-TOOLCHAIN: ALLOWED (control ok) -- NOT ENSURED
+sh-git-without-TOOLCHAIN: ALLOWED (control ok)
+== localhost:PORT (opt-in)
+min:listen+connect-P1: denied (control ok)
+localhost:listen+connect-P1: ALLOWED (control ok)
+localhost:listen-random-port: denied (control ok)
+localhost:bind-0.0.0.0-P1: ALLOWED (control ok) -- NOT ENSURED
+localhost:LAN-IP-reaches-sandboxed-0.0.0.0-server: ALLOWED (control ok) -- NOT ENSURED
+localhost:connect-outside-service-P2: denied (control ok)
+localhost:connect-outside-service-on-P1: ALLOWED (control ok) -- NOT ENSURED
+== unix sockets in TMP (opt-in)
+min:unix-in-TMP: denied (control ok)
+unix:unix-in-TMP: ALLOWED (control ok)
+unix:connect-outside-socket: denied (control ok)
+unix:listen-outside-TMP: denied (control ok)
+== PTY (opt-in)
+foreign pty (created outside the sandbox): /dev/ttys002
+min:openpty: denied (control ok)
+min:open-foreign-tty: denied (control ok)
+pty:openpty: ALLOWED (control ok)
+pty:open-foreign-tty: ALLOWED (control ok) -- NOT ENSURED
+== informational: denyhome with REALHOME = real $HOME (nothing is read; only exec)
+real-home denyhome TOOLCHAIN=none: /bin/sh -c true -> ok
+real-home denyhome TOOLCHAIN=none: /usr/bin/git --version -> ok
+real-home denyhome TOOLCHAIN=none: <home>/.hermes/node/bin/node -e 0 -> ok
+real-home denyhome TOOLCHAIN=none: <home>/.hermes/node/bin/node -p require(process.execPath.replace(/bin.node$/,"lib/node_modules/npm/package.json")).name -> FAILS
+real-home denyhome TOOLCHAIN=node-dir<home>/.hermes/node: /bin/sh -c true -> ok
+real-home denyhome TOOLCHAIN=node-dir<home>/.hermes/node: /usr/bin/git --version -> ok
+real-home denyhome TOOLCHAIN=node-dir<home>/.hermes/node: <home>/.hermes/node/bin/node -e 0 -> ok
+real-home denyhome TOOLCHAIN=node-dir<home>/.hermes/node: <home>/.hermes/node/bin/node -p require(process.execPath.replace(/bin.node$/,"lib/node_modules/npm/package.json")).name -> ok
+== result: PASS

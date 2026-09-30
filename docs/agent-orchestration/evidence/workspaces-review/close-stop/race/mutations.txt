@@ -1,0 +1,34 @@
+== mutation M-A: dispose guard off
+  "failures": [
+    {
+      "name": "dispose during stop: main still manages the live process",
+      "ok": false
+    }
+  ],
+  "electronExit": 1,
+  "dir": "<scratchpad>/mutA"
+}
+✖ stop + dispose meanwhile: not stopped; the live process keeps its record until its exit (152.886333ms)
+✖ stop + dispose, exit while the stop still waits: exited (2004.7215ms)
+✖ after the race: a second stop signals the kept process again; a second dispose still keeps it (63.272459ms)
+ℹ pass 8
+ℹ fail 3
+✖ failing tests:
+✖ stop + dispose meanwhile: not stopped; the live process keeps its record until its exit (152.886333ms)
+✖ stop + dispose, exit while the stop still waits: exited (2004.7215ms)
+✖ after the race: a second stop signals the kept process again; a second dispose still keeps it (63.272459ms)
+-- external
+✖ stop followed by dispose must not produce an outcome that CloseDialog treats as confirmed stop (26.978917ms)
+ℹ pass 1
+ℹ fail 1
+✖ failing tests:
+== mutation M-B: absent -> stopped
+  "failures": [
+    {
+      "name": "absent: timed out: absent is shown as not confirmed",
+      "ok": false
+    }
+  ],
+  "electronExit": 1,
+  "dir": "<scratchpad>/mutB"
+}

@@ -1,0 +1,21 @@
+{
+  "provider": "claude",
+  "dir": "~/canvastty-s4/s4c-app",
+  "configured": true,
+  "discovered": true,
+  "ready": true,
+  "how": "claude -p --input-format stream-json: control requests initialize and mcp_status (probe.ts probeClaude), no user message",
+  "evidence": {
+    "configured": ".mcp.json has release-form; enabledMcpjsonServers includes it",
+    "log": "<scratchpad>/s4-probe/probe-S4C.jsonl",
+    "status": "connected",
+    "others": 6,
+    "initialize": [
+      {
+        "ts": "2026-09-26T18:54:33.475Z",
+        "client": "claude-code 2.1.283"
+      }
+    ],
+    "globalFilesChanged": []
+  }
+}

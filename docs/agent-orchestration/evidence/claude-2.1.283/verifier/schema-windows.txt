@@ -1,0 +1,46 @@
+("can_use_tool")	matches 3/3	identical 3	diff 0/0
+("init")	matches 2/2	identical 1	diff 1/1
+("elicitation")	matches 2/2	identical 2	diff 0/0
+("initialize")	matches 6/6	identical 6	diff 0/0
+("mcp_status")	matches 1/1	identical 1	diff 0/0
+("interrupt")	matches 10/10	identical 9	diff 1/1
+("set_permission_mode")	matches 1/1	identical 1	diff 0/0
+("request_user_dialog")	matches 2/2	identical 2	diff 0/0
+("success")	matches 17/17	identical 16	diff 1/1
+("error")	matches 60/61	identical 56	diff 4/5
+("control_response")	matches 2/2	identical 1	diff 1/1
+("control_cancel_request")	matches 2/2	identical 1	diff 1/1
+("control_request")	matches 5/5	identical 5	diff 0/0
+("result")	matches 5/4	identical 3	diff 2/1
+behavior:R("allow")	matches 4/4	identical 4	diff 0/0
+behavior:R("deny")	matches 4/4	identical 4	diff 0/0
+["can_use_tool","request_user_dialog"]	matches 1/1	identical 1	diff 0/0
+case"can_use_tool"	matches 2/2	identical 2	diff 0/0
+case"elicitation"	matches 2/2	identical 2	diff 0/0
+case"interrupt"	matches 9/9	identical 7	diff 2/2
+case"mcp_status"	matches 2/2	identical 2	diff 0/0
+case"initialize"	matches 8/8	identical 8	diff 0/0
+type:"control_response"	matches 64/64	identical 62	diff 2/2
+type:"control_cancel_request"	matches 7/7	identical 6	diff 1/1
+subtype:"success"	matches 41/41	identical 37	diff 4/4
+subtype:"error"	matches 54/54	identical 54	diff 0/0
+subtype:"init"	matches 1/1	identical 0	diff 1/1
+permission_denials:	matches 16/16	identical 13	diff 3/3
+structured_output:	matches 7/7	identical 7	diff 0/0
+total_cost_usd:	matches 19/19	identical 14	diff 5/5
+num_turns:	matches 22/22	identical 17	diff 5/5
+mcp_servers:	matches 16/16	identical 14	diff 2/2
+updatedPermissions:	matches 13/13	identical 13	diff 0/0
+requested_schema:	matches 4/4	identical 4	diff 0/0
+mcp_server_name:	matches 12/12	identical 11	diff 1/1
+permission_suggestions:	matches 8/8	identical 7	diff 1/1
+blocked_path:	matches 3/3	identical 3	diff 0/0
+decision_reason:	matches 9/10	identical 8	diff 1/2
+decision_reason_type:	matches 6/6	identical 5	diff 1/1
+matched_ask_rule:	matches 3/3	identical 3	diff 0/0
+requires_user_interaction:	matches 7/7	identical 5	diff 2/2
+No conversation found with session ID	matches 3/3	identical 1	diff 2/2
+can_use_tool-0 keys identical (11 keys)
+can_use_tool-1 keys identical (27 keys)
+can_use_tool-2 keys identical (18 keys)
+result-success-0 keys identical (55 keys)

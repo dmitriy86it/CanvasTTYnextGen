@@ -1,0 +1,335 @@
+# state: working tree, final integration, prepare.ts sha256 a9f2852d7f26e6aefb8c14403a8a601bfbd29b601c2536cdbc721cf2da40b278
+TAP version 13
+# Subtest: bad: function before return -> config_unknown, not ok
+ok 1 - bad: function before return -> config_unknown, not ok
+  ---
+  duration_ms: 5.36925
+  type: 'test'
+  ...
+# Subtest: bad: if(false){return} -> config_unknown, not ok
+ok 2 - bad: if(false){return} -> config_unknown, not ok
+  ---
+  duration_ms: 1.82975
+  type: 'test'
+  ...
+# Subtest: bad: if(false) return; without braces -> config_unknown, not ok
+ok 3 - bad: if(false) return; without braces -> config_unknown, not ok
+  ---
+  duration_ms: 1.531125
+  type: 'test'
+  ...
+# Subtest: bad: if: ... endif; -> config_unknown, not ok
+ok 4 - bad: if: ... endif; -> config_unknown, not ok
+  ---
+  duration_ms: 1.367917
+  type: 'test'
+  ...
+# Subtest: bad: else branch -> config_unknown, not ok
+ok 5 - bad: else branch -> config_unknown, not ok
+  ---
+  duration_ms: 1.065875
+  type: 'test'
+  ...
+# Subtest: bad: elseif branch -> config_unknown, not ok
+ok 6 - bad: elseif branch -> config_unknown, not ok
+  ---
+  duration_ms: 1.048959
+  type: 'test'
+  ...
+# Subtest: bad: closure -> config_unknown, not ok
+ok 7 - bad: closure -> config_unknown, not ok
+  ---
+  duration_ms: 1.098584
+  type: 'test'
+  ...
+# Subtest: bad: static closure with use -> config_unknown, not ok
+ok 8 - bad: static closure with use -> config_unknown, not ok
+  ---
+  duration_ms: 0.932458
+  type: 'test'
+  ...
+# Subtest: bad: class method -> config_unknown, not ok
+ok 9 - bad: class method -> config_unknown, not ok
+  ---
+  duration_ms: 0.902125
+  type: 'test'
+  ...
+# Subtest: bad: match -> config_unknown, not ok
+ok 10 - bad: match -> config_unknown, not ok
+  ---
+  duration_ms: 1.987417
+  type: 'test'
+  ...
+# Subtest: bad: ternary -> config_unknown, not ok
+ok 11 - bad: ternary -> config_unknown, not ok
+  ---
+  duration_ms: 1.559167
+  type: 'test'
+  ...
+# Subtest: bad: code after return -> config_unknown, not ok
+ok 12 - bad: code after return -> config_unknown, not ok
+  ---
+  duration_ms: 1.028
+  type: 'test'
+  ...
+# Subtest: bad: two top-level returns -> config_unknown, not ok
+ok 13 - bad: two top-level returns -> config_unknown, not ok
+  ---
+  duration_ms: 1.045833
+  type: 'test'
+  ...
+# Subtest: bad: variable then return $config -> config_unknown, not ok
+ok 14 - bad: variable then return $config -> config_unknown, not ok
+  ---
+  duration_ms: 0.966209
+  type: 'test'
+  ...
+# Subtest: bad: array_merge -> config_unknown, not ok
+ok 15 - bad: array_merge -> config_unknown, not ok
+  ---
+  duration_ms: 1.344334
+  type: 'test'
+  ...
+# Subtest: bad: return require -> config_unknown, not ok
+ok 16 - bad: return require -> config_unknown, not ok
+  ---
+  duration_ms: 0.878208
+  type: 'test'
+  ...
+# Subtest: bad: heredoc -> config_unknown, not ok
+ok 17 - bad: heredoc -> config_unknown, not ok
+  ---
+  duration_ms: 1.776834
+  type: 'test'
+  ...
+# Subtest: bad: goto -> config_unknown, not ok
+ok 18 - bad: goto -> config_unknown, not ok
+  ---
+  duration_ms: 1.115208
+  type: 'test'
+  ...
+# Subtest: bad: switch -> config_unknown, not ok
+ok 19 - bad: switch -> config_unknown, not ok
+  ---
+  duration_ms: 0.98075
+  type: 'test'
+  ...
+# Subtest: bad: while(false) -> config_unknown, not ok
+ok 20 - bad: while(false) -> config_unknown, not ok
+  ---
+  duration_ms: 0.958125
+  type: 'test'
+  ...
+# Subtest: bad: try/finally -> config_unknown, not ok
+ok 21 - bad: try/finally -> config_unknown, not ok
+  ---
+  duration_ms: 0.9555
+  type: 'test'
+  ...
+# Subtest: bad: declare block -> config_unknown, not ok
+ok 22 - bad: declare block -> config_unknown, not ok
+  ---
+  duration_ms: 0.971667
+  type: 'test'
+  ...
+# Subtest: bad: braced namespace -> config_unknown, not ok
+ok 23 - bad: braced namespace -> config_unknown, not ok
+  ---
+  duration_ms: 0.97575
+  type: 'test'
+  ...
+# Subtest: bad: __halt_compiler before return -> config_unknown, not ok
+ok 24 - bad: __halt_compiler before return -> config_unknown, not ok
+  ---
+  duration_ms: 0.956541
+  type: 'test'
+  ...
+# Subtest: bad: array union (left wins) -> config_unknown, not ok
+ok 25 - bad: array union (left wins) -> config_unknown, not ok
+  ---
+  duration_ms: 0.960084
+  type: 'test'
+  ...
+# Subtest: bad: inline HTML after ?> mid-file -> config_unknown, not ok
+ok 26 - bad: inline HTML after ?> mid-file -> config_unknown, not ok
+  ---
+  duration_ms: 1.018959
+  type: 'test'
+  ...
+# Subtest: bad: // comment closed by ?> -> config_unknown, not ok
+ok 27 - bad: // comment closed by ?> -> config_unknown, not ok
+  ---
+  duration_ms: 1.041917
+  type: 'test'
+  ...
+# Subtest: bad: \# comment closed by ?> -> config_unknown, not ok
+ok 28 - bad: \# comment closed by ?> -> config_unknown, not ok
+  ---
+  duration_ms: 0.822042
+  type: 'test'
+  ...
+# Subtest: bad: // comment ended by bare \\r -> config_unknown, not ok
+ok 29 - bad: // comment ended by bare \\r -> config_unknown, not ok
+  ---
+  duration_ms: 1.116125
+  type: 'test'
+  ...
+# Subtest: bad: <?PHP with "<?php" in a string -> config_unknown, not ok
+ok 30 - bad: <?PHP with "<?php" in a string -> config_unknown, not ok
+  ---
+  duration_ms: 0.807167
+  type: 'test'
+  ...
+# Subtest: bad: no <?php at all -> config_unknown, not ok
+ok 31 - bad: no <?php at all -> config_unknown, not ok
+  ---
+  duration_ms: 0.749542
+  type: 'test'
+  ...
+# Subtest: bad: <?= before <?php (team-lead case) -> config_unknown, not ok
+ok 32 - bad: <?= before <?php (team-lead case) -> config_unknown, not ok
+  ---
+  duration_ms: 0.768
+  type: 'test'
+  ...
+# Subtest: bad: <?= before <?php, dangerous order -> config_unknown, not ok
+ok 33 - bad: <?= before <?php, dangerous order -> config_unknown, not ok
+  ---
+  duration_ms: 0.970958
+  type: 'test'
+  ...
+# Subtest: bad: <? short tag before <?php -> config_unknown, not ok
+ok 34 - bad: <? short tag before <?php -> config_unknown, not ok
+  ---
+  duration_ms: 0.963083
+  type: 'test'
+  ...
+# Subtest: bad: <?PHP uppercase with a function -> config_unknown, not ok
+ok 35 - bad: <?PHP uppercase with a function -> config_unknown, not ok
+  ---
+  duration_ms: 0.882166
+  type: 'test'
+  ...
+# Subtest: bad: ?> mid-file then <?php return -> config_unknown, not ok
+ok 36 - bad: ?> mid-file then <?php return -> config_unknown, not ok
+  ---
+  duration_ms: 0.862125
+  type: 'test'
+  ...
+# Subtest: bad: <?phpX is not an open tag -> config_unknown, not ok
+ok 37 - bad: <?phpX is not an open tag -> config_unknown, not ok
+  ---
+  duration_ms: 0.839834
+  type: 'test'
+  ...
+# Subtest: bad: NBSP after <?php, real tag in a comment -> config_unknown, not ok
+ok 38 - bad: NBSP after <?php, real tag in a comment -> config_unknown, not ok
+  ---
+  duration_ms: 0.683791
+  type: 'test'
+  ...
+# Subtest: bad: \\v after <?php, real tag in a comment -> config_unknown, not ok
+ok 39 - bad: \\v after <?php, real tag in a comment -> config_unknown, not ok
+  ---
+  duration_ms: 0.726209
+  type: 'test'
+  ...
+# Subtest: bad: \\f after <?php, real tag in a comment -> config_unknown, not ok
+ok 40 - bad: \\f after <?php, real tag in a comment -> config_unknown, not ok
+  ---
+  duration_ms: 0.653833
+  type: 'test'
+  ...
+# Subtest: good: Laravel 11 style (use, docblocks, //, \#, /* */) -> ok
+ok 41 - good: Laravel 11 style (use, docblocks, //, \#, /* */) -> ok
+  ---
+  duration_ms: 1.182625
+  type: 'test'
+  ...
+# Subtest: good: declare(strict_types=1) -> ok
+ok 42 - good: declare(strict_types=1) -> ok
+  ---
+  duration_ms: 0.894541
+  type: 'test'
+  ...
+# Subtest: good: namespace + use -> ok
+ok 43 - good: namespace + use -> ok
+  ---
+  duration_ms: 0.954417
+  type: 'test'
+  ...
+# Subtest: good: declare + namespace + use -> ok
+ok 44 - good: declare + namespace + use -> ok
+  ---
+  duration_ms: 1.718417
+  type: 'test'
+  ...
+# Subtest: good: trailing ?> -> ok
+ok 45 - good: trailing ?> -> ok
+  ---
+  duration_ms: 2.021708
+  type: 'test'
+  ...
+# Subtest: good: trailing ?> and newline -> ok
+ok 46 - good: trailing ?> and newline -> ok
+  ---
+  duration_ms: 0.925791
+  type: 'test'
+  ...
+# Subtest: good: return array(...) -> ok
+ok 47 - good: return array(...) -> ok
+  ---
+  duration_ms: 0.763292
+  type: 'test'
+  ...
+# Subtest: good: 'return' in a value and a comment -> ok
+ok 48 - good: 'return' in a value and a comment -> ok
+  ---
+  duration_ms: 0.9565
+  type: 'test'
+  ...
+# Subtest: good: no trailing semicolon before ?> -> ok
+ok 49 - good: no trailing semicolon before ?> -> ok
+  ---
+  duration_ms: 0.975583
+  type: 'test'
+  ...
+# Subtest: good: <?PHP uppercase, plain return -> ok
+ok 50 - good: <?PHP uppercase, plain return -> ok
+  ---
+  duration_ms: 0.86625
+  type: 'test'
+  ...
+# Subtest: good: HTML before <?php -> ok
+ok 51 - good: HTML before <?php -> ok
+  ---
+  duration_ms: 0.968667
+  type: 'test'
+  ...
+# Subtest: good: BOM before <?php -> ok
+ok 52 - good: BOM before <?php -> ok
+  ---
+  duration_ms: 1.084834
+  type: 'test'
+  ...
+# Subtest: actual MySQL on production.invalid (plain file) stays a blocker
+ok 53 - actual MySQL on production.invalid (plain file) stays a blocker
+  ---
+  duration_ms: 1.558125
+  type: 'test'
+  ...
+# Subtest: no password from a URL or the file reaches the item or the result
+ok 54 - no password from a URL or the file reaches the item or the result
+  ---
+  duration_ms: 2.487875
+  type: 'test'
+  ...
+1..54
+# tests 54
+# suites 0
+# pass 54
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 166.544625

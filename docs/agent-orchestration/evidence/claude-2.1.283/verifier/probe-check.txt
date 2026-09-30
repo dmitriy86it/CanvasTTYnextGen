@@ -1,0 +1,19 @@
+Verifier check of probe.json / probe.log (Claude Code 2.1.283, two real turns), compared with claude-2.1.282/probe.json
+- Version: claudeInstalled and claude = "2.1.283 (Claude Code)"; system/init claude_code_version 2.1.283 in both turns.
+- Model: claude-fable-5-1 in both turns (2.1.282 run: claude-opus-5-5). The probe passes no --model; the default
+  comes from the user's settings, not from the adapter.
+- permissionMode "auto" (same as the 2.1.282 run), apiKeySource "none", mcp_servers 6, output_style default.
+- Events: unique set identical to the 2.1.282 run per turn (hook_started/hook_response/init/hook_progress,
+  [thinking_tokens on resume], assistant, rate_limit_event, user, result/success). No new message types.
+  control_request: none in either turn (no permission asks, no elicitation) - as in 2.1.282.
+- system/init field names: 26, identical to 2.1.282. Keys the adapter reads are all present.
+  tools 55 in turn 1 (2.1.282: 30), 85 on resume (same); display-only (activity.ts:100-108), no contract impact.
+- result: subtype success, is_error false, structured_output {"word":"lantern"}, session_id equal to init;
+  total_cost_usd, num_turns, duration_ms numbers; permission_denials 0. result field names (26) identical to 2.1.282.
+  report valid, contract verified in both turns.
+- Resume: turn 2 --resume kept session_id 2fb17da4-c61d-4c07-b024-98ad8a311d96 and answered "lantern".
+- Processes: exitCode 0, no signal, stdout ended, groupCleared true, supervisor exit 0, leftover alive [] / inGroup []
+  in both turns; stderrTail empty.
+- Secrets/config: only field names and counts, no values of cwd/memory_paths/tools/mcp names, no tokens, keys,
+  home paths or e-mail (grep clean).
+Verdict: 2.1.283 behaves like 2.1.282 on the native path; admission criteria met.

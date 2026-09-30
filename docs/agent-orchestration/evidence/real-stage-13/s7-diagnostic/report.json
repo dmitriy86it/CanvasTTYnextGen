@@ -1,0 +1,210 @@
+{
+  "mode": "real",
+  "startedAt": "2026-09-25T18:19:23.890Z",
+  "order": [
+    "S7"
+  ],
+  "limits": {
+    "perScenario": {
+      "turns": 8,
+      "roundsPerStage": 2,
+      "replans": 1,
+      "runMin": 20,
+      "scenarioMin": 20
+    },
+    "series": {
+      "turns": 32,
+      "minutes": 100
+    }
+  },
+  "scenarios": {
+    "S7": {
+      "mode": "no run: «Проверить окружение» only",
+      "turns": {
+        "codex": 0,
+        "claude": 0
+      },
+      "project": "<the person's project>",
+      "environment": {
+        "state": "done",
+        "error": null,
+        "providers": [
+          {
+            "provider": "claude",
+            "error": null,
+            "items": [
+              {
+                "id": "commands",
+                "confirmed": true,
+                "text": "Команды: 104: chukovsky, habr, humanizer-ru, humanizer-ru-smixs, infostyle, deep-research, caveman:cavecrew, caveman:caveman, caveman:caveman-commit, caveman:caveman-compress, caveman:caveman-help, caveman:caveman-review, caveman:caveman-stats, ponytail:ponytail, ponytail:ponytail-audit, ponytail:ponytail-debt, ponytail:ponytail-gain, ponytail:ponytail-help, ponytail:ponytail-review, superpowers:brainstorming, superpowers:diagnosing-superpowers, superpowers:dispatching-parallel-agents, superpowers:executing-plans, superpowers:finishing-a-development-branch, superpowers:receiving-code-review, superpowers:requesting-code-review, superpowers:subagent-driven-development, superpowers:systematic-debugging, superpowers:test-driven-development, superpowers:using-git-worktrees, …"
+              },
+              {
+                "id": "agents",
+                "confirmed": true,
+                "text": "Свои агенты: 22: caveman:cavecrew-builder, caveman:cavecrew-investigator, caveman:cavecrew-reviewer, claude, Explore, general-purpose, habr-editor, habr-humanizer, habr-reader, habr-researcher, Plan, statusline-setup, understand-anything:architecture-analyzer, understand-anything:article-analyzer, understand-anything:assemble-reviewer, understand-anything:design-analyzer, understand-anything:domain-analyzer, understand-anything:file-analyzer, understand-anything:graph-reviewer, understand-anything:knowledge-graph-guide, understand-anything:project-scanner, understand-anything:tour-builder"
+              },
+              {
+                "id": "models",
+                "confirmed": true,
+                "text": "Моделей доступно: 11"
+              },
+              {
+                "id": "account",
+                "confirmed": true,
+                "text": "Аккаунт: Claude Max"
+              },
+              {
+                "id": "mcp",
+                "confirmed": true,
+                "text": "MCP-серверы: plugin:context7:context7 (pending), plugin:playwright:playwright (pending), obsidian (failed), claude.ai Claude Docs (pending), claude.ai Atlassian Rovo (needs-auth), claude.ai Gmail (pending)"
+              },
+              {
+                "id": "mcp_auth",
+                "confirmed": true,
+                "text": "MCP требуют входа: claude.ai Atlassian Rovo — needs sign-in: /mcp in a terminal"
+              },
+              {
+                "id": "skills",
+                "confirmed": false,
+                "text": "Скилы: не подтверждено — listed by the CLI at session start (system init), not here"
+              }
+            ]
+          },
+          {
+            "provider": "codex",
+            "error": null,
+            "items": [
+              {
+                "id": "model",
+                "confirmed": true,
+                "text": "Модель: gpt-6-astra"
+              },
+              {
+                "id": "approval",
+                "confirmed": true,
+                "text": "Политика подтверждений: on-request"
+              },
+              {
+                "id": "sandbox",
+                "confirmed": true,
+                "text": "Песочница: workspace-write"
+              },
+              {
+                "id": "skills",
+                "confirmed": true,
+                "text": "Скилы: 46: admin-and-broadcast-ops, browser-use:browser, cavecrew, caveman, caveman-commit, caveman-compress, caveman-help, caveman-review, caveman-stats, chart-rendering-pipeline, codex-orchestration:codex-orchestration, db-redis-stateflows, docker-vps-bot-ops, documents:documents, frontend-skill, geo-timezone-onboarding, gh-address-comments, gh-fix-ci, integration-test-harness-bot, interaction-design, kerykeion-astro-engine, openai-docs, pdf:pdf, playwright, presentations:Presentations, product-copy-and-conversation, security-best-practices, security-ownership-map, security-threat-model, sentry, …"
+              },
+              {
+                "id": "plugins",
+                "confirmed": true,
+                "text": "Плагины: 21: documents, pdf, spreadsheets, presentations, template-creator, codex-app-tools, browser, unified-computer-use, chrome, computer-use, visualize, codex-orchestration, build-ios-apps, app-69312da8e4dc81919370cb86fd172b6c, app-6938a94a61d881918ef32cb999ff937c, codex-security, openai-templates, figma, gmail, google-drive, plugin-management"
+              },
+              {
+                "id": "mcp",
+                "confirmed": true,
+                "text": "MCP-серверы: codex-security (unsupported), codex_app (unsupported), codex_apps (bearerToken), computer-use (unsupported), context7 (unsupported), cua_repl (unsupported), fable-advisor-py (unsupported), fable-advisor-python (unsupported), fable-advisor-python3 (unsupported), node_repl (unsupported), openaiDeveloperDocs (unsupported)"
+              },
+              {
+                "id": "hooks",
+                "confirmed": true,
+                "text": "Хуки: найдено 17, включено 10: permissionRequest, postToolUse, preCompact, postCompact, sessionStart, sessionEnd, userPromptSubmit, subagentStart, subagentStop, stop"
+              },
+              {
+                "id": "account",
+                "confirmed": true,
+                "text": "Аккаунт: chatgpt (prolite)"
+              }
+            ]
+          }
+        ]
+      },
+      "app": {
+        "claudeMcp": [
+          "context7",
+          "playwright",
+          "obsidian",
+          "Docs",
+          "Rovo",
+          "Gmail"
+        ],
+        "codexMcp": [
+          "codex-security",
+          "codex_app",
+          "codex_apps",
+          "computer-use",
+          "context7",
+          "cua_repl",
+          "fable-advisor-py",
+          "fable-advisor-python",
+          "fable-advisor-python3",
+          "node_repl",
+          "openaiDeveloperDocs"
+        ]
+      },
+      "terminal": {
+        "claudeMcp": [
+          "obsidian"
+        ],
+        "codexMcp": [
+          "codex_app",
+          "computer-use",
+          "context7",
+          "cua_repl",
+          "fable-advisor-py",
+          "fable-advisor-python",
+          "fable-advisor-python3",
+          "node_repl",
+          "openaiDeveloperDocs"
+        ]
+      },
+      "claudeMcpDiffers": {
+        "onlyInApp": [
+          "context7",
+          "playwright",
+          "Docs",
+          "Rovo",
+          "Gmail"
+        ],
+        "onlyInTerminal": []
+      },
+      "codexMcpDiffers": {
+        "onlyInApp": [
+          "codex-security",
+          "codex_apps"
+        ],
+        "onlyInTerminal": []
+      },
+      "personCheck": "PENDING: compare with /mcp and /skills (claude) and /mcp (codex) in a terminal in the same folder; record equal / differs (what)"
+    }
+  },
+  "interventions": [],
+  "checks": [
+    {
+      "ok": true,
+      "what": "S7: both CLIs answered «Проверить окружение»"
+    },
+    {
+      "ok": true,
+      "what": "S7: the project is unchanged by the probe (git status)"
+    },
+    {
+      "ok": true,
+      "what": "S7: no run was started"
+    }
+  ],
+  "failures": [],
+  "notes": {
+    "codexVersion": "codex-cli 0.155.1",
+    "claudeVersion": "2.1.282 (Claude Code)",
+    "nodeVersion": "v26.8.1",
+    "npmVersion": "11.19.0",
+    "phpVersion": "PHP 8.5.10 (cli) (built: Aug 25 2026 21:09:32) (NTS)",
+    "composerVersion": "Composer version 2.10.3 2026-08-27 13:34:23",
+    "loginShellDbVariables": [],
+    "executable": "development build (electron-vite out/), not the installed application"
+  },
+  "ok": true,
+  "finishedAt": "2026-09-25T18:19:41.618Z",
+  "interventionCount": 0,
+  "turnsTotal": 0
+}

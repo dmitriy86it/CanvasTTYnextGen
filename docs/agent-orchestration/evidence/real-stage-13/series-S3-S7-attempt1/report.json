@@ -1,0 +1,52 @@
+{
+  "mode": "real",
+  "startedAt": "2026-09-25T15:52:10.398Z",
+  "order": [
+    "S7",
+    "S3",
+    "S4",
+    "S5",
+    "S6"
+  ],
+  "limits": {
+    "perScenario": {
+      "turns": 8,
+      "roundsPerStage": 2,
+      "replans": 1,
+      "runMin": 20,
+      "scenarioMin": 20
+    },
+    "series": {
+      "turns": 32,
+      "minutes": 100
+    }
+  },
+  "scenarios": {
+    "S7": {
+      "mode": "no run: «Проверить окружение» only",
+      "turns": {
+        "codex": 0,
+        "claude": 0
+      },
+      "project": "<the person's project>"
+    }
+  },
+  "interventions": [],
+  "checks": [],
+  "failures": [],
+  "notes": {
+    "codexVersion": "codex-cli 0.155.1",
+    "claudeVersion": "2.1.282 (Claude Code)",
+    "nodeVersion": "v26.8.1",
+    "npmVersion": "11.19.0",
+    "phpVersion": "PHP 8.5.10 (cli) (built: Aug 25 2026 21:09:32) (NTS)",
+    "composerVersion": "Composer version 2.10.3 2026-08-27 13:34:23",
+    "loginShellDbVariables": [],
+    "executable": "development build (electron-vite out/), not the installed application"
+  },
+  "ok": false,
+  "halted": "Error: timeout: link (false)\n    at Object.waitFor (file://~/dev/CanvasTTYnextGen/scripts/orchestration-app-kit.mjs:90:13)\n    at async linkAgents (file://~/dev/CanvasTTYnextGen/scripts/real-autopilot-series.mjs:446:3)\n    at async runProbe (file://~/dev/CanvasTTYnextGen/scripts/real-autopilot-series.mjs:660:16)\n    at async file://~/dev/CanvasTTYnextGen/scripts/real-autopilot-series.mjs:690:29",
+  "finishedAt": "2026-09-25T15:52:35.228Z",
+  "interventionCount": 0,
+  "turnsTotal": 0
+}

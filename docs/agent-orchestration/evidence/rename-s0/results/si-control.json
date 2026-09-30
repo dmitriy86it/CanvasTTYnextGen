@@ -1,0 +1,4 @@
+[
+ { "build": "raoden", "localStateAtSnapshot": false, "localStateAfter": false, "afterQuit": true },
+ { "build": "canvastty", "localStateAtSnapshot": false, "localStateAfter": false, "afterQuit": true }
+]

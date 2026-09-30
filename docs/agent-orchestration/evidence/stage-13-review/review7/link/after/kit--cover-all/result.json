@@ -1,0 +1,111 @@
+{
+ "projectDir": "<repo>",
+ "zoom": "translate(245px, 119px) scale(0.5)",
+ "worldBounds": {
+  "lead": {
+   "position": {
+    "x": -430,
+    "y": -142
+   },
+   "size": {
+    "width": 300,
+    "height": 176
+   }
+  },
+  "exec": {
+   "position": {
+    "x": -430,
+    "y": 98
+   },
+   "size": {
+    "width": 300,
+    "height": 176
+   }
+  }
+ },
+ "before": {
+  "leadCard": {
+   "x": 30,
+   "y": 80,
+   "width": 150,
+   "height": 88,
+   "top": 80,
+   "right": 180,
+   "bottom": 168,
+   "left": 30
+  },
+  "port": {
+   "x": 174.296875,
+   "y": 118.8046875,
+   "width": 10.3984375,
+   "height": 10.3984375,
+   "top": 118.8046875,
+   "right": 184.6953125,
+   "bottom": 129.203125,
+   "left": 174.296875
+  },
+  "execCard": {
+   "x": 30,
+   "y": 200,
+   "width": 150,
+   "height": 88,
+   "top": 200,
+   "right": 180,
+   "bottom": 288,
+   "left": 30
+  },
+  "execBody": {
+   "x": 30.5,
+   "y": 220.96875,
+   "width": 149,
+   "height": 66.53125,
+   "top": 220.96875,
+   "right": 179.5,
+   "bottom": 287.5,
+   "left": 30.5
+  }
+ },
+ "recorder": {
+  "wrapped": false
+ },
+ "from": {
+  "x": 179.49609375,
+  "y": 124.00390625
+ },
+ "to": {
+  "x": 105,
+  "y": 254.234375
+ },
+ "hitStart": "agent-card__port in lead",
+ "hitEnd": "agent-card__body in executor",
+ "kitError": "no visible point on document.querySelector(\"[data-agent-id=\\\"80ef613d-e112-4f7e-a9a9-9ceac9aedd0c\\\"] .agent-card__body\"): covered by DIV",
+ "links": {
+  "before": 0,
+  "after": 0
+ },
+ "after": {
+  "leadCard": {
+   "x": 30,
+   "y": 80,
+   "width": 150,
+   "height": 88,
+   "top": 80,
+   "right": 180,
+   "bottom": 168,
+   "left": 30
+  },
+  "execCard": {
+   "x": 30,
+   "y": 200,
+   "width": 150,
+   "height": 88,
+   "top": 200,
+   "right": 180,
+   "bottom": 288,
+   "left": 30
+  }
+ },
+ "cardMessages": [],
+ "events": [],
+ "moves": []
+}

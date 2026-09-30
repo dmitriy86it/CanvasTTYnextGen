@@ -1,0 +1,1208 @@
+{
+ "ok": true,
+ "stage": "done",
+ "failure": null,
+ "lead": "3b553eae",
+ "exec": "bab2abfa",
+ "points": {
+  "from": {
+   "x": 179.49609375,
+   "y": 124.00390625
+  },
+  "to": {
+   "x": 105,
+   "y": 254.234375
+  }
+ },
+ "sent": [
+  {
+   "t": 1790424601623,
+   "type": "mouseMoved",
+   "x": 179.49609375,
+   "y": 124.00390625
+  },
+  {
+   "t": 1790424601631,
+   "type": "mousePressed",
+   "x": 179.49609375,
+   "y": 124.00390625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601635,
+   "type": "mouseMoved",
+   "x": 175.7712890625,
+   "y": 130.5154296875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601656,
+   "type": "mouseMoved",
+   "x": 172.046484375,
+   "y": 137.026953125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601674,
+   "type": "mouseMoved",
+   "x": 168.3216796875,
+   "y": 143.5384765625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601690,
+   "type": "mouseMoved",
+   "x": 164.596875,
+   "y": 150.05,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601708,
+   "type": "mouseMoved",
+   "x": 160.8720703125,
+   "y": 156.5615234375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601726,
+   "type": "mouseMoved",
+   "x": 157.147265625,
+   "y": 163.073046875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601744,
+   "type": "mouseMoved",
+   "x": 153.4224609375,
+   "y": 169.5845703125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601762,
+   "type": "mouseMoved",
+   "x": 149.69765625,
+   "y": 176.09609375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601780,
+   "type": "mouseMoved",
+   "x": 145.9728515625,
+   "y": 182.6076171875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601797,
+   "type": "mouseMoved",
+   "x": 142.248046875,
+   "y": 189.119140625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601823,
+   "type": "mouseMoved",
+   "x": 138.5232421875,
+   "y": 195.6306640625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601841,
+   "type": "mouseMoved",
+   "x": 134.7984375,
+   "y": 202.1421875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601860,
+   "type": "mouseMoved",
+   "x": 131.0736328125,
+   "y": 208.6537109375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601879,
+   "type": "mouseMoved",
+   "x": 127.348828125,
+   "y": 215.165234375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601899,
+   "type": "mouseMoved",
+   "x": 123.6240234375,
+   "y": 221.6767578125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601925,
+   "type": "mouseMoved",
+   "x": 119.89921875,
+   "y": 228.18828125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601944,
+   "type": "mouseMoved",
+   "x": 116.1744140625,
+   "y": 234.6998046875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601964,
+   "type": "mouseMoved",
+   "x": 112.449609375,
+   "y": 241.211328125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424601993,
+   "type": "mouseMoved",
+   "x": 108.7248046875,
+   "y": 247.7228515625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424602012,
+   "type": "mouseMoved",
+   "x": 105,
+   "y": 254.234375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790424602037,
+   "type": "mouseReleased",
+   "x": 105,
+   "y": 254.234375,
+   "button": "left",
+   "buttons": 0
+  }
+ ],
+ "linksBefore": [],
+ "linksAfter": [
+  [
+   "3b553eae",
+   "bab2abfa"
+  ]
+ ],
+ "notes": [],
+ "page": {
+  "observers": {
+   "origin": 1790424598736.4,
+   "href": "file://~/dev/CanvasTTYnextGen/out/renderer/index.html",
+   "events": [
+    {
+     "t": 1967,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 30,
+     "y": 80,
+     "target": "workspace pattern-dots   ",
+     "n": 1
+    },
+    {
+     "t": 1968,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 2,
+     "x": 30,
+     "y": 80,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 1973,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 1974,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 0,
+     "x": 30,
+     "y": 80,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2098,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 153.5,
+     "y": 283.7578125,
+     "target": "canvas-menu__grow",
+     "n": 1
+    },
+    {
+     "t": 2098,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 153.5,
+     "y": 283.7578125,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2099,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2099,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2099,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 153.5,
+     "y": 283.7578125,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2102,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2105,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2294,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 888.39453125,
+     "y": 494.00665283203125,
+     "target": "orch-primary",
+     "n": 1
+    },
+    {
+     "t": 2294,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 888.39453125,
+     "y": 494.00665283203125,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2295,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2295,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2296,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 888.39453125,
+     "y": 494.00665283203125,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2297,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2431,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 30,
+     "y": 200,
+     "target": "workspace pattern-dots   ",
+     "n": 1
+    },
+    {
+     "t": 2432,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 2,
+     "x": 30,
+     "y": 200,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2433,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2434,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 0,
+     "x": 30,
+     "y": 200,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2558,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 153.5,
+     "y": 442.0859375,
+     "target": "canvas-menu__grow",
+     "n": 1
+    },
+    {
+     "t": 2558,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 153.5,
+     "y": 442.0859375,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2558,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2558,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2559,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 153.5,
+     "y": 442.0859375,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2560,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2560,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2752,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 888.3941650390625,
+     "y": 494.0072937011719,
+     "target": "orch-primary",
+     "n": 1
+    },
+    {
+     "t": 2753,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 888.3941650390625,
+     "y": 494.0072937011719,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2753,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2754,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2754,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 888.3941650390625,
+     "y": 494.0072937011719,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2754,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 2895,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 179.49609375,
+     "y": 124.00390625,
+     "target": "agent-card__port @3b553eae",
+     "n": 1
+    },
+    {
+     "t": 2897,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 179.49609375,
+     "y": 124.00390625,
+     "target": "agent-card__port @3b553eae",
+     "n": 1,
+     "under": [
+      "agent-card__port @3b553eae",
+      "agent-card__body @3b553eae",
+      "agent-card agent-card--codex agent-card--idle   @3b553eae",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "1",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "bab2abfa",
+        "z": "2",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2903,
+     "type": "gotpointercapture",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 175.7712860107422,
+     "y": 130.5154266357422,
+     "target": "agent-card__port @3b553eae",
+     "n": 1,
+     "under": [
+      "agent-card__body @3b553eae",
+      "agent-card agent-card--codex agent-card--idle   @3b553eae",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "bab2abfa",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 2903,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 175.7712860107422,
+     "y": 130.5154266357422,
+     "target": "agent-card__port @3b553eae",
+     "n": 20,
+     "to": [
+      105,
+      254.234375
+     ]
+    },
+    {
+     "t": 3302,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 105,
+     "y": 254.234375,
+     "target": "agent-card__port @3b553eae",
+     "n": 1,
+     "under": [
+      "agent-card__body @bab2abfa",
+      "agent-card agent-card--claude agent-card--idle   @bab2abfa",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "bab2abfa",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 3303,
+     "type": "lostpointercapture",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 105,
+     "y": 254.234375,
+     "target": "agent-card__port @3b553eae",
+     "n": 1,
+     "under": [
+      "agent-card__body @bab2abfa",
+      "agent-card agent-card--claude agent-card--idle   @bab2abfa",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "3b553eae",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "bab2abfa",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    }
+   ],
+   "dropped": 0,
+   "layoutAtStart": {
+    "cards": [],
+    "scene": "translate(245px, 119px) scale(0.5)",
+    "focus": true,
+    "visibility": "visible",
+    "size": [
+     1280,
+     800
+    ]
+   },
+   "sameDocument": true
+  },
+  "trace": [
+   {
+    "t": 2899,
+    "step": "port.down",
+    "agentId": "3b553eae-d554-4af1-80bf-ac8e8c109f9e",
+    "pointerId": 1,
+    "button": 0,
+    "x": 179.49609375,
+    "y": 124.00390625
+   },
+   {
+    "t": 2903,
+    "step": "port.moved",
+    "pointerId": 1,
+    "x": 175.7712860107422,
+    "y": 130.5154266357422
+   },
+   {
+    "t": 3302,
+    "step": "port.end",
+    "type": "pointerup",
+    "pointerId": 1,
+    "drag": {
+     "from": "3b553eae-d554-4af1-80bf-ac8e8c109f9e",
+     "pointerId": 1,
+     "moved": true
+    },
+    "x": 105,
+    "y": 254.234375
+   },
+   {
+    "t": 3302,
+    "step": "port.drop",
+    "from": "3b553eae-d554-4af1-80bf-ac8e8c109f9e",
+    "toId": "bab2abfa-eda6-4b52-8dce-950969ecd8ae",
+    "under": [
+     "agent-card__body",
+     "agent-card agent-card--claude agent-card--idle  ",
+     "workspace pattern-dots   ",
+     "app__content",
+     "app app--sage app--home-classic app--canvas-sage app--macos"
+    ]
+   },
+   {
+    "t": 3302,
+    "step": "createLink.sent",
+    "fromAgentId": "3b553eae-d554-4af1-80bf-ac8e8c109f9e",
+    "toAgentId": "bab2abfa-eda6-4b52-8dce-950969ecd8ae"
+   },
+   {
+    "t": 3303,
+    "step": "port.end",
+    "type": "lostpointercapture",
+    "pointerId": 1,
+    "drag": null,
+    "x": 105,
+    "y": 254.234375
+   },
+   {
+    "t": 3304,
+    "step": "createLink.result",
+    "kind": "accepted",
+    "code": null
+   }
+  ],
+  "focus": true,
+  "visibility": "visible",
+  "size": [
+   1280,
+   800
+  ],
+  "messages": [
+   {
+    "id": "3b553eae",
+    "text": "CodexЛидs3-app<tmp>/s3-appСвободен"
+   },
+   {
+    "id": "bab2abfa",
+    "text": "ClaudeИсполнительs3-app<tmp>/s3-appСвободен"
+   }
+  ]
+ }
+}

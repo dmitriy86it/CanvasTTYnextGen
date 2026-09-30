@@ -1,0 +1,5 @@
+# tests 1420
+# pass 1419
+# fail 0
+# skipped 1
+exit=0

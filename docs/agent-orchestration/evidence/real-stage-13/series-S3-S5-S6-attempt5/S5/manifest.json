@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "file": "journal.jsonl",
+      "bytes": 4659,
+      "sha256": "28d7b69eebb02d74899df19957768abed6f0ed78c909f18c80ad0821f92bac60"
+    },
+    {
+      "file": "activity.jsonl",
+      "bytes": 12913,
+      "sha256": "9175bbb7ae77898096d9916bc576f65db22918eba4251fb08e1a31e7640fea8a"
+    },
+    {
+      "file": "project-folder.json",
+      "bytes": 460,
+      "sha256": "4b6a1cc80c197ed308a5d626b590d9752d1534c891950e2e349db6841586f836"
+    },
+    {
+      "file": "project-folder.diff",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "rights.json",
+      "bytes": 395,
+      "sha256": "596e05af61eedc7e4f8210dd8b46998192fee3178ab99be076f80ee1e18c83fb"
+    }
+  ],
+  "missing": [],
+  "savedAt": "2026-09-26T12:12:00.745Z"
+}

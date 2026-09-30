@@ -1,0 +1,344 @@
+{
+  "mode": "rehearse",
+  "startedAt": "2026-09-24T11:58:42.077Z",
+  "scenarios": {
+    "R1": {
+      "runId": "<R1>",
+      "limits": {
+        "turns": 8,
+        "roundsPerStage": 2,
+        "replans": 1,
+        "runMin": 20
+      },
+      "timeline": [
+        "0:run.created",
+        "1:workspace.created",
+        "2:run.status(running)",
+        "3:orch.turn(plan)",
+        "4:turn.intent(codex)",
+        "5:turn.finished(completed)",
+        "6:plan.recorded",
+        "7:orch.turn(execute)",
+        "8:turn.intent(claude)",
+        "9:turn.finished(completed)",
+        "10:check.started",
+        "11:check.finished(passed)",
+        "12:check.assessed",
+        "13:orch.turn(review)",
+        "14:turn.intent(codex)",
+        "15:turn.finished(completed)",
+        "16:review.recorded",
+        "17:stage.accepted",
+        "18:checkpoint.created(1)",
+        "19:orch.turn(final_review)",
+        "20:turn.intent(codex)",
+        "21:turn.finished(completed)",
+        "22:review.recorded",
+        "23:run.status(completed)"
+      ],
+      "durationMs": 16406,
+      "operations": [
+        "plan",
+        "execute",
+        "check",
+        "review",
+        "final_review"
+      ],
+      "checks": [
+        "passed"
+      ],
+      "turns": {
+        "codex": 3,
+        "claude": 1
+      },
+      "refs": [
+        "refs/canvastty/<R1>/baseline",
+        "refs/canvastty/<R1>/stage-1"
+      ],
+      "checkpointChanges": [
+        "src/clamp.mjs",
+        "tests/clamp.test.mjs"
+      ]
+    },
+    "R2": {
+      "runId": "<R2>",
+      "limits": {
+        "turns": 3,
+        "roundsPerStage": 2,
+        "replans": 1,
+        "runMin": 20
+      },
+      "cliStarted": {
+        "turnId": "03a66aa1-b13b-4538-b3ee-66e323868058",
+        "intentSeq": 8,
+        "intentTs": "2026-09-24T11:59:08.283Z",
+        "processes": [
+          {
+            "pid": 88931,
+            "ppid": 88921,
+            "command": "/bin/sh <tmp>/claude-mock -p --output-format stream-json --verbose --json-schema {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"done\"],\"properties\":{\"summary\":{\"type\":\"string\",\"maxLen"
+          }
+        ],
+        "seenAt": "2026-09-24T11:59:08.537Z"
+      },
+      "stop": {
+        "commandSeq": 9,
+        "turnFinishedSeq": 12,
+        "turnOutcome": "stopped",
+        "status": {
+          "reason": null,
+          "status": "stopped"
+        }
+      },
+      "counted": true,
+      "turns": {
+        "codex": 1,
+        "claude": 1
+      },
+      "timeline": [
+        "0:run.created",
+        "1:workspace.created",
+        "2:run.status(running)",
+        "3:orch.turn(plan)",
+        "4:turn.intent(codex)",
+        "5:turn.finished(completed)",
+        "6:plan.recorded",
+        "7:orch.turn(execute)",
+        "8:turn.intent(claude)",
+        "9:command.received(stop)",
+        "10:run.status(stopping)",
+        "11:command.completed",
+        "12:turn.finished(stopped)",
+        "13:run.status(stopped)"
+      ],
+      "durationMs": 7887
+    },
+    "R3": {
+      "runId": "<R3>",
+      "limits": {
+        "turns": 8,
+        "roundsPerStage": 2,
+        "replans": 1,
+        "runMin": 20
+      },
+      "cliStarted": {
+        "turnId": "8c743022-5bc4-45b4-8e59-bdca7ce97c19",
+        "intentSeq": 8,
+        "intentTs": "2026-09-24T12:00:10.728Z",
+        "processes": [
+          {
+            "pid": 89534,
+            "ppid": 89533,
+            "command": "/bin/sh <tmp>/claude-mock -p --output-format stream-json --verbose --json-schema {\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"done\"],\"properties\":{\"summary\":{\"type\":\"string\",\"maxLen"
+          }
+        ],
+        "seenAt": "2026-09-24T12:00:10.838Z"
+      },
+      "quit": {
+        "exit": {
+          "code": 0,
+          "signal": null
+        },
+        "ms": 5290
+      },
+      "afterQuit": {
+        "status": {
+          "reason": "user_request",
+          "status": "paused"
+        },
+        "turnOutcome": "stopped"
+      },
+      "panelAfterRestart": {
+        "status": "paused",
+        "reason": "по запросу пользователя"
+      },
+      "timeline": [
+        "0:run.created",
+        "1:workspace.created",
+        "2:run.status(running)",
+        "3:orch.turn(plan)",
+        "4:turn.intent(codex)",
+        "5:turn.finished(completed)",
+        "6:plan.recorded",
+        "7:orch.turn(execute)",
+        "8:turn.intent(claude)",
+        "9:turn.finished(stopped)",
+        "10:run.status(paused/user_request)",
+        "11:command.received(resume)",
+        "12:run.status(running)",
+        "13:command.completed",
+        "14:orch.turn(execute)",
+        "15:turn.intent(claude)",
+        "16:turn.finished(completed)",
+        "17:check.started",
+        "18:check.finished(passed)",
+        "19:check.assessed",
+        "20:orch.turn(review)",
+        "21:turn.intent(codex)",
+        "22:turn.finished(completed)",
+        "23:review.recorded",
+        "24:stage.accepted",
+        "25:checkpoint.created(1)",
+        "26:orch.turn(final_review)",
+        "27:turn.intent(codex)",
+        "28:turn.finished(completed)",
+        "29:review.recorded",
+        "30:run.status(completed)"
+      ],
+      "durationMs": 81832,
+      "operations": [
+        "plan",
+        "execute",
+        "execute",
+        "check",
+        "review",
+        "final_review"
+      ],
+      "checks": [
+        "passed"
+      ],
+      "turns": {
+        "codex": 3,
+        "claude": 2
+      },
+      "refs": [
+        "refs/canvastty/<R3>/baseline",
+        "refs/canvastty/<R3>/stage-1"
+      ],
+      "checkpointChanges": [
+        "src/clamp.mjs",
+        "tests/clamp.test.mjs"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "ok": true,
+      "what": "R1: run completed"
+    },
+    {
+      "ok": true,
+      "what": "R1: the last check passed"
+    },
+    {
+      "ok": true,
+      "what": "R1: checkpoint created for each accepted stage (1)"
+    },
+    {
+      "ok": true,
+      "what": "R1: baseline and stage refs in the source"
+    },
+    {
+      "ok": true,
+      "what": "R1: the checkpoint changes only src/ and tests/"
+    },
+    {
+      "ok": true,
+      "what": "R1: tests/clamp.accept.test.mjs identical (git blob) in the checkpoint"
+    },
+    {
+      "ok": true,
+      "what": "R1: src/clamp.mjs is in the checkpoint"
+    },
+    {
+      "ok": true,
+      "what": "R1: the source project (HEAD, branch, refs, status, files) is unchanged"
+    },
+    {
+      "ok": true,
+      "what": "R2: the started Claude turn ended stopped, the run is stopped"
+    },
+    {
+      "ok": true,
+      "what": "R2: no operation after the accepted Stop (60 s)"
+    },
+    {
+      "ok": true,
+      "what": "R2: no live CLI (or supervisor) process of the run"
+    },
+    {
+      "ok": true,
+      "what": "R2: the source project is unchanged"
+    },
+    {
+      "ok": true,
+      "what": "R3: the app quit cleanly (code 0)"
+    },
+    {
+      "ok": true,
+      "what": "R3: every process of the app ended (8)"
+    },
+    {
+      "ok": true,
+      "what": "R3: the started turn was stopped by the quit; the run is paused(user_request)"
+    },
+    {
+      "ok": true,
+      "what": "R3: after restart cards, link and runs as before"
+    },
+    {
+      "ok": true,
+      "what": "R3: nothing continued by itself (60 s): no journal record, no CLI"
+    },
+    {
+      "ok": true,
+      "what": "R3: the history is shown after restart"
+    },
+    {
+      "ok": true,
+      "what": "R3: run completed"
+    },
+    {
+      "ok": true,
+      "what": "R3: the last check passed"
+    },
+    {
+      "ok": true,
+      "what": "R3: checkpoint created for each accepted stage (1)"
+    },
+    {
+      "ok": true,
+      "what": "R3: baseline and stage refs in the source"
+    },
+    {
+      "ok": true,
+      "what": "R3: the checkpoint changes only src/ and tests/"
+    },
+    {
+      "ok": true,
+      "what": "R3: tests/clamp.accept.test.mjs identical (git blob) in the checkpoint"
+    },
+    {
+      "ok": true,
+      "what": "R3: src/clamp.mjs is in the checkpoint"
+    },
+    {
+      "ok": true,
+      "what": "R3: the source project is unchanged"
+    },
+    {
+      "ok": true,
+      "what": "series end: no process of the app left"
+    }
+  ],
+  "failures": [],
+  "notes": {
+    "executable": "development build",
+    "finalQuit": {
+      "code": 0,
+      "signal": null
+    }
+  },
+  "durationMs": 173619,
+  "turnsTotal": 11,
+  "ok": true,
+  "sourceAtEnd": {
+    "unchanged": true,
+    "canvasttyRefs": 5
+  },
+  "paths": {
+    "tmp": "<tmp>",
+    "userData": "<tmp>/user-data",
+    "project": "<tmp>/project"
+  }
+}

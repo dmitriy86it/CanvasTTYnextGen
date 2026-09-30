@@ -1,0 +1,796 @@
+{
+  "mode": "real",
+  "startedAt": "2026-09-26T16:40:07.186Z",
+  "order": [
+    "S6"
+  ],
+  "limits": {
+    "perScenario": {
+      "turns": 8,
+      "roundsPerStage": 2,
+      "replans": 1,
+      "runMin": 20,
+      "scenarioMin": 20
+    },
+    "series": {
+      "turns": 8,
+      "minutes": 20
+    }
+  },
+  "scenarios": {
+    "S6": {
+      "task": "Add src/duration.mjs exporting toMs(text): it converts a duration string such as \"2s\" or \"1h\" to milliseconds using the installed \"ms\" package and throws a TypeError when the text is not a duration. Add your own unit test tests/duration.test.mjs. Do not modify tests/duration.accept.test.mjs.",
+      "criteria": "npm test passes\ntests/duration.accept.test.mjs is unchanged\nonly src/ and tests/ change",
+      "limits": {
+        "turns": 8,
+        "roundsPerStage": 2,
+        "replans": 1,
+        "runMin": 20
+      },
+      "rights": {
+        "claude": {
+          "requested": "terminal (Как в моём терминале)",
+          "mapping": null,
+          "argv": [
+            "(no permission flag)",
+            "(no permission flag)"
+          ],
+          "reported": [
+            {
+              "permissionMode": "auto"
+            }
+          ]
+        },
+        "codex": {
+          "requested": "terminal (Как в моём терминале)",
+          "mapping": null,
+          "reported": [
+            {
+              "approvalPolicy": "on-request",
+              "sandbox": "workspaceWrite"
+            },
+            {
+              "approvalPolicy": "on-request",
+              "sandbox": "workspaceWrite"
+            },
+            {
+              "approvalPolicy": "on-request",
+              "sandbox": "workspaceWrite"
+            }
+          ]
+        }
+      },
+      "mode": "autopilot",
+      "workMode": "worktree",
+      "finish": [
+        {
+          "step": "commit",
+          "asked": true,
+          "status": "done",
+          "established": false,
+          "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+          "evidence": "53c3df9696d1cc5c04f16e31f5d9d04db44945e8d4c50a48dacbcdf193c931b0"
+        },
+        {
+          "step": "push",
+          "asked": true,
+          "status": "done",
+          "established": false,
+          "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+          "evidence": "457ac1d71cf1ffa31c2cd501a23e061ce9e23108cef7a6acecde496835303e87"
+        },
+        {
+          "step": "qa",
+          "asked": true,
+          "status": "done",
+          "established": true,
+          "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+          "evidence": "b64cc5dfce5e2344f5194b9467a8d5256a2d02614410cc75f635309a5561fa56",
+          "version": "confirmed",
+          "observed": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed"
+        }
+      ],
+      "project": "<tmp>/s6-app",
+      "projectAtStart": {
+        "files": 6,
+        "vendor": false,
+        "node_modules": false,
+        "env": false
+      },
+      "linkId": "6222914d-10f7-4529-8fa8-985ae25b54b2",
+      "finishChosen": [
+        true,
+        true,
+        true
+      ],
+      "goalRights": "Права агентов: Claude — Как в моём терминале · Codex — Как в моём терминале",
+      "checkCommands": "npm test",
+      "readiness": [
+        {
+          "id": "platform",
+          "level": "ok",
+          "text": "✓Платформа поддерживается."
+        },
+        {
+          "id": "clis",
+          "level": "ok",
+          "text": "✓CLI установлены: Codex: codex-cli 0.155.1 · Claude: 2.1.283 (Claude Code)"
+        },
+        {
+          "id": "env",
+          "level": "ok",
+          "text": "✓Окружение взято из вашего login-shell: /bin/zsh · PATH: 37"
+        },
+        {
+          "id": "git",
+          "level": "ok",
+          "text": "✓Git: рабочее дерево чистое."
+        },
+        {
+          "id": "workdir",
+          "level": "info",
+          "text": "iАгенты работают в отдельном worktree на своей ветке: <tmp>/s6-app"
+        },
+        {
+          "id": "stack",
+          "level": "ok",
+          "text": "✓Стек проекта: JavaScript / Node"
+        },
+        {
+          "id": "prepare",
+          "level": "info",
+          "text": "iСреда будет подготовлена автоматически: npm ci"
+        },
+        {
+          "id": "command_1",
+          "level": "ok",
+          "text": "✓Программа найдена: npm test"
+        },
+        {
+          "id": "tests",
+          "level": "ok",
+          "text": "✓Файлов тестов: 2"
+        },
+        {
+          "id": "permissions",
+          "level": "info",
+          "text": "iПрава агентов по настройкам проекта: Claude — Как в моём терминале · Codex — Как в моём терминале."
+        }
+      ],
+      "runId": "0783db6d-c972-42ef-8ab6-4a26926ce56f",
+      "accessMismatchShown": false,
+      "quitDuringQa": {
+        "exit": {
+          "code": 0,
+          "signal": null
+        },
+        "ms": 5194,
+        "cliAtQuit": 0,
+        "statusAfterQuit": {
+          "reason": "app_closed",
+          "status": "paused"
+        },
+        "finishRecords": [
+          "finish.intent(commit)",
+          "finish.result(done)",
+          "finish.intent(push)",
+          "finish.result(done)",
+          "finish.intent(qa)",
+          "finish.result(unknown)"
+        ],
+        "grewWithoutPerson": 0,
+        "cliAfterRestart": [],
+        "limitsWidgetProcesses": 2
+      },
+      "resumes": 2,
+      "final": {
+        "reason": null,
+        "status": "completed"
+      },
+      "durationMs": 131781,
+      "timeline": [
+        "0:run.created",
+        "1:workspace.created",
+        "2:run.status(running)",
+        "3:prepare.started",
+        "4:prepare.finished(done)",
+        "5:orch.turn(plan)",
+        "6:turn.intent(codex)",
+        "7:turn.finished(completed)",
+        "8:plan.recorded",
+        "9:orch.turn(execute)",
+        "10:turn.intent(claude)",
+        "11:turn.finished(completed)",
+        "12:check.started",
+        "13:check.finished(passed)",
+        "14:check.assessed",
+        "15:orch.turn(review)",
+        "16:turn.intent(codex)",
+        "17:turn.finished(completed)",
+        "18:review.recorded",
+        "19:stage.accepted",
+        "20:checkpoint.created",
+        "21:orch.turn(final_review)",
+        "22:turn.intent(codex)",
+        "23:turn.finished(completed)",
+        "24:review.recorded",
+        "25:finish.intent",
+        "26:finish.result",
+        "27:finish.intent",
+        "28:finish.result",
+        "29:finish.intent",
+        "30:finish.result",
+        "31:run.status(paused/app_closed)",
+        "32:command.received",
+        "33:run.status(running)",
+        "34:command.completed",
+        "35:run.status(paused/finish_unconfirmed)",
+        "36:command.received",
+        "37:run.status(running)",
+        "38:command.completed",
+        "39:finish.result",
+        "40:run.status(completed)"
+      ],
+      "turns": {
+        "codex": 3,
+        "claude": 1
+      },
+      "claudeArgv": [
+        "(no permission flag)",
+        "(no permission flag)"
+      ],
+      "claudeArgvSource": "process list of the app's children, sampled every second",
+      "progress": {
+        "mode": "autopilot",
+        "branch": "canvastty/0783db6d",
+        "access": {
+          "claude": "terminal",
+          "codex": "terminal"
+        },
+        "checks": [
+          {
+            "id": "cmd-1",
+            "title": "npm test",
+            "status": "passed",
+            "class": null
+          }
+        ],
+        "prepare": {
+          "status": "done",
+          "failed": null,
+          "class": null
+        },
+        "finish": [
+          {
+            "step": "commit",
+            "asked": true,
+            "status": "done",
+            "established": false,
+            "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+            "evidence": "53c3df9696d1cc5c04f16e31f5d9d04db44945e8d4c50a48dacbcdf193c931b0"
+          },
+          {
+            "step": "push",
+            "asked": true,
+            "status": "done",
+            "established": false,
+            "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+            "evidence": "457ac1d71cf1ffa31c2cd501a23e061ce9e23108cef7a6acecde496835303e87"
+          },
+          {
+            "step": "qa",
+            "asked": true,
+            "status": "done",
+            "established": true,
+            "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+            "evidence": "b64cc5dfce5e2344f5194b9467a8d5256a2d02614410cc75f635309a5561fa56",
+            "version": "confirmed",
+            "observed": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed"
+          }
+        ],
+        "grantsApplied": 0
+      },
+      "workDir": "<tmp>/ud/orchestration/runs/0783db6d-c972-42ef-8ab6-4a26926ce56f/worktree",
+      "sessionFacts": [
+        {
+          "role": "lead",
+          "provider": "codex",
+          "text": "thread · gpt-6-astra",
+          "detail": {
+            "model": "gpt-6-astra",
+            "approvalPolicy": "on-request",
+            "sandbox": "workspaceWrite",
+            "instructionSources": 0,
+            "cwd": ".",
+            "reported": true
+          }
+        },
+        {
+          "role": "executor",
+          "provider": "claude",
+          "text": "session started · claude-opus-5-5",
+          "detail": {
+            "model": "claude-opus-5-5",
+            "tools": "Task, AskUserQuestion, Bash, CronCreate, CronDelete, CronList, DesignSync, Edit, EnterPlanMode, EnterWorktree, ExitPlanMode, ExitWorktree, ListAgents, LSP, Monitor, NotebookEdit, PushNotification, Read, RemoteTrigger, ReportFindings",
+            "permissionMode": "auto",
+            "toolCount": 55,
+            "mcp": "plugin:context7:context7 (pending), plugin:playwright:playwright (connected), obsidian (failed), claude.ai Claude Docs (pending), claude.ai Atlassian Rovo (needs-auth), claude.ai Gmail (pending)",
+            "skills": "chukovsky, habr, humanizer-ru, humanizer-ru-smixs, infostyle, project-docs, deep-research, caveman:cavecrew, caveman:caveman, caveman:caveman-commit, caveman:caveman-compress, caveman:caveman-help, caveman:caveman-review, caveman:caveman-stats, ponytail:ponytail, ponytail:ponytail-audit, ponytail:ponytail-debt, ponytail:ponytail-gain, ponytail:ponytail-help, ponytail:ponytail-review, superpowers:brainstorming, superpowers:diagnosing-superpowers, superpowers:dispatching-parallel-agents, superpowers:executing-plans, superpowers:finishing-a-development-branch, superpowers:receiving-code-review, s",
+            "plugins": "caveman, context7, php-lsp, playwright, ponytail, pyright-lsp, security-guidance, superpowers, typescript-lsp, understand-anything, vue-lsp, swift-lsp, agents-md, telemetry",
+            "slashCommands": 106,
+            "agents": "caveman:cavecrew-builder, caveman:cavecrew-investigator, caveman:cavecrew-reviewer, claude, Explore, general-purpose, habr-editor, habr-humanizer, habr-reader, habr-researcher, Plan, statusline-setup, understand-anything:architecture-analyzer, understand-anything:article-analyzer, understand-anything:assemble-reviewer, understand-anything:design-analyzer, understand-anything:domain-analyzer, under",
+            "outputStyle": "default",
+            "apiKeySource": "none",
+            "cwd": ".",
+            "reported": true
+          }
+        },
+        {
+          "role": "lead",
+          "provider": "codex",
+          "text": "thread · gpt-6-astra",
+          "detail": {
+            "model": "gpt-6-astra",
+            "approvalPolicy": "on-request",
+            "sandbox": "workspaceWrite",
+            "instructionSources": 0,
+            "cwd": ".",
+            "reported": true
+          }
+        },
+        {
+          "role": "lead",
+          "provider": "codex",
+          "text": "thread · gpt-6-astra",
+          "detail": {
+            "model": "gpt-6-astra",
+            "approvalPolicy": "on-request",
+            "sandbox": "workspaceWrite",
+            "instructionSources": 0,
+            "cwd": ".",
+            "reported": true
+          }
+        }
+      ],
+      "usage": [
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 19599,
+            "outputTokens": 126
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 19854,
+            "outputTokens": 81
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 21737,
+            "outputTokens": 204
+          }
+        },
+        {
+          "role": "lead",
+          "text": "CLI finished its answer",
+          "detail": {
+            "durationMs": 26088
+          }
+        },
+        {
+          "role": "executor",
+          "text": "CLI finished its answer",
+          "detail": {
+            "costUsd": 0.3063654,
+            "turns": 4,
+            "durationMs": 15642,
+            "denials": 0
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 21737,
+            "outputTokens": 204
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 28534,
+            "outputTokens": 83
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 28956,
+            "outputTokens": 83
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 29819,
+            "outputTokens": 112
+          }
+        },
+        {
+          "role": "lead",
+          "text": "CLI finished its answer",
+          "detail": {
+            "durationMs": 21757
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 29819,
+            "outputTokens": 112
+          }
+        },
+        {
+          "role": "lead",
+          "text": "tokens",
+          "detail": {
+            "inputTokens": 34724,
+            "outputTokens": 99
+          }
+        },
+        {
+          "role": "lead",
+          "text": "CLI finished its answer",
+          "detail": {
+            "durationMs": 10019
+          }
+        }
+      ],
+      "cost": [
+        {
+          "turnId": "1ca96d21-c1ed-4273-937b-ee014e84facf",
+          "provider": "codex",
+          "role": "lead",
+          "outcome": "completed",
+          "cost": "complete",
+          "costUsd": null,
+          "usage": [
+            {
+              "inputTokens": 19599,
+              "outputTokens": 126
+            },
+            {
+              "inputTokens": 19854,
+              "outputTokens": 81
+            },
+            {
+              "inputTokens": 21737,
+              "outputTokens": 204
+            },
+            {
+              "durationMs": 26088
+            }
+          ]
+        },
+        {
+          "turnId": "8d18b224-5773-45aa-a4b8-65f32c3374b0",
+          "provider": "claude",
+          "role": "executor",
+          "outcome": "completed",
+          "cost": "complete",
+          "costUsd": 0.3063654,
+          "usage": [
+            {
+              "costUsd": 0.3063654,
+              "turns": 4,
+              "durationMs": 15642,
+              "denials": 0
+            }
+          ]
+        },
+        {
+          "turnId": "9adbd215-c195-489e-848a-e804d87e5893",
+          "provider": "codex",
+          "role": "lead",
+          "outcome": "completed",
+          "cost": "complete",
+          "costUsd": null,
+          "usage": [
+            {
+              "inputTokens": 21737,
+              "outputTokens": 204
+            },
+            {
+              "inputTokens": 28534,
+              "outputTokens": 83
+            },
+            {
+              "inputTokens": 28956,
+              "outputTokens": 83
+            },
+            {
+              "inputTokens": 29819,
+              "outputTokens": 112
+            },
+            {
+              "durationMs": 21757
+            }
+          ]
+        },
+        {
+          "turnId": "5f099468-720f-4693-b8d1-56a9b9a9d769",
+          "provider": "codex",
+          "role": "lead",
+          "outcome": "completed",
+          "cost": "complete",
+          "costUsd": null,
+          "usage": [
+            {
+              "inputTokens": 29819,
+              "outputTokens": 112
+            },
+            {
+              "inputTokens": 34724,
+              "outputTokens": 99
+            },
+            {
+              "durationMs": 10019
+            }
+          ]
+        }
+      ],
+      "warnings": [],
+      "changedFiles": [],
+      "independentCheck": {
+        "exit": 0,
+        "tail": "\n> series-node-app@1.0.0 test\n> node --test\n\n✔ toMs (0.678125ms)\n✔ converts durations (0.530083ms)\n✔ rejects non-durations with TypeError (0.59875ms)\n✔ sum (0.336292ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 55.072083\n"
+      },
+      "lsRemote": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+      "qaCounts": {
+        "deploys": 1,
+        "verifications": 1,
+        "deployFinished": 0
+      },
+      "afterQaRestart": {
+        "before": {
+          "journal": 41,
+          "deploys": 1,
+          "verifications": 1,
+          "deployFinished": 0
+        },
+        "after": {
+          "journal": 41,
+          "deploys": 1,
+          "verifications": 1
+        },
+        "status": {
+          "reason": null,
+          "status": "completed"
+        }
+      },
+      "timelineFinal": [
+        "0:run.created",
+        "1:workspace.created",
+        "2:run.status(running)",
+        "3:prepare.started",
+        "4:prepare.finished(done)",
+        "5:orch.turn(plan)",
+        "6:turn.intent(codex)",
+        "7:turn.finished(completed)",
+        "8:plan.recorded",
+        "9:orch.turn(execute)",
+        "10:turn.intent(claude)",
+        "11:turn.finished(completed)",
+        "12:check.started",
+        "13:check.finished(passed)",
+        "14:check.assessed",
+        "15:orch.turn(review)",
+        "16:turn.intent(codex)",
+        "17:turn.finished(completed)",
+        "18:review.recorded",
+        "19:stage.accepted",
+        "20:checkpoint.created",
+        "21:orch.turn(final_review)",
+        "22:turn.intent(codex)",
+        "23:turn.finished(completed)",
+        "24:review.recorded",
+        "25:finish.intent",
+        "26:finish.result",
+        "27:finish.intent",
+        "28:finish.result",
+        "29:finish.intent",
+        "30:finish.result",
+        "31:run.status(paused/app_closed)",
+        "32:command.received",
+        "33:run.status(running)",
+        "34:command.completed",
+        "35:run.status(paused/finish_unconfirmed)",
+        "36:command.received",
+        "37:run.status(running)",
+        "38:command.completed",
+        "39:finish.result",
+        "40:run.status(completed)"
+      ],
+      "projectState": [
+        {
+          "label": "folder",
+          "dir": "<tmp>/s6-app",
+          "status": "",
+          "newFiles": [],
+          "accept": {
+            "path": "tests/duration.accept.test.mjs",
+            "blobAtStart": "1036f73927e174539e3082ddbb2d40fec60e5014",
+            "blobNow": "1036f73927e174539e3082ddbb2d40fec60e5014",
+            "sha256Now": "9b6e6888beb032805f0ce36b4bfd5878658de8040a6a79718f56f1303e87ea02",
+            "unchanged": true
+          }
+        },
+        {
+          "label": "worktree",
+          "dir": "<tmp>/ud/orchestration/runs/0783db6d-c972-42ef-8ab6-4a26926ce56f/worktree",
+          "status": "",
+          "newFiles": [],
+          "accept": {
+            "path": "tests/duration.accept.test.mjs",
+            "blobAtStart": "1036f73927e174539e3082ddbb2d40fec60e5014",
+            "blobNow": "1036f73927e174539e3082ddbb2d40fec60e5014",
+            "sha256Now": "9b6e6888beb032805f0ce36b4bfd5878658de8040a6a79718f56f1303e87ea02",
+            "unchanged": true
+          }
+        }
+      ],
+      "evidence": {
+        "files": [
+          {
+            "file": "journal.jsonl",
+            "bytes": 20151,
+            "sha256": "b9ebf3bca53bbd7dd7e5adc4d51ee3a99af3c83b51e62910177d572fecd71341"
+          },
+          {
+            "file": "activity.jsonl",
+            "bytes": 46663,
+            "sha256": "1a519fac17978e3676f24f21df066639bbbf9998bbc3fc4b1f2372c1af920e40"
+          },
+          {
+            "file": "project-folder.json",
+            "bytes": 463,
+            "sha256": "6691cb2e1d95024d891ef80f4a80a43d34429c57c7fce4b0c22493534b40f0d7"
+          },
+          {
+            "file": "project-folder.diff",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "file": "project-worktree.json",
+            "bytes": 538,
+            "sha256": "1246c6660c847662c9815215fd24ff40052f12c777607093f4333cad14e1a0ea"
+          },
+          {
+            "file": "project-worktree.diff",
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "file": "rights.json",
+            "bytes": 674,
+            "sha256": "dc8175c137ee0b8c2765f167b3a110310c3a2202917b6ff35b21a10524f800b7"
+          }
+        ],
+        "missing": [],
+        "savedAt": "2026-09-26T16:42:53.979Z"
+      }
+    }
+  },
+  "interventions": [
+    {
+      "scenario": "S6",
+      "at": "2026-09-26T16:42:20.682Z",
+      "action": "Продолжить",
+      "reason": "paused(app_closed)",
+      "next": "app_closed"
+    },
+    {
+      "scenario": "S6",
+      "at": "2026-09-26T16:42:26.841Z",
+      "action": "Продолжить",
+      "reason": "paused(finish_unconfirmed)",
+      "next": "finish_check"
+    }
+  ],
+  "checks": [
+    {
+      "ok": true,
+      "what": "S6-during-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)"
+    },
+    {
+      "ok": true,
+      "what": "S6: run completed"
+    },
+    {
+      "ok": true,
+      "what": "S6: tests/duration.accept.test.mjs unchanged"
+    },
+    {
+      "ok": true,
+      "what": "S6: prepared by the run (node_modules/.package-lock.json)"
+    },
+    {
+      "ok": true,
+      "what": "S6: npm test passes in the person's shell after the run"
+    },
+    {
+      "ok": true,
+      "what": "S6: orchestrator turns within 8 (4)"
+    },
+    {
+      "ok": true,
+      "what": "S6: the commit is confirmed"
+    },
+    {
+      "ok": true,
+      "what": "S6: the pushed commit carries the trailer CanvasTTY-Run"
+    },
+    {
+      "ok": true,
+      "what": "S6: git ls-remote of the bare repository shows the commit on the branch"
+    },
+    {
+      "ok": true,
+      "what": "S6: QA verified with the expected version"
+    },
+    {
+      "ok": true,
+      "what": "S6: the deploy ran once, not again after the restart"
+    },
+    {
+      "ok": true,
+      "what": "S6: the project folder's main and working tree are untouched (the work is in the worktree)"
+    },
+    {
+      "ok": true,
+      "what": "S6-after-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)"
+    },
+    {
+      "ok": true,
+      "what": "S6: after quitting when QA was done and restarting, nothing ran (journal, deploy, verification unchanged)"
+    }
+  ],
+  "failures": [],
+  "notes": {
+    "codexVersion": "codex-cli 0.155.1",
+    "claudeVersion": "2.1.283 (Claude Code)",
+    "nodeVersion": "v26.8.1",
+    "npmVersion": "11.19.0",
+    "phpVersion": "PHP 8.5.10 (cli) (built: Aug 25 2026 21:09:32) (NTS)",
+    "composerVersion": "Composer version 2.10.3 2026-08-27 13:34:23",
+    "loginShellDbVariables": [],
+    "executable": "development build (electron-vite out/), not the installed application"
+  },
+  "ok": true,
+  "finishedAt": "2026-09-26T16:42:51.563Z",
+  "interventionCount": 2,
+  "turnsTotal": 4,
+  "shutdown": {
+    "stopped": [],
+    "cliBefore": [],
+    "cliLeft": [],
+    "ownProcessesLeft": []
+  },
+  "kept": {
+    "tmp": "<tmp>",
+    "userData": "<tmp>/ud",
+    "note": "kept for the review; not removed by the driver"
+  }
+}

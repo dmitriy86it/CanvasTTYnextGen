@@ -1,0 +1,309 @@
+[
+  {
+    "case": "A one instance, no second",
+    "beforeSecond": {
+      "exists": false
+    },
+    "storesBefore": {
+      "settings.json": "895e93ff3e070f90",
+      "workspaces.json": "f534d10b6df2721b",
+      "browser-state.json": "d1010da427b5cdc7",
+      "plugins.json": "44136fa355b3678a"
+    },
+    "afterSecond": {
+      "exists": false
+    },
+    "storesUnchanged": true,
+    "firstAlive": true,
+    "firstLogSinceSecond": [],
+    "afterFirstQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576625979,
+      "birthtimeMs": 1790576625979,
+      "sha256": "01649b8534adc682",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "reopen": {
+      "responds": true,
+      "storesAsBefore": true
+    },
+    "afterReopenQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576625979,
+      "birthtimeMs": 1790576625979,
+      "sha256": "01649b8534adc682",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    }
+  },
+  {
+    "case": "B same app over itself",
+    "beforeSecond": {
+      "exists": false
+    },
+    "storesBefore": {
+      "settings.json": "895e93ff3e070f90",
+      "workspaces.json": "d8a6c3727d62aaea",
+      "browser-state.json": "d1010da427b5cdc7",
+      "plugins.json": "44136fa355b3678a"
+    },
+    "second": {
+      "code": 0,
+      "ms": 248,
+      "localStateLog": [],
+      "bytes": 0
+    },
+    "afterSecond": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576636362,
+      "birthtimeMs": 1790576636362,
+      "sha256": "fae520b22acd997f",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "storesUnchanged": true,
+    "firstAlive": true,
+    "firstLogSinceSecond": [],
+    "afterFirstQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576638011,
+      "birthtimeMs": 1790576638011,
+      "sha256": "6af1a29a3e29a4c6",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "reopen": {
+      "responds": true,
+      "storesAsBefore": true
+    },
+    "afterReopenQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576638011,
+      "birthtimeMs": 1790576638011,
+      "sha256": "6af1a29a3e29a4c6",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    }
+  },
+  {
+    "case": "C renamed over running (devCanvas over raoden)",
+    "beforeSecond": {
+      "exists": false
+    },
+    "storesBefore": {
+      "settings.json": "895e93ff3e070f90",
+      "workspaces.json": "3e2dba520a2e23f7",
+      "browser-state.json": "d1010da427b5cdc7",
+      "plugins.json": "44136fa355b3678a"
+    },
+    "second": {
+      "code": 0,
+      "ms": 253,
+      "localStateLog": [],
+      "bytes": 0
+    },
+    "afterSecond": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576648262,
+      "birthtimeMs": 1790576648262,
+      "sha256": "e491779df79e25f0",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "storesUnchanged": true,
+    "firstAlive": true,
+    "firstLogSinceSecond": [],
+    "afterFirstQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576649913,
+      "birthtimeMs": 1790576649913,
+      "sha256": "9478ff08be574532",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "reopen": {
+      "responds": true,
+      "storesAsBefore": true
+    },
+    "afterReopenQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576649913,
+      "birthtimeMs": 1790576649913,
+      "sha256": "9478ff08be574532",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    }
+  },
+  {
+    "case": "D renamed over running (raoden over devCanvas)",
+    "beforeSecond": {
+      "exists": false
+    },
+    "storesBefore": {
+      "settings.json": "895e93ff3e070f90",
+      "workspaces.json": "2a555c205205f3ad",
+      "browser-state.json": "d1010da427b5cdc7",
+      "plugins.json": "44136fa355b3678a"
+    },
+    "second": {
+      "code": 0,
+      "ms": 252,
+      "localStateLog": [],
+      "bytes": 0
+    },
+    "afterSecond": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576660188,
+      "birthtimeMs": 1790576660188,
+      "sha256": "ffdcbd87abd60980",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "storesUnchanged": true,
+    "firstAlive": true,
+    "firstLogSinceSecond": [],
+    "afterFirstQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576661820,
+      "birthtimeMs": 1790576661820,
+      "sha256": "59fcd0848b14881e",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "reopen": {
+      "responds": true,
+      "storesAsBefore": true
+    },
+    "afterReopenQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576661820,
+      "birthtimeMs": 1790576661820,
+      "sha256": "59fcd0848b14881e",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    }
+  },
+  {
+    "case": "E = C, Local State blocked by a directory",
+    "beforeSecond": {
+      "exists": false
+    },
+    "storesBefore": {
+      "settings.json": "895e93ff3e070f90",
+      "workspaces.json": "76777087791ff99f",
+      "browser-state.json": "d1010da427b5cdc7",
+      "plugins.json": "44136fa355b3678a"
+    },
+    "second": {
+      "code": 0,
+      "ms": 257,
+      "localStateLog": [],
+      "bytes": 0
+    },
+    "afterSecond": {
+      "exists": true,
+      "directory": true,
+      "entries": []
+    },
+    "storesUnchanged": true,
+    "firstAlive": true,
+    "firstLogSinceSecond": [],
+    "afterFirstQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576673788,
+      "birthtimeMs": 1790576673787,
+      "sha256": "1d9ecf4d0d62eee8",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "reopen": {
+      "responds": true,
+      "storesAsBefore": true
+    },
+    "afterReopenQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576673788,
+      "birthtimeMs": 1790576673787,
+      "sha256": "1d9ecf4d0d62eee8",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    }
+  },
+  {
+    "case": "F = D, Local State blocked by a directory",
+    "beforeSecond": {
+      "exists": false
+    },
+    "storesBefore": {
+      "settings.json": "895e93ff3e070f90",
+      "workspaces.json": "c02f8e830bb09a39",
+      "browser-state.json": "d1010da427b5cdc7",
+      "plugins.json": "44136fa355b3678a"
+    },
+    "second": {
+      "code": 0,
+      "ms": 261,
+      "localStateLog": [],
+      "bytes": 0
+    },
+    "afterSecond": {
+      "exists": true,
+      "directory": true,
+      "entries": []
+    },
+    "storesUnchanged": true,
+    "firstAlive": true,
+    "firstLogSinceSecond": [],
+    "afterFirstQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576685721,
+      "birthtimeMs": 1790576685721,
+      "sha256": "1503684b1f615f44",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    },
+    "reopen": {
+      "responds": true,
+      "storesAsBefore": true
+    },
+    "afterReopenQuit": {
+      "exists": true,
+      "bytes": 57,
+      "mtimeMs": 1790576685721,
+      "birthtimeMs": 1790576685721,
+      "sha256": "1503684b1f615f44",
+      "keys": [
+        "uninstall_metrics"
+      ]
+    }
+  }
+]

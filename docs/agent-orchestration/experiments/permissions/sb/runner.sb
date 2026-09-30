@@ -1,0 +1,28 @@
+(version 1)
+; Minimal runner profile: no network, no PTY. Opt-in fragments (runner-*.sb) are appended by sb.sh.
+; Seatbelt: the last matching rule wins, so narrow allows come after broad denies.
+; All params must be resolved paths (sb.sh checks): rules match the real path, not a symlink.
+(deny default)
+(import "system.sb")
+(allow process-fork process-exec)
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+(allow sysctl-read)
+(allow file-read*)
+(define (home p) (string-append (param "REALHOME") p))
+(deny file-read* file-write*
+  (subpath (home "/.ssh")) (subpath (home "/.aws")) (subpath (home "/.codex")) (subpath (home "/.claude"))
+  (literal (home "/.claude.json")) (subpath (home "/.config/gh")) (literal (home "/.npmrc"))
+  (literal (home "/.gitconfig")) (subpath (home "/.config/git")) (subpath (home "/Library/Keychains"))
+  (literal (home "/.netrc")) (subpath (home "/.docker")) (subpath (home "/.kube")) (subpath (home "/.gnupg"))
+  (subpath (param "USERDATA")) (subpath (param "SRCREPO")))
+; this run only
+(allow file-read* file-write* (subpath (param "WORK")) (subpath (param "TMP")) (subpath (param "FAKEHOME")))
+; stat (not readdir) of their parents: cd/realpath/git discovery fail otherwise
+(allow file-read-metadata (path-ancestors (param "WORK")) (path-ancestors (param "TMP")) (path-ancestors (param "FAKEHOME"))
+  (path-ancestors (string-append (param "SRCREPO") "/node_modules"))
+  (path-ancestors (string-append (param "SRCREPO") "/.git/objects")))
+; read-only: node_modules (symlinked from the copy) and objects of the source repo (clone --shared alternates)
+(allow file-read* (subpath (string-append (param "SRCREPO") "/node_modules"))
+  (subpath (string-append (param "SRCREPO") "/.git/objects")))
+(allow file-write* (literal "/dev/null"))

@@ -1,0 +1,28 @@
+{
+  "pid": 2685,
+  "argv": [
+    "--user-data-dir=<S0>/p-si-exec-A-B"
+  ],
+  "exe": "<S0>/diag-out-Beta/mac-arm64/S0 Diag Beta.app/Contents/MacOS/S0 Diag Beta",
+  "name": "s0diag-q7",
+  "nameProp": "s0diag-q7",
+  "t0": 1790575537505,
+  "beforeProfileChoice": {
+    "userData": "<S0>/p-si-exec-A-B",
+    "sessionData": "<S0>/p-si-exec-A-B",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-si-exec-A-B/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "afterProfileChoice": {
+    "userData": "<S0>/p-si-exec-A-B",
+    "sessionData": "<S0>/p-si-exec-A-B",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-si-exec-A-B/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "lock": false,
+  "exitedAt": 1790575537515
+}

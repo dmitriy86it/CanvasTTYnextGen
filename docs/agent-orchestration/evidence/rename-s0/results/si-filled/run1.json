@@ -1,0 +1,817 @@
+{
+  "filledProfile": {
+    "filesByCategory": {
+      "chromium other": 46,
+      "Local State": 1,
+      "browser: Partitions": 55,
+      "browser: state": 2,
+      "orchestration other": 6,
+      "run history": 174,
+      "plugins": 4,
+      "app stores": 2
+    },
+    "nonEmpty": {
+      "partitionsLocalStorage": 6,
+      "partitionsIndexedDB": 5,
+      "partitionsCookies": 1,
+      "pluginStorage": 1,
+      "runs": 4,
+      "runJournals": 4
+    }
+  },
+  "results": [
+    {
+      "case": "control raoden (no second) #1",
+      "first": "raoden",
+      "second": null,
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    },
+    {
+      "case": "control raoden (no second) #2",
+      "first": "raoden",
+      "second": null,
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    },
+    {
+      "case": "B raoden over raoden",
+      "first": "raoden",
+      "second": "raoden",
+      "secondExit": {
+        "code": 0,
+        "ms": 225
+      },
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    },
+    {
+      "case": "C devCanvas over raoden",
+      "first": "raoden",
+      "second": "devCanvas",
+      "secondExit": {
+        "code": 0,
+        "ms": 245
+      },
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    },
+    {
+      "case": "control devCanvas (no second) #1",
+      "first": "devCanvas",
+      "second": null,
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/electron-preload/1F92D3AB0331563F77F1D1C5335B8C90AD02CF284AB0C4FCABAB248F8E644364.cache",
+          "kind": "added",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    },
+    {
+      "case": "control devCanvas (no second) #2",
+      "first": "devCanvas",
+      "second": null,
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/electron-preload/1F92D3AB0331563F77F1D1C5335B8C90AD02CF284AB0C4FCABAB248F8E644364.cache",
+          "kind": "added",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    },
+    {
+      "case": "D raoden over devCanvas",
+      "first": "devCanvas",
+      "second": "raoden",
+      "secondExit": {
+        "code": 0,
+        "ms": 488
+      },
+      "firstAlive": true,
+      "reopen": {
+        "responds": true,
+        "pluginData": {
+          "text": "synthetic plugin data",
+          "n": 42
+        },
+        "runs": 4
+      },
+      "duringWindow": [],
+      "startToQuit": [
+        {
+          "path": "browser-state.json",
+          "kind": "changed",
+          "category": "browser: state"
+        },
+        {
+          "path": "Code Cache/electron-preload/1F92D3AB0331563F77F1D1C5335B8C90AD02CF284AB0C4FCABAB248F8E644364.cache",
+          "kind": "added",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnGraphiteCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DawnWebGPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "DevToolsActivePort",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "GPUCache/index",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/js/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Code Cache/wasm/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Local Storage/leveldb/LOG.old",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Partitions/canvastty-browser/Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "browser: Partitions"
+        },
+        {
+          "path": "Session Storage/000003.log",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Session Storage/LOG.old",
+          "kind": "changed",
+          "category": "chromium other"
+        },
+        {
+          "path": "Shared Dictionary/cache/index-dir/the-real-index",
+          "kind": "changed",
+          "category": "chromium other"
+        }
+      ]
+    }
+  ],
+  "attribution": {
+    "B raoden over raoden": {
+      "windowOnlyWithSecond": [],
+      "quitOnlyWithSecond": [],
+      "dataCategoriesTouchedInWindow": []
+    },
+    "C devCanvas over raoden": {
+      "windowOnlyWithSecond": [],
+      "quitOnlyWithSecond": [],
+      "dataCategoriesTouchedInWindow": []
+    },
+    "D raoden over devCanvas": {
+      "windowOnlyWithSecond": [],
+      "quitOnlyWithSecond": [],
+      "dataCategoriesTouchedInWindow": []
+    }
+  }
+}

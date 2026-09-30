@@ -1,0 +1,22 @@
+{
+  "dir": "~/canvastty-s4/s4c-app",
+  "head": "34049b19a906f1c4346406f8c50ac8ddf4db3395",
+  "branch": "main",
+  "status": "?? release/receipts.txt\n",
+  "diffStat": "",
+  "newFiles": [
+    {
+      "path": "release/receipts.txt",
+      "bytes": 143,
+      "sha256": "1cc810fc5b5c0d738aeb35a7b76c799b06304535a01a023b3a0db82827325c40"
+    }
+  ],
+  "accept": {
+    "path": "tests/receipts.accept.test.mjs",
+    "blobAtStart": "55d066dea179c98440de295199dd3339475fda4c",
+    "blobNow": "55d066dea179c98440de295199dd3339475fda4c",
+    "sha256Now": "65aefdf1ee38fa2f5572ae7f889c8a913eab52fc38f65a7aaf6cfad4834e6275",
+    "unchanged": true
+  },
+  "errors": []
+}

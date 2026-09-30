@@ -1,0 +1,10 @@
+{
+ "RunAsNode": "on",
+ "EnableCookieEncryption": "off",
+ "EnableNodeOptionsEnvironmentVariable": "off",
+ "EnableNodeCliInspectArguments": "off",
+ "EnableEmbeddedAsarIntegrityValidation": "on",
+ "OnlyLoadAppFromAsar": "on",
+ "LoadBrowserProcessSpecificV8Snapshot": "off",
+ "GrantFileProtocolExtraPrivileges": "on"
+}

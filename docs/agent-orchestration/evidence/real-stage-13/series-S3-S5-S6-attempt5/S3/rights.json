@@ -1,0 +1,39 @@
+{
+  "claude": {
+    "requested": "acceptEdits",
+    "mapping": [
+      "claude --permission-mode acceptEdits",
+      "codex thread: sandbox=workspace-write, approvalPolicy=on-request"
+    ],
+    "argv": [
+      "--permission-mode acceptEdits",
+      "--permission-mode acceptEdits"
+    ],
+    "reported": [
+      {
+        "permissionMode": "acceptEdits"
+      }
+    ]
+  },
+  "codex": {
+    "requested": "workspace",
+    "mapping": [
+      "claude --permission-mode acceptEdits",
+      "codex thread: sandbox=workspace-write, approvalPolicy=on-request"
+    ],
+    "reported": [
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      },
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      },
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      }
+    ]
+  }
+}

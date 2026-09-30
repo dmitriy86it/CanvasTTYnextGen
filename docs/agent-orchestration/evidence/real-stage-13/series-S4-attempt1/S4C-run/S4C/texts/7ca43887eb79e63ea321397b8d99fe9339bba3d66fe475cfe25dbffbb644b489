@@ -1,0 +1,1 @@
+{"findings":["Required npm test passed: 2 tests, 0 failures.","Verified release/receipts.txt matches the server's returned lines verbatim, in api then web order; Claude made both calls, and web's decline is preserved.","tests/ is unchanged. Only release/receipts.txt was added; changes remain uncommitted."],"question":null,"verdict":"complete"}

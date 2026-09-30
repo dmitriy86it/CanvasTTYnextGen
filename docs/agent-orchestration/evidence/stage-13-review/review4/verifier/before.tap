@@ -1,0 +1,753 @@
+# state: PRE-FIX copy of src/ at /private/tmp/claude-501/-Users-dmitrijbernackij-dev-CanvasTTYnextGen/9663f878-addc-4139-b71a-c04731c51650/scratchpad/before/src (prepare.ts sha256 fd068a7f475c8bdaf218060b025fb835b23f43d0f93d05d8ec958f61031c7f39, byte-identical to the working tree's prepare.ts observed at session start); rerun with the extended scenario set
+TAP version 13
+# Subtest: bad: function before return -> config_unknown, not ok
+not ok 1 - bad: function before return -> config_unknown, not ok
+  ---
+  duration_ms: 6.829666
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: bad: if(false){return} -> config_unknown, not ok
+not ok 2 - bad: if(false){return} -> config_unknown, not ok
+  ---
+  duration_ms: 1.690709
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: if(false) return; without braces -> config_unknown, not ok
+not ok 3 - bad: if(false) return; without braces -> config_unknown, not ok
+  ---
+  duration_ms: 1.248792
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: if: ... endif; -> config_unknown, not ok
+not ok 4 - bad: if: ... endif; -> config_unknown, not ok
+  ---
+  duration_ms: 1.463458
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: else branch -> config_unknown, not ok
+not ok 5 - bad: else branch -> config_unknown, not ok
+  ---
+  duration_ms: 1.540708
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: elseif branch -> config_unknown, not ok
+not ok 6 - bad: elseif branch -> config_unknown, not ok
+  ---
+  duration_ms: 2.086708
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: closure -> config_unknown, not ok
+not ok 7 - bad: closure -> config_unknown, not ok
+  ---
+  duration_ms: 1.112458
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: static closure with use -> config_unknown, not ok
+not ok 8 - bad: static closure with use -> config_unknown, not ok
+  ---
+  duration_ms: 0.940667
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: class method -> config_unknown, not ok
+not ok 9 - bad: class method -> config_unknown, not ok
+  ---
+  duration_ms: 0.896666
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: match -> config_unknown, not ok
+ok 10 - bad: match -> config_unknown, not ok
+  ---
+  duration_ms: 1.466458
+  type: 'test'
+  ...
+# Subtest: bad: ternary -> config_unknown, not ok
+ok 11 - bad: ternary -> config_unknown, not ok
+  ---
+  duration_ms: 1.152292
+  type: 'test'
+  ...
+# Subtest: bad: code after return -> config_unknown, not ok
+not ok 12 - bad: code after return -> config_unknown, not ok
+  ---
+  duration_ms: 1.130583
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: two top-level returns -> config_unknown, not ok
+not ok 13 - bad: two top-level returns -> config_unknown, not ok
+  ---
+  duration_ms: 0.987125
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: variable then return $config -> config_unknown, not ok
+ok 14 - bad: variable then return $config -> config_unknown, not ok
+  ---
+  duration_ms: 0.876834
+  type: 'test'
+  ...
+# Subtest: bad: array_merge -> config_unknown, not ok
+ok 15 - bad: array_merge -> config_unknown, not ok
+  ---
+  duration_ms: 0.675292
+  type: 'test'
+  ...
+# Subtest: bad: return require -> config_unknown, not ok
+ok 16 - bad: return require -> config_unknown, not ok
+  ---
+  duration_ms: 0.682875
+  type: 'test'
+  ...
+# Subtest: bad: heredoc -> config_unknown, not ok
+ok 17 - bad: heredoc -> config_unknown, not ok
+  ---
+  duration_ms: 0.829625
+  type: 'test'
+  ...
+# Subtest: bad: goto -> config_unknown, not ok
+not ok 18 - bad: goto -> config_unknown, not ok
+  ---
+  duration_ms: 1.11075
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: switch -> config_unknown, not ok
+not ok 19 - bad: switch -> config_unknown, not ok
+  ---
+  duration_ms: 1.158209
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: while(false) -> config_unknown, not ok
+not ok 20 - bad: while(false) -> config_unknown, not ok
+  ---
+  duration_ms: 1.029333
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: try/finally -> config_unknown, not ok
+not ok 21 - bad: try/finally -> config_unknown, not ok
+  ---
+  duration_ms: 1.060083
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: declare block -> config_unknown, not ok
+not ok 22 - bad: declare block -> config_unknown, not ok
+  ---
+  duration_ms: 0.925708
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: braced namespace -> config_unknown, not ok
+not ok 23 - bad: braced namespace -> config_unknown, not ok
+  ---
+  duration_ms: 0.886584
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: __halt_compiler before return -> config_unknown, not ok
+not ok 24 - bad: __halt_compiler before return -> config_unknown, not ok
+  ---
+  duration_ms: 0.923292
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: array union (left wins) -> config_unknown, not ok
+ok 25 - bad: array union (left wins) -> config_unknown, not ok
+  ---
+  duration_ms: 1.056042
+  type: 'test'
+  ...
+# Subtest: bad: inline HTML after ?> mid-file -> config_unknown, not ok
+not ok 26 - bad: inline HTML after ?> mid-file -> config_unknown, not ok
+  ---
+  duration_ms: 0.925791
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: // comment closed by ?> -> config_unknown, not ok
+not ok 27 - bad: // comment closed by ?> -> config_unknown, not ok
+  ---
+  duration_ms: 1.836
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: \# comment closed by ?> -> config_unknown, not ok
+not ok 28 - bad: \# comment closed by ?> -> config_unknown, not ok
+  ---
+  duration_ms: 1.171166
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: // comment ended by bare \\r -> config_unknown, not ok
+not ok 29 - bad: // comment ended by bare \\r -> config_unknown, not ok
+  ---
+  duration_ms: 2.784958
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: <?PHP with "<?php" in a string -> config_unknown, not ok
+not ok 30 - bad: <?PHP with "<?php" in a string -> config_unknown, not ok
+  ---
+  duration_ms: 2.116625
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: no <?php at all -> config_unknown, not ok
+not ok 31 - bad: no <?php at all -> config_unknown, not ok
+  ---
+  duration_ms: 1.2655
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: <?= before <?php (team-lead case) -> config_unknown, not ok
+not ok 32 - bad: <?= before <?php (team-lead case) -> config_unknown, not ok
+  ---
+  duration_ms: 1.445167
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"db":{"connection":"mysql","host":"production.invalid","port":3306,"database":"working","source":"none","explicit":false,"risky":true,"configCached":false,"service":"unknown","url":null,"connectionName":"mysql","unknown":null},"item":{"id":"testdb","level":"blocker","detail":"the tests would use the database of config/database.php on production.invalid: set a test database in phpunit.xml or .env.testing","facts":{"source":"none","connection":"mysql","connectionName":"mysql","host":"production.invalid:3306","database":"working","variable":"","unknown":"","reason":"remote_host"}}}
+    + actual - expected
+    
+    + 'remote_host'
+    - 'config_unknown'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'config_unknown'
+  actual: 'remote_host'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:79:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: <?= before <?php, dangerous order -> config_unknown, not ok
+not ok 33 - bad: <?= before <?php, dangerous order -> config_unknown, not ok
+  ---
+  duration_ms: 1.033084
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: <? short tag before <?php -> config_unknown, not ok
+not ok 34 - bad: <? short tag before <?php -> config_unknown, not ok
+  ---
+  duration_ms: 1.532083
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: <?PHP uppercase with a function -> config_unknown, not ok
+not ok 35 - bad: <?PHP uppercase with a function -> config_unknown, not ok
+  ---
+  duration_ms: 0.914708
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: ?> mid-file then <?php return -> config_unknown, not ok
+not ok 36 - bad: ?> mid-file then <?php return -> config_unknown, not ok
+  ---
+  duration_ms: 3.243
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: <?phpX is not an open tag -> config_unknown, not ok
+not ok 37 - bad: <?phpX is not an open tag -> config_unknown, not ok
+  ---
+  duration_ms: 1.227125
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: NBSP after <?php, real tag in a comment -> config_unknown, not ok
+not ok 38 - bad: NBSP after <?php, real tag in a comment -> config_unknown, not ok
+  ---
+  duration_ms: 0.98375
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: \\v after <?php, real tag in a comment -> config_unknown, not ok
+not ok 39 - bad: \\v after <?php, real tag in a comment -> config_unknown, not ok
+  ---
+  duration_ms: 1.0325
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: bad: \\f after <?php, real tag in a comment -> config_unknown, not ok
+not ok 40 - bad: \\f after <?php, real tag in a comment -> config_unknown, not ok
+  ---
+  duration_ms: 0.917541
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:76:48'
+  failureType: 'testCodeFailure'
+  error: '{"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"none","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":"sqlite","unknown":null},"item":{"id":"testdb","level":"ok","detail":"sqlite from config/database.php","facts":{"source":"none","connection":"sqlite","connectionName":"sqlite","host":"","database":":memory:","variable":"","unknown":"","reason":"for_tests"}}}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'ok'
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:78:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: good: Laravel 11 style (use, docblocks, //, \#, /* */) -> ok
+ok 41 - good: Laravel 11 style (use, docblocks, //, \#, /* */) -> ok
+  ---
+  duration_ms: 1.1165
+  type: 'test'
+  ...
+# Subtest: good: declare(strict_types=1) -> ok
+ok 42 - good: declare(strict_types=1) -> ok
+  ---
+  duration_ms: 0.939458
+  type: 'test'
+  ...
+# Subtest: good: namespace + use -> ok
+ok 43 - good: namespace + use -> ok
+  ---
+  duration_ms: 0.756209
+  type: 'test'
+  ...
+# Subtest: good: declare + namespace + use -> ok
+ok 44 - good: declare + namespace + use -> ok
+  ---
+  duration_ms: 1.135541
+  type: 'test'
+  ...
+# Subtest: good: trailing ?> -> ok
+ok 45 - good: trailing ?> -> ok
+  ---
+  duration_ms: 1.221042
+  type: 'test'
+  ...
+# Subtest: good: trailing ?> and newline -> ok
+ok 46 - good: trailing ?> and newline -> ok
+  ---
+  duration_ms: 1.072541
+  type: 'test'
+  ...
+# Subtest: good: return array(...) -> ok
+ok 47 - good: return array(...) -> ok
+  ---
+  duration_ms: 0.74425
+  type: 'test'
+  ...
+# Subtest: good: 'return' in a value and a comment -> ok
+ok 48 - good: 'return' in a value and a comment -> ok
+  ---
+  duration_ms: 0.763959
+  type: 'test'
+  ...
+# Subtest: good: no trailing semicolon before ?> -> ok
+not ok 49 - good: no trailing semicolon before ?> -> ok
+  ---
+  duration_ms: 0.838583
+  type: 'test'
+  location: '<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:134:49'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"db":{"connection":null,"host":null,"port":null,"database":null,"source":"none","explicit":false,"risky":false,"configCached":false,"service":"not_needed","url":null,"connectionName":null,"unknown":{"field":"default","what":"config/database.php returns a conditional"}},"item":{"id":"testdb","level":"confirm","detail":"config/database.php: the default connection is not known (config/database.php returns a conditional): which database the tests use is not known; set DB_CONNECTION and DB_DATABASE for the tests in phpunit.xml","facts":{"source":"none","connection":"","connectionName":"","host":"","database":"","variable":"","unknown":"default","reason":"config_unknown"}}}
+    
+    'confirm' !== 'ok'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'ok'
+  actual: 'confirm'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<repo>/docs/agent-orchestration/evidence/stage-13-review/review4/verifier/config-boundaries.test.mjs:136:10)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: good: <?PHP uppercase, plain return -> ok
+ok 50 - good: <?PHP uppercase, plain return -> ok
+  ---
+  duration_ms: 0.713625
+  type: 'test'
+  ...
+# Subtest: good: HTML before <?php -> ok
+ok 51 - good: HTML before <?php -> ok
+  ---
+  duration_ms: 0.7055
+  type: 'test'
+  ...
+# Subtest: good: BOM before <?php -> ok
+ok 52 - good: BOM before <?php -> ok
+  ---
+  duration_ms: 0.9565
+  type: 'test'
+  ...
+# Subtest: actual MySQL on production.invalid (plain file) stays a blocker
+ok 53 - actual MySQL on production.invalid (plain file) stays a blocker
+  ---
+  duration_ms: 0.794208
+  type: 'test'
+  ...
+# Subtest: no password from a URL or the file reaches the item or the result
+ok 54 - no password from a URL or the file reaches the item or the result
+  ---
+  duration_ms: 2.731209
+  type: 'test'
+  ...
+1..54
+# tests 54
+# suites 0
+# pass 20
+# fail 34
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 202.399125

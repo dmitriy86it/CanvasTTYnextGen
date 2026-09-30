@@ -1,0 +1,30 @@
+== M1: main keeps the session but does not bring the card back
+ℹ pass 4
+ℹ fail 1
+-- external visibility
+ℹ pass 0
+ℹ fail 1
+-- full-app smoke
+  "failures": [
+    "error: Error: timeout: card back, marked (null)\n    at waitForValue (file://~/dev/CanvasTTYnextGen/scripts/orchestration-app-kit.mjs:56:9)\n    at async file://~/dev/CanvasTTYnextGen/scripts/smoke-terminal-close-un
+  ],
+== M2: closeHasWork ignores the mark
+ℹ pass 4
+ℹ fail 1
+-- external visibility
+ℹ pass 1
+ℹ fail 0
+-- full-app smoke
+  "failures": [
+    "error: Error: timeout: the close dialog opens (the terminal is work) (null)\n    at waitForValue (file://~/dev/CanvasTTYnextGen/scripts/orchestration-app-kit.mjs:56:9)\n    at async file://~/dev/CanvasTTYnextGen/scr
+  ],
+== M3: Open closes the dialog silently without a record
+ℹ pass 5
+ℹ fail 0
+-- external visibility
+ℹ pass 1
+ℹ fail 0
+-- full-app smoke
+  "failures": [
+    "error: Error: timeout: a message instead of a silent close (null)\n    at waitForValue (file://~/dev/CanvasTTYnextGen/scripts/orchestration-app-kit.mjs:56:9)\n    at async file://~/dev/CanvasTTYnextGen/scripts/smoke
+  ],

@@ -1,0 +1,1 @@
+["Both receipt lines match the tool responses verbatim and appear in call order, including the decline.","Only release/receipts.txt was added; tests/ and dependency files are unchanged.","CanvasTTY reports cmd-1 (npm test) passed. Stage accepted; separate final review remains."]

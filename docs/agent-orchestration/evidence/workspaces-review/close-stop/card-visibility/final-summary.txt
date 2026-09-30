@@ -1,0 +1,17 @@
+typecheck=0 build=0
+external visibility: ℹ pass 1 ℹ fail 0 
+external race: ℹ pass 2 ℹ fail 0 
+ℹ tests 73
+ℹ pass 73
+ℹ fail 0
+smoke-workspaces-close: exit 0, 22 passed
+smoke-terminal-close-unconfirmed: exit 0, 11 passed
+smoke-workspaces-ui: exit 0, failures []
+# tests 1436
+# pass 1435
+# fail 0
+# skipped 1
+src/tests/scripts unchanged during npm test (sha list compared)
+external sha256:
+612c4eda9d5846a9f6c2191f93b5d1280cee226038bb61e43eae1848e827f3cd  /private/tmp/raoden-stop-card-visibility-review.test.mjs
+958cf38d032b6fc250fc8faae96c3652b05a0667b8d8c5a8e7e61c83f6a5b154  /private/tmp/raoden-terminal-stop-race-review.test.mjs

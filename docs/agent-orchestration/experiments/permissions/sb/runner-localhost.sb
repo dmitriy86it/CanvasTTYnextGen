@@ -1,0 +1,3 @@
+; opt-in: TCP on localhost:PORT only (bind, accept, connect). Does not tell whose socket it is.
+(allow network-bind network-inbound (local ip (string-append "localhost:" (param "PORT"))))
+(allow network-outbound (remote ip (string-append "localhost:" (param "PORT"))))

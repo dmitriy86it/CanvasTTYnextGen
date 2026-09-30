@@ -1,0 +1,33 @@
+{
+  "claude": {
+    "requested": "terminal (Как в моём терминале)",
+    "mapping": null,
+    "argv": [
+      "(no permission flag)",
+      "(no permission flag)"
+    ],
+    "reported": [
+      {
+        "permissionMode": "plan"
+      }
+    ]
+  },
+  "codex": {
+    "requested": "terminal (Как в моём терминале)",
+    "mapping": null,
+    "reported": [
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      },
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      },
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      }
+    ]
+  }
+}

@@ -1,0 +1,271 @@
+[
+  {
+    "step": "keychain before",
+    "build": "-",
+    "change": "-",
+    "observed": {
+      "canvastty": "absent",
+      "CanvasTTY": "absent",
+      "Raoden Loom": "absent",
+      "Raoden": "absent",
+      "raoden-loom": "absent"
+    },
+    "ok": true
+  },
+  {
+    "step": "U1 data made by 1.5.3",
+    "build": "v153",
+    "change": "test profile, note, region, two agents, one link",
+    "observed": {
+      "opens": []
+    },
+    "ok": true
+  },
+  {
+    "step": "U1 files of 1.5.3",
+    "build": "v153",
+    "change": "-",
+    "observed": {
+      "note": 1,
+      "region": 1,
+      "agents": 2,
+      "links": 1,
+      "workspacesJson": false
+    },
+    "ok": true
+  },
+  {
+    "step": "U2 Raoden opens the 1.5.3 profile",
+    "build": "raoden",
+    "change": "productName Raoden Loom, same app.asar as dev",
+    "observed": {
+      "available": true,
+      "workspaces": [
+        "common"
+      ],
+      "note": [
+        "S0 заметка"
+      ],
+      "region": [
+        "S0 область"
+      ],
+      "agents": 2,
+      "links": 1,
+      "backups": [
+        "pre-workspaces-2026-09-28T06-12-29-848Z"
+      ],
+      "opens": []
+    },
+    "ok": true
+  },
+  {
+    "step": "U2 files after Raoden",
+    "build": "raoden",
+    "change": "note and agent group moved to workspace Бета",
+    "observed": {
+      "noteWs": true,
+      "agentWs": [
+        true,
+        true
+      ]
+    },
+    "ok": true
+  },
+  {
+    "step": "U3 rollback: 1.5.3 opens the profile written by Raoden",
+    "build": "v153",
+    "change": "-",
+    "observed": {
+      "note": [
+        [
+          "S0 заметка",
+          null
+        ]
+      ],
+      "region": 1,
+      "agents": 2,
+      "links": 1,
+      "opens": []
+    },
+    "ok": true
+  },
+  {
+    "step": "U3 what 1.5.3 keeps when it writes",
+    "build": "v153",
+    "change": "note edited, lead card moved",
+    "observed": {
+      "noteWorkspaceId": null,
+      "agents": 2,
+      "agentWorkspaceIds": [
+        "92358986-e687-4ab6-82c1-b9012ddbf819",
+        "92358986-e687-4ab6-82c1-b9012ddbf819"
+      ],
+      "links": 1,
+      "ownersKey": false,
+      "workspacesJsonKept": true
+    },
+    "ok": true
+  },
+  {
+    "step": "U4 Raoden again after the rollback",
+    "build": "raoden",
+    "change": "-",
+    "observed": {
+      "workspaces": [
+        "common",
+        "Бета"
+      ],
+      "note": [
+        [
+          "S0 заметка (1.5.3)",
+          "common"
+        ]
+      ],
+      "agents": [
+        "92358986-e687-4ab6-82c1-b9012ddbf819",
+        "92358986-e687-4ab6-82c1-b9012ddbf819"
+      ],
+      "links": 1,
+      "backups": 1
+    },
+    "ok": true
+  },
+  {
+    "step": "F first start without data",
+    "build": "raoden",
+    "change": "empty test profile",
+    "observed": {
+      "workspaces": [
+        "common"
+      ],
+      "opens": []
+    },
+    "ok": true
+  },
+  {
+    "step": "F backup of a fresh profile",
+    "build": "raoden",
+    "change": "-",
+    "observed": [
+      "settings.json:absent",
+      "terminal-sessions.json:absent",
+      "browser-state.json:absent",
+      "orchestration/canvas.json:absent"
+    ],
+    "ok": true
+  },
+  {
+    "step": "PR both set",
+    "build": "raoden",
+    "change": "env CANVASTTY_USER_DATA_DIR=A, --user-data-dir=B",
+    "observed": {
+      "envDir": [
+        "browser-state.json",
+        "plugins.json",
+        "settings.json",
+        "workspaces.json"
+      ],
+      "switchDir": []
+    },
+    "ok": true
+  },
+  {
+    "step": "SI devCanvas then raoden (exec)",
+    "build": "devCanvas+raoden",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": 0,
+        "seconds": 0.237
+      },
+      "storesUnchanged": true,
+      "sameEntries": false,
+      "procs": [
+        0,
+        0
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "SI devCanvas then raoden (open)",
+    "build": "devCanvas+raoden",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": "open -W returned",
+        "seconds": 0.278
+      },
+      "storesUnchanged": true,
+      "sameEntries": false,
+      "procs": [
+        0,
+        0
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "SI raoden then devCanvas (exec)",
+    "build": "raoden+devCanvas",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": 0,
+        "seconds": 0.239
+      },
+      "storesUnchanged": true,
+      "sameEntries": false,
+      "procs": [
+        0,
+        0
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "SI raoden then devCanvas (open)",
+    "build": "raoden+devCanvas",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": "open -W returned",
+        "seconds": 0.3
+      },
+      "storesUnchanged": true,
+      "sameEntries": false,
+      "procs": [
+        0,
+        0
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "keychain after",
+    "build": "-",
+    "change": "-",
+    "observed": {
+      "canvastty": "absent",
+      "CanvasTTY": "absent",
+      "Raoden Loom": "absent",
+      "Raoden": "absent",
+      "raoden-loom": "absent"
+    },
+    "ok": true
+  },
+  {
+    "step": "Application Support: no entry added or removed",
+    "build": "-",
+    "change": "-",
+    "observed": {
+      "added": [],
+      "removed": []
+    },
+    "ok": true
+  }
+]

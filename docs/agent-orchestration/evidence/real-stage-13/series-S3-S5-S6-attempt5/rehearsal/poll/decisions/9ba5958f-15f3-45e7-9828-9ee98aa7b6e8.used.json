@@ -1,0 +1,7 @@
+{
+  "requestId": "9ba5958f-15f3-45e7-9828-9ee98aa7b6e8",
+  "decision": "allow_once",
+  "reason": "full command read: cwd = project; quoted heredoc rewrites task test tests/duration.test.mjs (not the acceptance test, regular file); rest node --test on it | tail",
+  "detectedAt": "2026-09-26T12:08:49.225Z",
+  "writtenAt": "2026-09-26T12:08:56.217Z"
+}

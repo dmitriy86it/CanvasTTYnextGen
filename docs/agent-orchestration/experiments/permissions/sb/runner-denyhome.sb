@@ -1,0 +1,8 @@
+; opt-in: deny the whole real HOME, then re-allow this run, deps and TOOLCHAIN (read-only)
+(deny file-read* file-write* (subpath (param "REALHOME")))
+(allow file-read* file-write* (subpath (param "WORK")) (subpath (param "TMP")) (subpath (param "FAKEHOME")))
+(allow file-read* (subpath (string-append (param "SRCREPO") "/node_modules"))
+  (subpath (string-append (param "SRCREPO") "/.git/objects")) (subpath (param "TOOLCHAIN")))
+(allow file-read-metadata (path-ancestors (param "WORK")) (path-ancestors (param "TMP")) (path-ancestors (param "FAKEHOME"))
+  (path-ancestors (string-append (param "SRCREPO") "/node_modules"))
+  (path-ancestors (string-append (param "SRCREPO") "/.git/objects")) (path-ancestors (param "TOOLCHAIN")))

@@ -1,0 +1,43 @@
+# repro: orchestration-service.test.mjs.before selftest delay 35000 ms; 15:57  up 2 days,  1:20, 7 users, load averages: 150,74 88,78 45,64
+TAP version 13
+# Subtest: automatic start: plan → executor → checks → review → checkpoint per stage → final review → completed
+not ok 1 - automatic start: plan → executor → checks → review → checkpoint per stage → final review → completed
+  ---
+  duration_ms: 61533.908583
+  type: 'test'
+  location: '<repo>/tests/.review6-repro-70575.mjs:75:1'
+  failureType: 'testCodeFailure'
+  error: 'condition not reached'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    until (file://<repo>/tests/.review6-repro-70575.mjs:68:9)
+    async TestContext.<anonymous> (file://<repo>/tests/.review6-repro-70575.mjs:84:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: a failing check sends the stage back to the executor; the fix is accepted
+not ok 2 - a failing check sends the stage back to the executor; the fix is accepted
+  ---
+  duration_ms: 60539.769
+  type: 'test'
+  location: '<repo>/tests/.review6-repro-70575.mjs:123:1'
+  failureType: 'testCodeFailure'
+  error: 'condition not reached'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    until (file://<repo>/tests/.review6-repro-70575.mjs:68:9)
+    async TestContext.<anonymous> (file://<repo>/tests/.review6-repro-70575.mjs:133:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Error: A resource generated asynchronous activity after the test ended. This activity created the error "Error: A FileHandle object was closed during garbage collection. This used to be allowed with a deprecation warning but is now considered an error. Please close FileHandle objects explicitly. File descriptor: 14 (/private/var/folders/jn/zh0lz5bd0j777khtw76rv1t00000gn/T/canvastty-svc-RjLnhs/root-1/runs/1ce4a5c2-7dae-4a9b-9ff1-bb16dd44d425/journal.jsonl)" which triggered an uncaughtException event, caught by the test runner.
+1..2
+# tests 2
+# suites 0
+# pass 0
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 137296.849458
+# end: 15:59  up 2 days,  1:22, 7 users, load averages: 37,13 63,37 41,81

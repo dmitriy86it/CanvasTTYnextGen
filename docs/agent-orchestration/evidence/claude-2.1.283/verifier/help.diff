@@ -1,0 +1,7 @@
+63a64,69
+>   --client-data-url <url>               URL for a signed configuration document.
+>                                         Claude Code exits if it cannot load it
+>                                         or it does not cover the selected model.
+>                                         Setting CLAUDE_CODE_CLIENT_DATA_URL
+>                                         instead keeps the URL out of the process
+>                                         list

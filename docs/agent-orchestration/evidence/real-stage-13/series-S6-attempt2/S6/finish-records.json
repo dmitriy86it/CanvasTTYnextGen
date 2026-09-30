@@ -1,0 +1,114 @@
+[
+ {
+  "seq": 25,
+  "ts": "2026-09-26T16:41:39.671Z",
+  "type": "finish.intent",
+  "data": {
+   "intentId": "c0c31d01-c7da-4852-811e-e1f238f52acf",
+   "params": {
+    "bytes": 297,
+    "sha256": "07eec91d47b872c0e5d1ff629a10fb59ade8d8735138fe62bf98f9f803cffddb"
+   },
+   "step": "commit"
+  },
+  "text": "{\"message\":\"Add src/duration.mjs exporting toMs(text): it converts a duration strin…\\n\\nCanvasTTY-Run: 0783db6d-c972-42ef-8ab6-4a26926ce56f\\n\",\"paths\":[\"src/duration.mjs\",\"tests/duration.test.mjs\"],\"runId\":\"0783db6d-c972-42ef-8ab6-4a26926ce56f\",\"tree\":\"2ada513960634a10586a23bce01baae04b10860a\"}"
+ },
+ {
+  "seq": 26,
+  "ts": "2026-09-26T16:41:40.612Z",
+  "type": "finish.result",
+  "data": {
+   "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+   "established": false,
+   "evidence": {
+    "bytes": 47,
+    "sha256": "53c3df9696d1cc5c04f16e31f5d9d04db44945e8d4c50a48dacbcdf193c931b0"
+   },
+   "intentId": "c0c31d01-c7da-4852-811e-e1f238f52acf",
+   "status": "done",
+   "tree": "2ada513960634a10586a23bce01baae04b10860a"
+  },
+  "text": "commit 0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed"
+ },
+ {
+  "seq": 27,
+  "ts": "2026-09-26T16:41:41.092Z",
+  "type": "finish.intent",
+  "data": {
+   "intentId": "504fd08b-650e-44ec-b164-d15fd7d62eba",
+   "params": {
+    "bytes": 145,
+    "sha256": "74b28584e94377572aa080d61ef586eac52ed544a95ac8159dc1abf2a7fdc950"
+   },
+   "step": "push"
+  },
+  "text": "{\"branch\":\"canvastty-s6\",\"commit\":\"0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed\",\"remote\":\"origin\",\"tree\":\"2ada513960634a10586a23bce01baae04b10860a\"}"
+ },
+ {
+  "seq": 28,
+  "ts": "2026-09-26T16:41:41.730Z",
+  "type": "finish.result",
+  "data": {
+   "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+   "established": false,
+   "evidence": {
+    "bytes": 73,
+    "sha256": "457ac1d71cf1ffa31c2cd501a23e061ce9e23108cef7a6acecde496835303e87"
+   },
+   "intentId": "504fd08b-650e-44ec-b164-d15fd7d62eba",
+   "status": "done",
+   "tree": "2ada513960634a10586a23bce01baae04b10860a"
+  },
+  "text": "origin refs/heads/canvastty-s6 = 0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed"
+ },
+ {
+  "seq": 29,
+  "ts": "2026-09-26T16:41:41.856Z",
+  "type": "finish.intent",
+  "data": {
+   "intentId": "d371f85c-bbf9-4d5b-abf1-ea615a34cdcb",
+   "params": {
+    "bytes": 634,
+    "sha256": "7e6d949d87db9e3f8ed609ca89c7f9d703c0ac48ddc0c16af6b6ea6bf6152fa9"
+   },
+   "step": "qa"
+  },
+  "text": "{\"branch\":\"canvastty-s6\",\"command\":\"echo \\\"$CANVASTTY_COMMIT\\\" >> <tmp>/qa/deploys.log && echo \\\"$CANVASTTY_COMMIT\\\" > <tmp>/qa/deployed && sleep 45 && echo done >> <tmp>/qa/deploy-finished.log\",\"commit\":\"0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed\",\"environment\":\"qa-local\",\"reportsVersion\":true,\"tree\":\"2ada513960634a10586a23bce01baae04b10860a\",\"verify\":\"echo x >> <tmp>/qa/verify.log && test -s <tmp>/qa/deployed && cat <tmp>/qa/deployed > \\\"$CANVASTTY_QA_RESULT\\\"\"}"
+ },
+ {
+  "seq": 30,
+  "ts": "2026-09-26T16:41:48.035Z",
+  "type": "finish.result",
+  "data": {
+   "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+   "established": false,
+   "evidence": {
+    "bytes": 310,
+    "sha256": "92696d6112f30252ec99be1dc17f180d11812157c13b9d67eaf6524b166bf0dd"
+   },
+   "intentId": "d371f85c-bbf9-4d5b-abf1-ea615a34cdcb",
+   "status": "unknown",
+   "tree": "2ada513960634a10586a23bce01baae04b10860a"
+  },
+  "text": "(anon):setopt:7: can't change option: monitor\n\n[\u001b[31mERROR\u001b[39m]: gitstatus failed to initialize.\n\n\n  Add the following parameter to \u001b[4m~/.zshrc\u001b[24m for extra diagnostics on error:\n\n    \u001b[1mGITSTATUS_LOG_LEVEL=DEBUG\u001b[0m\n\n  Restart Zsh to retry gitstatus initialization:\n\n    \u001b[32m\u001b[4mexec\u001b[24m\u001b[32m zsh\u001b[39m\n"
+ },
+ {
+  "seq": 39,
+  "ts": "2026-09-26T16:42:27.514Z",
+  "type": "finish.result",
+  "data": {
+   "commit": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+   "established": true,
+   "evidence": {
+    "bytes": 113,
+    "sha256": "b64cc5dfce5e2344f5194b9467a8d5256a2d02614410cc75f635309a5561fa56"
+   },
+   "intentId": "d371f85c-bbf9-4d5b-abf1-ea615a34cdcb",
+   "observed": "0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed",
+   "status": "done",
+   "tree": "2ada513960634a10586a23bce01baae04b10860a",
+   "version": "confirmed"
+  },
+  "text": "verification: exit 0\nversion: confirmed (reported 0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed, the delivered commit)"
+ }
+]

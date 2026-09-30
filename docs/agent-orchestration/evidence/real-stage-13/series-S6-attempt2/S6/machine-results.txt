@@ -1,0 +1,27 @@
+## bare: git for-each-ref
+0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed commit	refs/heads/canvastty-s6
+29ecf7870b8b8e6cd6e5675a8af25ce6f303679e commit	refs/heads/main
+## bare: canvastty-s6 commit
+0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed
+29ecf7870b8b8e6cd6e5675a8af25ce6f303679e
+Add src/duration.mjs exporting toMs(text): it converts a duration strin…
+
+CanvasTTY-Run: 0783db6d-c972-42ef-8ab6-4a26926ce56f
+
+## bare: files of the commit
+ src/duration.mjs        |  7 +++++++
+ tests/duration.test.mjs | 17 +++++++++++++++++
+ 2 files changed, 24 insertions(+)
+## worktree: HEAD and branch
+0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed
+canvastty/0783db6d
+## project folder: main
+29ecf7870b8b8e6cd6e5675a8af25ce6f303679e
+## QA: deploys.log / deployed / verify.log / deploy-finished.log
+# deploys.log
+0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed
+# deployed
+0c0766ed6fa2e8ca4f0710cf21fa9f53265d27ed
+# verify.log
+x
+# deploy-finished.log

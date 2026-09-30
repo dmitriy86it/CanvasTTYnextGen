@@ -1,0 +1,67 @@
+Role: lead. Purpose: final_review.
+
+Goal:
+Implement src/clamp.mjs exporting clamp(x, lo, hi): return x limited to [lo, hi], and throw RangeError when lo > hi. Preserve tests/clamp.accept.test.mjs byte-for-byte.
+
+Role-specific workflow:
+- Codex lead: produce the normal orchestration plan and delegate implementation to Claude. The implementation objective is already authorized. Do not request a separate approval of your orchestration plan merely because Claude must obtain approval to leave its own plan mode. Include the following Claude-specific requirement in the delegated stage task.
+- Claude executor only: this project's Claude settings start you in plan mode. Inspect the relevant files, prepare your implementation plan, and request approval through the native ExitPlanMode tool before editing implementation or test files. If the plan is returned with feedback, revise it and request approval again. After approval, implement the task and run npm test.
+- Codex lead: review the resulting changes and actual check results through the normal workflow.
+
+The approval being tested is Claude's native plan-mode approval, not a free-text question from the lead.
+
+Acceptance criteria (fixed; you cannot change them):
+1. npm test passes
+2. tests/clamp.accept.test.mjs is unchanged
+
+Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):
+cmd-1: npm test
+
+Work place: the user's own project folder (your working directory), exactly as in their terminal. It may hold the user's uncommitted changes: keep them. Your tools and permissions are the user's own CLI settings; a prompt goes to the user.
+Your duty: plan and review; the executor implements the stages. Do not implement the stages yourself.
+
+Mode: autopilot. Work on your own: inspect the project, choose reversible technical options yourself, prepare what the work needs within your rights, run the project's checks when useful, fix and check again. Ask the person (the question field of your report) only when required data is missing, a significant decision is ambiguous, or an action is outside the rights you have.
+CanvasTTY prepares the environment itself when it is missing (npm ci). Do not upgrade dependencies or change lock files unless the task needs it; never install dependencies inside a test.
+Leave the changes uncommitted: do not commit, push or deploy.
+
+Rules for the final review:
+- After the last stage a final review is mandatory: it is a separate lead turn, and the run completes only when it answers complete with every required check passing.
+
+Budget: this is turn 4 of at most 8 (4 left after it; the final review needs one of them, a fix round needs an executor turn and a review).
+Replans used: 0 of 1. Rounds per stage: at most 2. Time left for the run: about 18 min.
+
+Plan v1, stages accepted: 1:
+1. Claude: implement and validate clamp
+
+Check results on the current state of the copy (results of other states are not shown):
+- cmd-1: passed
+(anon):setopt:7: can't change option: monitor
+
+[[31mERROR[39m]: gitstatus failed to initialize.
+
+
+  Add the following parameter to [4m~/.zshrc[24m for extra diagnostics on error:
+
+    [1mGITSTATUS_LOG_LEVEL=DEBUG[0m
+
+  Restart Zsh to retry gitstatus initialization:
+
+    [32m[4mexec[24m[32m zsh[39m
+
+> series-node-app@1.0.0 test
+> node --test
+
+✔ clamp degenerate interval (0.308209ms)
+✔ clamp (0.407417ms)
+✔ sum (0.300709ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45.42675
+
+
+Answer only with the JSON object the schema describes.

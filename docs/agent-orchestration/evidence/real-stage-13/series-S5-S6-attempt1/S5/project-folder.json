@@ -1,0 +1,27 @@
+{
+  "dir": "<tmp>/s5-app",
+  "head": "d4a5e4a590ce7655992778b7ce43d945d53cf53a",
+  "branch": "main",
+  "status": "?? src/clamp.mjs\n?? tests/clamp-feedback.test.mjs\n",
+  "diffStat": "",
+  "newFiles": [
+    {
+      "path": "src/clamp.mjs",
+      "bytes": 141,
+      "sha256": "98e618bc0dc6ce06514160a03a724fd1497d0e4311aa58c5b24bed3069236ba5"
+    },
+    {
+      "path": "tests/clamp-feedback.test.mjs",
+      "bytes": 196,
+      "sha256": "2098cd65c2fb1ba45f1b5506719816834245aaa68bd049ec2a6ca63b7d78593c"
+    }
+  ],
+  "accept": {
+    "path": "tests/clamp.accept.test.mjs",
+    "blobAtStart": "19e83964bbb44fbb2fb69a947d8e14300d265cbd",
+    "blobNow": "19e83964bbb44fbb2fb69a947d8e14300d265cbd",
+    "sha256Now": "a3866579c9feae251c72a0f37343c0910f4170f31180bd2ca2bdf3657883ce19",
+    "unchanged": true
+  },
+  "errors": []
+}

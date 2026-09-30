@@ -1,0 +1,34 @@
+Role: executor. Purpose: execute.
+
+Goal:
+Release form check with the local MCP test server release-form (tool release_ticket). Claude executor only: call the MCP tool release_ticket of the server release-form with component "api", then with component "web". A person answers each form and may decline one. Write release/receipts.txt with each line the tool returned, verbatim, one per line, in call order. Never invent or edit a line. The Codex lead plans and reviews as usual and does not call release_ticket. Do not modify tests/.
+
+Acceptance criteria (fixed; you cannot change them):
+1. npm test passes
+2. release/receipts.txt holds the lines release_ticket returned, verbatim
+3. tests/ is unchanged
+
+Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):
+cmd-1: npm test
+
+Work place: the user's own project folder (your working directory), exactly as in their terminal. It may hold the user's uncommitted changes: keep them. Your tools and permissions are the user's own CLI settings; a prompt goes to the user.
+Your duty: implement the current stage. The lead plans and reviews.
+
+Mode: autopilot. Work on your own: inspect the project, choose reversible technical options yourself, prepare what the work needs within your rights, run the project's checks when useful, fix and check again. Ask the person (the question field of your report) only when required data is missing, a significant decision is ambiguous, or an action is outside the rights you have.
+CanvasTTY prepares the environment itself when it is missing (npm ci). Do not upgrade dependencies or change lock files unless the task needs it; never install dependencies inside a test.
+Leave the changes uncommitted: do not commit, push or deploy.
+
+Rules for this turn:
+- Implement the current stage completely in this turn, including the inspection you need; there is no separate turn for reading.
+- A stage is accepted only when every required check (cmd-1) passes on the copy after that stage, and the lead's review accepts it. An accept while a required check fails does not advance the stage: it goes back to the executor. CanvasTTY runs the checks after your turn; your own report does not count.
+
+Budget: this is turn 2 of at most 8 (6 left after it; the final review needs one of them, a fix round needs an executor turn and a review).
+Replans used: 0 of 1. Rounds per stage: at most 2 (this is round 1). Time left for the run: about 19 min.
+
+Plan v1, stages accepted: 0:
+1. Collect release receipts with Claude executor
+
+Current stage 1 (round 1): Collect release receipts with Claude executor
+Claude executor only: call release-form MCP tool release_ticket with component "api", wait for the person's response and tool result, then call it with component "web". Honor either approval or decline; preserve each returned receipt line verbatim, including any decline, in release/receipts.txt, one per line in call order. Never fabricate, normalize, or edit receipt text. If a call returns no receipt, report the blocker without inventing one. Modify only release/receipts.txt; preserve user changes, leave tests/ unchanged, and do not commit, push, deploy, or change dependencies. Inspection found a clean working tree; npm test currently fails solely because release/receipts.txt is missing. Run npm test after writing the receipts. Stage acceptance requires CanvasTTY's independent npm test to pass and lead review to confirm exact correspondence with tool results and unchanged tests/. A separate final lead review is mandatory.
+
+Answer only with the JSON object the schema describes.

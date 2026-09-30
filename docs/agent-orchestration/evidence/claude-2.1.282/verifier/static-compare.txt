@@ -1,0 +1,18 @@
+Static comparison Claude Code 2.1.281 vs 2.1.282 (verifier, no model calls)
+Binaries: ~/.local/share/claude/versions/2.1.281, ~/.local/share/claude/versions/2.1.282
+sha256 2.1.281 a922981f6f3b55a251ef9f9dbaa0621a5f99cbcb5ca67f8a797476ccfc83f626
+sha256 2.1.282 fcfd837103965c64de34a6b9b94370d77a347ea71819715a27d5f0ef01775ea4
+--version: "2.1.281 (Claude Code)" / "2.1.282 (Claude Code)"
+
+1. --help: help-2.1.281.txt vs help-2.1.282.txt -> help.diff is empty (identical).
+   All adapter flags present in 2.1.282 help.
+2. Identifier occurrence counts (strings -n 6 of each binary): identifier-counts.txt. No identifier dropped; none went to 0.
+3. subtype literals (subtype:X("..") / subtype:".." / subtype===".."): subtypes-*.txt, subtypes.diff.
+   New in 2.1.282: system/session_metadata (CLI->host output, @internal, artifacts metadata),
+   control_request prefetch_attachments (host->CLI, bridge). Nothing removed.
+4. Zod schemas compared by property keys + string literals (minified names ignored):
+   permission result allow/deny, can_use_tool request (all 3 variants), control_response envelope,
+   control_response success/error, elicitation action/content, system/init (43 keys),
+   CLI->host request list ["can_use_tool","request_user_dialog"]: IDENTICAL.
+   result/success: +frame_intake_phases_ms (+step), @internal timing -> result-success-keys.diff.
+   interrupt, elicitation request, control_cancel_request: identical snippets.

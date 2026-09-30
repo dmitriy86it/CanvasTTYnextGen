@@ -1,0 +1,272 @@
+{
+  "mode": "real",
+  "startedAt": "2026-09-27T09:20:30.393Z",
+  "order": [
+    "S7"
+  ],
+  "limits": {
+    "perScenario": {
+      "turns": 8,
+      "roundsPerStage": 2,
+      "replans": 1,
+      "runMin": 20,
+      "scenarioMin": 20
+    },
+    "series": {
+      "turns": 0,
+      "minutes": 20
+    }
+  },
+  "scenarios": {
+    "S7": {
+      "mode": "no run: «Проверить окружение» only",
+      "turns": {
+        "codex": 0,
+        "claude": 0
+      },
+      "project": "<the person's project>",
+      "environment": {
+        "state": "done",
+        "providers": [
+          {
+            "provider": "claude",
+            "ok": true,
+            "failed": false,
+            "items": [
+              {
+                "id": "commands",
+                "confirmed": true
+              },
+              {
+                "id": "agents",
+                "confirmed": true
+              },
+              {
+                "id": "models",
+                "confirmed": true
+              },
+              {
+                "id": "account",
+                "confirmed": true
+              },
+              {
+                "id": "mcp",
+                "confirmed": true,
+                "complete": true,
+                "servers": [
+                  {
+                    "name": "plugin:context7:context7",
+                    "connection": "pending",
+                    "auth": null,
+                    "tools": []
+                  },
+                  {
+                    "name": "plugin:playwright:playwright",
+                    "connection": "pending",
+                    "auth": null,
+                    "tools": []
+                  },
+                  {
+                    "name": "obsidian",
+                    "connection": "pending",
+                    "auth": null,
+                    "tools": []
+                  },
+                  {
+                    "name": "claude.ai Claude Docs",
+                    "connection": "pending",
+                    "auth": null,
+                    "tools": []
+                  },
+                  {
+                    "name": "claude.ai Atlassian Rovo",
+                    "connection": "needs-auth",
+                    "auth": null,
+                    "tools": []
+                  },
+                  {
+                    "name": "claude.ai Gmail",
+                    "connection": "pending",
+                    "auth": null,
+                    "tools": []
+                  }
+                ]
+              },
+              {
+                "id": "mcp_auth",
+                "confirmed": true
+              },
+              {
+                "id": "skills",
+                "confirmed": false
+              }
+            ]
+          },
+          {
+            "provider": "codex",
+            "ok": true,
+            "failed": false,
+            "items": [
+              {
+                "id": "model",
+                "confirmed": true
+              },
+              {
+                "id": "approval",
+                "confirmed": true
+              },
+              {
+                "id": "sandbox",
+                "confirmed": true
+              },
+              {
+                "id": "skills",
+                "confirmed": true
+              },
+              {
+                "id": "plugins",
+                "confirmed": true
+              },
+              {
+                "id": "mcp",
+                "confirmed": false,
+                "complete": false,
+                "incomplete": "timeout"
+              },
+              {
+                "id": "hooks",
+                "confirmed": true
+              },
+              {
+                "id": "account",
+                "confirmed": true
+              }
+            ]
+          }
+        ]
+      },
+      "app": {
+        "claudeMcp": [
+          "plugin:context7:context7",
+          "plugin:playwright:playwright",
+          "obsidian",
+          "claude.ai Claude Docs",
+          "claude.ai Atlassian Rovo",
+          "claude.ai Gmail"
+        ],
+        "codexMcp": []
+      },
+      "terminal": "not asked by the driver: the manual part (evidence/real-stage-13/S7-MANUAL.md)",
+      "personCheck": "PENDING: the manual part, each point equal / differs / not confirmed",
+      "auto": {
+        "ok": false,
+        "checks": [
+          {
+            "ok": true,
+            "what": "the environment check finished"
+          },
+          {
+            "ok": true,
+            "what": "exactly one answer from Claude and one from Codex"
+          },
+          {
+            "ok": true,
+            "what": "claude answered without an error"
+          },
+          {
+            "ok": true,
+            "what": "claude: the MCP list is whole (a confirmed empty list counts)"
+          },
+          {
+            "ok": true,
+            "what": "codex answered without an error"
+          },
+          {
+            "ok": false,
+            "what": "codex: the MCP list is whole (a confirmed empty list counts)",
+            "got": {
+              "state": "failed",
+              "incomplete": "timeout"
+            }
+          }
+        ],
+        "mcp": {
+          "claude": "whole",
+          "codex": "failed"
+        },
+        "manual": "not counted: the person's comparison with the terminal (S7-MANUAL.md)"
+      }
+    }
+  },
+  "interventions": [],
+  "checks": [
+    {
+      "ok": true,
+      "what": "S7: the environment check finished"
+    },
+    {
+      "ok": true,
+      "what": "S7: exactly one answer from Claude and one from Codex"
+    },
+    {
+      "ok": true,
+      "what": "S7: claude answered without an error"
+    },
+    {
+      "ok": true,
+      "what": "S7: claude: the MCP list is whole (a confirmed empty list counts)"
+    },
+    {
+      "ok": true,
+      "what": "S7: codex answered without an error"
+    },
+    {
+      "ok": false,
+      "what": "S7: codex: the MCP list is whole (a confirmed empty list counts)",
+      "got": {
+        "state": "failed",
+        "incomplete": "timeout"
+      }
+    },
+    {
+      "ok": true,
+      "what": "S7: the project is unchanged by the probe (git status)"
+    },
+    {
+      "ok": true,
+      "what": "S7: no run was started"
+    },
+    {
+      "ok": true,
+      "what": "global ~/.codex/config.toml and ~/.claude/settings.json unchanged"
+    }
+  ],
+  "failures": [
+    "S7: codex: the MCP list is whole (a confirmed empty list counts)"
+  ],
+  "notes": {
+    "codexVersion": "codex-cli 0.155.1",
+    "claudeVersion": "2.1.283 (Claude Code)",
+    "nodeVersion": "v26.8.1",
+    "npmVersion": "11.19.0",
+    "phpVersion": "PHP 8.5.10 (cli) (built: Aug 25 2026 21:09:32) (NTS)",
+    "composerVersion": "Composer version 2.10.3 2026-08-27 13:34:23",
+    "loginShellDbVariables": [],
+    "executable": "development build (electron-vite out/), not the installed application"
+  },
+  "ok": false,
+  "finishedAt": "2026-09-27T09:20:54.448Z",
+  "interventionCount": 0,
+  "turnsTotal": 0,
+  "shutdown": {
+    "stopped": [],
+    "cliBefore": [],
+    "cliLeft": [],
+    "ownProcessesLeft": []
+  },
+  "kept": {
+    "tmp": "<tmp>",
+    "userData": "<tmp>/ud",
+    "note": "kept for the review; not removed by the driver"
+  }
+}

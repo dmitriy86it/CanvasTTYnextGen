@@ -1,0 +1,101 @@
+{
+  "sanitized": "copy of series-report.json: probe dir, pids, absolute paths removed; session ids replaced by stable placeholders (same id -> same placeholder). Original left untouched in the session scratchpad.",
+  "run": "2026-09-22 14:08 (local)",
+  "mode": "real",
+  "versions": {
+    "codex": "codex-cli 0.155.1",
+    "claude": "2.1.278 (Claude Code)"
+  },
+  "ok": false,
+  "probes": [
+    {
+      "id": "B1",
+      "provider": "codex",
+      "ran": true,
+      "ok": true,
+      "failed": [],
+      "outcome": "completed",
+      "stopCause": null,
+      "transport": "completed",
+      "delivery": "ok",
+      "report": "valid",
+      "tokenMatch": true,
+      "answerOk": true,
+      "sessionOk": true,
+      "model": "gpt-6-astra",
+      "durationMs": 7311,
+      "counters": {
+        "stdoutBytes": 406,
+        "frames": 4,
+        "keptEvents": 4,
+        "droppedEvents": 0,
+        "droppedEventBytes": 0,
+        "stderrBytes": 0,
+        "stderrDroppedBytes": 0,
+        "droppedDiagnostics": 0
+      }
+    },
+    {
+      "id": "B2",
+      "provider": "codex",
+      "ran": true,
+      "ok": true,
+      "failed": [],
+      "outcome": "completed",
+      "stopCause": null,
+      "transport": "completed",
+      "delivery": "ok",
+      "report": "valid",
+      "tokenMatch": true,
+      "answerOk": true,
+      "sessionOk": true,
+      "model": "gpt-6-astra",
+      "durationMs": 7667,
+      "counters": {
+        "stdoutBytes": 415,
+        "frames": 4,
+        "keptEvents": 4,
+        "droppedEvents": 0,
+        "droppedEventBytes": 0,
+        "stderrBytes": 0,
+        "stderrDroppedBytes": 0,
+        "droppedDiagnostics": 0
+      }
+    },
+    {
+      "id": "K1",
+      "provider": "claude",
+      "ran": true,
+      "ok": false,
+      "failed": [
+        "init.tools unexpected"
+      ],
+      "outcome": "completed",
+      "stopCause": null,
+      "transport": "completed",
+      "delivery": "ok",
+      "report": "valid",
+      "tokenMatch": true,
+      "answerOk": true,
+      "sessionOk": true,
+      "model": "claude-opus-5[1m]",
+      "durationMs": 4276,
+      "counters": {
+        "stdoutBytes": 6561,
+        "frames": 5,
+        "keptEvents": 5,
+        "droppedEvents": 0,
+        "droppedEventBytes": 0,
+        "stderrBytes": 0,
+        "stderrDroppedBytes": 0,
+        "droppedDiagnostics": 0
+      }
+    },
+    {
+      "id": "K2",
+      "ran": false,
+      "ok": false,
+      "skipped": "K1 failed"
+    }
+  ]
+}

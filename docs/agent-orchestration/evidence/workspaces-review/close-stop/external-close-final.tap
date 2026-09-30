@@ -1,0 +1,42 @@
+PTY 9fa1f3ad-bf58-434d-a814-340ad0420e41 could not be killed. Error: synthetic kill refused
+    at Object.kill (file://<TMPDIR>/…:17:47)
+    at TerminalManager.dispose (file://<REPO>/src/main/services/TerminalManager.ts:403:25)
+    at TestContext.<anonymous> (file://<TMPDIR>/…:18:24)
+    at Test.runInAsyncScope (node:async_hooks:226:14)
+    at Test.run (node:internal/test_runner/test:1402:25)
+    at Test.start (node:internal/test_runner/test:1262:17)
+    at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+✔ failed PTY kill must not remove the session that Stop-and-hide uses to confirm completion (2.840875ms)
+✖ sending kill without an exit event must not yet signal the completion used by Stop-and-hide (0.588125ms)
+✔ a known run whose snapshot is loading or unreadable must not bypass the close-work dialog (0.093625ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 128.181208
+
+✖ failing tests:
+
+test at ../../../..<TMPDIR>/…:23:1
+✖ sending kill without an exit event must not yet signal the completion used by Stop-and-hide (0.588125ms)
+  AssertionError [ERR_ASSERTION]: no exit occurred but renderer will mark terminal stopped
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file://<TMPDIR>/…:28:9)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

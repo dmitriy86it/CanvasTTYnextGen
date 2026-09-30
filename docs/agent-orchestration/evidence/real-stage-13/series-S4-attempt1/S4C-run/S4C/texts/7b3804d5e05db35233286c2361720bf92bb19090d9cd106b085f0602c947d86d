@@ -1,0 +1,1 @@
+["CanvasTTY's required npm test passed.","Server logs confirm Claude called api, then web; receipts match returned lines byte-for-byte, including web's decline.","Only release/receipts.txt was added; tests/ is unchanged. Separate final review remains required."]

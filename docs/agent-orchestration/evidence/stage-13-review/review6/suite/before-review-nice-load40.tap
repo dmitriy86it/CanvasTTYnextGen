@@ -1,0 +1,31 @@
+15:55  up 2 days,  1:18, 7 users, load averages: 97,45 51,59 27,72
+TAP version 13
+# Subtest: runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+ok 1 - runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+  ---
+  duration_ms: 14225.477167
+  type: 'test'
+  ...
+# check started; service clock released after 4064 ms of preparation (runMs 6000)
+# Subtest: late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+ok 2 - late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+  ---
+  duration_ms: 33272.665584
+  type: 'test'
+  ...
+# Subtest: after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+ok 3 - after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+  ---
+  duration_ms: 32373.7175
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 110608.308916
+15:56  up 2 days,  1:19, 7 users, load averages: 172,70 90,77 45,82

@@ -1,0 +1,6 @@
+{"ts":"2026-09-25T16:24:29.560Z","pid":64739,"type":"initialize","client":{"name":"mock-codex","version":"mock"},"protocolVersion":"2025-06-18","elicitation":true}
+{"ts":"2026-09-25T16:24:31.745Z","pid":64739,"type":"call","client":{"name":"mock-codex","version":"mock"},"component":"plan","nonce":"76e3ca9ad80d","elicitationAnnounced":true,"action":"accept","content":{"ticket":"REL-plan","env":"qa","reviewers":2,"urgent":false},"valid":true,"errors":{}}
+{"ts":"2026-09-25T16:24:32.076Z","pid":64928,"type":"initialize","client":{"name":"mock-claude","version":"mock"},"protocolVersion":"2025-06-18","elicitation":true}
+{"ts":"2026-09-25T16:24:33.053Z","pid":64928,"type":"call","client":{"name":"mock-claude","version":"mock"},"component":"api","nonce":"9cd7dbf90be9","elicitationAnnounced":true,"action":"accept","content":{"ticket":"REL-api","env":"qa","reviewers":2,"urgent":false},"valid":true,"errors":{}}
+{"ts":"2026-09-25T16:24:33.084Z","pid":65007,"type":"initialize","client":{"name":"mock-claude","version":"mock"},"protocolVersion":"2025-06-18","elicitation":true}
+{"ts":"2026-09-25T16:24:33.323Z","pid":65007,"type":"call","client":{"name":"mock-claude","version":"mock"},"component":"web","nonce":"6ec6834b33b0","elicitationAnnounced":true,"action":"decline","content":null,"valid":true,"errors":{}}

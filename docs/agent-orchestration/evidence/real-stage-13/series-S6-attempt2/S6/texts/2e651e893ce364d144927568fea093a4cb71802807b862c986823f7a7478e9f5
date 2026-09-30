@@ -1,0 +1,1 @@
+["Implementation uses ms and throws TypeError for invalid inputs; unit tests cover the planned cases.","Required npm test check passed: 4 tests, 0 failures.","Only src/duration.mjs and tests/duration.test.mjs were added; tests/duration.accept.test.mjs is unchanged."]

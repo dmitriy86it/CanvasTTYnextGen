@@ -1,0 +1,391 @@
+== node --test jsonl.test.ts
+✔ UTF-8 sequence split at every byte boundary (1.300708ms)
+✔ one byte per chunk, several lines, CRLF, blank lines (0.467292ms)
+✔ unknown type is kept, not dropped (0.08375ms)
+✔ oversized: reported inside push(), before newline or end(), exactly once; then resync (1.607542ms)
+✔ oversized tail at EOF: one error, no extra unterminated_tail (0.092292ms)
+✔ line exactly at limit is accepted (0.074625ms)
+✔ 1e5 fragments of 1-3 bytes: correct and linear (86.860083ms)
+✔ unterminated tail is reported, not parsed (0.144709ms)
+✔ invalid utf8 / invalid json / non-object / no type (0.138666ms)
+✔ stream limit stops accumulating (0.10325ms)
+✔ collector: bounded events/errors, counters and one overflow record; terminal still seen (6.633625ms)
+✔ reconcile without Stop (0.156208ms)
+✔ Stop before any result (0.061125ms)
+✔ Stop after the result, process ended by our signal: turn completed (0.046167ms)
+✔ Stop together with an error is never completed (0.053ms)
+✔ run level: any accepted Stop blocks the next turn (0.051959ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 179.560209
+
+== node --test supervisor.test.mjs
+✔ task delivered byte for byte: UTF-8, CRLF, blank lines, stop lines; EOF reaches the target (62.31325ms)
+✔ 1 MiB+ task (larger than a pipe buffer) delivered intact (63.164375ms)
+✔ control channel: only a whole {"cmd":"stop"} line stops; substrings and task text do not (521.578459ms)
+✔ target env: no ELECTRON_RUN_AS_NODE, no SUP_*, allowed auth var passes, values never in status (61.706875ms)
+✔ missing executable: spawn error in status, clean exit, no hang (28.650917ms)
+✔ target exits without reading a large task: EPIPE does not crash the supervisor (62.688875ms)
+✔ Stop while running: leader SIGINT, descendant in the group cleaned, done once (422.24875ms)
+✔ Stop with a leader that ignores SIGINT escalates to SIGTERM (370.450417ms)
+✔ natural exit: exit code kept, descendant left in the group is killed after the leftover grace (476.156083ms)
+✔ Stop racing the natural exit (20 runs): done exactly once, no exceptions (4652.96025ms)
+ℹ {"stopAccepted":15,"stopAfterLeaderExit":2,"leaderSignalled":14}
+✔ lifeline: fd0 EOF stops the group (421.436ms)
+✔ lifeline: SIGKILL of the process holding fd0 cleans the group (630.101792ms)
+✔ task EOF alone does not stop the target (871.165875ms)
+✔ no CTTYEXP processes of this run are left (234.852ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16686.804333
+
+== node --expose-gc mem-check.ts
+== A: one 200 MB line, default 16 MiB line limit, 64 KiB chunks (7 ms)
+   limit 16 MiB; input 191 MiB; errors=[oversized@16777249B] events=turn.completed
+   heapUsed     baseline     7.5 MiB | peak +    0.9 MiB | after gc +    0.2 MiB
+   arrayBuffers baseline     0.1 MiB | peak +   31.9 MiB | after gc +    0.0 MiB
+   external     baseline     5.2 MiB | peak +   32.0 MiB | after gc +    0.1 MiB
+   rss          baseline    84.0 MiB | peak +   26.4 MiB | after gc +   26.4 MiB
+== B: 200 MB of 1 KiB lines, collector maxEvents=1000 maxErrors=100 (145 ms)
+   lines=195329 kept events=1000 dropped=194329 overflowAt=1000 terminals=1 errors=0
+   heapUsed     baseline     7.9 MiB | peak +    3.2 MiB | after gc +    0.1 MiB
+   arrayBuffers baseline     0.1 MiB | peak +    0.1 MiB | after gc +    0.0 MiB
+   external     baseline     5.4 MiB | peak +    0.1 MiB | after gc +    0.0 MiB
+   rss          baseline   111.6 MiB | peak +    7.5 MiB | after gc +    7.5 MiB
+
+== node stop-exp.mjs all
+[    0ms] == a) leader exits, detached descendant (stdout -> /dev/null) keeps running
+[    6ms] leader: stdout 'end' (bytes=13)
+[    6ms] leader: 'exit' code=0 signal=null (stdout bytes so far=13)
+[    7ms] leader: 'close' code=0 signal=null
+[  536ms] after leader exit: 
+[  536ms]     {"pid":40752,"ppid":1,"pgid":40750,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[  536ms] smokeTerminate: leader already exited -> returns without signalling
+[ 3071ms] after smokeTerminate + 2.5s: 
+[ 3072ms]     {"pid":40752,"ppid":1,"pgid":40750,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[ 3072ms] kill(-pgid=40750, SIGKILL) succeeded although leader pid is gone (group still exists)
+[ 3413ms] after group SIGKILL: (none)
+[ 3649ms] == b) leader ignores SIGINT and SIGTERM
+[ 3953ms] child says: got INT
+[ 4652ms] after SIGINT: alive=true
+[ 4653ms] child says: got TERM
+[ 5354ms] after SIGTERM: alive=true
+[ 5355ms] leader: stdout 'end' (bytes=17)
+[ 5355ms] leader: 'exit' code=null signal=SIGKILL (stdout bytes so far=17)
+[ 5355ms] leader: 'close' code=null signal=SIGKILL
+[ 5890ms] == c) descendant inherits stdout and outlives the leader
+[ 5895ms] stdout data: "{\"type\":\"turn.completed\"}\n"
+[ 5895ms] leader: 'exit' code=0 signal=null (stdout bytes so far=26)
+[ 6728ms] stdout data: "{\"type\":\"late\"}\n"
+[ 8893ms] 3s after start: exit={"c":0,"s":null} end=false close=false
+[ 8930ms] still alive: 
+[ 8930ms]     {"pid":40997,"ppid":1,"pgid":40995,"stat":"S","cmd":"node -e setTimeout(()=>console.log(JSON.stringify({type:\"late\"})),800);setInterval(()=>{},"}
+[ 8930ms] group SIGKILL sent
+[ 8931ms] leader: stdout 'end' (bytes=42)
+[ 8931ms] leader: 'close' code=0 signal=null
+[ 9465ms] == c2) 'exit' vs unread stdout: leader writes 32KB (fits the pipe buffer) and exits; we read late
+[ 9494ms] leader: 'exit' code=0 signal=null (stdout bytes so far=0)
+[ 9494ms] leader: stdout 'end' (bytes=32769)
+[ 9494ms] leader: 'close' code=0 signal=null
+[ 9729ms] == d) orchestrator SIGKILLed: bare detached groups vs supervisor
+[ 9758ms] orchestrator: {"silent":41157,"chatty":41166,"supervisor":41167}
+[ 9785ms] orchestrator: sup: {"t":1790057888538,"ev":"started","pgid":41178,"env":["CTTYEXP","HOME","PATH"]}
+[10763ms] before crash: 
+[10763ms]     {"pid":41148,"ppid":40741,"pgid":41148,"stat":"Ss","cmd":"node -e \\012 const { spawn } = require(\"node:child_process\");\\012 const s = spawn(\"sh\", [\""}
+[10763ms]     {"pid":41157,"ppid":41148,"pgid":41157,"stat":"Ss","cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-dd23c59e"}
+[10763ms]     {"pid":41166,"ppid":41148,"pgid":41166,"stat":"Ss","cmd":"sh -c while :; do echo tick; sleep 0.1; done MARK"}
+[10763ms]     {"pid":41167,"ppid":41148,"pgid":41148,"stat":"S","cmd":"<path> <path>"}
+[10763ms]     {"pid":41168,"ppid":41157,"pgid":41157,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[10763ms]     {"pid":41178,"ppid":41167,"pgid":41178,"stat":"Ss","cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-dd23c59e"}
+[10763ms]     {"pid":41179,"ppid":41178,"pgid":41178,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[10763ms] orchestrator SIGKILLed
+[11046ms] 250ms after crash: 
+[11046ms]     {"pid":41157,"ppid":1,"pgid":41157,"stat":"Ss","cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-dd23c59e"}
+[11046ms]     {"pid":41167,"ppid":1,"pgid":41148,"stat":"S","cmd":"<path> <path>"}
+[11046ms]     {"pid":41168,"ppid":41157,"pgid":41157,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[11046ms]     {"pid":41179,"ppid":1,"pgid":41178,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[13854ms] 3s after crash: 
+[13854ms]     {"pid":41157,"ppid":1,"pgid":41157,"stat":"Ss","cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-dd23c59e"}
+[13854ms]     {"pid":41168,"ppid":41157,"pgid":41157,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[14145ms] == e) descendants that leave the process group
+[15182ms] before kill (leader pgid=41443): 
+[15182ms]     {"pid":41443,"ppid":40741,"pgid":41443,"stat":"Ss","cmd":"sh -c nohup node -e 'setInterval(()=>{},1e3)' MARK >/dev/null 2>&1 & (node -e 'setInterval"}
+[15182ms]     {"pid":41444,"ppid":41443,"pgid":41443,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[15182ms]     {"pid":41446,"ppid":1,"pgid":41443,"stat":"S","cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[15182ms]     {"pid":41447,"ppid":41443,"pgid":41447,"stat":"Ss","cmd":"node -e setInterval(()=>{},1e3) MARK-setsid"}
+[15182ms]     {"pid":41449,"ppid":1,"pgid":41449,"stat":"Ss","cmd":"node -e setInterval(()=>{},1e3) MARK-nodedetached"}
+[15183ms] leader: stdout 'end' (bytes=0)
+[15183ms] leader: 'exit' code=null signal=SIGKILL (stdout bytes so far=0)
+[15183ms] leader: 'close' code=null signal=SIGKILL
+[15716ms] after kill(-pgid, SIGKILL): 
+[15716ms]     {"pid":41447,"ppid":1,"pgid":41447,"stat":"Ss","cmd":"node -e setInterval(()=>{},1e3) MARK-setsid"}
+[15716ms]     {"pid":41449,"ppid":1,"pgid":41449,"stat":"Ss","cmd":"node -e setInterval(()=>{},1e3) MARK-nodedetached"}
+[15721ms] escapees still carrying CTTYEXP env marker (visible via ps -E): 2/2
+[15956ms] == env) what ps shows about environment
+[16261ms] own process, ps -E shows CTTYEXP marker: true | lstart: вторник, 22 сентября 202
+[16263ms] own process, ps eww shows marker: true
+[16265ms] pid 1 (other uid), ps -E shows any NAME=VALUE after command: false | text: /sbin/launchd
+[16866ms] final check, processes with this run's MARK: (none)
+
+== electron utilityProcess
+[  410ms] electron: {"main":41613,"utility":41617}
+[  498ms] electron: util: {"groupLeader":41626,"ppid":41613}
+[  847ms] tree before crash:
+[  848ms]     {"pid":41615,"ppid":41613,"pgid":41613,"cmd":"Electron --gpu-preferences=UAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAAOAAAAAAAAAA"}
+[  848ms]     {"pid":41616,"ppid":41613,"pgid":41613,"cmd":"Electron --shared-files --field-trial-handle=1718379636,r,132825593853"}
+[  848ms]     {"pid":41617,"ppid":41613,"pgid":41613,"cmd":"Electron --shared-files --field-trial-handle=1718379636,r,132825593853"}
+[  848ms]     {"pid":41626,"ppid":41617,"pgid":41626,"cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-09f15a81"}
+[  848ms]     {"pid":41627,"ppid":41626,"pgid":41626,"cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[  848ms] electron main SIGKILLed
+[ 1182ms] 300ms later still alive: 
+[ 1183ms]     {"pid":41626,"ppid":1,"pgid":41626,"cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-09f15a81"}
+[ 1183ms]     {"pid":41627,"ppid":41626,"pgid":41626,"cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[ 2719ms] 1500ms later still alive: 
+[ 2719ms]     {"pid":41626,"ppid":1,"pgid":41626,"cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-09f15a81"}
+[ 2719ms]     {"pid":41627,"ppid":41626,"pgid":41626,"cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[ 2719ms] utility log:
+   util started
+
+[ 3123ms] after cleanup: 0 of captured pids alive; 0 MARK processes
+== electron run-as-node supervisor
+[  344ms] electron: {"main":41707,"utility":41711,"groupLeader":41721}
+[  739ms] tree before crash:
+[  739ms]     {"pid":41709,"ppid":41707,"pgid":41707,"cmd":"Electron --gpu-preferences=UAAAAAAAAAAgAQAEAAAAAAAAAAAAAGAAOAAAAAAAAAA"}
+[  739ms]     {"pid":41710,"ppid":41707,"pgid":41707,"cmd":"Electron --shared-files --field-trial-handle=1718379636,r,426817116428"}
+[  739ms]     {"pid":41711,"ppid":41707,"pgid":41711,"cmd":"Electron <path>"}
+[  739ms]     {"pid":41721,"ppid":41711,"pgid":41721,"cmd":"sh -c node -e 'setInterval(()=>{},1e3)' MARK & wait CTTYEXP-5b2ffc3a"}
+[  739ms]     {"pid":41722,"ppid":41721,"pgid":41721,"cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[  739ms] electron main SIGKILLed
+[ 1080ms] 300ms later still alive: 
+[ 1080ms]     {"pid":41711,"ppid":1,"pgid":41711,"cmd":"Electron <path>"}
+[ 1080ms]     {"pid":41722,"ppid":1,"pgid":41721,"cmd":"node -e setInterval(()=>{},1e3) MARK"}
+[ 2613ms] 1500ms later still alive: (none)
+[ 2614ms] utility log:
+(none)
+[ 3014ms] after cleanup: 0 of captured pids alive; 0 MARK processes
+
+== revision 4: node --test (all, 2026-09-22)
+✔ UTF-8 sequence split at every byte boundary (1.362084ms)
+✔ one byte per chunk, several lines, CRLF, blank lines (0.409583ms)
+✔ unknown type is kept, not dropped (0.062917ms)
+✔ oversized: reported inside push(), before newline or end(), exactly once; then resync (1.788458ms)
+✔ oversized tail at EOF: one error, no extra unterminated_tail (0.080958ms)
+✔ line exactly at limit is accepted (0.062125ms)
+✔ 1e5 fragments of 1-3 bytes: correct and linear (114.347ms)
+✔ unterminated tail is reported, not parsed (0.175125ms)
+✔ invalid utf8 / invalid json / non-object / no type (0.156667ms)
+✔ stream limit stops accumulating (0.111709ms)
+✔ collector: bounded events/errors, counters and one overflow record; terminal still seen (9.288083ms)
+✔ collector: byte limit on history is independent of maxEvents; terminal, first error and session survive (7.03325ms)
+✔ collector: session ids per provider; later conflicting id is flagged (0.168042ms)
+✔ reconcile without Stop (0.156958ms)
+✔ Stop before any result (0.076542ms)
+✔ Stop after the result, process ended by our signal: turn completed (0.052042ms)
+✔ Stop together with an error is never completed (0.058833ms)
+✔ run level: any accepted Stop blocks the next turn (0.045084ms)
+✔ task delivered byte for byte: UTF-8, CRLF, blank lines, stop lines; EOF reaches the target (87.763042ms)
+✔ 1 MiB+ task (larger than a pipe buffer) delivered intact (81.590042ms)
+✔ control channel: only a whole {"cmd":"stop"} line stops; substrings and task text do not (531.848042ms)
+✔ target env: no ELECTRON_RUN_AS_NODE, no SUP_*, allowed auth var passes, values never in status (62.267916ms)
+✔ missing executable: spawn error in status, clean exit, no hang (32.826708ms)
+✔ target exits without reading a large task: EPIPE does not crash the supervisor (66.300125ms)
+✔ Stop while running: leader SIGINT, descendant in the group cleaned, done once (419.575ms)
+✔ Stop with a leader that ignores SIGINT escalates to SIGTERM (368.857833ms)
+✔ natural exit: exit code kept, descendant left in the group is killed after the leftover grace (497.555916ms)
+✔ Stop racing the natural exit (20 runs): done exactly once, no exceptions (4040.356083ms)
+✔ lifeline: fd0 EOF stops the group (428.1535ms)
+✔ lifeline: SIGKILL of the process holding fd0 cleans the group (622.738958ms)
+✔ task EOF alone does not stop the target (891.98825ms)
+✔ no processes of this run are left (ledger; ps by marker only as a secondary check) (37.410833ms)
+✔ codex happy path: completed, valid report, session id, next turn allowed (90.528417ms)
+✔ claude: structured_output is the report; result text is not; session mismatch fails (333.8905ms)
+✔ codex report: missing, too large (not read), invalid JSON; not checked when transport failed (243.483708ms)
+✔ large stderr: head + tail kept within maxStderrBytes, rest counted, no hang (65.991459ms)
+✔ history: byte limit and event limit independently; terminal never lost (192.720708ms)
+✔ stream_limit and oversized line: Stop with protocol_error, CLI stopped (122.172708ms)
+✔ timeout: Stop with cause timeout; user Stop: stopped (612.739875ms)
+✔ descendant holds stdout after the leader exits: stdout_held_open, group cleaned (425.528ms)
+✔ 50 MB of stdout completes without hanging (107.771875ms)
+✔ large task into a CLI that exits at once: EPIPE handled, result arrives (68.558875ms)
+✔ preflight: bad spec and an already existing report file throw synchronously (1.000041ms)
+✔ schema.mjs subset (0.137208ms)
+✔ proc-ledger: EPERM is unverifiable (not gone), ps failures are 'unavailable', never success (772.71025ms)
+✔ codex (mock): structured answer -> completed, report valid, session id, next turn allowed (107.389417ms)
+✔ claude (mock): structured answer -> completed, report valid, session id, next turn allowed (107.715834ms)
+✔ codex (mock): task delivered byte for byte with EOF (UTF-8, CRLF, "stop", {"cmd":"stop"}, >1 MiB) (107.257458ms)
+✔ claude (mock): task delivered byte for byte with EOF (UTF-8, CRLF, "stop", {"cmd":"stop"}, >1 MiB) (107.505583ms)
+✔ codex (mock continuation, harness only): resume by exact id keeps context; wrong session -> failed (315.210541ms)
+✔ claude (mock continuation, harness only): resume by exact id keeps context; wrong session -> failed (332.834291ms)
+✔ codex (mock) bad_schema: transport completed, answer schema_mismatch -> invalid_report (104.618334ms)
+✔ claude (mock) bad_schema: transport completed, answer schema_mismatch -> invalid_report (103.287833ms)
+✔ codex (mock) not_json: transport completed, answer invalid_json -> invalid_report (115.004625ms)
+✔ claude (mock) no_structured: transport completed, answer missing -> invalid_report (105.452875ms)
+✔ codex (mock) no_report_file: transport completed, answer missing -> invalid_report (100.808958ms)
+✔ codex (mock): answer larger than maxReportBytes -> invalid_report too_large (106.401ms)
+✔ claude (mock): answer larger than maxReportBytes -> invalid_report too_large (108.271667ms)
+✔ codex (mock): failures -> failed / protocol_error (turn failure, exit 3 after success, no terminal event) (316.013417ms)
+✔ claude (mock): failures -> failed / protocol_error (turn failure, exit 3 after success, no terminal event) (307.491ms)
+✔ codex (mock): Stop during a running turn -> stopped/user; timeout -> timeout (738.626208ms)
+✔ claude (mock): Stop during a running turn -> stopped/user; timeout -> timeout (742.329ms)
+✔ codex (mock): oversized line -> protocol_error quickly, no hang (109.801834ms)
+✔ codex (mock): 2000 x 64 KiB events -> completed; history bounded by bytes and count; terminal kept (203.712625ms)
+✔ codex (mock): stderr flood -> no hang, stderr kept within maxStderrBytes, rest counted (108.944375ms)
+✔ codex (mock): descendant holds stdout after the leader exits -> protocol_error stdout_held_open, group cleaned (456.538208ms)
+✔ claude (mock): oversized line -> protocol_error quickly, no hang (104.749584ms)
+✔ claude (mock): 2000 x 64 KiB events -> completed; history bounded by bytes and count; terminal kept (197.332083ms)
+✔ claude (mock): stderr flood -> no hang, stderr kept within maxStderrBytes, rest counted (115.479625ms)
+✔ claude (mock): descendant holds stdout after the leader exits -> protocol_error stdout_held_open, group cleaned (454.321458ms)
+✔ codex (mock): SIGKILL of the process running runTurn -> every ledger pid is gone (390.715292ms)
+✔ codex (mock): a report left by a previous attempt is never picked up (104.949459ms)
+✔ preflight: bad spec throws synchronously and starts nothing (1.250458ms)
+ℹ tests 73
+ℹ pass 73
+ℹ fail 0
+ℹ cancelled 0
+ℹ duration_ms 16178.372708
+== probe-plan --check
+[{'id': 'B1', 'flags': 10, 'missing': []}, {'id': 'B2', 'flags': 9, 'missing': []}, {'id': 'K1', 'flags': 13, 'missing': []}, {'id': 'K2', 'flags': 13, 'missing': []}]
+
+== revision 5: node --test (all, 2026-09-22), fake codex/claude first in PATH
+✔ UTF-8 sequence split at every byte boundary (2.523917ms)
+✔ one byte per chunk, several lines, CRLF, blank lines (0.418458ms)
+✔ unknown type is kept, not dropped (0.066167ms)
+✔ oversized: reported inside push(), before newline or end(), exactly once; then resync (2.003458ms)
+✔ oversized tail at EOF: one error, no extra unterminated_tail (0.112916ms)
+✔ line exactly at limit is accepted (0.087583ms)
+✔ 1e5 fragments of 1-3 bytes: correct and linear (126.620125ms)
+✔ unterminated tail is reported, not parsed (0.180459ms)
+✔ invalid utf8 / invalid json / non-object / no type (0.153041ms)
+✔ stream limit stops accumulating (0.543042ms)
+✔ collector: bounded events/errors, counters and one overflow record; terminal still seen (7.829958ms)
+✔ collector: byte limit on history is independent of maxEvents; terminal, first error and session survive (7.104042ms)
+✔ collector: session ids per provider; later conflicting id is flagged (0.230834ms)
+✔ reconcile without Stop (0.172375ms)
+✔ Stop before any result (0.075125ms)
+✔ Stop after the result, process ended by our signal: turn completed (0.058417ms)
+✔ Stop together with an error is never completed (0.090625ms)
+✔ run level: any accepted Stop blocks the next turn (0.113375ms)
+✔ plan: exact argv, tokens only in first-turn tasks, expected claude init from flags (0.944625ms)
+✔ mock: all four ok -> rc 0, report on stdout and in series-report.json, only mocks ran (517.769792ms)
+✔ mock B1=fail: B1 fails (^outcome=failed$), later probes never start (235.966584ms)
+✔ mock B2=fail: B2 fails (^outcome=failed$), later probes never start (355.428417ms)
+✔ mock B2=wrong_token: B2 fails (^token mismatch$), later probes never start (392.007291ms)
+✔ mock B2=no_context: B2 fails (^token mismatch$), later probes never start (325.150958ms)
+✔ mock B2=wrong_session: B2 fails (^sessionId mismatch$), later probes never start (312.99075ms)
+✔ mock K2=no_context: K2 fails (^token mismatch$), later probes never start (449.515834ms)
+✔ mock K1=tools_nonempty: K1 fails (^init\.tools unexpected$), later probes never start (381.378125ms)
+✔ review scenario: K1 with an 8 MiB task and a CLI that never reads stdin -> delivery_failed, not ok (399.017167ms)
+✔ review scenario: B1 result then hang with --timeout-ms 500 -> timeout, not ok (712.66525ms)
+✔ dry-run starts nothing: no ledger, no marker, env names only, no tokens, placeholder for B2's id (132.94825ms)
+✔ --real refuses before resolving anything: no env / wrong env / mock overrides; marker never created (340.094291ms)
+✔ task delivered byte for byte: UTF-8, CRLF, blank lines, stop lines; EOF reaches the target (105.54425ms)
+✔ target exits without reading an 8 MiB task: no crash, task_write_error EPIPE before done, no task_written (206.469583ms)
+✔ 1 MiB+ task (larger than a pipe buffer) delivered intact (73.586ms)
+✔ control channel: only a whole {"cmd":"stop"} line stops; substrings and task text do not (533.474333ms)
+✔ target env: no ELECTRON_RUN_AS_NODE, no SUP_*, allowed auth var passes, values never in status (85.475583ms)
+✔ missing executable: spawn error in status, clean exit, no hang (35.599375ms)
+✔ Stop while running: leader SIGINT, descendant in the group cleaned, done once (432.094167ms)
+✔ Stop with a leader that ignores SIGINT escalates to SIGTERM (374.994541ms)
+✔ natural exit: exit code kept, descendant left in the group is killed after the leftover grace (493.104958ms)
+✔ Stop racing the natural exit (20 runs): done exactly once, no exceptions (4062.895417ms)
+✔ lifeline: fd0 EOF stops the group (420.826875ms)
+✔ lifeline: SIGKILL of the process holding fd0 cleans the group (626.397375ms)
+✔ task EOF alone does not stop the target (869.803791ms)
+✔ no processes of this run are left (ledger; ps by marker only as a secondary check) (34.474875ms)
+✔ codex happy path: completed, valid report, session id, next turn allowed (95.852166ms)
+✔ claude: structured_output is the report; result text is not; session mismatch fails (334.612125ms)
+✔ codex report: missing, too large (not read), invalid JSON; not checked when transport failed (256.936375ms)
+✔ large stderr: head + tail kept within maxStderrBytes, rest counted, no hang (65.528833ms)
+✔ history: byte limit and event limit independently; terminal never lost (209.672625ms)
+✔ stream_limit and oversized line: Stop with protocol_error, CLI stopped (196.171583ms)
+✔ timeout: Stop with cause timeout; user Stop: stopped (613.463375ms)
+✔ descendant holds stdout after the leader exits: stdout_held_open, group cleaned (417.204834ms)
+✔ 50 MB of stdout completes without hanging (110.797417ms)
+✔ large task into a CLI that exits at once: EPIPE handled, result arrives, delivery_failed (62.382917ms)
+✔ CLI that cannot be spawned (done.error) -> failed, not delivery_failed (33.209209ms)
+✔ decideOutcome: revision 5 rules in order (cleanup_unverified cannot be provoked with a real supervisor) (0.175875ms)
+✔ preflight: bad spec and an already existing report file throw synchronously (0.8035ms)
+✔ schema.mjs subset (0.135417ms)
+✔ proc-ledger: EPERM is unverifiable (not gone), ps failures are 'unavailable', never success (605.868ms)
+✔ codex (mock): structured answer -> completed, report valid, session id, next turn allowed (102.45ms)
+✔ claude (mock): structured answer -> completed, report valid, session id, next turn allowed (105.392917ms)
+✔ codex (mock): task delivered byte for byte with EOF (UTF-8, CRLF, "stop", {"cmd":"stop"}, >1 MiB) (145.453916ms)
+✔ claude (mock): task delivered byte for byte with EOF (UTF-8, CRLF, "stop", {"cmd":"stop"}, >1 MiB) (205.21625ms)
+✔ codex (mock continuation, harness only): resume by exact id keeps context; wrong session -> failed (366.585708ms)
+✔ claude (mock continuation, harness only): resume by exact id keeps context; wrong session -> failed (307.385916ms)
+✔ codex (mock): token schema -> token of the session's first task; wrong_token / no_context (415.722333ms)
+✔ claude (mock): token schema -> token of the session's first task; wrong_token / no_context / tools_nonempty (524.896166ms)
+✔ codex (mock) bad_schema: transport completed, answer schema_mismatch -> invalid_report (104.994208ms)
+✔ claude (mock) bad_schema: transport completed, answer schema_mismatch -> invalid_report (108.115083ms)
+✔ codex (mock) not_json: transport completed, answer invalid_json -> invalid_report (101.203417ms)
+✔ claude (mock) no_structured: transport completed, answer missing -> invalid_report (108.607125ms)
+✔ codex (mock) no_report_file: transport completed, answer missing -> invalid_report (110.251042ms)
+✔ codex (mock): answer larger than maxReportBytes -> invalid_report too_large (118.832458ms)
+✔ claude (mock): answer larger than maxReportBytes -> invalid_report too_large (125.264875ms)
+✔ codex (mock): failures -> failed / protocol_error (turn failure, exit 3 after success, no terminal event) (315.428666ms)
+✔ claude (mock): failures -> failed / protocol_error (turn failure, exit 3 after success, no terminal event) (313.090792ms)
+✔ codex (mock): Stop during a running turn -> stopped/user; timeout -> timeout (740.950542ms)
+✔ claude (mock): Stop during a running turn -> stopped/user; timeout -> timeout (742.364625ms)
+✔ codex (mock): 8 MiB task, CLI never reads stdin but answers -> delivery_failed (EPIPE), report kept (100.848958ms)
+✔ codex (mock): valid result, then the CLI hangs -> timeout / user Stop win over the result, report kept (755.867375ms)
+✔ claude (mock): 8 MiB task, CLI never reads stdin but answers -> delivery_failed (EPIPE), report kept (101.661708ms)
+✔ claude (mock): valid result, then the CLI hangs -> timeout / user Stop win over the result, report kept (739.989541ms)
+✔ codex (mock): oversized line -> protocol_error quickly, no hang (107.7065ms)
+✔ codex (mock): 2000 x 64 KiB events -> completed; history bounded by bytes and count; terminal kept (179.426208ms)
+✔ codex (mock): stderr flood -> no hang, stderr kept within maxStderrBytes, rest counted (104.986459ms)
+✔ codex (mock): descendant holds stdout after the leader exits -> protocol_error stdout_held_open, group cleaned (449.918333ms)
+✔ claude (mock): oversized line -> protocol_error quickly, no hang (102.67ms)
+✔ claude (mock): 2000 x 64 KiB events -> completed; history bounded by bytes and count; terminal kept (192.104208ms)
+✔ claude (mock): stderr flood -> no hang, stderr kept within maxStderrBytes, rest counted (104.371709ms)
+✔ claude (mock): descendant holds stdout after the leader exits -> protocol_error stdout_held_open, group cleaned (448.307542ms)
+✔ codex (mock): SIGKILL of the process running runTurn -> every ledger pid is gone (380.075209ms)
+✔ codex (mock): a report left by a previous attempt is never picked up (97.637958ms)
+✔ preflight: bad spec throws synchronously and starts nothing (1.140458ms)
+ℹ tests 94
+ℹ pass 94
+ℹ fail 0
+ℹ cancelled 0
+ℹ duration_ms 16371.585958
+== probe-series (mock, all ok)
+  B1 ran=True ok=True completed stopCause=None delivery=ok report=valid failed=[] 
+  B2 ran=True ok=True completed stopCause=None delivery=ok report=valid failed=[] 
+  K1 ran=True ok=True completed stopCause=None delivery=ok report=valid failed=[] 
+  K2 ran=True ok=True completed stopCause=None delivery=ok report=valid failed=[] 
+== probe-series --mock-modes K1=no_read_stdin --mock-task-bytes K1=8388608
+  B1 ran=True ok=True completed stopCause=None delivery=ok report=valid failed=[] 
+  B2 ran=True ok=True completed stopCause=None delivery=ok report=valid failed=[] 
+  K1 ran=True ok=False delivery_failed stopCause=None delivery=failed report=valid failed=['outcome=delivery_failed', 'delivery=failed', 'token mismatch', 'nextTurnAllowed=false'] 
+  K2 ran=False ok=False None stopCause=None delivery=None report=None failed=None K1 failed
+== probe-series --mock-modes B1=result_then_hang --timeout-ms B1=500
+  B1 ran=True ok=False timeout stopCause=timeout delivery=ok report=valid failed=['outcome=timeout', 'stopCause=timeout', 'nextTurnAllowed=false'] 
+  B2 ran=False ok=False None stopCause=None delivery=None report=None failed=None B1 failed
+  K1 ran=False ok=False None stopCause=None delivery=None report=None failed=None B1 failed
+  K2 ran=False ok=False None stopCause=None delivery=None report=None failed=None B1 failed
+== real CLI marker files: 0
+
+== revision 6: node --test (all, 2026-09-22)
+ℹ tests 104
+ℹ pass 104
+ℹ fail 0
+ℹ cancelled 0
+ℹ duration_ms 17183.5405
+== real series report: real-series-20260922-140801/probe-1790060881352-fc85a156/series-report.json
+  series B1,B2,K1,K2 versions {'codex': 'codex-cli 0.155.1', 'claude': '2.1.278 (Claude Code)'} ok False
+   B1 ran=True ok=True completed failed=[] skipped=None tools=not-recorded mcp=not-recorded model=gpt-6-astra
+   B2 ran=True ok=True completed failed=[] skipped=None tools=not-recorded mcp=not-recorded model=gpt-6-astra
+   K1 ran=True ok=False completed failed=['init.tools unexpected'] skipped=None tools=not-recorded mcp=not-recorded model=claude-opus-5[1m]
+   K2 ran=False ok=False None failed=None skipped=K1 failed tools=not-recorded mcp=not-recorded model=None
+== real series report: real-series-K-20260922-141535/probe-1790061336123-71bfa87b/series-report.json
+  series K1,K2 versions {'claude': '2.1.278 (Claude Code)'} ok True
+   K1 ran=True ok=True completed failed=[] skipped=None tools=['StructuredOutput'] mcp=[] model={'reported': 'claude-opus-5[1m]'}
+   K2 ran=True ok=True completed failed=[] skipped=None tools=['StructuredOutput'] mcp=[] model={'reported': 'claude-opus-5[1m]'}

@@ -1,0 +1,408 @@
+{
+  "sanitized": true,
+  "series": "2026-09-24T03-53-09-916Z-4e2a85",
+  "mode": "real",
+  "plan": {
+    "mode": "real",
+    "scenarios": [
+      "C1"
+    ],
+    "versions": {
+      "claude": "2.1.281 (Claude Code)",
+      "codex": "codex-cli 0.155.1"
+    },
+    "models": {
+      "claude": "claude-sonnet-5",
+      "codex": "gpt-6-astra",
+      "codexReasoningEffort": "high",
+      "note": "Codex does not report its model in events: the argv value is what was requested"
+    },
+    "claudeExecutor": {
+      "mode": "structured-edit (candidate)",
+      "maxBudgetUsdPerTurn": 1,
+      "timeoutMs": 900000
+    },
+    "codexLead": {
+      "mode": "structured-readonly",
+      "timeoutMs": 600000
+    },
+    "env": {
+      "claude": [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "LANG"
+      ],
+      "codex": [
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "LANG",
+        "CODEX_HOME"
+      ],
+      "PATH": "from the provider CLI registry"
+    },
+    "base": "<base>",
+    "workDirs": "<base>/series-<id>/{root (runs, managed copies), src-*, outside (canaries), attempts}",
+    "c1": {
+      "limits": {
+        "turns": 8,
+        "roundsPerStage": 2,
+        "replans": 1,
+        "noProgressRounds": 2,
+        "runMs": 2700000
+      },
+      "checks": {
+        "accept": "node --test tests/clamp.accept.test.mjs",
+        "all": "node --test"
+      }
+    },
+    "e3": {
+      "stopAfter": "first file under notes/ or 20000 ms"
+    },
+    "e1": {
+      "refusals": "observed Read of the outside canary and Write of the outside file, each with an error tool_result AND a result.permission_denials entry for the same tool_use_id, tool and file; anything else is not_confirmed"
+    },
+    "c1Acceptance": "tests/clamp.accept.test.mjs identical (git blob) in the checked tree and the last checkpoint; checkpoint changes only under src/ and tests/; user branch unchanged",
+    "maxModelCalls": 8,
+    "stopsAtFirstFailure": true,
+    "retries": 0,
+    "report": "docs/agent-orchestration/evidence/real-series"
+  },
+  "versions": {
+    "claude": "2.1.281 (Claude Code)",
+    "codex": "codex-cli 0.155.1"
+  },
+  "startedAt": "2026-09-24T03:53:09.987Z",
+  "scenarios": [
+    {
+      "id": "C1",
+      "ms": 72775,
+      "ok": true,
+      "checks": {
+        "completed": true,
+        "journalOk": true,
+        "checkpoint": true,
+        "userBranchUnchanged": true,
+        "checksPassed": true,
+        "acceptUnchangedInCheckpoint": true,
+        "acceptUnchangedInCheckedTree": true,
+        "checkedTreeIsCheckpoint": true,
+        "onlySrcAndTestsChanged": true
+      },
+      "status": {
+        "runId": "aa037963-f24f-4a57-9e2f-be410ea69c42",
+        "status": "completed",
+        "reason": null,
+        "revision": 2,
+        "stage": null,
+        "turns": 4,
+        "halted": false,
+        "active": null
+      },
+      "turns": [
+        {
+          "purpose": "plan",
+          "role": "lead",
+          "timeoutMs": 600000,
+          "outcome": "completed",
+          "nextTurnAllowed": true,
+          "sessionId": "<session-1>",
+          "contract": {
+            "status": "verified",
+            "errors": [],
+            "expected": {
+              "sessionId": null
+            },
+            "actual": {
+              "sessionId": "<session-1>"
+            }
+          },
+          "report": "valid",
+          "usage": {
+            "type": "turn.completed",
+            "usage": {
+              "input_tokens": 52632,
+              "cached_input_tokens": 34304,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 396,
+              "reasoning_output_tokens": 40
+            }
+          },
+          "process": {
+            "exitCode": 0,
+            "signal": null,
+            "stdoutEnded": true,
+            "signalsToLeader": [],
+            "groupCleared": true,
+            "supervisorExitCode": 0,
+            "supervisorDone": true
+          },
+          "stopCause": null,
+          "transport": {
+            "status": "completed",
+            "reason": null
+          },
+          "errors": 0,
+          "stderrBytes": 0
+        },
+        {
+          "purpose": "execute",
+          "role": "executor",
+          "timeoutMs": 900000,
+          "outcome": "completed",
+          "nextTurnAllowed": true,
+          "sessionId": "<session-2>",
+          "contract": {
+            "status": "verified",
+            "errors": [],
+            "expected": {
+              "sessionId": "<session-2>",
+              "tools": [
+                "Read",
+                "Edit",
+                "Write",
+                "Glob",
+                "Grep",
+                "StructuredOutput"
+              ],
+              "mcpServers": [],
+              "permissionMode": "dontAsk"
+            },
+            "actual": {
+              "sessionId": "<session-2>",
+              "tools": [
+                "Edit",
+                "Glob",
+                "Grep",
+                "Read",
+                "StructuredOutput",
+                "Write"
+              ],
+              "mcpServers": [],
+              "permissionMode": "dontAsk"
+            }
+          },
+          "report": "valid",
+          "usage": {
+            "type": "result",
+            "total_cost_usd": 0.0384652,
+            "usage": {
+              "input_tokens": 8,
+              "cache_creation_input_tokens": 4117,
+              "cache_read_input_tokens": 24806,
+              "output_tokens": 1702,
+              "output_tokens_details": {
+                "thinking_tokens": 0
+              },
+              "server_tool_use": {
+                "web_search_requests": 0,
+                "web_fetch_requests": 0
+              },
+              "service_tier": "standard",
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 4117,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "inference_geo": "not_available",
+              "iterations": [
+                {
+                  "input_tokens": 2,
+                  "output_tokens": 283,
+                  "cache_read_input_tokens": 7214,
+                  "cache_creation_input_tokens": 1458,
+                  "cache_creation": {
+                    "ephemeral_5m_input_tokens": 0,
+                    "ephemeral_1h_input_tokens": 1458
+                  },
+                  "type": "message"
+                }
+              ],
+              "speed": "standard"
+            },
+            "num_turns": 7,
+            "duration_ms": 14819,
+            "duration_api_ms": 14760,
+            "modelUsage": {
+              "claude-sonnet-5": {
+                "inputTokens": 8,
+                "outputTokens": 1702,
+                "cacheReadInputTokens": 24806,
+                "cacheCreationInputTokens": 4117,
+                "webSearchRequests": 0,
+                "costUSD": 0.0384652,
+                "contextWindow": 1000000,
+                "maxOutputTokens": 128000,
+                "thinkingTokens": 0,
+                "canonicalModel": "claude-sonnet-5",
+                "provider": "firstParty",
+                "costBasis": "list"
+              }
+            }
+          },
+          "process": {
+            "exitCode": 0,
+            "signal": null,
+            "stdoutEnded": true,
+            "signalsToLeader": [],
+            "groupCleared": true,
+            "supervisorExitCode": 0,
+            "supervisorDone": true
+          },
+          "stopCause": null,
+          "transport": {
+            "status": "completed",
+            "reason": null
+          },
+          "errors": 0,
+          "stderrBytes": 0
+        },
+        {
+          "purpose": "review",
+          "role": "lead",
+          "timeoutMs": 600000,
+          "outcome": "completed",
+          "nextTurnAllowed": true,
+          "sessionId": "<session-1>",
+          "contract": {
+            "status": "verified",
+            "errors": [],
+            "expected": {
+              "sessionId": "<session-1>"
+            },
+            "actual": {
+              "sessionId": "<session-1>"
+            }
+          },
+          "report": "valid",
+          "usage": {
+            "type": "turn.completed",
+            "usage": {
+              "input_tokens": 91278,
+              "cached_input_tokens": 53120,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 628,
+              "reasoning_output_tokens": 94
+            }
+          },
+          "process": {
+            "exitCode": 0,
+            "signal": null,
+            "stdoutEnded": true,
+            "signalsToLeader": [],
+            "groupCleared": true,
+            "supervisorExitCode": 0,
+            "supervisorDone": true
+          },
+          "stopCause": null,
+          "transport": {
+            "status": "completed",
+            "reason": null
+          },
+          "errors": 0,
+          "stderrBytes": 0
+        },
+        {
+          "purpose": "final_review",
+          "role": "lead",
+          "timeoutMs": 600000,
+          "outcome": "completed",
+          "nextTurnAllowed": true,
+          "sessionId": "<session-1>",
+          "contract": {
+            "status": "verified",
+            "errors": [],
+            "expected": {
+              "sessionId": "<session-1>"
+            },
+            "actual": {
+              "sessionId": "<session-1>"
+            }
+          },
+          "report": "valid",
+          "usage": {
+            "type": "turn.completed",
+            "usage": {
+              "input_tokens": 111639,
+              "cached_input_tokens": 53120,
+              "cache_write_input_tokens": 0,
+              "output_tokens": 714,
+              "reasoning_output_tokens": 94
+            }
+          },
+          "process": {
+            "exitCode": 0,
+            "signal": null,
+            "stdoutEnded": true,
+            "signalsToLeader": [],
+            "groupCleared": true,
+            "supervisorExitCode": 0,
+            "supervisorDone": true
+          },
+          "stopCause": null,
+          "transport": {
+            "status": "completed",
+            "reason": null
+          },
+          "errors": 0,
+          "stderrBytes": 0
+        }
+      ],
+      "acceptance": {
+        "original": "2b602aeea1034b8ad6b00d5d9d1c222b59e5e15e",
+        "inCheckpoint": "2b602aeea1034b8ad6b00d5d9d1c222b59e5e15e",
+        "inCheckedTrees": {
+          "accept": "2b602aeea1034b8ad6b00d5d9d1c222b59e5e15e",
+          "all": "2b602aeea1034b8ad6b00d5d9d1c222b59e5e15e"
+        },
+        "checkedTreeIsCheckpoint": true,
+        "changedPaths": [
+          "src/clamp.mjs",
+          "tests/clamp.test.mjs"
+        ]
+      },
+      "journal": {
+        "integrity": "ok",
+        "checks": [
+          {
+            "checkId": "accept",
+            "status": "passed",
+            "reason": null
+          },
+          {
+            "checkId": "all",
+            "status": "passed",
+            "reason": null
+          }
+        ],
+        "reviews": [
+          {
+            "stage": 1,
+            "verdict": "accept",
+            "findings": 3
+          },
+          {
+            "stage": null,
+            "verdict": "complete",
+            "findings": 3
+          }
+        ],
+        "checkpoints": [
+          "1"
+        ]
+      }
+    }
+  ],
+  "hypotheses": {
+    "H8": {
+      "status": "confirmed",
+      "note": ""
+    },
+    "H9": {
+      "status": "confirmed",
+      "note": "status completed"
+    }
+  },
+  "ok": true,
+  "finishedAt": "2026-09-24T03:54:22.763Z"
+}

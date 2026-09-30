@@ -1,0 +1,1691 @@
+{
+ "ok": true,
+ "stage": "done",
+ "failure": null,
+ "lead": "c1b394eb",
+ "exec": "7823e9bf",
+ "points": {
+  "from": {
+   "x": 1219.5,
+   "y": 244
+  },
+  "to": {
+   "x": 105,
+   "y": 374.236328125
+  }
+ },
+ "sent": [
+  {
+   "t": 1790362851747,
+   "type": "mouseMoved",
+   "x": 1219.5,
+   "y": 244
+  },
+  {
+   "t": 1790362851756,
+   "type": "mousePressed",
+   "x": 1219.5,
+   "y": 244,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851757,
+   "type": "mouseMoved",
+   "x": 1163.775,
+   "y": 250.51181640625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851780,
+   "type": "mouseMoved",
+   "x": 1108.05,
+   "y": 257.0236328125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851798,
+   "type": "mouseMoved",
+   "x": 1052.325,
+   "y": 263.53544921875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851816,
+   "type": "mouseMoved",
+   "x": 996.6,
+   "y": 270.047265625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851834,
+   "type": "mouseMoved",
+   "x": 940.875,
+   "y": 276.55908203125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851853,
+   "type": "mouseMoved",
+   "x": 885.15,
+   "y": 283.0708984375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851872,
+   "type": "mouseMoved",
+   "x": 829.425,
+   "y": 289.58271484375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851897,
+   "type": "mouseMoved",
+   "x": 773.7,
+   "y": 296.09453125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851916,
+   "type": "mouseMoved",
+   "x": 717.975,
+   "y": 302.60634765625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851935,
+   "type": "mouseMoved",
+   "x": 662.25,
+   "y": 309.1181640625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851953,
+   "type": "mouseMoved",
+   "x": 606.525,
+   "y": 315.62998046875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851972,
+   "type": "mouseMoved",
+   "x": 550.8,
+   "y": 322.141796875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362851996,
+   "type": "mouseMoved",
+   "x": 495.07500000000005,
+   "y": 328.65361328125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852016,
+   "type": "mouseMoved",
+   "x": 439.35,
+   "y": 335.1654296875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852035,
+   "type": "mouseMoved",
+   "x": 383.625,
+   "y": 341.67724609375,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852056,
+   "type": "mouseMoved",
+   "x": 327.9,
+   "y": 348.1890625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852083,
+   "type": "mouseMoved",
+   "x": 272.17499999999995,
+   "y": 354.70087890625,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852102,
+   "type": "mouseMoved",
+   "x": 216.45000000000005,
+   "y": 361.2126953125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852121,
+   "type": "mouseMoved",
+   "x": 160.7249999999999,
+   "y": 367.72451171875,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852140,
+   "type": "mouseMoved",
+   "x": 105,
+   "y": 374.236328125,
+   "button": "left",
+   "buttons": 1
+  },
+  {
+   "t": 1790362852164,
+   "type": "mouseReleased",
+   "x": 105,
+   "y": 374.236328125,
+   "button": "left",
+   "buttons": 0
+  }
+ ],
+ "linksBefore": [
+  [
+   "6d39e5d5",
+   "6c7fea18"
+  ]
+ ],
+ "linksAfter": [
+  [
+   "6d39e5d5",
+   "6c7fea18"
+  ],
+  [
+   "c1b394eb",
+   "7823e9bf"
+  ]
+ ],
+ "notes": [],
+ "page": {
+  "observers": {
+   "origin": 1790362840152.9,
+   "href": "file://~/dev/CanvasTTYnextGen/out/renderer/index.html",
+   "events": [
+    {
+     "t": 10660,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 1070,
+     "y": 200,
+     "target": "workspace pattern-dots   ",
+     "n": 1
+    },
+    {
+     "t": 10660,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 2,
+     "x": 1070,
+     "y": 200,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 10661,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10662,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 0,
+     "x": 1070,
+     "y": 200,
+     "target": "canvas-menu",
+     "n": 1,
+     "under": [
+      "canvas-menu",
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 10785,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 1091.5,
+     "y": 403.84375,
+     "target": "canvas-menu__grow",
+     "n": 1
+    },
+    {
+     "t": 10786,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 1091.5,
+     "y": 403.84375,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 10786,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10786,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10786,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 1091.5,
+     "y": 403.84375,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 10787,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10788,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10985,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 888.3819580078125,
+     "y": 494.02801513671875,
+     "target": "orch-primary",
+     "n": 1
+    },
+    {
+     "t": 10986,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 888.3819580078125,
+     "y": 494.02801513671875,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 10987,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10987,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 10988,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 888.3819580078125,
+     "y": 494.02801513671875,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 10988,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11135,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 30,
+     "y": 320,
+     "target": "workspace pattern-dots   ",
+     "n": 1
+    },
+    {
+     "t": 11136,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 2,
+     "x": 30,
+     "y": 320,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11137,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11137,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 2,
+     "buttons": 0,
+     "x": 30,
+     "y": 320,
+     "target": "workspace pattern-dots   ",
+     "n": 1,
+     "under": [
+      "workspace pattern-dots   ",
+      "app__content",
+      "app app--sage app--home-classic app--canvas-sage a",
+      "DIV"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11261,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 153.5,
+     "y": 560.1875,
+     "target": "canvas-menu__grow",
+     "n": 1
+    },
+    {
+     "t": 11262,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 153.5,
+     "y": 560.1875,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11262,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11262,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11262,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 153.5,
+     "y": 560.1875,
+     "target": "canvas-menu__grow",
+     "n": 1,
+     "under": [
+      "canvas-menu__grow",
+      "canvas-menu__row",
+      "canvas-menu",
+      "workspace pattern-dots   "
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11263,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11264,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11461,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 888.3889770507812,
+     "y": 494.01611328125,
+     "target": "orch-primary",
+     "n": 1
+    },
+    {
+     "t": 11462,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 888.3889770507812,
+     "y": 494.01611328125,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11462,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11462,
+     "type": "focus",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11463,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 888.3889770507812,
+     "y": 494.01611328125,
+     "target": "orch-primary",
+     "n": 1,
+     "under": [
+      "orch-primary",
+      "orch-form__actions",
+      "orch-form",
+      "launch-dialog orch-dialog"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11463,
+     "type": "blur",
+     "focus": true,
+     "visibility": "visible",
+     "size": [
+      1280,
+      800
+     ]
+    },
+    {
+     "t": 11603,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 1219.5,
+     "y": 244,
+     "target": "agent-card__port @c1b394eb",
+     "n": 1
+    },
+    {
+     "t": 11603,
+     "type": "pointerdown",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 1,
+     "x": 1219.5,
+     "y": 244,
+     "target": "agent-card__port @c1b394eb",
+     "n": 1,
+     "under": [
+      "agent-card__port @c1b394eb",
+      "agent-card agent-card--codex agent-card--idle   @c1b394eb",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "3",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "7823e9bf",
+        "z": "4",
+        "rect": [
+         30,
+         320,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11610,
+     "type": "gotpointercapture",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 1163.7750244140625,
+     "y": 250.51181030273438,
+     "target": "agent-card__port @c1b394eb",
+     "n": 1,
+     "under": [
+      "agent-card__body @c1b394eb",
+      "agent-card agent-card--codex agent-card--idle   @c1b394eb",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "4",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "7823e9bf",
+        "z": "3",
+        "rect": [
+         30,
+         320,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 11610,
+     "type": "pointermove",
+     "pointerId": 1,
+     "button": -1,
+     "buttons": 1,
+     "x": 1163.7750244140625,
+     "y": 250.51181030273438,
+     "target": "agent-card__port @c1b394eb",
+     "n": 20,
+     "to": [
+      105,
+      374.236328125
+     ]
+    },
+    {
+     "t": 12012,
+     "type": "pointerup",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 105,
+     "y": 374.236328125,
+     "target": "agent-card__port @c1b394eb",
+     "n": 1,
+     "under": [
+      "agent-card__body @7823e9bf",
+      "agent-card agent-card--claude agent-card--idle   @7823e9bf",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "4",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "7823e9bf",
+        "z": "3",
+        "rect": [
+         30,
+         320,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    },
+    {
+     "t": 12013,
+     "type": "lostpointercapture",
+     "pointerId": 1,
+     "button": 0,
+     "buttons": 0,
+     "x": 105,
+     "y": 374.236328125,
+     "target": "agent-card__port @c1b394eb",
+     "n": 1,
+     "under": [
+      "agent-card__body @7823e9bf",
+      "agent-card agent-card--claude agent-card--idle   @7823e9bf",
+      "workspace pattern-dots   ",
+      "app__content"
+     ],
+     "layout": {
+      "cards": [
+       {
+        "id": "6d39e5d5",
+        "z": "2",
+        "rect": [
+         30,
+         80,
+         150,
+         88
+        ],
+        "port": [
+         174,
+         119,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "6c7fea18",
+        "z": "1",
+        "rect": [
+         30,
+         200,
+         150,
+         88
+        ],
+        "port": null
+       },
+       {
+        "id": "c1b394eb",
+        "z": "4",
+        "rect": [
+         1070,
+         200,
+         150,
+         88
+        ],
+        "port": [
+         1214,
+         239,
+         10,
+         10
+        ]
+       },
+       {
+        "id": "7823e9bf",
+        "z": "3",
+        "rect": [
+         30,
+         320,
+         150,
+         88
+        ],
+        "port": null
+       }
+      ],
+      "scene": "translate(245px, 119px) scale(0.5)",
+      "focus": true,
+      "visibility": "visible",
+      "size": [
+       1280,
+       800
+      ]
+     }
+    }
+   ],
+   "dropped": 0,
+   "layoutAtStart": {
+    "cards": [
+     {
+      "id": "6d39e5d5",
+      "z": "2",
+      "rect": [
+       30,
+       80,
+       150,
+       88
+      ],
+      "port": [
+       174,
+       119,
+       10,
+       10
+      ]
+     },
+     {
+      "id": "6c7fea18",
+      "z": "1",
+      "rect": [
+       30,
+       200,
+       150,
+       88
+      ],
+      "port": null
+     }
+    ],
+    "scene": "translate(245px, 119px) scale(0.5)",
+    "focus": true,
+    "visibility": "visible",
+    "size": [
+     1280,
+     800
+    ]
+   },
+   "sameDocument": true
+  },
+  "trace": [
+   {
+    "t": 11604,
+    "step": "port.down",
+    "agentId": "c1b394eb-db88-4d58-aa15-6c93db601b25",
+    "pointerId": 1,
+    "button": 0,
+    "x": 1219.5,
+    "y": 244
+   },
+   {
+    "t": 11610,
+    "step": "port.moved",
+    "pointerId": 1,
+    "x": 1163.7750244140625,
+    "y": 250.51181030273438
+   },
+   {
+    "t": 12012,
+    "step": "port.end",
+    "type": "pointerup",
+    "pointerId": 1,
+    "drag": {
+     "from": "c1b394eb-db88-4d58-aa15-6c93db601b25",
+     "pointerId": 1,
+     "moved": true
+    },
+    "x": 105,
+    "y": 374.236328125
+   },
+   {
+    "t": 12012,
+    "step": "port.drop",
+    "from": "c1b394eb-db88-4d58-aa15-6c93db601b25",
+    "toId": "7823e9bf-1fca-46f9-9129-ee74f79440df",
+    "under": [
+     "agent-card__body",
+     "agent-card agent-card--claude agent-card--idle  ",
+     "workspace pattern-dots   ",
+     "app__content",
+     "app app--sage app--home-classic app--canvas-sage app--macos"
+    ]
+   },
+   {
+    "t": 12012,
+    "step": "createLink.sent",
+    "fromAgentId": "c1b394eb-db88-4d58-aa15-6c93db601b25",
+    "toAgentId": "7823e9bf-1fca-46f9-9129-ee74f79440df"
+   },
+   {
+    "t": 12014,
+    "step": "port.end",
+    "type": "lostpointercapture",
+    "pointerId": 1,
+    "drag": null,
+    "x": 105,
+    "y": 374.236328125
+   },
+   {
+    "t": 12015,
+    "step": "createLink.result",
+    "kind": "accepted",
+    "code": null
+   }
+  ],
+  "focus": true,
+  "visibility": "visible",
+  "size": [
+   1280,
+   800
+  ],
+  "messages": [
+   {
+    "id": "6d39e5d5",
+    "text": "CodexЛидs3-app<tmp>/s3-appЗапуск завершёнОткрыть запускНаблюдать"
+   },
+   {
+    "id": "6c7fea18",
+    "text": "ClaudeИсполнительs3-app<tmp>/s3-appЗапуск завершёнОткрыть запускНаблюдать"
+   },
+   {
+    "id": "c1b394eb",
+    "text": "CodexЛидs5-app<tmp>/s5-appСвободен"
+   },
+   {
+    "id": "7823e9bf",
+    "text": "ClaudeИсполнительs5-app<tmp>/s5-appСвободен"
+   }
+  ]
+ }
+}

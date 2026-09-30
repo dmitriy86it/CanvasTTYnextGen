@@ -1,0 +1,3 @@
+; opt-in: unix sockets inside TMP only
+(allow network-bind (local unix-socket (subpath (param "TMP"))))
+(allow network-outbound (remote unix-socket (subpath (param "TMP"))))

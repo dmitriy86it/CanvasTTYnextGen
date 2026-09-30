@@ -1,0 +1,42 @@
+{
+  "pid": 85610,
+  "argv": [
+    "--user-data-dir=<S0>/p-switch2"
+  ],
+  "exe": "<S0>/diag-out-Alpha/mac-arm64/S0 Diag Alpha.app/Contents/MacOS/S0 Diag Alpha",
+  "name": "s0diag-q7",
+  "nameProp": "s0diag-q7",
+  "t0": 1790575438046,
+  "beforeProfileChoice": {
+    "userData": "<S0>/p-switch2",
+    "sessionData": "<S0>/p-switch2",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-switch2/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "afterProfileChoice": {
+    "userData": "<S0>/p-switch2",
+    "sessionData": "<S0>/p-switch2",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-switch2/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "lock": true,
+  "atReady": {
+    "userData": "<S0>/p-switch2",
+    "sessionData": "<S0>/p-switch2",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-switch2/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "partitionStoragePath": "<S0>/p-switch2/Partitions/s0-browser",
+  "defaultStoragePath": "<S0>/p-switch2",
+  "cookiesSeen": [
+    "cookie-1"
+  ],
+  "localStorageBefore": null,
+  "ready": true
+}

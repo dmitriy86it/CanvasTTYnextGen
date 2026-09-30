@@ -42,3 +42,10 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Binary orchestration evidence stays outside git; checksums: docs/agent-orchestration/evidence/BINARY-MANIFEST.sha256
+docs/agent-orchestration/evidence/**/*.png
+docs/agent-orchestration/evidence/**/*.jpg
+docs/agent-orchestration/evidence/**/*.jpeg
+docs/agent-orchestration/evidence/**/*.gif
+docs/agent-orchestration/evidence/**/*.mp4

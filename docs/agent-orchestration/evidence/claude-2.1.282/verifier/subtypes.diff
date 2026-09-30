@@ -1,0 +1,18 @@
+61,62c61,62
+<    5 initialize
+<    7 interrupt
+---
+>    6 initialize
+>    8 interrupt
+70c70
+<    4 mcp_message
+---
+>    5 mcp_message
+94a95
+>    1 prefetch_attachments
+115a117
+>    5 session_metadata
+141c143
+<    1 turn_handoff
+---
+>    2 turn_handoff

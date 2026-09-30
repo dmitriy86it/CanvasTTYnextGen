@@ -1,0 +1,67 @@
+Role: lead. Purpose: review.
+
+Goal:
+Release form check with the local MCP test server release-form (tool release_ticket). Codex lead only: before you write the plan, call the MCP tool release_ticket of the server release-form with component "plan-a", then with component "plan-b". A person answers each form and may decline one. Copy both lines the tool returned verbatim into the first stage's task and tell the executor to write them to release/receipts.txt, one per line, in call order, unchanged. The Claude executor does not call release_ticket. Do not modify tests/.
+
+Acceptance criteria (fixed; you cannot change them):
+1. npm test passes
+2. release/receipts.txt holds the lines release_ticket returned, verbatim
+3. tests/ is unchanged
+
+Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):
+cmd-1: npm test
+
+Work place: the user's own project folder (your working directory), exactly as in their terminal. It may hold the user's uncommitted changes: keep them. Your tools and permissions are the user's own CLI settings; a prompt goes to the user.
+Your duty: plan and review; the executor implements the stages. Do not implement the stages yourself.
+
+Mode: autopilot. Work on your own: inspect the project, choose reversible technical options yourself, prepare what the work needs within your rights, run the project's checks when useful, fix and check again. Ask the person (the question field of your report) only when required data is missing, a significant decision is ambiguous, or an action is outside the rights you have.
+CanvasTTY prepares the environment itself when it is missing (npm ci). Do not upgrade dependencies or change lock files unless the task needs it; never install dependencies inside a test.
+Leave the changes uncommitted: do not commit, push or deploy.
+
+Rules for this review:
+- A stage is accepted only when every required check (cmd-1) passes on the copy after that stage, and the lead's review accepts it. An accept while a required check fails does not advance the stage: it goes back to the executor.
+- Use fix with concrete findings when a check fails; use replan when the plan itself cannot pass.
+
+Budget: this is turn 3 of at most 8 (5 left after it; the final review needs one of them, a fix round needs an executor turn and a review).
+Replans used: 0 of 1. Rounds per stage: at most 2 (this is round 1). Time left for the run: about 18 min.
+
+Plan v1, stages accepted: 0:
+1. Save release receipts verbatim
+
+Current stage 1 (round 1): Save release receipts verbatim
+Create release/receipts.txt containing exactly these two returned lines, one per line, in call order, unchanged:
+RELEASE-FORM nonce=928968d2908c component=plan-a action=accept ticket=REL-plan-a env=qa
+RELEASE-FORM nonce=dc400193f4f7 component=plan-b action=decline
+Preserve the decline receipt exactly. The Claude executor must not call release_ticket. Inspection confirmed npm test currently fails only because release/receipts.txt is missing; the sum test passes. Do not modify tests/, dependencies, or lock files. Preserve any user changes and leave changes uncommitted; do not push or deploy. Run npm test. Stage acceptance requires CanvasTTY's required check cmd-1 (npm test) to pass and lead review to accept. After this stage, a separate final lead review must verify both exact receipt lines and their order, confirm tests/ is unchanged, and report complete only with every required check passing.
+
+Check results on the current state of the copy (results of other states are not shown):
+- cmd-1: passed
+(anon):setopt:7: can't change option: monitor
+
+[[31mERROR[39m]: gitstatus failed to initialize.
+
+
+  Add the following parameter to [4m~/.zshrc[24m for extra diagnostics on error:
+
+    [1mGITSTATUS_LOG_LEVEL=DEBUG[0m
+
+  Restart Zsh to retry gitstatus initialization:
+
+    [32m[4mexec[24m[32m zsh[39m
+
+> series-node-app@1.0.0 test
+> node --test
+
+✔ receipts (0.442667ms)
+✔ sum (0.309459ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 43.172542
+
+
+Answer only with the JSON object the schema describes.

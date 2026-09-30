@@ -1,0 +1,24 @@
+# repro: orchestration-service-review.test.mjs.after selftest delay 32000 ms; 16:00  up 2 days,  1:23, 7 users, load averages: 38,69 59,95 41,79
+TAP version 13
+# Subtest: late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+ok 1 - late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+  ---
+  duration_ms: 47423.655042
+  type: 'test'
+  ...
+# Subtest: after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+ok 2 - after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+  ---
+  duration_ms: 43310.505375
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 121102.915541
+# end: 16:02  up 2 days,  1:25, 7 users, load averages: 45,77 55,18 42,24

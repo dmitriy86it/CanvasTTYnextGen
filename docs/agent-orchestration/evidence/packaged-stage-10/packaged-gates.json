@@ -1,0 +1,41 @@
+{
+  "app": "<pkg>/release/mac-arm64/CanvasTTY.app",
+  "contents": {
+    "resourceFiles": 329,
+    "asarEntries": 734,
+    "orchestration": [
+      "sandbox-probe.mjs",
+      "supervisor.mjs"
+    ]
+  },
+  "bundle": {
+    "developmentEnvGate": true,
+    "reads": {
+      "CANVASTTY_ORCHESTRATION_TEST_PROVIDERS": {
+        "lines": 1,
+        "viaDevelopmentEnv": true
+      },
+      "CANVASTTY_ORCHESTRATION_IPC_SMOKE": {
+        "lines": 1,
+        "viaDevelopmentEnv": true
+      },
+      "CANVASTTY_ORCHESTRATION_TEST_DROP_REPLIES": {
+        "lines": 1,
+        "viaDevelopmentEnv": true
+      }
+    }
+  },
+  "behaviour": {
+    "runningAfter15s": true,
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "ipcSmokeMarker": false,
+    "fakeCliStarted": false,
+    "dropFilesLeft": 3,
+    "userDataCreated": true
+  },
+  "ok": true,
+  "failures": []
+}

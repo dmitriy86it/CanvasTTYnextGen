@@ -1,0 +1,438 @@
+{
+ "projectDir": "<repo>",
+ "zoom": "translate(245px, 119px) scale(0.5)",
+ "worldBounds": {
+  "lead": {
+   "position": {
+    "x": -430,
+    "y": -142
+   },
+   "size": {
+    "width": 300,
+    "height": 176
+   }
+  },
+  "exec": {
+   "position": {
+    "x": -430,
+    "y": 98
+   },
+   "size": {
+    "width": 300,
+    "height": 176
+   }
+  }
+ },
+ "before": {
+  "leadCard": {
+   "x": 30,
+   "y": 80,
+   "width": 150,
+   "height": 88,
+   "top": 80,
+   "right": 180,
+   "bottom": 168,
+   "left": 30
+  },
+  "port": {
+   "x": 174.296875,
+   "y": 118.8046875,
+   "width": 10.3984375,
+   "height": 10.3984375,
+   "top": 118.8046875,
+   "right": 184.6953125,
+   "bottom": 129.203125,
+   "left": 174.296875
+  },
+  "execCard": {
+   "x": 30,
+   "y": 200,
+   "width": 150,
+   "height": 88,
+   "top": 200,
+   "right": 180,
+   "bottom": 288,
+   "left": 30
+  },
+  "execBody": {
+   "x": 30.5,
+   "y": 220.96875,
+   "width": 149,
+   "height": 66.53125,
+   "top": 220.96875,
+   "right": 179.5,
+   "bottom": 287.5,
+   "left": 30.5
+  }
+ },
+ "recorder": {
+  "wrapped": false
+ },
+ "from": {
+  "x": 179.49609375,
+  "y": 124.00390625
+ },
+ "to": {
+  "x": 105,
+  "y": 254.234375
+ },
+ "hitStart": "agent-card__port in lead",
+ "hitEnd": "agent-card__body in executor",
+ "links": {
+  "before": 0,
+  "after": 1
+ },
+ "after": {
+  "leadCard": {
+   "x": 30,
+   "y": 80,
+   "width": 150,
+   "height": 88,
+   "top": 80,
+   "right": 180,
+   "bottom": 168,
+   "left": 30
+  },
+  "execCard": {
+   "x": 30,
+   "y": 200,
+   "width": 150,
+   "height": 88,
+   "top": 200,
+   "right": 180,
+   "bottom": 288,
+   "left": 30
+  }
+ },
+ "cardMessages": [],
+ "events": [
+  {
+   "type": "pointerdown",
+   "x": 179.49609375,
+   "y": 124.00390625,
+   "buttons": 1,
+   "target": "agent-card__port @ba48c13d",
+   "hit": "agent-card__port @ba48c13d",
+   "cards": [
+    {
+     "id": "ba48c13d",
+     "role": "lead",
+     "z": "1",
+     "r": {
+      "x": 30,
+      "y": 80,
+      "width": 150,
+      "height": 88,
+      "top": 80,
+      "right": 180,
+      "bottom": 168,
+      "left": 30
+     }
+    },
+    {
+     "id": "1bc066cf",
+     "role": "executor",
+     "z": "2",
+     "r": {
+      "x": 30,
+      "y": 200,
+      "width": 150,
+      "height": 88,
+      "top": 200,
+      "right": 180,
+      "bottom": 288,
+      "left": 30
+     }
+    }
+   ],
+   "stack": [
+    "agent-card__port @ba48c13d",
+    "agent-card__body @ba48c13d",
+    "agent-card agent-card--codex agent-card--idle   @ba48c13d",
+    "workspace pattern-dots   ",
+    "app__content",
+    "app app--sage app--home-classic app--canvas-sage app--macos",
+    "",
+    ""
+   ]
+  },
+  {
+   "type": "gotpointercapture",
+   "x": 175.7712860107422,
+   "y": 130.5154266357422,
+   "buttons": 1,
+   "target": "agent-card__port @ba48c13d",
+   "hit": "agent-card__body @ba48c13d",
+   "cards": [
+    {
+     "id": "ba48c13d",
+     "role": "lead",
+     "z": "2",
+     "r": {
+      "x": 30,
+      "y": 80,
+      "width": 150,
+      "height": 88,
+      "top": 80,
+      "right": 180,
+      "bottom": 168,
+      "left": 30
+     }
+    },
+    {
+     "id": "1bc066cf",
+     "role": "executor",
+     "z": "1",
+     "r": {
+      "x": 30,
+      "y": 200,
+      "width": 150,
+      "height": 88,
+      "top": 200,
+      "right": 180,
+      "bottom": 288,
+      "left": 30
+     }
+    }
+   ],
+   "stack": [
+    "agent-card__body @ba48c13d",
+    "agent-card agent-card--codex agent-card--idle   @ba48c13d",
+    "workspace pattern-dots   ",
+    "app__content",
+    "app app--sage app--home-classic app--canvas-sage app--macos",
+    "",
+    "",
+    ""
+   ]
+  },
+  {
+   "type": "pointerup",
+   "x": 105,
+   "y": 254.234375,
+   "buttons": 0,
+   "target": "agent-card__port @ba48c13d",
+   "hit": "agent-card__body @1bc066cf",
+   "cards": [
+    {
+     "id": "ba48c13d",
+     "role": "lead",
+     "z": "2",
+     "r": {
+      "x": 30,
+      "y": 80,
+      "width": 150,
+      "height": 88,
+      "top": 80,
+      "right": 180,
+      "bottom": 168,
+      "left": 30
+     }
+    },
+    {
+     "id": "1bc066cf",
+     "role": "executor",
+     "z": "1",
+     "r": {
+      "x": 30,
+      "y": 200,
+      "width": 150,
+      "height": 88,
+      "top": 200,
+      "right": 180,
+      "bottom": 288,
+      "left": 30
+     }
+    }
+   ],
+   "stack": [
+    "agent-card__body @1bc066cf",
+    "agent-card agent-card--claude agent-card--idle   @1bc066cf",
+    "workspace pattern-dots   ",
+    "app__content",
+    "app app--sage app--home-classic app--canvas-sage app--macos",
+    "",
+    "",
+    ""
+   ]
+  },
+  {
+   "type": "lostpointercapture",
+   "x": 105,
+   "y": 254.234375,
+   "buttons": 0,
+   "target": "agent-card__port @ba48c13d",
+   "hit": "agent-card__body @1bc066cf",
+   "cards": [
+    {
+     "id": "ba48c13d",
+     "role": "lead",
+     "z": "2",
+     "r": {
+      "x": 30,
+      "y": 80,
+      "width": 150,
+      "height": 88,
+      "top": 80,
+      "right": 180,
+      "bottom": 168,
+      "left": 30
+     }
+    },
+    {
+     "id": "1bc066cf",
+     "role": "executor",
+     "z": "1",
+     "r": {
+      "x": 30,
+      "y": 200,
+      "width": 150,
+      "height": 88,
+      "top": 200,
+      "right": 180,
+      "bottom": 288,
+      "left": 30
+     }
+    }
+   ],
+   "stack": [
+    "agent-card__body @1bc066cf",
+    "agent-card agent-card--claude agent-card--idle   @1bc066cf",
+    "workspace pattern-dots   ",
+    "app__content",
+    "app app--sage app--home-classic app--canvas-sage app--macos",
+    "",
+    "",
+    ""
+   ]
+  }
+ ],
+ "moves": [
+  [
+   179,
+   124,
+   "agent-card__port @ba48c13d",
+   "agent-card__port @ba48c13d"
+  ],
+  [
+   176,
+   131,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @ba48c13d"
+  ],
+  [
+   172,
+   137,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @ba48c13d"
+  ],
+  [
+   168,
+   144,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @ba48c13d"
+  ],
+  [
+   165,
+   150,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @ba48c13d"
+  ],
+  [
+   161,
+   157,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @ba48c13d"
+  ],
+  [
+   157,
+   163,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @ba48c13d"
+  ],
+  [
+   153,
+   170,
+   "agent-card__port @ba48c13d",
+   "workspace pattern-dots   "
+  ],
+  [
+   150,
+   176,
+   "agent-card__port @ba48c13d",
+   "workspace pattern-dots   "
+  ],
+  [
+   146,
+   183,
+   "agent-card__port @ba48c13d",
+   "workspace pattern-dots   "
+  ],
+  [
+   142,
+   189,
+   "agent-card__port @ba48c13d",
+   "workspace pattern-dots   "
+  ],
+  [
+   139,
+   196,
+   "agent-card__port @ba48c13d",
+   "workspace pattern-dots   "
+  ],
+  [
+   135,
+   202,
+   "agent-card__port @ba48c13d",
+   "agent-card__header @1bc066cf"
+  ],
+  [
+   131,
+   209,
+   "agent-card__port @ba48c13d",
+   "agent-card__header @1bc066cf"
+  ],
+  [
+   127,
+   215,
+   "agent-card__port @ba48c13d",
+   "agent-card__header @1bc066cf"
+  ],
+  [
+   124,
+   222,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @1bc066cf"
+  ],
+  [
+   120,
+   228,
+   "agent-card__port @ba48c13d",
+   " @1bc066cf"
+  ],
+  [
+   116,
+   235,
+   "agent-card__port @ba48c13d",
+   " @1bc066cf"
+  ],
+  [
+   112,
+   241,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @1bc066cf"
+  ],
+  [
+   109,
+   248,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @1bc066cf"
+  ],
+  [
+   105,
+   254,
+   "agent-card__port @ba48c13d",
+   "agent-card__body @1bc066cf"
+  ]
+ ]
+}

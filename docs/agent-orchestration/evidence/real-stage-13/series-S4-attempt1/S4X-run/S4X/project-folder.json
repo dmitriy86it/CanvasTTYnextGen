@@ -1,0 +1,16 @@
+{
+  "dir": "~/canvastty-s4/s4x-app",
+  "head": "e7e2ec52ac9dec7ee51a92beb8da300080bde1f2",
+  "branch": "main",
+  "status": "",
+  "diffStat": "",
+  "newFiles": [],
+  "accept": {
+    "path": "tests/receipts.accept.test.mjs",
+    "blobAtStart": "c3e95729c21e6fa6d4ca98e1578f1e2fea3749ed",
+    "blobNow": "c3e95729c21e6fa6d4ca98e1578f1e2fea3749ed",
+    "sha256Now": "259152ab4ae1c963ffd7ddbda6266e0229a593e4315d398ea7bc07003601fb30",
+    "unchanged": true
+  },
+  "errors": []
+}

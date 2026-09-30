@@ -1,0 +1,354 @@
+{
+  "mode": "real",
+  "expect": "2.1.283",
+  "startedAt": "2026-09-26T05:21:15.020Z",
+  "node": "v26.8.1",
+  "platform": "darwin-arm64",
+  "versions": {
+    "claudeInstalled": "2.1.283 (Claude Code)",
+    "claude": "2.1.283 (Claude Code)",
+    "codex": "codex-cli 0.155.1"
+  },
+  "turns": [
+    {
+      "n": 1,
+      "kind": "new",
+      "events": [
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/init",
+        "system/hook_progress",
+        "assistant",
+        "assistant",
+        "assistant",
+        "rate_limit_event",
+        "user",
+        "system/hook_response",
+        "assistant",
+        "assistant",
+        "user",
+        "result/success"
+      ],
+      "controlRequests": [],
+      "asks": [],
+      "init": {
+        "fields": [
+          "agents",
+          "analytics_disabled",
+          "apiKeySource",
+          "capabilities",
+          "claude_code_version",
+          "cwd",
+          "fast_mode_disabled_reason",
+          "fast_mode_state",
+          "mcp_servers",
+          "memory_paths",
+          "messaging_socket_path",
+          "model",
+          "output_style",
+          "per_turn_effort_active",
+          "permissionMode",
+          "plugins",
+          "product_feedback_disabled",
+          "session_id",
+          "skills",
+          "slash_commands",
+          "subtype",
+          "terminal_slash_commands",
+          "tools",
+          "type",
+          "uuid",
+          "view_mode"
+        ],
+        "session_id": "2fb17da4-c61d-4c07-b024-98ad8a311d96",
+        "model": "claude-fable-5-1",
+        "permissionMode": "auto",
+        "claude_code_version": "2.1.283",
+        "tools": 55,
+        "mcp_servers": 6,
+        "output_style": "default",
+        "apiKeySource": "none"
+      },
+      "answerText": "Слово: **lantern**",
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "total_cost_usd": 0.6811250000000001,
+        "num_turns": 3,
+        "duration_ms": 7514,
+        "session_id": "2fb17da4-c61d-4c07-b024-98ad8a311d96",
+        "permission_denials": 0,
+        "fields": [
+          "api_error_status",
+          "duration_api_ms",
+          "duration_ms",
+          "fast_mode_disabled_reason",
+          "fast_mode_state",
+          "first_content_frame_ms",
+          "is_error",
+          "modelUsage",
+          "num_turns",
+          "permission_denials",
+          "queued_turn_count",
+          "result",
+          "result_index",
+          "session_id",
+          "stop_reason",
+          "structured_output",
+          "subagent_stats",
+          "subtype",
+          "terminal_reason",
+          "time_to_request_ms",
+          "total_cost_usd",
+          "ttft_ms",
+          "ttft_stream_ms",
+          "type",
+          "usage",
+          "uuid"
+        ],
+        "structured_output": {
+          "word": "lantern"
+        }
+      },
+      "elapsedMs": 9314,
+      "outcome": "completed",
+      "guardStopped": false,
+      "sessionId": "2fb17da4-c61d-4c07-b024-98ad8a311d96",
+      "report": {
+        "status": "valid",
+        "value": {
+          "word": "lantern"
+        }
+      },
+      "contract": {
+        "status": "verified",
+        "errors": []
+      },
+      "process": {
+        "exitCode": 0,
+        "signal": null,
+        "stdoutEnded": true,
+        "signalsToLeader": [],
+        "groupCleared": true,
+        "supervisorExitCode": 0,
+        "supervisorDone": true,
+        "pgid": 17850,
+        "supervisor": 17849
+      },
+      "stderrTail": "",
+      "leftover": {
+        "watched": 4,
+        "alive": [],
+        "inGroup": []
+      }
+    },
+    {
+      "n": 2,
+      "kind": "resume",
+      "events": [
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/init",
+        "system/hook_progress",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "assistant",
+        "assistant",
+        "assistant",
+        "rate_limit_event",
+        "user",
+        "result/success",
+        "system/hook_response"
+      ],
+      "controlRequests": [],
+      "asks": [],
+      "init": {
+        "fields": [
+          "agents",
+          "analytics_disabled",
+          "apiKeySource",
+          "capabilities",
+          "claude_code_version",
+          "cwd",
+          "fast_mode_disabled_reason",
+          "fast_mode_state",
+          "mcp_servers",
+          "memory_paths",
+          "messaging_socket_path",
+          "model",
+          "output_style",
+          "per_turn_effort_active",
+          "permissionMode",
+          "plugins",
+          "product_feedback_disabled",
+          "session_id",
+          "skills",
+          "slash_commands",
+          "subtype",
+          "terminal_slash_commands",
+          "tools",
+          "type",
+          "uuid",
+          "view_mode"
+        ],
+        "session_id": "2fb17da4-c61d-4c07-b024-98ad8a311d96",
+        "model": "claude-fable-5-1",
+        "permissionMode": "auto",
+        "claude_code_version": "2.1.283",
+        "tools": 85,
+        "mcp_servers": 6,
+        "output_style": "default",
+        "apiKeySource": "none"
+      },
+      "answerText": "lantern",
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "total_cost_usd": 0.7159327500000001,
+        "num_turns": 2,
+        "duration_ms": 4207,
+        "session_id": "2fb17da4-c61d-4c07-b024-98ad8a311d96",
+        "permission_denials": 0,
+        "fields": [
+          "api_error_status",
+          "duration_api_ms",
+          "duration_ms",
+          "fast_mode_disabled_reason",
+          "fast_mode_state",
+          "first_content_frame_ms",
+          "is_error",
+          "modelUsage",
+          "num_turns",
+          "permission_denials",
+          "queued_turn_count",
+          "result",
+          "result_index",
+          "session_id",
+          "stop_reason",
+          "structured_output",
+          "subagent_stats",
+          "subtype",
+          "terminal_reason",
+          "time_to_request_ms",
+          "total_cost_usd",
+          "ttft_ms",
+          "ttft_stream_ms",
+          "type",
+          "usage",
+          "uuid"
+        ],
+        "structured_output": {
+          "word": "lantern"
+        }
+      },
+      "elapsedMs": 6392,
+      "outcome": "completed",
+      "guardStopped": false,
+      "sessionId": "2fb17da4-c61d-4c07-b024-98ad8a311d96",
+      "report": {
+        "status": "valid",
+        "value": {
+          "word": "lantern"
+        }
+      },
+      "contract": {
+        "status": "verified",
+        "errors": []
+      },
+      "process": {
+        "exitCode": 0,
+        "signal": null,
+        "stdoutEnded": true,
+        "signalsToLeader": [],
+        "groupCleared": true,
+        "supervisorExitCode": 0,
+        "supervisorDone": true,
+        "pgid": 18143,
+        "supervisor": 18142
+      },
+      "stderrTail": "",
+      "leftover": {
+        "watched": 4,
+        "alive": [],
+        "inGroup": []
+      }
+    }
+  ],
+  "checks": [
+    {
+      "ok": true,
+      "what": "runtime measured claude 2.1.283"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 completed"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 system/init observed"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 result success"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 session id consistent"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 left no process"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 answer is \"lantern\""
+    },
+    {
+      "ok": true,
+      "what": "turn 2 completed"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 resumed the same session id"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 result success"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 left no process"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 remembers \"lantern\""
+    }
+  ],
+  "ok": true,
+  "shell": "/bin/zsh",
+  "finishedAt": "2026-09-26T05:21:33.324Z"
+}

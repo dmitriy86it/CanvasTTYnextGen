@@ -1,0 +1,104 @@
+# 16:15  up 2 days,  1:38, 7 users, load averages: 40,11 66,30 57,77
+TAP version 13
+# Subtest: runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached)
+ok 1 - runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached)
+  ---
+  duration_ms: 4801.663083
+  type: 'test'
+  ...
+# executor turn started; service clock released after 1123 ms of preparation (runMs 3000)
+# Subtest: runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+ok 2 - runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+  ---
+  duration_ms: 10800.776583
+  type: 'test'
+  ...
+# check.started; service clock released after 4091 ms of preparation (runMs 6000)
+# Subtest: late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+ok 3 - late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+  ---
+  duration_ms: 10792.632834
+  type: 'test'
+  ...
+# Subtest: a run within its runMs budget completes as before
+ok 4 - a run within its runMs budget completes as before
+  ---
+  duration_ms: 6427.650583
+  type: 'test'
+  ...
+# Subtest: the timeoutMs given to an agent is min(role limit, time left of runMs)
+ok 5 - the timeoutMs given to an agent is min(role limit, time left of runMs)
+  ---
+  duration_ms: 6448.87475
+  type: 'test'
+  ...
+# Subtest: executorTurnMs is enforced by the service: stop() at the timeout, turn.finished(stopped), paused(environment_error)
+ok 6 - executorTurnMs is enforced by the service: stop() at the timeout, turn.finished(stopped), paused(environment_error)
+  ---
+  duration_ms: 2699.670041
+  type: 'test'
+  ...
+# Subtest: after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+ok 7 - after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+  ---
+  duration_ms: 7129.042792
+  type: 'test'
+  ...
+# Subtest: raise_limit runMs: a value with no future deadline is invalid_command; a sufficient one → user_request, resume completes
+ok 8 - raise_limit runMs: a value with no future deadline is invalid_command; a sufficient one → user_request, resume completes
+  ---
+  duration_ms: 11242.594792
+  type: 'test'
+  ...
+# Subtest: checkpoint 1 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+ok 9 - checkpoint 1 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+  ---
+  duration_ms: 7493.621709
+  type: 'test'
+  ...
+# Subtest: checkpoint 2 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+ok 10 - checkpoint 2 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes
+  ---
+  duration_ms: 8839.134667
+  type: 'test'
+  ...
+# Subtest: checkpoint 1 in Git rewritten after the failure (another tree and message): resume → paused(shared_git_tampered), nothing recorded
+ok 11 - checkpoint 1 in Git rewritten after the failure (another tree and message): resume → paused(shared_git_tampered), nothing recorded
+  ---
+  duration_ms: 5927.53725
+  type: 'test'
+  ...
+# Subtest: checkpoint 1 in Git rewritten after the failure (the same tree and parent, another message): resume → paused(shared_git_tampered), nothing recorded
+ok 12 - checkpoint 1 in Git rewritten after the failure (the same tree and parent, another message): resume → paused(shared_git_tampered), nothing recorded
+  ---
+  duration_ms: 5824.836875
+  type: 'test'
+  ...
+# Subtest: executable replaced while the lead reviews: a new check fails, the stage is not accepted on the old result
+ok 13 - executable replaced while the lead reviews: a new check fails, the stage is not accepted on the old result
+  ---
+  duration_ms: 13458.435542
+  type: 'test'
+  ...
+# Subtest: executable replaced, then close and reopen: resume does not reuse the old passed result
+ok 14 - executable replaced, then close and reopen: resume does not reuse the old passed result
+  ---
+  duration_ms: 13980.949542
+  type: 'test'
+  ...
+# Subtest: executable unchanged across close, reopen and resume: no repeated check
+ok 15 - executable unchanged across close, reopen and resume: no repeated check
+  ---
+  duration_ms: 5969.830625
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 151975.755208
+# end 16:18  up 2 days,  1:41, 7 users, load averages: 27,89 48,61 51,77

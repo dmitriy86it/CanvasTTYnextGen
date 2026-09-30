@@ -1,0 +1,228 @@
+{
+  "sanitized": "copy of series-report.json: probe dir, pids, absolute paths removed; session ids replaced by stable placeholders (same id -> same placeholder). Original left untouched in the session scratchpad.",
+  "run": "2026-09-22 14:15 (local)",
+  "mode": "real",
+  "series": "K1,K2",
+  "versions": {
+    "claude": "2.1.278 (Claude Code)"
+  },
+  "ok": true,
+  "probes": [
+    {
+      "id": "K1",
+      "provider": "claude",
+      "ran": true,
+      "ok": true,
+      "failed": [],
+      "outcome": "completed",
+      "stopCause": null,
+      "transport": "completed",
+      "delivery": "ok",
+      "report": "valid",
+      "tokenMatch": true,
+      "answerOk": true,
+      "sessionOk": true,
+      "cliVersion": "2.1.278 (Claude Code)",
+      "model": {
+        "reported": "claude-opus-5[1m]"
+      },
+      "init": {
+        "eventPresent": true,
+        "tools": {
+          "expected": [
+            "StructuredOutput"
+          ],
+          "actual": [
+            "StructuredOutput"
+          ],
+          "present": true,
+          "ok": true
+        },
+        "mcp_servers": {
+          "expected": [],
+          "actual": [],
+          "present": true,
+          "ok": true
+        },
+        "session_id": {
+          "expected": "<session-1>",
+          "actual": "<session-1>",
+          "ok": true
+        }
+      },
+      "criteria": [
+        {
+          "name": "outcome=completed",
+          "ok": true
+        },
+        {
+          "name": "delivery=ok",
+          "ok": true
+        },
+        {
+          "name": "report valid",
+          "ok": true
+        },
+        {
+          "name": "token",
+          "ok": true
+        },
+        {
+          "name": "answer",
+          "ok": true
+        },
+        {
+          "name": "sessionId",
+          "ok": true
+        },
+        {
+          "name": "stopCause=null",
+          "ok": true
+        },
+        {
+          "name": "group cleared",
+          "ok": true
+        },
+        {
+          "name": "nextTurnAllowed",
+          "ok": true
+        },
+        {
+          "name": "sessionEvent present",
+          "ok": true
+        },
+        {
+          "name": "init.tools exact",
+          "ok": true
+        },
+        {
+          "name": "init.mcp_servers exact",
+          "ok": true
+        },
+        {
+          "name": "init.session_id",
+          "ok": true
+        }
+      ],
+      "durationMs": 3918,
+      "counters": {
+        "stdoutBytes": 6548,
+        "frames": 5,
+        "keptEvents": 5,
+        "droppedEvents": 0,
+        "droppedEventBytes": 0,
+        "stderrBytes": 0,
+        "stderrDroppedBytes": 0,
+        "droppedDiagnostics": 0
+      }
+    },
+    {
+      "id": "K2",
+      "provider": "claude",
+      "ran": true,
+      "ok": true,
+      "failed": [],
+      "outcome": "completed",
+      "stopCause": null,
+      "transport": "completed",
+      "delivery": "ok",
+      "report": "valid",
+      "tokenMatch": true,
+      "answerOk": true,
+      "sessionOk": true,
+      "cliVersion": "2.1.278 (Claude Code)",
+      "model": {
+        "reported": "claude-opus-5[1m]"
+      },
+      "init": {
+        "eventPresent": true,
+        "tools": {
+          "expected": [
+            "StructuredOutput"
+          ],
+          "actual": [
+            "StructuredOutput"
+          ],
+          "present": true,
+          "ok": true
+        },
+        "mcp_servers": {
+          "expected": [],
+          "actual": [],
+          "present": true,
+          "ok": true
+        },
+        "session_id": {
+          "expected": "<session-1>",
+          "actual": "<session-1>",
+          "ok": true
+        }
+      },
+      "criteria": [
+        {
+          "name": "outcome=completed",
+          "ok": true
+        },
+        {
+          "name": "delivery=ok",
+          "ok": true
+        },
+        {
+          "name": "report valid",
+          "ok": true
+        },
+        {
+          "name": "token",
+          "ok": true
+        },
+        {
+          "name": "answer",
+          "ok": true
+        },
+        {
+          "name": "sessionId",
+          "ok": true
+        },
+        {
+          "name": "stopCause=null",
+          "ok": true
+        },
+        {
+          "name": "group cleared",
+          "ok": true
+        },
+        {
+          "name": "nextTurnAllowed",
+          "ok": true
+        },
+        {
+          "name": "sessionEvent present",
+          "ok": true
+        },
+        {
+          "name": "init.tools exact",
+          "ok": true
+        },
+        {
+          "name": "init.mcp_servers exact",
+          "ok": true
+        },
+        {
+          "name": "init.session_id",
+          "ok": true
+        }
+      ],
+      "durationMs": 3711,
+      "counters": {
+        "stdoutBytes": 6569,
+        "frames": 5,
+        "keptEvents": 5,
+        "droppedEvents": 0,
+        "droppedEventBytes": 0,
+        "stderrBytes": 0,
+        "stderrDroppedBytes": 0,
+        "droppedDiagnostics": 0
+      }
+    }
+  ]
+}

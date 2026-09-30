@@ -1,0 +1,197 @@
+# review 4: scenario 20 expects ok (accepted rule), scenario 17 names 'default' (whole file rejected); history of the first run: verifier-after.tap
+TAP version 13
+# Subtest: 01 review3: inactive sqlite URL must not hide active mysql production URL
+ok 1 - 01 review3: inactive sqlite URL must not hide active mysql production URL
+  ---
+  duration_ms: 5.371334
+  type: 'test'
+  ...
+# Subtest: 02 reversed connection order
+ok 2 - 02 reversed connection order
+  ---
+  duration_ms: 1.74575
+  type: 'test'
+  ...
+# Subtest: 03a connection names testing/reporting: default 'testing' (mysql) with production URL -> blocker
+ok 3 - 03a connection names testing/reporting: default 'testing' (mysql) with production URL -> blocker
+  ---
+  duration_ms: 1.460625
+  type: 'test'
+  ...
+# Subtest: 03b connection names: DB_CONNECTION=reporting (sqlite :memory:) forced, testing has production URL -> ok
+ok 4 - 03b connection names: DB_CONNECTION=reporting (sqlite :memory:) forced, testing has production URL -> ok
+  ---
+  duration_ms: 1.711333
+  type: 'test'
+  ...
+# Subtest: 03c name != driver: 'main' => pgsql with production URL -> blocker
+ok 5 - 03c name != driver: 'main' => pgsql with production URL -> blocker
+  ---
+  duration_ms: 1.041209
+  type: 'test'
+  ...
+# Subtest: 04 active sqlite :memory:, inactive mysql with production URL -> ok
+ok 6 - 04 active sqlite :memory:, inactive mysql with production URL -> ok
+  ---
+  duration_ms: 1.196042
+  type: 'test'
+  ...
+# Subtest: 05 default fallback of env('DB_CONNECTION', 'mysql') when nothing sets it -> mysql URL counts
+ok 7 - 05 default fallback of env('DB_CONNECTION', 'mysql') when nothing sets it -> mysql URL counts
+  ---
+  duration_ms: 1.348458
+  type: 'test'
+  ...
+# Subtest: 06 precedence: process DB_CONNECTION beats phpunit non-force sqlite
+ok 8 - 06 precedence: process DB_CONNECTION beats phpunit non-force sqlite
+  ---
+  duration_ms: 1.397333
+  type: 'test'
+  ...
+# Subtest: 07 precedence: phpunit force sqlite beats process mysql
+ok 9 - 07 precedence: phpunit force sqlite beats process mysql
+  ---
+  duration_ms: 1.188375
+  type: 'test'
+  ...
+# Subtest: 08 precedence: .env.testing DB_CONNECTION=mysql when phpunit sets APP_ENV=testing
+ok 10 - 08 precedence: .env.testing DB_CONNECTION=mysql when phpunit sets APP_ENV=testing
+  ---
+  duration_ms: 1.594875
+  type: 'test'
+  ...
+# Subtest: 09-app laravel 11+ config: DB_URL production, phpunit forces mysql -> blocker
+ok 11 - 09-app laravel 11+ config: DB_URL production, phpunit forces mysql -> blocker
+  ---
+  duration_ms: 1.928875
+  type: 'test'
+  ...
+# Subtest: 10-app laravel 11+ config: DB_URL="" forced -> DB_* decide (local mysql app_testing) -> ok
+ok 12 - 10-app laravel 11+ config: DB_URL="" forced -> DB_* decide (local mysql app_testing) -> ok
+  ---
+  duration_ms: 1.646333
+  type: 'test'
+  ...
+# Subtest: 11-app laravel 11+ stock phpunit.xml (sqlite :memory:, DB_URL="") with production DB_URL -> ok
+ok 13 - 11-app laravel 11+ stock phpunit.xml (sqlite :memory:, DB_URL="") with production DB_URL -> ok
+  ---
+  duration_ms: 1.599375
+  type: 'test'
+  ...
+# Subtest: 12-app laravel 11+ config: DB_URL="" forced, DB_HOST remote from process -> blocker
+ok 14 - 12-app laravel 11+ config: DB_URL="" forced, DB_HOST remote from process -> blocker
+  ---
+  duration_ms: 1.3255
+  type: 'test'
+  ...
+# Subtest: 09-framework laravel 11+ config: DB_URL production, phpunit forces mysql -> blocker
+ok 15 - 09-framework laravel 11+ config: DB_URL production, phpunit forces mysql -> blocker
+  ---
+  duration_ms: 1.89225
+  type: 'test'
+  ...
+# Subtest: 10-framework laravel 11+ config: DB_URL="" forced -> DB_* decide (local mysql app_testing) -> ok
+ok 16 - 10-framework laravel 11+ config: DB_URL="" forced -> DB_* decide (local mysql app_testing) -> ok
+  ---
+  duration_ms: 2.314292
+  type: 'test'
+  ...
+# Subtest: 11-framework laravel 11+ stock phpunit.xml (sqlite :memory:, DB_URL="") with production DB_URL -> ok
+ok 17 - 11-framework laravel 11+ stock phpunit.xml (sqlite :memory:, DB_URL="") with production DB_URL -> ok
+  ---
+  duration_ms: 1.687459
+  type: 'test'
+  ...
+# Subtest: 12-framework laravel 11+ config: DB_URL="" forced, DB_HOST remote from process -> blocker
+ok 18 - 12-framework laravel 11+ config: DB_URL="" forced, DB_HOST remote from process -> blocker
+  ---
+  duration_ms: 1.46425
+  type: 'test'
+  ...
+# Subtest: 13a no config/database.php: DB_URL production -> blocker
+ok 19 - 13a no config/database.php: DB_URL production -> blocker
+  ---
+  duration_ms: 0.841584
+  type: 'test'
+  ...
+# Subtest: 13b no config/database.php: DATABASE_URL production -> not ok (conservative)
+ok 20 - 13b no config/database.php: DATABASE_URL production -> not ok (conservative)
+  ---
+  duration_ms: 0.892833
+  type: 'test'
+  ...
+# Subtest: 13c no config/database.php: sqlite :memory: forced, no URL -> ok
+ok 21 - 13c no config/database.php: sqlite :memory: forced, no URL -> ok
+  ---
+  duration_ms: 0.830208
+  type: 'test'
+  ...
+# Subtest: 14 default => $x -> config_unknown
+ok 22 - 14 default => $x -> config_unknown
+  ---
+  duration_ms: 1.254833
+  type: 'test'
+  ...
+# Subtest: 15 default => config(...) -> config_unknown
+ok 23 - 15 default => config(...) -> config_unknown
+  ---
+  duration_ms: 1.33825
+  type: 'test'
+  ...
+# Subtest: 16 active driver via function -> config_unknown
+ok 24 - 16 active driver via function -> config_unknown
+  ---
+  duration_ms: 1.244416
+  type: 'test'
+  ...
+# Subtest: 17 active url => $url -> config_unknown
+ok 25 - 17 active url => $url -> config_unknown
+  ---
+  duration_ms: 1.000458
+  type: 'test'
+  ...
+# Subtest: 18 active sqlite database => database_path('x.sqlite') -> config_unknown
+ok 26 - 18 active sqlite database => database_path('x.sqlite') -> config_unknown
+  ---
+  duration_ms: 1.128584
+  type: 'test'
+  ...
+# Subtest: 19 function in INACTIVE connection's url is tolerated (active sqlite :memory: -> ok)
+ok 27 - 19 function in INACTIVE connection's url is tolerated (active sqlite :memory: -> ok)
+  ---
+  duration_ms: 1.041916
+  type: 'test'
+  ...
+# Subtest: 20 sqlite file forced in phpunit -> ok (configured test database)
+ok 28 - 20 sqlite file forced in phpunit -> ok (configured test database)
+  ---
+  duration_ms: 1.049667
+  type: 'test'
+  ...
+# Subtest: 21 unknown database (mysql, nothing sets DB_DATABASE, no default) -> not ok
+ok 29 - 21 unknown database (mysql, nothing sets DB_DATABASE, no default) -> not ok
+  ---
+  duration_ms: 1.424667
+  type: 'test'
+  ...
+# Subtest: 22 password in DATABASE_URL and DB_URL never in result (active production URL)
+ok 30 - 22 password in DATABASE_URL and DB_URL never in result (active production URL)
+  ---
+  duration_ms: 1.380375
+  type: 'test'
+  ...
+# Subtest: 23 password in URL of the review config (blocker path) never in result
+ok 31 - 23 password in URL of the review config (blocker path) never in result
+  ---
+  duration_ms: 1.266
+  type: 'test'
+  ...
+1..31
+# tests 31
+# suites 0
+# pass 31
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 138.452791

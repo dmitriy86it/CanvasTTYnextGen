@@ -1,0 +1,16 @@
+{
+  "dir": "<tmp>/s3-app",
+  "head": "30f26ade023f533a347b679a09d2bb4deab584cb",
+  "branch": "main",
+  "status": "",
+  "diffStat": "",
+  "newFiles": [],
+  "accept": {
+    "path": "tests/duration.accept.test.mjs",
+    "blobAtStart": "1036f73927e174539e3082ddbb2d40fec60e5014",
+    "blobNow": "1036f73927e174539e3082ddbb2d40fec60e5014",
+    "sha256Now": "9b6e6888beb032805f0ce36b4bfd5878658de8040a6a79718f56f1303e87ea02",
+    "unchanged": true
+  },
+  "errors": []
+}

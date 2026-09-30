@@ -1,0 +1,92 @@
+{
+  "tag": "probe2",
+  "at": "2026-09-25T18:53:45.008Z",
+  "build": {
+    "outRendererMtime": "2026-09-25T18:16:07.975Z"
+  },
+  "passed": 0,
+  "failed": 1,
+  "results": [
+    {
+      "name": "K4b2-buttonless-move-left-field-mid-drag",
+      "window": {
+        "width": 1280,
+        "height": 800
+      },
+      "move": {
+        "button": "left",
+        "buttons": 0
+      },
+      "previewBefore": true,
+      "previewAfterIntervention": true,
+      "portEvents": [
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointerdown",
+          "pointerId": 1,
+          "buttons": 1
+        },
+        {
+          "type": "gotpointercapture",
+          "pointerId": 1,
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointermove",
+          "buttons": 1
+        },
+        {
+          "type": "pointerup",
+          "pointerId": 1,
+          "buttons": 0
+        },
+        {
+          "type": "lostpointercapture",
+          "pointerId": 1,
+          "buttons": 0
+        }
+      ],
+      "lostCaptureEvents": 1,
+      "linksAfterIntervention": 1,
+      "previewAfterRelease": false,
+      "retry": {
+        "ok": false,
+        "linksAdded": [],
+        "messages": []
+      },
+      "ok": false,
+      "reason": "{\"previewBefore\":true,\"previewAfter\":true,\"lost\":1,\"links\":1,\"retry\":{\"ok\":false,\"linksAdded\":[],\"messages\":[]}}"
+    }
+  ]
+}

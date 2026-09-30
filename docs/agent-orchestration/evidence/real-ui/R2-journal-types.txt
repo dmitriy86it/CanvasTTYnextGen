@@ -1,0 +1,14 @@
+0:run.created
+1:workspace.created
+2:run.status(running)
+3:orch.turn(plan)
+4:turn.intent(codex)
+5:turn.finished(completed)
+6:plan.recorded
+7:orch.turn(execute)
+8:turn.intent(claude)
+9:command.received(stop)
+10:run.status(stopping)
+11:command.completed
+12:turn.finished(stopped)
+13:run.status(stopped)

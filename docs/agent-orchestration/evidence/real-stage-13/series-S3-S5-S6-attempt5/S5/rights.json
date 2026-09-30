@@ -1,0 +1,18 @@
+{
+  "claude": {
+    "requested": "terminal (Как в моём терминале)",
+    "mapping": null,
+    "argv": [],
+    "reported": "не сообщено CLI"
+  },
+  "codex": {
+    "requested": "terminal (Как в моём терминале)",
+    "mapping": null,
+    "reported": [
+      {
+        "approvalPolicy": "on-request",
+        "sandbox": "workspaceWrite"
+      }
+    ]
+  }
+}

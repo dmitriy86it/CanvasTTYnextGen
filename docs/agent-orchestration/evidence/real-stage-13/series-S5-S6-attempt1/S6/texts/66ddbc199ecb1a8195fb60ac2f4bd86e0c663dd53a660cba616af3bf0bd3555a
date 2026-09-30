@@ -1,0 +1,34 @@
+Role: executor. Purpose: execute.
+
+Goal:
+Add src/duration.mjs exporting toMs(text): it converts a duration string such as "2s" or "1h" to milliseconds using the installed "ms" package and throws a TypeError when the text is not a duration. Add your own unit test tests/duration.test.mjs. Do not modify tests/duration.accept.test.mjs.
+
+Acceptance criteria (fixed; you cannot change them):
+1. npm test passes
+2. tests/duration.accept.test.mjs is unchanged
+3. only src/ and tests/ change
+
+Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):
+cmd-1: npm test
+
+Work place: a Git worktree of the user's project on branch canvastty/49e6d602 (your working directory), exactly as in their terminal. Ignored files (dependencies, .env) are prepared there separately. Your tools and permissions are the user's own CLI settings; a prompt goes to the user.
+Your duty: implement the current stage. The lead plans and reviews.
+
+Mode: autopilot. Work on your own: inspect the project, choose reversible technical options yourself, prepare what the work needs within your rights, run the project's checks when useful, fix and check again. Ask the person (the question field of your report) only when required data is missing, a significant decision is ambiguous, or an action is outside the rights you have.
+CanvasTTY prepares the environment itself when it is missing (npm ci). Do not upgrade dependencies or change lock files unless the task needs it; never install dependencies inside a test.
+After success CanvasTTY itself will commit the changes, then push to origin/canvastty-s6, then deploy to qa-local and confirm each. Do not commit, push or deploy yourself.
+
+Rules for this turn:
+- Implement the current stage completely in this turn, including the inspection you need; there is no separate turn for reading.
+- A stage is accepted only when every required check (cmd-1) passes on the copy after that stage, and the lead's review accepts it. An accept while a required check fails does not advance the stage: it goes back to the executor. CanvasTTY runs the checks after your turn; your own report does not count.
+
+Budget: this is turn 2 of at most 8 (6 left after it; the final review needs one of them, a fix round needs an executor turn and a review).
+Replans used: 0 of 1. Rounds per stage: at most 2 (this is round 1). Time left for the run: about 19 min.
+
+Plan v1, stages accepted: 0:
+1. Implement and test duration conversion
+
+Current stage 1 (round 1): Implement and test duration conversion
+Add src/duration.mjs with a named toMs(text) export using the installed ms package (2.1.3). Reject non-string and empty inputs with TypeError; parse strings through ms and throw TypeError when parsing returns undefined. Preserve valid ms behavior, including zero, fractional and negative durations. Add tests/duration.test.mjs using node:test and node:assert/strict to cover conversions, zero, fractional and negative durations, invalid text, empty strings and non-string inputs. Change only these two new files. Keep tests/duration.accept.test.mjs unchanged (baseline Git blob hash: 1036f73927e174539e3082ddbb2d40fec60e5014). Run npm test and resolve failures before review. Baseline currently fails because src/duration.mjs is missing. Stage acceptance requires passing npm test and lead review; reserve a separate lead turn for final review. Do not install dependencies, modify manifests or lockfiles, commit, push or deploy.
+
+Answer only with the JSON object the schema describes.

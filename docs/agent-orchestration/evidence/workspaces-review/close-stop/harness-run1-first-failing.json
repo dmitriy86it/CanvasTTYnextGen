@@ -1,0 +1,27 @@
+{
+  "ok": false,
+  "passed": [
+    "partial: not hidden while a participant is not stopped",
+    "partial: the refused terminal can be opened",
+    "partial: a stopped one has no Open",
+    "partial: the summary says it",
+    "partial: main keeps the live one and removed the exited one",
+    "partial: the explicit hide stops nothing again",
+    "no exit: the signal alone does not hide",
+    "no exit: the process stays managed in main",
+    "no exit: not hidden",
+    "no exit: Open stays",
+    "unknown: the row says its state could not be read",
+    "unknown: the dialog warns about the unknown result",
+    "unknown: not hidden while a run's state is unknown",
+    "unknown: the stop went to the run once its state was known",
+    "new work: not hidden",
+    "hide only: no signal, no stop command"
+  ],
+  "failures": [
+    {
+      "name": "unknown: retry asks for the state again",
+      "ok": false
+    }
+  ]
+}

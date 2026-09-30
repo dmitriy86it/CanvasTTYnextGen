@@ -1,0 +1,7 @@
+{
+  "requestId": "c20ccbf6-fede-46f0-959a-7246f8cf26c5",
+  "decision": "allow_once",
+  "reason": "full command read: cwd = project; quoted heredocs write new task files src/duration.mjs, tests/duration.test.mjs; acceptance test untouched; rest npm test|tail, git status",
+  "detectedAt": "2026-09-26T12:08:41.877Z",
+  "writtenAt": "2026-09-26T12:08:48.791Z"
+}

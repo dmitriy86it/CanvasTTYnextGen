@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "passed": [
+    "ordinary close: the card is gone, main has no session, nothing comes back",
+    "the stop sees no exit: timeout, the process lives",
+    "main keeps the live session, marked",
+    "the card says its end is not confirmed, not stopped",
+    "the dialog lists it as not confirmed",
+    "the dialog offers to stop it",
+    "Open: the card is selected and on screen",
+    "explicit hide stops nothing",
+    "after hiding and reopening the card is there, still marked",
+    "the late exit: card and session gone, nothing comes back",
+    "Open without a record says so; the dialog stays"
+  ],
+  "failures": [],
+  "shots": "<scratchpad>/final2/cu-shots"
+}

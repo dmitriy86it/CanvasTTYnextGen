@@ -1,0 +1,24 @@
+typecheck exit=0
+build exit=0
+unit exit=0
+R-M01-partially-invalid-workspaces-dropped.test.mjs exit=0
+R-M02-workspace-without-id-accepted.test.mjs exit=0
+R-M03-link-unknown-workspace-vs-common.test.mjs exit=0
+R-M04-rollback-head-normalizers.test.mjs exit=0
+R-M05-folder-busy-names-no-run.test.mjs exit=0
+R-U01-minimap-drag-crosses-switch exit=0
+R-U02-new-terminal-camera-lands-in-other-workspace-v2 exit=0
+R-U03-browser-drag-loses-workspace exit=0
+R-U04-keyboard-focus-scrolls-canvas exit=0
+R-U05-idle-shell-counts-as-work-on-close exit=0
+R-U06-region-drag-preview-stuck-after-switch-v2 exit=0
+R-U07-open-plugin-canvas-from-other-workspace exit=1
+R-U08-card-drag-interrupted-by-switch exit=0
+R-U09-start-refused-folder-busy-race exit=0
+smoke-workspaces-ui exit=0
+smoke-workspaces-background exit=0
+smoke-orchestration-ui exit=0
+smoke-activity-ui exit=0
+smoke-native-ui exit=0
+DONE
+R-U07-v2 exit=0

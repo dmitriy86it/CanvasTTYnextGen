@@ -1,0 +1,126 @@
+[
+  {
+    "step": "keychain before",
+    "build": "-",
+    "change": "-",
+    "observed": {
+      "canvastty": "absent",
+      "CanvasTTY": "absent",
+      "Raoden Loom": "absent",
+      "Raoden": "absent",
+      "raoden-loom": "absent"
+    },
+    "ok": true
+  },
+  {
+    "step": "SI devCanvas then raoden (exec)",
+    "build": "devCanvas+raoden",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": 0,
+        "seconds": 0.227
+      },
+      "storesUnchanged": true,
+      "added": [
+        "Local State"
+      ],
+      "removed": [],
+      "procs": [
+        1,
+        1
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "SI devCanvas then raoden (open)",
+    "build": "devCanvas+raoden",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": "open -W returned",
+        "seconds": 0.281
+      },
+      "storesUnchanged": true,
+      "added": [
+        "Local State"
+      ],
+      "removed": [],
+      "procs": [
+        1,
+        1
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "SI raoden then devCanvas (exec)",
+    "build": "raoden+devCanvas",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": 0,
+        "seconds": 0.224
+      },
+      "storesUnchanged": true,
+      "added": [
+        "Local State"
+      ],
+      "removed": [],
+      "procs": [
+        1,
+        1
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "SI raoden then devCanvas (open)",
+    "build": "raoden+devCanvas",
+    "change": "one test profile",
+    "observed": {
+      "second": {
+        "code": "open -W returned",
+        "seconds": 0.286
+      },
+      "storesUnchanged": true,
+      "added": [
+        "Local State"
+      ],
+      "removed": [],
+      "procs": [
+        1,
+        1
+      ],
+      "firstAlive": true
+    },
+    "ok": false
+  },
+  {
+    "step": "keychain after",
+    "build": "-",
+    "change": "-",
+    "observed": {
+      "canvastty": "absent",
+      "CanvasTTY": "absent",
+      "Raoden Loom": "absent",
+      "Raoden": "absent",
+      "raoden-loom": "absent"
+    },
+    "ok": true
+  },
+  {
+    "step": "Application Support: no entry added or removed",
+    "build": "-",
+    "change": "-",
+    "observed": {
+      "added": [],
+      "removed": []
+    },
+    "ok": true
+  }
+]

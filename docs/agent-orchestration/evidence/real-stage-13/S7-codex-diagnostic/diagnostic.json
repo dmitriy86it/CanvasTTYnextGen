@@ -1,0 +1,182 @@
+{
+  "versions": {
+    "codex": "codex-cli 0.155.1"
+  },
+  "direnv": "off",
+  "runtimeMs": 254,
+  "probeMs": 5152,
+  "limitMs": 90000,
+  "ok": true,
+  "mcp": {
+    "confirmed": true,
+    "complete": true,
+    "incomplete": null,
+    "servers": [
+      {
+        "name": "codex-security",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 47
+      },
+      {
+        "name": "codex_app",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 0
+      },
+      {
+        "name": "codex_apps",
+        "connection": null,
+        "auth": "bearerToken",
+        "tools": 464
+      },
+      {
+        "name": "computer-use",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 0
+      },
+      {
+        "name": "context7",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 2
+      },
+      {
+        "name": "cua_repl",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 3
+      },
+      {
+        "name": "fable-advisor-py",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 0
+      },
+      {
+        "name": "fable-advisor-python",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 0
+      },
+      {
+        "name": "fable-advisor-python3",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 0
+      },
+      {
+        "name": "node_repl",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 4
+      },
+      {
+        "name": "openaiDeveloperDocs",
+        "connection": null,
+        "auth": "unsupported",
+        "tools": 5
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "model",
+      "confirmed": true
+    },
+    {
+      "id": "approval",
+      "confirmed": true
+    },
+    {
+      "id": "sandbox",
+      "confirmed": true
+    },
+    {
+      "id": "skills",
+      "confirmed": true
+    },
+    {
+      "id": "plugins",
+      "confirmed": true
+    },
+    {
+      "id": "mcp",
+      "confirmed": true
+    },
+    {
+      "id": "hooks",
+      "confirmed": true
+    },
+    {
+      "id": "account",
+      "confirmed": true
+    }
+  ],
+  "timing": [
+    {
+      "method": "initialize",
+      "page": null,
+      "startMs": 1,
+      "durationMs": 147,
+      "allottedMs": 89999,
+      "leftMs": 89853,
+      "outcome": "answered"
+    },
+    {
+      "method": "config/read",
+      "page": null,
+      "startMs": 147,
+      "durationMs": 14,
+      "allottedMs": 89853,
+      "leftMs": 89839,
+      "outcome": "answered"
+    },
+    {
+      "method": "skills/list",
+      "page": null,
+      "startMs": 161,
+      "durationMs": 142,
+      "allottedMs": 89839,
+      "leftMs": 89697,
+      "outcome": "answered"
+    },
+    {
+      "method": "plugin/installed",
+      "page": null,
+      "startMs": 303,
+      "durationMs": 955,
+      "allottedMs": 89697,
+      "leftMs": 88741,
+      "outcome": "answered"
+    },
+    {
+      "method": "hooks/list",
+      "page": null,
+      "startMs": 1259,
+      "durationMs": 39,
+      "allottedMs": 88741,
+      "leftMs": 88703,
+      "outcome": "answered"
+    },
+    {
+      "method": "account/read",
+      "page": null,
+      "startMs": 1297,
+      "durationMs": 2,
+      "allottedMs": 88703,
+      "leftMs": 88700,
+      "outcome": "answered"
+    },
+    {
+      "method": "mcpServerStatus/list",
+      "page": 1,
+      "startMs": 1300,
+      "durationMs": 3827,
+      "allottedMs": 88700,
+      "leftMs": 84873,
+      "outcome": "answered"
+    }
+  ]
+}

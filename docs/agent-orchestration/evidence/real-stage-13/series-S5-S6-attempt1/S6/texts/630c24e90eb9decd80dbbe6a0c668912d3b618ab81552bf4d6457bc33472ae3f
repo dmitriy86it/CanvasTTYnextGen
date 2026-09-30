@@ -1,0 +1,1 @@
+{"findings":["Implementation uses ms and throws TypeError for invalid durations; unit tests cover valid, zero, fractional, negative, and invalid inputs.","Required npm test check passed: 4 tests, 0 failures.","Only src/duration.mjs and tests/duration.test.mjs were added; acceptance test hash is unchanged."],"question":null,"verdict":"accept"}

@@ -1,0 +1,265 @@
+{
+  "mode": "dry",
+  "expect": "2.1.282",
+  "startedAt": "2026-09-25T10:34:20.562Z",
+  "node": "v26.8.1",
+  "platform": "darwin-arm64",
+  "versions": {
+    "claude": "2.1.282 (Claude Code)",
+    "codex": "codex-cli 0.155.1"
+  },
+  "turns": [
+    {
+      "n": 1,
+      "kind": "new",
+      "events": [
+        "system/init",
+        "control_request",
+        "assistant",
+        "user",
+        "assistant",
+        "result/success"
+      ],
+      "controlRequests": [
+        "can_use_tool"
+      ],
+      "asks": [
+        {
+          "kind": "tool",
+          "tool": "Bash",
+          "summary": "echo mock",
+          "options": [
+            "allow_once",
+            "allow_session",
+            "deny"
+          ],
+          "decision": "deny"
+        }
+      ],
+      "init": {
+        "fields": [
+          "cwd",
+          "mcp_servers",
+          "model",
+          "permissionMode",
+          "plugins",
+          "session_id",
+          "skills",
+          "slash_commands",
+          "subtype",
+          "tools",
+          "type"
+        ],
+        "session_id": "733dca25-883d-49ba-808a-492bba2f86c9",
+        "model": "mock-claude",
+        "permissionMode": "default",
+        "claude_code_version": null,
+        "tools": 10,
+        "mcp_servers": 1,
+        "output_style": null,
+        "apiKeySource": null
+      },
+      "answerText": "Done.",
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "total_cost_usd": 0,
+        "num_turns": 1,
+        "duration_ms": 1,
+        "session_id": "733dca25-883d-49ba-808a-492bba2f86c9",
+        "permission_denials": null,
+        "fields": [
+          "duration_ms",
+          "is_error",
+          "num_turns",
+          "result",
+          "session_id",
+          "structured_output",
+          "subtype",
+          "total_cost_usd",
+          "type"
+        ],
+        "structured_output": {
+          "word": "lantern"
+        }
+      },
+      "elapsedMs": 110,
+      "outcome": "completed",
+      "guardStopped": false,
+      "sessionId": "733dca25-883d-49ba-808a-492bba2f86c9",
+      "report": {
+        "status": "valid",
+        "value": {
+          "word": "lantern"
+        }
+      },
+      "contract": {
+        "status": "verified",
+        "errors": []
+      },
+      "process": {
+        "exitCode": 0,
+        "signal": null,
+        "stdoutEnded": true,
+        "signalsToLeader": [],
+        "groupCleared": true,
+        "supervisorExitCode": 0,
+        "supervisorDone": true,
+        "pgid": 72584,
+        "supervisor": 72566
+      },
+      "stderrTail": "",
+      "leftover": {
+        "watched": 2,
+        "alive": [],
+        "inGroup": []
+      }
+    },
+    {
+      "n": 2,
+      "kind": "resume",
+      "events": [
+        "system/init",
+        "assistant",
+        "result/success"
+      ],
+      "controlRequests": [],
+      "asks": [],
+      "init": {
+        "fields": [
+          "cwd",
+          "mcp_servers",
+          "model",
+          "permissionMode",
+          "plugins",
+          "session_id",
+          "skills",
+          "slash_commands",
+          "subtype",
+          "tools",
+          "type"
+        ],
+        "session_id": "733dca25-883d-49ba-808a-492bba2f86c9",
+        "model": "mock-claude",
+        "permissionMode": "default",
+        "claude_code_version": null,
+        "tools": 10,
+        "mcp_servers": 1,
+        "output_style": null,
+        "apiKeySource": null
+      },
+      "answerText": "Done.",
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "total_cost_usd": 0,
+        "num_turns": 1,
+        "duration_ms": 1,
+        "session_id": "733dca25-883d-49ba-808a-492bba2f86c9",
+        "permission_denials": null,
+        "fields": [
+          "duration_ms",
+          "is_error",
+          "num_turns",
+          "result",
+          "session_id",
+          "structured_output",
+          "subtype",
+          "total_cost_usd",
+          "type"
+        ],
+        "structured_output": {
+          "word": "lantern"
+        }
+      },
+      "elapsedMs": 105,
+      "outcome": "completed",
+      "guardStopped": false,
+      "sessionId": "733dca25-883d-49ba-808a-492bba2f86c9",
+      "report": {
+        "status": "valid",
+        "value": {
+          "word": "lantern"
+        }
+      },
+      "contract": {
+        "status": "verified",
+        "errors": []
+      },
+      "process": {
+        "exitCode": 0,
+        "signal": null,
+        "stdoutEnded": true,
+        "signalsToLeader": [],
+        "groupCleared": true,
+        "supervisorExitCode": 0,
+        "supervisorDone": true,
+        "pgid": 72699,
+        "supervisor": 72698
+      },
+      "stderrTail": "",
+      "leftover": {
+        "watched": 2,
+        "alive": [],
+        "inGroup": []
+      }
+    }
+  ],
+  "checks": [
+    {
+      "ok": true,
+      "what": "runtime measured claude 2.1.282"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 completed"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 system/init observed"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 result success"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 session id consistent"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 left no process"
+    },
+    {
+      "ok": true,
+      "what": "turn 1 answer is \"lantern\""
+    },
+    {
+      "ok": true,
+      "what": "turn 2 completed"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 resumed the same session id"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 result success"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 left no process"
+    },
+    {
+      "ok": true,
+      "what": "turn 2 remembers \"lantern\""
+    },
+    {
+      "ok": true,
+      "what": "dry: the scripted prompt reached the probe and was denied"
+    }
+  ],
+  "ok": true,
+  "shell": "/bin/zsh",
+  "finishedAt": "2026-09-25T10:34:23.189Z"
+}

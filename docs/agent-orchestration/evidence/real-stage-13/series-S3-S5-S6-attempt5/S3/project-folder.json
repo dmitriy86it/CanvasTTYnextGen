@@ -1,0 +1,27 @@
+{
+  "dir": "<tmp>/s3-app",
+  "head": "63409014f7bbf33d3528a4a76e351688fe40c5b9",
+  "branch": "main",
+  "status": "?? src/duration.mjs\n?? tests/duration.test.mjs\n",
+  "diffStat": "",
+  "newFiles": [
+    {
+      "path": "src/duration.mjs",
+      "bytes": 283,
+      "sha256": "02bdbf53d08d066fec0b2386bb7818d072ecbea2ff899e6c10029600c972f3de"
+    },
+    {
+      "path": "tests/duration.test.mjs",
+      "bytes": 516,
+      "sha256": "131ccf15e95ee179bb962ae777d5fa076a222557e8ddebf853dbbc265e7e0910"
+    }
+  ],
+  "accept": {
+    "path": "tests/duration.accept.test.mjs",
+    "blobAtStart": "1036f73927e174539e3082ddbb2d40fec60e5014",
+    "blobNow": "1036f73927e174539e3082ddbb2d40fec60e5014",
+    "sha256Now": "9b6e6888beb032805f0ce36b4bfd5878658de8040a6a79718f56f1303e87ea02",
+    "unchanged": true
+  },
+  "errors": []
+}

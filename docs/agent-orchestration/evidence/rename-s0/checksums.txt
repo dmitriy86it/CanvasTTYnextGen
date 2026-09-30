@@ -1,0 +1,24 @@
+# SHA-256, S0 builds (2026-09-28). Paths: <REPO> = checkout, <S0> = temporary scratchpad of the session (deleted later).
+## 1.5.3 (release/1.5.3, local build of 2026-09-24; checked against release/1.5.3/SHA256SUMS)
+9be00e2c97239e3036fb00e9ec8a0f1674c5a04d407c3c1af0355650d38a90fb  <REPO>/release/1.5.3/mac-arm64/CanvasTTY.app/Contents/MacOS/CanvasTTY
+38918727c411805b7878764bdada3eda01d8bffffc1ae4bb1e5a7814d86748a6  <REPO>/release/1.5.3/mac-arm64/CanvasTTY.app/Contents/Resources/app.asar
+ad193da4f023761cb4308b944beabfd7b1e016981421643fd6c9eebc5f72db1e  <REPO>/release/1.5.3/CanvasTTY-1.5.3-mac-arm64.zip
+## dev "CanvasTTY" and dev "Raoden Loom" (electron-builder --mac dir into <S0>, current checkout code)
+8533f825bbb556f56c387da3c16ecc62358f39bac97081d0a6e46302161a9145  <S0>/pkg-canvastty/mac-arm64/CanvasTTY.app/Contents/MacOS/CanvasTTY
+549f70eade23b61ef108db97aff9202431c4c628caf239795ca2ca0d28a17d56  <S0>/pkg-canvastty/mac-arm64/CanvasTTY.app/Contents/Resources/app.asar
+f150f4d4609fafd9dd6dc69bbaf4a897d9a4b1e84aea2fdf0ea1b1f4bba38e8c  <S0>/pkg-raoden/mac-arm64/Raoden Loom.app/Contents/MacOS/Raoden Loom
+549f70eade23b61ef108db97aff9202431c4c628caf239795ca2ca0d28a17d56  <S0>/pkg-raoden/mac-arm64/Raoden Loom.app/Contents/Resources/app.asar
+## packaged inputs (out/ of the checkout at packaging time)
+cad397e64cf143d128ba11349af9b6c9cf4b1de78f61da5fca9f6cb60b01dead  <REPO>/out/main/index.js
+a224080193700ff43f2955e14f586ccd2454dbaa78699bab58d065af77fc9bac  <REPO>/out/renderer/index.html
+## diagnostic apps (second build, with the window-all-closed handler)
+cd3167cd6bb3d3940524b25e1f6b1b803079cc42b84a8901773aed2811245292  <S0>/diag-out-Alpha/mac-arm64/S0 Diag Alpha.app/Contents/MacOS/S0 Diag Alpha
+e0ade8179af6266e7333bdd9cb951945b374b5898fd827bf8d04c47ec946779f  <S0>/diag-out-Alpha/mac-arm64/S0 Diag Alpha.app/Contents/Resources/app.asar
+e39b2b491ca5e769634249a2e1e902b2ed12ee3bae6d2efc22001ae1f56a7fb1  <S0>/diag-out-Beta/mac-arm64/S0 Diag Beta.app/Contents/MacOS/S0 Diag Beta
+e0ade8179af6266e7333bdd9cb951945b374b5898fd827bf8d04c47ec946779f  <S0>/diag-out-Beta/mac-arm64/S0 Diag Beta.app/Contents/Resources/app.asar
+## code signatures (codesign -dvvv): all ad-hoc, TeamIdentifier not set
+1.5.3 (copy by ditto) CanvasTTY.app  Identifier=io.github.howdeploy.canvastty CDHash=54182ba91c2662bcbacbe1545734ed2a07f53b4b Signature=adhoc 
+dev CanvasTTY.app  Identifier=io.github.howdeploy.canvastty CDHash=368163d40e90aa1eca211ab28ca6d25e93be4521 Signature=adhoc 
+Raoden Loom.app  Identifier=io.github.howdeploy.canvastty CDHash=305d28fa9e328c0c92eb225b487d1ca01327bcc1 Signature=adhoc 
+S0 Diag Alpha.app  Identifier=s0.diag.q7 CDHash=4e2770277263e78b7e29f77f5d31cd2fedc26415 Signature=adhoc 
+S0 Diag Beta.app  Identifier=s0.diag.q7 CDHash=3d0e7f99aebffd905079588528955c496901fdc5 Signature=adhoc 

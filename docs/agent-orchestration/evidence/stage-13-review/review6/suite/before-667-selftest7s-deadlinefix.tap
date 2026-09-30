@@ -1,0 +1,28 @@
+# repro: orchestration-service-review.test.mjs.before selftest delay 7000 ms; 16:14  up 2 days,  1:37, 7 users, load averages: 71,58 75,93 60,20
+TAP version 13
+# Subtest: runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+not ok 1 - runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review
+  ---
+  duration_ms: 18323.836875
+  type: 'test'
+  location: '<repo>/tests/.review6-repro-93575.mjs:228:1'
+  failureType: 'testCodeFailure'
+  error: 'timed out waiting for check.started; now paused(limit_reached); +18045 ms since createdAt; timeline 52:run.created 1360:workspace.created 1365:run.status(running) 1960:orch.turn(plan) 1983:turn.intent 2002:turn.finished 2135:plan.recorded 2582:orch.turn(execute) 2605:turn.intent 2623:turn.finished 10526:run.status(paused/limit_reached)'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    file://<repo>/tests/.review6-repro-93575.mjs:143:25
+    async TestContext.<anonymous> (file://<repo>/tests/.review6-repro-93575.mjs:240:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# check started; service clock released after 3020 ms of preparation (runMs 6000)
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 48599.373125
+# end: 16:15  up 2 days,  1:38, 7 users, load averages: 46,61 68,82 58,49

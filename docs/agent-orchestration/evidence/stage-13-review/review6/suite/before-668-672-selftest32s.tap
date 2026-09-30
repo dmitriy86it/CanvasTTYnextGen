@@ -1,0 +1,42 @@
+# repro: orchestration-service-review.test.mjs.before selftest delay 32000 ms; 16:00  up 2 days,  1:23, 7 users, load averages: 38,69 59,95 41,79
+TAP version 13
+# Subtest: late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+not ok 1 - late answer after the deadline: turn.finished is a fact, no review.recorded, no completed
+  ---
+  duration_ms: 38227.097458
+  type: 'test'
+  location: '<repo>/tests/.review6-repro-7518.mjs:253:1'
+  failureType: 'testCodeFailure'
+  error: 'timed out waiting for the final review'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    waitFor (file://<repo>/tests/.review6-repro-7518.mjs:105:33)
+    async TestContext.<anonymous> (file://<repo>/tests/.review6-repro-7518.mjs:262:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+not ok 2 - after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed
+  ---
+  duration_ms: 37909.108458
+  type: 'test'
+  location: '<repo>/tests/.review6-repro-7518.mjs:328:1'
+  failureType: 'testCodeFailure'
+  error: 'timed out waiting for the final review'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    waitFor (file://<repo>/tests/.review6-repro-7518.mjs:105:33)
+    async TestContext.<anonymous> (file://<repo>/tests/.review6-repro-7518.mjs:337:3)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 0
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 99343.744875
+# end: 16:01  up 2 days,  1:24, 7 users, load averages: 42,17 55,27 41,88

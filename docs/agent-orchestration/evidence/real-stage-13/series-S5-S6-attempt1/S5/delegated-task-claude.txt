@@ -1,0 +1,40 @@
+Role: executor. Purpose: execute.
+
+Goal:
+Implement src/clamp.mjs exporting clamp(x, lo, hi): return x limited to [lo, hi], and throw RangeError when lo > hi. Preserve tests/clamp.accept.test.mjs byte-for-byte.
+
+Role-specific workflow:
+- Codex lead: produce the normal orchestration plan and delegate implementation to Claude. The implementation objective is already authorized. Do not request a separate approval of your orchestration plan merely because Claude must obtain approval to leave its own plan mode. Include the following Claude-specific requirement in the delegated stage task.
+- Claude executor only: this project's Claude settings start you in plan mode. Inspect the relevant files, prepare your implementation plan, and request approval through the native ExitPlanMode tool before editing implementation or test files. If the plan is returned with feedback, revise it and request approval again. After approval, implement the task and run npm test.
+- Codex lead: review the resulting changes and actual check results through the normal workflow.
+
+The approval being tested is Claude's native plan-mode approval, not a free-text question from the lead.
+
+Acceptance criteria (fixed; you cannot change them):
+1. npm test passes
+2. tests/clamp.accept.test.mjs is unchanged
+
+Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):
+cmd-1: npm test
+
+Work place: the user's own project folder (your working directory), exactly as in their terminal. It may hold the user's uncommitted changes: keep them. Your tools and permissions are the user's own CLI settings; a prompt goes to the user.
+Your duty: implement the current stage. The lead plans and reviews.
+
+Mode: autopilot. Work on your own: inspect the project, choose reversible technical options yourself, prepare what the work needs within your rights, run the project's checks when useful, fix and check again. Ask the person (the question field of your report) only when required data is missing, a significant decision is ambiguous, or an action is outside the rights you have.
+CanvasTTY prepares the environment itself when it is missing (npm ci). Do not upgrade dependencies or change lock files unless the task needs it; never install dependencies inside a test.
+Leave the changes uncommitted: do not commit, push or deploy.
+
+Rules for this turn:
+- Implement the current stage completely in this turn, including the inspection you need; there is no separate turn for reading.
+- A stage is accepted only when every required check (cmd-1) passes on the copy after that stage, and the lead's review accepts it. An accept while a required check fails does not advance the stage: it goes back to the executor. CanvasTTY runs the checks after your turn; your own report does not count.
+
+Budget: this is turn 2 of at most 8 (6 left after it; the final review needs one of them, a fix round needs an executor turn and a review).
+Replans used: 0 of 1. Rounds per stage: at most 2 (this is round 1). Time left for the run: about 19 min.
+
+Plan v1, stages accepted: 0:
+1. Claude: implement and validate clamp
+
+Current stage 1 (round 1): Claude: implement and validate clamp
+In the current project folder, create src/clamp.mjs exporting named function clamp(x, lo, hi). Throw RangeError when lo > hi; otherwise return x limited to the inclusive interval [lo, hi]. Baseline npm test fails because this module is missing. Claude-specific requirement: project settings start you in plan mode. Inspect relevant files, prepare your implementation plan, and request approval through the native ExitPlanMode tool before editing implementation or test files. If returned with feedback, revise and request approval again. After approval, implement and run npm test. Preserve tests/clamp.accept.test.mjs byte-for-byte (SHA-256: a3866579c9feae251c72a0f37343c0910f4170f31180bd2ca2bdf3657883ce19). Preserve existing user changes; do not change dependencies, lockfiles, or Claude settings. Leave changes uncommitted; do not push or deploy. Report the diff and actual test results. Stage acceptance requires CanvasTTY's cmd-1 npm test to pass and the lead to review and accept the changes, including verification that the acceptance test is unchanged. A separate final lead review is required after this stage.
+
+Answer only with the JSON object the schema describes.

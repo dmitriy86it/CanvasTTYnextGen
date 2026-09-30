@@ -1,0 +1,42 @@
+{
+  "pid": 4353,
+  "argv": [
+    "--user-data-dir=<S0>/p-si-open-B-A"
+  ],
+  "exe": "<S0>/diag-out-Beta/mac-arm64/S0 Diag Beta.app/Contents/MacOS/S0 Diag Beta",
+  "name": "s0diag-q7",
+  "nameProp": "s0diag-q7",
+  "t0": 1790575582051,
+  "beforeProfileChoice": {
+    "userData": "<S0>/p-si-open-B-A",
+    "sessionData": "<S0>/p-si-open-B-A",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-si-open-B-A/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "afterProfileChoice": {
+    "userData": "<S0>/p-si-open-B-A",
+    "sessionData": "<S0>/p-si-open-B-A",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-si-open-B-A/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "lock": true,
+  "atReady": {
+    "userData": "<S0>/p-si-open-B-A",
+    "sessionData": "<S0>/p-si-open-B-A",
+    "logs": "~/Library/Logs/s0diag-q7",
+    "crashDumps": "<S0>/p-si-open-B-A/Crashpad",
+    "temp": "<TMPDIR>/",
+    "appData": "~/Library/Application Support"
+  },
+  "partitionStoragePath": "<S0>/p-si-open-B-A/Partitions/s0-browser",
+  "defaultStoragePath": "<S0>/p-si-open-B-A",
+  "cookiesSeen": [
+    "cookie-1"
+  ],
+  "localStorageBefore": null,
+  "ready": true
+}
