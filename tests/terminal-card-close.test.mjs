@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import test from "node:test";
 import { TerminalManager } from "../src/main/services/TerminalManager.ts";
 import { IPC } from "../src/shared/contracts.ts";
@@ -41,7 +42,7 @@ function bench(kill) {
   }, { get: (provider) => ({ state: "available", provider, executable: "/synthetic/codex", launcher: "native", environment: {}, checked: [] }) },
   undefined, undefined, false, () => fakePty);
   manager.configureWorkspaces({ active: () => "a", isOpen: () => true });
-  const { id } = manager.create({ provider: "codex", cwd: "/private/tmp", profile: "normal", position: { x: 0, y: 0 }, workspaceId: "a" });
+  const { id } = manager.create({ provider: "codex", cwd: os.tmpdir(), profile: "normal", position: { x: 0, y: 0 }, workspaceId: "a" });
   ui = manager.list().map((s) => ({ ...s, buffer: "" }));
   const window = { canvasTTY: { terminal: { dispose: (sid) => Promise.resolve().then(() => manager.dispose(sid)) } } };
   const none = () => {};

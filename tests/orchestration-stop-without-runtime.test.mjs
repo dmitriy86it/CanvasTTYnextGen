@@ -139,7 +139,8 @@ test("native run: paused, restart without the CLIs, Stop, the cards can be delet
   fs.writeFileSync(file, JSON.stringify({
     codex: { executable: wrapper("codex", "mock-codex.mjs"), version: "codex-cli 0.155.1", ...p },
     claude: { executable: wrapper("claude", "mock-claude.mjs"), version: "2.1.281 (Claude Code)", ...p },
-    shell: "/bin/sh", checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
+    // A check executable must be its own real path; on Debian/Ubuntu /bin/sh is a symlink to dash.
+    shell: fs.realpathSync("/bin/sh"), checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
   }));
   const legacy = async () => { throw new Error("the restricted runtime is not used by a native goal"); };
   const m1 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: legacy, native: testNativeRuntime(file, () => LAUNCH) });

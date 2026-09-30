@@ -2,6 +2,7 @@
 // process's confirmed exit, not the signal. A fake PTY stands in for the process, so a failed signal, a signal without
 // an exit and an exit at the moment of the request are reproduced without a real CLI or a change to the product code.
 import assert from "node:assert/strict";
+import os from "node:os";
 import test from "node:test";
 import { TerminalManager } from "../src/main/services/TerminalManager.ts";
 import { IPC } from "../src/shared/contracts.ts";
@@ -28,7 +29,7 @@ function fixture(kill) {
     get: (provider) => ({ state: "available", provider, executable: "/synthetic/codex", launcher: "native", environment: {}, checked: [] })
   }, undefined, undefined, false, () => fakePty);
   manager.configureWorkspaces({ active: () => "a", isOpen: () => true });
-  const session = manager.create({ provider: "codex", cwd: "/private/tmp", profile: "normal", position: { x: 0, y: 0 }, workspaceId: "a" });
+  const session = manager.create({ provider: "codex", cwd: os.tmpdir(), profile: "normal", position: { x: 0, y: 0 }, workspaceId: "a" });
   const removed = () => events.some((e) => e.channel === IPC.terminalRemoved && e.payload.id === session.id);
   const listed = () => manager.list().some((s) => s.id === session.id);
   return { manager, id: session.id, calls, removed, listed, exit: (code = 0) => exitHandler({ exitCode: code }) };

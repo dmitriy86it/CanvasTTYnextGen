@@ -60,7 +60,8 @@ function providersFile(env) {
   const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, ...env } };
   fs.writeFileSync(file, JSON.stringify({
     codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p },
-    shell: "/bin/sh", checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
+    // A check executable must be its own real path; on Debian/Ubuntu /bin/sh is a symlink to dash.
+    shell: fs.realpathSync("/bin/sh"), checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
   }));
   return file;
 }
