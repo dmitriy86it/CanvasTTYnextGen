@@ -276,6 +276,15 @@ export interface CreateSessionRequest {
   workspaceId?: string; // absent: the active workspace (requests of integrations)
 }
 
+// "Stop and hide" asks main to end a terminal and waits for the answer. Only a confirmed exit is "stopped". "absent":
+// main has no record of this id when asked — not a confirmation of anything. A signal that could not be sent, or no
+// exit within the limit, keeps the session in main, also if its card is closed meanwhile.
+export type TerminalStopResult =
+  | { outcome: "exited"; exitCode: number | null }
+  | { outcome: "absent" }
+  | { outcome: "kill_failed"; error: string }
+  | { outcome: "timeout" };
+
 export interface SessionMetadata {
   id: string;
   revision: number;
@@ -291,6 +300,9 @@ export interface SessionMetadata {
   exitCode: number | null;
   failureDetails: string | null;
   workspaceId?: string;
+  /** The card was closed after a stop signalled the process and its exit is not confirmed: main keeps the session
+   * (and the card) until the exit. Never persisted. */
+  closeUnconfirmed?: boolean;
 }
 
 export interface SessionSnapshot extends SessionMetadata {
@@ -1057,6 +1069,7 @@ export interface CanvasTTYApi {
     // Moves a terminal to another workspace; the process, its output and its id stay.
     setWorkspace(id: string, workspaceId: string): Promise<SessionMetadata>;
     dispose(id: string): Promise<void>;
+    stop(id: string): Promise<TerminalStopResult>;
     onData(listener: (event: TerminalDataEvent) => void): () => void;
     onSession(listener: (event: SessionEvent) => void): () => void;
     onRemoved(listener: (event: SessionRemovedEvent) => void): () => void;
@@ -1193,6 +1206,7 @@ export const IPC = {
   terminalBounds: "terminal:bounds",
   terminalRename: "terminal:rename",
   terminalDispose: "terminal:dispose",
+  terminalStop: "terminal:stop",
   terminalSetWorkspace: "terminal:set-workspace",
   workspacesGet: "workspaces:get",
   workspacesCreate: "workspaces:create",

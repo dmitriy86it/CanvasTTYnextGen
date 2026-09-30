@@ -523,6 +523,7 @@ export function TerminalCard({
               {session.titleCustomized ? session.title : compactPath(session.cwd)}
             </strong>
           )}
+          {session.closeUnconfirmed && session.exitCode === null && <span className="terminal-card__unconfirmed" data-terminal-close-unconfirmed="true">{t(locale, "wsStop_unconfirmed")}</span>}
         </div>
         <div className="terminal-card__actions">
           {session.exitCode !== null && (
@@ -552,7 +553,7 @@ export function TerminalCard({
       >
         <div className="terminal-card__summary-content">
           <ProviderIcon provider={session.provider} size="large" />
-          <div className="terminal-card__summary-copy"><strong>{session.title}</strong><span>{sessionStatusLabel(locale, session.status, session.provider)}</span></div>
+          <div className="terminal-card__summary-copy"><strong>{session.title}</strong><span>{session.closeUnconfirmed && session.exitCode === null ? t(locale, "wsStop_unconfirmed") : sessionStatusLabel(locale, session.status, session.provider)}</span></div>
         </div>
       </button>
       {RESIZE_DIRECTIONS.map((direction) => (

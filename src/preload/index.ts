@@ -194,6 +194,7 @@ const api: CanvasTTYApi = {
     rename: (id: string, title: string) => ipcRenderer.invoke(IPC.terminalRename, id, title),
     setWorkspace: (id: string, workspaceId: string) => ipcRenderer.invoke(IPC.terminalSetWorkspace, id, workspaceId),
     dispose: (id: string) => ipcRenderer.invoke(IPC.terminalDispose, id),
+    stop: (id: string) => ipcRenderer.invoke(IPC.terminalStop, id),
     onData: (listener: (event: TerminalDataEvent) => void) => subscribe(IPC.terminalData, listener),
     onSession: (listener: (event: SessionEvent) => void) => subscribe(IPC.terminalSession, listener),
     onRemoved: (listener: (event: SessionRemovedEvent) => void) => subscribe(IPC.terminalRemoved, listener)

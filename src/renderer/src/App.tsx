@@ -765,7 +765,8 @@ export function App(): React.JSX.Element {
   }, [settings.browserCanvas, switchWorkspace]);
 
   const disposeSession = useCallback((id: string): void => {
-    void window.canvasTTY.terminal.dispose(id);
+    // A process that could not be signalled stays in main; its card comes back with main's session event.
+    void window.canvasTTY.terminal.dispose(id).catch((error: unknown) => console.warn(`Terminal ${id} could not be closed.`, error));
     setSessions((current) => current.filter((session) => session.id !== id));
     setActiveSessionId((current) => current === id ? null : current);
     setRenamingSessionId((current) => current === id ? null : current);

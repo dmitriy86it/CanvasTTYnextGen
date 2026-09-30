@@ -10,6 +10,7 @@ import type {
   SessionBounds,
   SessionEvent,
   SessionMetadata,
+  TerminalStopResult,
   SessionRemovedEvent,
   SessionSnapshot,
   TerminalBufferSnapshot,
@@ -68,7 +69,18 @@ interface ManagedSession {
   lifecycle: ProviderLifecycleParser | null;
   awaitingInitialResize: boolean;
   resumeOnLaunch: boolean;
+  // Called once when this session's process exits: "Stop and hide" waits on it.
+  exitWaiters?: Set<() => void>;
+  // Set when a stop has signalled the live process: from then on only its exit ends the session's record, so a card
+  // closed meanwhile (dispose) cannot drop a process whose end was never confirmed.
+  awaitingExit?: boolean;
+  removeOnExit?: boolean;
 }
+
+// How long "Stop and hide" waits for a signalled process to exit, and how long a failed signal waits for an exit that
+// may already be on its way (the process ended at the same moment).
+const STOP_CONFIRM_MS = 5_000;
+const STOP_RACE_MS = 500;
 
 export interface ProviderLifecycleSignal {
   kind: "lifecycle";
@@ -384,28 +396,90 @@ export class TerminalManager {
     }
   }
 
+  // Closing a card: ask the process to end and remove the card. A process that could not be signalled stays managed
+  // here (its card comes back) and the caller gets the error: a live process is never dropped from control. A process
+  // a stop is waiting on (or has waited on without seeing it end) is kept too: its record goes with its exit.
   dispose(id: string): void {
     const session = this.sessions.get(id);
     if (!session) return;
 
+    const live = !!session.process && session.metadata.exitCode === null;
+    if (live) {
+      try {
+        session.process!.kill();
+      } catch (error) {
+        console.warn(`PTY ${id} could not be killed.`, error);
+        this.emitSession(session.metadata);
+        throw error;
+      }
+    }
+    if (live && session.awaitingExit) {
+      session.removeOnExit = true;
+      // The renderer dropped the card on the close; it comes back marked, so the live process stays reachable.
+      session.metadata.closeUnconfirmed = true;
+      this.emitSession(session.metadata);
+      return;
+    }
+    this.remove(id, session);
+  }
+
+  // "Stop and hide": the answer is the process's confirmed exit, not the signal. The session stays in main until it has
+  // exited; a failed signal or no exit within the limit is reported as such and the session keeps running under control.
+  // "absent" means only that main has no record of this id when asked — it never confirms an end.
+  async stop(id: string, confirmMs = STOP_CONFIRM_MS, raceMs = STOP_RACE_MS): Promise<TerminalStopResult> {
+    const session = this.sessions.get(id);
+    if (!session) return { outcome: "absent" };
+    const exited = (): TerminalStopResult => {
+      if (this.sessions.get(id) === session) this.remove(id, session);
+      return { outcome: "exited", exitCode: session.metadata.exitCode };
+    };
+    if (!session.process || session.metadata.exitCode !== null) return exited();
+
+    let settle: () => void = () => {};
+    const exit = new Promise<boolean>((resolve) => { settle = () => resolve(true); });
+    (session.exitWaiters ??= new Set()).add(settle);
+    session.awaitingExit = true;
+    const within = (ms: number): Promise<boolean> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      return Promise.race([exit, new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), ms); })])
+        .finally(() => clearTimeout(timer));
+    };
+    try {
+      let failure: unknown = null;
+      try {
+        session.process.kill();
+      } catch (error) {
+        failure = error;
+      }
+      if (await within(failure === null ? confirmMs : raceMs)) return exited();
+      // Not seen to end: the record stays (a dispose meanwhile only marked it to go with the exit).
+      if (failure !== null) {
+        if (!session.removeOnExit) session.awaitingExit = false; // no signal reached it: an ordinary close may drop the card again
+        console.warn(`PTY ${id} could not be stopped.`, failure);
+        return { outcome: "kill_failed", error: failure instanceof Error ? failure.message : String(failure) };
+      }
+      return { outcome: "timeout" };
+    } finally {
+      session.exitWaiters?.delete(settle);
+    }
+  }
+
+  private remove(id: string, session: ManagedSession): void {
     this.flushOutput(id, session);
     this.sessions.delete(id);
     session.agentBrowser?.cleanup();
     session.agentRuntime?.cleanup();
-    if (session.process) {
-      try {
-        session.process.kill();
-      } catch (error) {
-        console.warn(`PTY ${id} could not be killed cleanly.`, error);
-      }
-    }
     this.emit(IPC.terminalRemoved, { id });
     this.schedulePersistence();
   }
 
   disposeAll(): void {
     for (const id of [...this.sessions.keys()]) {
-      this.dispose(id);
+      try {
+        this.dispose(id);
+      } catch {
+        // Quitting: the warning is logged; the other sessions are still closed.
+      }
     }
   }
 
@@ -636,6 +710,9 @@ export class TerminalManager {
       current.agentRuntime?.cleanup();
       current.agentRuntime = null;
       this.emitSession(current.metadata);
+      for (const settle of [...(current.exitWaiters ?? [])]) settle();
+      current.awaitingExit = false;
+      if (current.removeOnExit) this.remove(id, current); // its card was closed while a stop waited on it
     });
   }
 

@@ -618,6 +618,10 @@ export function registerIpc({
   onMain(IPC.terminalBounds, (_event, id: string, bounds: SessionBounds) => terminals.setBounds(id, bounds));
   handleMain(IPC.terminalRename, (_event, id: string, title: string) => terminals.rename(id, title));
   handleMain(IPC.terminalDispose, (_event, id: string) => terminals.dispose(id));
+  handleMain(IPC.terminalStop, (_event, id: string) => {
+    if (typeof id !== "string") throw new Error("Terminal session ID is required.");
+    return terminals.stop(id);
+  });
   handleMain(IPC.terminalSetWorkspace, (_event, id: unknown, workspaceId: unknown) => {
     if (typeof id !== "string" || typeof workspaceId !== "string") throw new Error("Invalid terminal workspace request.");
     return terminals.setWorkspace(id, workspaceId);
