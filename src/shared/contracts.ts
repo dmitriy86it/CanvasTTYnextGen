@@ -481,6 +481,8 @@ export interface GithubAuthStatus {
   authorized: boolean;
   login: string | null;
   tokenExpiresAt: number | null;
+  /** A saved session exists but cannot be read now; its file is kept (not the same as "not signed in"). */
+  storedSessionUnavailable: boolean;
 }
 
 export interface GithubDeviceFlowStart {

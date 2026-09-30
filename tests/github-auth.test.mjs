@@ -63,7 +63,8 @@ test("GitHub device flow persists an encrypted session atomically without reques
       configured: true,
       authorized: true,
       login: "howdeploy",
-      tokenExpiresAt: null
+      tokenExpiresAt: null,
+      storedSessionUnavailable: false
     });
     assert.equal(await restored.getToken(), "access");
     await service.signOut();
@@ -157,7 +158,8 @@ test("signOut cancels an in-flight device flow and prevents a late token from be
       configured: true,
       authorized: false,
       login: null,
-      tokenExpiresAt: null
+      tokenExpiresAt: null,
+      storedSessionUnavailable: false
     });
     await assert.rejects(() => readFile(`${userData}/github-oauth.json`, "utf8"), { code: "ENOENT" });
   } finally {
@@ -211,7 +213,8 @@ test("reports an unconfigured OAuth client before starting device flow", async (
       configured: false,
       authorized: false,
       login: null,
-      tokenExpiresAt: null
+      tokenExpiresAt: null,
+      storedSessionUnavailable: false
     });
     await assert.rejects(
       () => service.startDeviceFlow(),

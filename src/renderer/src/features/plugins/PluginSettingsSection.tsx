@@ -346,7 +346,7 @@ export function PluginSettingsSection({
     try {
       const flow = await window.canvasTTY.githubAuth.start();
       setGithubCode(flow);
-      setGithubStatus({ configured: true, authorized: false, login: null, tokenExpiresAt: null });
+      setGithubStatus((current) => ({ configured: true, authorized: false, login: null, tokenExpiresAt: null, storedSessionUnavailable: current?.storedSessionUnavailable ?? false }));
       await openGithubAuthorization(flow, target);
     } catch (reason) {
       setError(errorMessage(reason, t(locale, "githubAuthNotConfigured")));
@@ -365,7 +365,8 @@ export function PluginSettingsSection({
         configured: current?.configured ?? false,
         authorized: false,
         login: null,
-        tokenExpiresAt: null
+        tokenExpiresAt: null,
+        storedSessionUnavailable: false
       }));
       setGithubCode(null);
     } finally {
@@ -811,6 +812,14 @@ export function PluginSettingsSection({
             </span>
           )}
         </h3>
+        {!githubStatus?.authorized && githubStatus?.storedSessionUnavailable && (
+          <div className="plugin-github-row">
+            <p className="plugin-github-unavailable" role="status" data-github-stored-unavailable>{t(locale, "githubAuthStoredUnavailable")}</p>
+            <button type="button" className="plugin-github-signout" disabled={githubBusy} onClick={() => void runGithubSignOut()}>
+              {t(locale, "githubAuthSignOut")}
+            </button>
+          </div>
+        )}
         {githubStatus?.authorized ? (
           <div>
             <div className="plugin-github-row">

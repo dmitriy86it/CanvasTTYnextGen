@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as electron from "electron";
-import { readFile, writeFile, mkdir, rename, rm } from "node:fs/promises";
+import { copyFile, constants as fsConstants, readFile, readdir, writeFile, mkdir, rename, rm } from "node:fs/promises";
 import { join, dirname } from "node:path";
 
 /** GitHub OAuth Device Flow for the plugin showcase. */
@@ -10,6 +10,8 @@ export interface GithubAuthStatus {
   authorized: boolean;
   login: string | null;
   tokenExpiresAt: number | null;
+  /** A saved session exists but cannot be read now (keychain unavailable or another key); its file is kept. */
+  storedSessionUnavailable: boolean;
 }
 
 interface StoredTokens {
@@ -39,6 +41,10 @@ export interface GithubAuthServiceOptions {
 declare const __CANVASTTY_GITHUB_OAUTH_CLIENT_ID__: string | undefined;
 
 const AUTH_STORE_FILE = "github-oauth.json";
+// A saved session this build could not read, copied aside byte for byte before a new sign-in replaces it. Read again
+// when the main file cannot be read or is missing (the keychain came back); removed only by an explicit sign-out.
+// Name: `${KEPT_PREFIX}-<ms since epoch>-<random>.json`.
+const KEPT_PREFIX = "github-oauth.previous";
 const DEVICE_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -61,6 +67,7 @@ export class GithubAuthService {
   private generation = 0;
   private deviceFlow: { generation: number; controller: AbortController } | null = null;
   private storeWrite = Promise.resolve();
+  private storedSessionUnavailable = false;
 
   constructor(userDataPath: string, clientId?: string, options: GithubAuthServiceOptions = {}) {
     this.storePath = join(userDataPath, AUTH_STORE_FILE);
@@ -81,31 +88,72 @@ export class GithubAuthService {
     return this.clientId.length > 0;
   }
 
+  // The main file first, then the kept copies, newest first. A file that exists but cannot be read makes the saved
+  // session "unavailable", never "absent"; "absent" means no saved file at all. Nothing is removed or rewritten here.
   async load(): Promise<void> {
-    try {
-      const raw = await readFile(this.storePath, "utf8");
-      const parsed: unknown = JSON.parse(raw);
-      if (!isRecord(parsed) || typeof parsed.data !== "string") return;
-      if (!this.secureStorage?.isEncryptionAvailable()) {
-        console.warn("CanvasTTY GitHub OAuth: OS keychain unavailable; stored session skipped.");
+    const main = await this.readStored(this.storePath);
+    if (main !== "missing" && main !== "unreadable") {
+      this.tokens = main;
+      this.storedSessionUnavailable = false;
+      return;
+    }
+    let unreadable = main === "unreadable";
+    for (const path of await this.keptPaths()) {
+      const kept = await this.readStored(path);
+      if (kept !== "missing" && kept !== "unreadable") {
+        this.tokens = kept;
+        this.storedSessionUnavailable = false;
         return;
       }
-      const decrypted = this.secureStorage.decryptString(Buffer.from(parsed.data, "base64"));
-      const tokens: unknown = JSON.parse(decrypted);
-      if (!isRecord(tokens)) return;
+      if (kept === "unreadable") unreadable = true;
+    }
+    this.storedSessionUnavailable = unreadable;
+  }
+
+  private async readStored(path: string): Promise<StoredTokens | "missing" | "unreadable"> {
+    let raw: string;
+    try {
+      raw = await readFile(path, "utf8");
+    } catch (error) {
+      if (isMissingFile(error)) return "missing";
+      console.warn("CanvasTTY GitHub OAuth session could not be read.", error);
+      return "unreadable";
+    }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed) || typeof parsed.data !== "string") return "unreadable";
+      if (!this.secureStorage?.isEncryptionAvailable()) {
+        console.warn("CanvasTTY GitHub OAuth: OS keychain unavailable; the saved session is kept unread.");
+        return "unreadable";
+      }
+      const tokens: unknown = JSON.parse(this.secureStorage.decryptString(Buffer.from(parsed.data, "base64")));
+      if (!isRecord(tokens)) return "unreadable";
       const accessToken = typeof tokens.accessToken === "string" ? tokens.accessToken : null;
       const refreshToken = typeof tokens.refreshToken === "string" ? tokens.refreshToken : null;
       const expiresAt = typeof tokens.expiresAt === "number" && Number.isFinite(tokens.expiresAt)
         ? tokens.expiresAt
         : null;
       const login = typeof tokens.login === "string" ? tokens.login : null;
-      if (!accessToken || !login) return;
-      this.tokens = { accessToken, refreshToken, expiresAt, login };
+      if (!accessToken || !login) return "unreadable";
+      return { accessToken, refreshToken, expiresAt, login };
     } catch (error) {
-      if (!isMissingFile(error)) {
-        console.warn("CanvasTTY GitHub OAuth session could not be restored.", error);
-      }
+      console.warn("CanvasTTY GitHub OAuth session could not be decrypted; the file is kept.", error);
+      return "unreadable";
     }
+  }
+
+  // Newest first by the time in the name, then by name; a name without a time sorts last. readdir order is not used.
+  private async keptPaths(): Promise<string[]> {
+    const dir = dirname(this.storePath);
+    const names = await readdir(dir).catch(() => [] as string[]);
+    const time = (name: string): number => {
+      const match = /^-(\d+)-/.exec(name.slice(KEPT_PREFIX.length));
+      return match ? Number(match[1]) : -1;
+    };
+    return names
+      .filter((name) => name.startsWith(KEPT_PREFIX) && name.endsWith(".json"))
+      .sort((a, b) => time(b) - time(a) || (a < b ? -1 : a > b ? 1 : 0))
+      .map((name) => join(dir, name));
   }
 
   async getToken(): Promise<string | null> {
@@ -126,13 +174,17 @@ export class GithubAuthService {
 
   async status(): Promise<GithubAuthStatus> {
     if (!this.tokens) {
-      return { configured: this.clientConfigured, authorized: false, login: null, tokenExpiresAt: null };
+      return {
+        configured: this.clientConfigured, authorized: false, login: null, tokenExpiresAt: null,
+        storedSessionUnavailable: this.storedSessionUnavailable
+      };
     }
     return {
       configured: this.clientConfigured,
       authorized: true,
       login: this.tokens.login,
-      tokenExpiresAt: this.tokens.expiresAt
+      tokenExpiresAt: this.tokens.expiresAt,
+      storedSessionUnavailable: false
     };
   }
 
@@ -194,8 +246,16 @@ export class GithubAuthService {
     this.cancelDeviceFlow();
     this.tokens = null;
     this.refreshPromise = null;
+    this.storedSessionUnavailable = false;
+    // The person's explicit sign-out removes every saved session of this device, the kept ones too.
     await this.enqueueStoreWrite(async () => {
       await rm(this.storePath, { force: true });
+      for (const path of await this.keptPaths()) await rm(path, { force: true });
+      // Prepared files left by an interrupted write.
+      const dir = dirname(this.storePath);
+      for (const name of await readdir(dir).catch(() => [] as string[])) {
+        if (name.startsWith("github-oauth") && name.endsWith(".tmp")) await rm(join(dir, name), { force: true });
+      }
     });
   }
 
@@ -326,6 +386,21 @@ export class GithubAuthService {
     }
   }
 
+  private async keepCopy(): Promise<void> {
+    const bytes = await readFile(this.storePath);
+    for (const path of await this.keptPaths()) {
+      if (bytes.equals(await readFile(path).catch(() => Buffer.alloc(0)))) return;
+    }
+    const kept = join(dirname(this.storePath), `${KEPT_PREFIX}-${this.now()}-${randomUUID().slice(0, 8)}.json`);
+    const partial = `${kept}.${randomUUID()}.tmp`;
+    try {
+      await copyFile(this.storePath, partial, fsConstants.COPYFILE_EXCL);
+      await rename(partial, kept);
+    } finally {
+      await rm(partial, { force: true });
+    }
+  }
+
   private async persist(tokens: StoredTokens, generation: number): Promise<void> {
     await this.enqueueStoreWrite(async () => {
       if (this.generation !== generation || this.tokens !== tokens) return;
@@ -335,6 +410,10 @@ export class GithubAuthService {
           console.warn("CanvasTTY GitHub OAuth: OS keychain unavailable; session not persisted.");
           return;
         }
+        // A saved session this build cannot read is copied aside unchanged first. The main file itself is never moved:
+        // it is replaced only by the rename of a fully written new file below, so a failed encryption or write, or an
+        // interruption between the steps, leaves either the old bytes or the new file in place, and the copy.
+        if (await this.readStored(this.storePath) === "unreadable") await this.keepCopy();
         const encrypted = this.secureStorage.encryptString(JSON.stringify(tokens));
         const temporaryPath = `${this.storePath}.${randomUUID()}.tmp`;
         try {
