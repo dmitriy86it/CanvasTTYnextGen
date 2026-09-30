@@ -24,6 +24,8 @@ Raoden Loom is a spatial Electron desktop for real local terminals and AI-agent 
 | [Architecture](ARCHITECTURE.md) | changing IPC, PTY/browser lifecycle, persistence, process ownership, agent transports, or provider adapters |
 | [UI contract](UI_CONTRACT.md) | changing Home, launch flow, Settings, canvas behavior, terminal/browser cards, or visual semantics |
 
+Lint with `npm run lint` (Biome, config in `biome.jsonc`); CI runs `npm run lint:ci` and fails only on errors, warnings are reported. The Biome formatter and import sorting are deliberately off: the linter never reformats code.
+
 ## Current extension model
 
 Raoden Loom supports static runtime plugins through manifest API v1. Untrusted UI stays inside sandboxed frames/windows and receives only explicitly approved capabilities. Trusted core integrations that need new main-process services remain source-level contributions compiled with the app.

@@ -41,6 +41,8 @@
     "build:windows-pipe-host": "node scripts/build-windows-agent-pipe-host.mjs",
     "test:windows-pipe-host": "node scripts/build-windows-agent-pipe-host.mjs --require-windows --self-test",
     "test": "node --test --test-concurrency=1 --test-reporter=tap tests/*.test.mjs",
+    "lint": "biome lint .",
+    "lint:ci": "biome ci --formatter-enabled=false",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "postinstall": "install-electron && electron-rebuild -f -w node-pty && node scripts/build-windows-agent-pipe-host.mjs",
     "build:even": "npm run build --workspace integrations/even-g2",
@@ -62,6 +64,7 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.14",
     "@electron/rebuild": "4.2.0",
     "@types/node": "26.1.2",
     "@types/react": "19.2.18",

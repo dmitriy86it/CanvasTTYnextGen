@@ -36,7 +36,7 @@ import { WorkspaceError, createWorkspace, diffPaths, inPlace, openWorkspace, rea
 import type { AgentAccess } from "./access.ts";
 import { isClaudeAccess, isCodexAccess } from "./access.ts";
 import type { GoalFinish } from "./cycle.ts";
-import { commitLine, commitMessage, findCommitLine, pushLine, qaEnv, qaVersion, remoteHead, remoteHeadLine, remoteUrlLine, remoteUrlsMatch, resultOid } from "./finish.ts";
+import { commitLine, findCommitLine, pushLine, qaEnv, qaVersion, remoteHead, remoteHeadLine, remoteUrlLine, remoteUrlsMatch, resultOid } from "./finish.ts";
 import type { CommitParams, PushParams, QaParams } from "./finish.ts";
 import { validateForm } from "./forms.ts";
 import type { FailureClass, FinishStep } from "./journal.ts";

@@ -668,7 +668,7 @@ export async function diffTreePath(ws: Workspace, fromTree: string, toTree: stri
 
 // Create-only; an existing ref with the same commit is accepted (a retried call), any other is ref_conflict.
 export async function setControlRef(ws: Workspace, ref: string, commit: string): Promise<void> {
-  if (typeof ref !== "string" || !/^refs\/canvastty\/[A-Za-z0-9._\/-]+$/.test(ref) || ref.includes("..")) fail("invalid_input", "ref must be under refs/canvastty/");
+  if (typeof ref !== "string" || !/^refs\/canvastty\/[A-Za-z0-9._/-]+$/.test(ref) || ref.includes("..")) fail("invalid_input", "ref must be under refs/canvastty/");
   requireOid(commit, "commit");
   await createRef(controlCtx(ws), ref, commit);
 }

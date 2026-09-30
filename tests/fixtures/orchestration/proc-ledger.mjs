@@ -83,7 +83,7 @@ export function psByMarker(mark, { ps = "ps" } = {}) {
 // t: node:test context (or null in hooks). Returns the final check result.
 export async function assertNoneAlive(t, ledger, { ms = 3000, mark = null, ps } = {}) {
   const say = (s) => (t ? t.diagnostic(s) : console.log(`# ${s}`));
-  let r = await ledger.waitGone(ms);
+  const r = await ledger.waitGone(ms);
   if (r.alive.length) {
     const killed = ledger.killOwn();
     say(`cleanup: SIGKILL own ${killed.map((e) => `${e.label}:${e.pid}`).join(" ")}`);

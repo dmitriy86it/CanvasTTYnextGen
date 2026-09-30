@@ -122,7 +122,7 @@ function decide(input: CycleInput): Action {
   // Step by step: after every accepted (and checkpointed) stage the run stops until the person continues.
   if (goal.mode === "steps") {
     const lastAccepted = Math.max(-1, ...Object.values(orch.accepted).map((a) => a.seq));
-    if (lastAccepted > (orch.lastPausedSeq["stage_done"] ?? -1)) return pause("stage_done", `stage ${Object.keys(orch.accepted).length}`);
+    if (lastAccepted > (orch.lastPausedSeq.stage_done ?? -1)) return pause("stage_done", `stage ${Object.keys(orch.accepted).length}`);
   }
 
   const planVersion = orch.plan?.version ?? 0;
@@ -232,7 +232,7 @@ function finishOrComplete(input: CycleInput): Action {
   const orch = state.orch;
   const commit = currentCommit(state, snapshot.tree);
   const current = (f: FinishRecord) => f.step === "commit" ? commit === f : commit !== null && f.commit === commit.commit;
-  const pausedAfter = (seq: number) => (orch.lastPausedSeq["finish_unconfirmed"] ?? -1) >= seq;
+  const pausedAfter = (seq: number) => (orch.lastPausedSeq.finish_unconfirmed ?? -1) >= seq;
   for (const step of FINISH_ORDER) {
     if (!goal.finish?.[step]) continue;
     const last = orch.finish.filter((f) => f.step === step).at(-1);
@@ -258,7 +258,7 @@ function loopOf(input: CycleInput, reviews: readonly Review[]): string | null {
   const orch = state.orch;
   const last = reviews.at(-1);
   if (!last) return null;
-  if ((orch.lastPausedSeq["loop_suspected"] ?? -1) > last.seq) return null;
+  if ((orch.lastPausedSeq.loop_suspected ?? -1) > last.seq) return null;
   // the last review of each round, in round order
   const byRound = new Map<number, Review>();
   for (const r of reviews) byRound.set(orch.turns[r.turnId].round as number, r);

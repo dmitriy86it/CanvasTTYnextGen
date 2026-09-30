@@ -444,7 +444,7 @@ test("2l. a chain of internal links that ends outside, and a dangling link: both
 // Defect 3: an escapee that left the process group through setsid.
 
 // Spawns a detached /bin/sh that writes its pid and execs /bin/sleep 30, waits (bounded) for the pid file, then `tail`.
-const escape = (tail) => `
+const escapeScript = (tail) => `
   const fs = require("node:fs"), { spawn } = require("node:child_process");
   fs.mkdirSync("out", { recursive: true });
   spawn("/bin/sh", ["-c", "echo $$ > out/escapee.pid; exec /bin/sleep 30"], { detached: true, stdio: "ignore" }).unref();
@@ -466,7 +466,7 @@ test("3a. a detached escapee and exit 0: passed only with sandboxCleared, and th
   const c = await setup();
   let pid;
   try {
-    const result = await nodeCheck(c, escape(`() => process.exit(0)`));
+    const result = await nodeCheck(c, escapeScript(`() => process.exit(0)`));
     const { check } = await report(t, c, result);
     pid = await escapeePid(c);
     for (let i = 0; i < 20 && alive(pid); i++) await sleep(100);
@@ -486,7 +486,7 @@ test("3b. the same escapee with a command that hangs past a short timeout: not_v
   const c = await setup();
   let pid;
   try {
-    const result = await nodeCheck(c, escape(`() => setInterval(() => {}, 1000)`), { timeoutMs: 2000 });
+    const result = await nodeCheck(c, escapeScript(`() => setInterval(() => {}, 1000)`), { timeoutMs: 2000 });
     const { check } = await report(t, c, result);
     pid = await escapeePid(c);
     for (let i = 0; i < 20 && alive(pid); i++) await sleep(100);

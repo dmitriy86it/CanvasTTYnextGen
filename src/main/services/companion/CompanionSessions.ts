@@ -8,7 +8,7 @@ import {
   type CompanionSession,
 } from "../../../shared/companion.ts";
 import { RequestLedger } from "./RequestLedger.ts";
-import { SessionAccess } from "./SessionAccess.ts";
+import type { SessionAccess } from "./SessionAccess.ts";
 
 export interface CompanionView {
   body: string;
