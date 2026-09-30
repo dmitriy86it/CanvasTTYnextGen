@@ -263,11 +263,12 @@ export type ChainIntegrity =
 // record is replayed, and nothing may write to it. fallback: it declared minReaderVersion this build can read, but a
 // record did not replay by v1 rules (line, code), so it is shown like any other newer journal.
 // newer_version_compatible: a newer journal whose first record declares minReaderVersion ≤ READER_VERSION: replayed by
-// v1 rules (unknown fields ignored), shown whole, and still never written (the proposed amendment to §2.2).
-export type NewerFallback = { line: number; code: "unknown_record" | "invalid_event" | "replay_conflict" };
+// v1 rules (unknown fields ignored), shown whole, and still never written (acceptance-review-spec.md §2.2.1).
+// version_changed: a record of another v than the first one (the version and minReaderVersion are the first record's).
+export type NewerFallback = { line: number; code: "unknown_record" | "invalid_event" | "replay_conflict" | "version_changed" };
 export type JournalIntegrity = ChainIntegrity
   | { status: "newer_version"; detail: { version: number; chain: ChainIntegrity; fallback?: NewerFallback } }
-  | { status: "newer_version_compatible"; detail: { version: number; minReaderVersion: number; chain: ChainIntegrity } };
+  | { status: "newer_version_compatible"; detail: { version: number; minReaderVersion: number; chain: ChainIntegrity; skipped: number } };
 
 export class JournalError extends Error {
   readonly code: CorruptCode;
@@ -1039,9 +1040,11 @@ function parseNewerJournal(buf: Uint8Array, runId: string, version: number): Par
 const withFallback = (p: ParsedJournal, fallback: NewerFallback): ParsedJournal =>
   p.integrity.status === "newer_version" ? { ...p, integrity: { status: "newer_version", detail: { ...p.integrity.detail, fallback } } } : p;
 
-// minReaderVersion ≤ READER_VERSION: the chain is checked as for any newer journal, and each record is replayed by v1
-// rules (its unknown fields ignored). A record v1 cannot apply (an unknown type, data v1 rejects, a replay conflict)
-// sends the whole journal back to the raw view, with where and why.
+// minReaderVersion ≤ READER_VERSION: the chain is checked as for any newer journal (skipped records included), and each
+// record is replayed by v1 rules (its unknown fields ignored). A record of a type v1 does not know is skipped only when
+// it says skippable: true (the boolean); a known type is applied whatever it says. Any other record v1 cannot apply (an
+// unknown type without the mark, data v1 rejects, a replay conflict) or a record of another v sends the whole journal
+// back to the raw view, with where and why.
 // fallback null: nothing was replayed (the chain fails on the first record, or the file is over the limit): the raw
 // view says why through its chain, not as a record v1 could not apply.
 function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number, min: number): ParsedJournal | { fallback: NewerFallback | null } {
@@ -1049,8 +1052,9 @@ function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number,
   let state: RunState | null = null;
   let offset = 0;
   let line = 1;
+  let skipped = 0;
   const done = (chain: ChainIntegrity): ParsedJournal | { fallback: NewerFallback | null } => state === null ? { fallback: null }
-    : { records, state, integrity: { status: "newer_version_compatible", detail: { version, minReaderVersion: min, chain } }, validBytes: offset };
+    : { records, state, integrity: { status: "newer_version_compatible", detail: { version, minReaderVersion: min, chain, skipped } }, validBytes: offset };
   if (buf.length > MAX_JOURNAL_BYTES) return { fallback: null };
   while (offset < buf.length) {
     const nl = buf.indexOf(0x0a, offset);
@@ -1059,8 +1063,16 @@ function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number,
     try {
       rec = parseLine(buf.subarray(offset, nl), runId, records.at(-1) ?? null, version);
     } catch (error) {
+      if (error instanceof JournalError && error.code === "unsupported_version" && line > 1) return { fallback: { line, code: "version_changed" } };
       if (error instanceof JournalError) return done({ status: "corrupt", detail: { line, offset, code: error.code } });
       throw error;
+    }
+    if (!Object.hasOwn(DATA_SCHEMAS, rec.type) && (rec as { skippable?: unknown }).skippable === true) {
+      skipped++;
+      records.push(rec);
+      offset = nl + 1;
+      line++;
+      continue;
     }
     const v1 = asV1(rec);
     if (!v1) return { fallback: { line, code: Object.hasOwn(DATA_SCHEMAS, rec.type) ? "invalid_event" : "unknown_record" } };

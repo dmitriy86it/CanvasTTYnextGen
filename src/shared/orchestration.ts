@@ -199,6 +199,7 @@ export interface OrchestrationRunView {
   newer?: {
     version: number; chain: "ok" | "torn_tail" | "corrupt"; goal: string | null;
     compatible?: boolean; fallback?: { line: number; code: string } | null;
+    skipped?: number; // compatible: records of types this build does not know, marked skippable, left out of the state
   };
 }
 
@@ -394,7 +395,7 @@ export interface OrchestrationApi {
   moveAgentGroup(agentIds: string[], workspaceId: string): Promise<OrchestrationResult<OrchestrationCanvas>>;
   createLink(input: { linkId: string; fromAgentId: string; toAgentId: string }): Promise<OrchestrationResult<OrchestrationAgentLink>>;
   deleteLink(linkId: string): Promise<OrchestrationResult<null>>;
-  // A link held by a newer version's run is let go here (proposed amendment to acceptance-review-spec.md §2.2): the
+  // A link held by a newer version's run is let go here (acceptance-review-spec.md §2.2.1): the
   // link is removed and its folder freed, the run's files stay as they are. A repeat of commandId answers the same.
   releaseNewerLink(input: { commandId: string; linkId: string; runId: string }): Promise<OrchestrationResult<OrchestrationReleasedNewerRun>>;
   // Creates a run on the link: the source is the lead card's project, chosen in main.

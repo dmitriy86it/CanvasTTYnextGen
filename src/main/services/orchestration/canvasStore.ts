@@ -223,7 +223,7 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
       return { next: { ...c, links: c.links.filter((l) => l.linkId !== linkId), owners: ownersFixed(c, [link]) }, value: null };
     }),
 
-    // A link held by a newer version's run is let go (proposed amendment to acceptance-review-spec.md §2.2): the link is
+    // A link held by a newer version's run is let go (acceptance-review-spec.md §2.2.1): the link is
     // removed, which frees its folder, its runs keep their workspace (ownersFixed), and the release is written down so a
     // later version finds its run without a link. The named run must be the link's and, by busy(), a newer version's;
     // other newer runs of the link are let go with it (one entry each, one commandId); any other run of the link that is
