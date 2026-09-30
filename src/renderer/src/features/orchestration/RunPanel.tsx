@@ -727,7 +727,9 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
 
       <Section id="next" title={t(locale, "orchSum_next")} locale={locale}>
         {next ? <p className="orch-panel__text" data-sum-next>{next} <Src locale={locale} kind="agent" /></p> : missing}
-        <p className="orch-hint">{t(locale, "orchSumAppHint")}: {tr(locale, `orchNext_${nextStepKey(view, orch.activity[runId]?.entries ?? [])}`)}</p>
+        {view.newer
+          ? <p className="orch-hint" data-orch-read-only-next>{t(locale, "orchReadOnlyHint")}</p>
+          : <p className="orch-hint">{t(locale, "orchSumAppHint")}: {tr(locale, `orchNext_${nextStepKey(view, orch.activity[runId]?.entries ?? [])}`)}</p>}
       </Section>
     </div>
   );
@@ -972,7 +974,8 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
     return `${t(locale, "orchSilence")}${p.lastEventAt ? ` ${t(locale, "orchSilenceLast")} ${time(locale, p.lastEventAt)} (${duration(locale, now - Date.parse(p.lastEventAt))})` : ""}`;
   };
 
-  const tabs: PanelTab[] = ["summary", "overview", "activity", "changes", "log", "history"];
+  // a newer version's run: its changes are not read here (main refuses them), so there is no tab for them
+  const tabs: PanelTab[] = view?.newer ? ["summary", "overview", "activity", "log", "history"] : ["summary", "overview", "activity", "changes", "log", "history"];
   const roleFilter = useCallback((e: OrchestrationActivityEntry) => panel.role === "check"
     ? (e.role === "check" || e.role === "run") && FEED_KINDS.has(e.kind)
     : (e.role === panel.role && FEED_KINDS.has(e.kind)) || (e.role === "run" && e.kind === "status"), [panel.role]);
@@ -1037,7 +1040,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               </dl>
             )}
             {accessMismatch && <p className="dialog-error" data-orch-access-mismatch>{t(locale, "orchAccessMismatchWarn")}</p>}
-            <p className="orch-summary__next" data-orch-next><b>{t(locale, "orchNextStep")}:</b> {tr(locale, `orchNext_${nextStepKey(view, activity.entries)}`)}</p>
+            {!view.newer && <p className="orch-summary__next" data-orch-next><b>{t(locale, "orchNextStep")}:</b> {tr(locale, `orchNext_${nextStepKey(view, activity.entries)}`)}</p>}
             {head.headline === "awaiting_plan_review" && plan.length > 0 && (
               <ol className="orch-summary__plan" data-orch-summary-plan start={planFirst}>{plan.map((p, i) => <li key={i}><strong>{p.title}</strong><span>{p.task}</span></li>)}</ol>
             )}
@@ -1243,7 +1246,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               <ActivityList key={`l:${panel.role}`} locale={locale} entries={activity.entries} gaps={activity.gaps} filter={logFilter}
                 emptyText={t(locale, "orchLogEmpty")} silence={null} />
             )}
-            {panel.tab === "changes" && runId && <ChangesTab locale={locale} runId={runId} seq={state?.seq ?? 0} inPlace={view.workMode === "project"} />}
+            {panel.tab === "changes" && runId && !view.newer && <ChangesTab locale={locale} runId={runId} seq={state?.seq ?? 0} inPlace={view.workMode === "project"} />}
             {panel.tab === "history" && (
               <section className="orch-panel__section">
                 <ol className="orch-history">

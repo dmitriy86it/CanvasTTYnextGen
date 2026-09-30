@@ -816,7 +816,8 @@ export async function readRun(root: string, runId: string): Promise<RunReadResul
       : { status: "newer_version", detail: { version, chain: { status: "corrupt", detail: TOO_LARGE_DETAIL } } } };
   }
   const parsed = parseJournal(buf, runId);
-  if (parsed.state) { markInterruptedChecks(parsed.state); markInterruptedOperations(parsed.state); }
+  // a newer version's state is shown as journaled: what it still runs is not called interrupted here
+  if (parsed.state && parsed.integrity.status !== "newer_version_compatible") { markInterruptedChecks(parsed.state); markInterruptedOperations(parsed.state); }
   return { state: parsed.state, integrity: parsed.integrity, canContinue: parsed.integrity.status === "ok" };
 }
 

@@ -1030,7 +1030,8 @@ function parseNewerJournal(buf: Uint8Array, runId: string, version: number): Par
   if (min !== null && min >= 1 && min <= READER_VERSION) {
     const compatible = parseCompatibleJournal(buf, runId, version, min);
     if (!("fallback" in compatible)) return compatible;
-    return withFallback(parseRawNewerJournal(buf, runId, version), compatible.fallback);
+    const raw = parseRawNewerJournal(buf, runId, version);
+    return compatible.fallback ? withFallback(raw, compatible.fallback) : raw;
   }
   return parseRawNewerJournal(buf, runId, version);
 }
@@ -1041,14 +1042,16 @@ const withFallback = (p: ParsedJournal, fallback: NewerFallback): ParsedJournal 
 // minReaderVersion ≤ READER_VERSION: the chain is checked as for any newer journal, and each record is replayed by v1
 // rules (its unknown fields ignored). A record v1 cannot apply (an unknown type, data v1 rejects, a replay conflict)
 // sends the whole journal back to the raw view, with where and why.
-function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number, min: number): ParsedJournal | { fallback: NewerFallback } {
+// fallback null: nothing was replayed (the chain fails on the first record, or the file is over the limit): the raw
+// view says why through its chain, not as a record v1 could not apply.
+function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number, min: number): ParsedJournal | { fallback: NewerFallback | null } {
   const records: JournalRecord[] = [];
   let state: RunState | null = null;
   let offset = 0;
   let line = 1;
-  const done = (chain: ChainIntegrity): ParsedJournal | { fallback: NewerFallback } => state === null ? { fallback: { line, code: "replay_conflict" } }
+  const done = (chain: ChainIntegrity): ParsedJournal | { fallback: NewerFallback | null } => state === null ? { fallback: null }
     : { records, state, integrity: { status: "newer_version_compatible", detail: { version, minReaderVersion: min, chain } }, validBytes: offset };
-  if (buf.length > MAX_JOURNAL_BYTES) return { fallback: { line, code: "replay_conflict" } };
+  if (buf.length > MAX_JOURNAL_BYTES) return { fallback: null };
   while (offset < buf.length) {
     const nl = buf.indexOf(0x0a, offset);
     if (nl < 0) return done({ status: "torn_tail", detail: { offset, bytes: buf.length - offset } });

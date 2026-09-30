@@ -237,3 +237,61 @@ test("v1 journals are written as before: v 1 and no minReaderVersion", () => {
   assert.equal("minReaderVersion" in JSON.parse(line.toString()), false);
   assert.deepEqual(Object.keys(JSON.parse(line.toString())).sort(), ["data", "hash", "prevHash", "runId", "seq", "ts", "type", "v"]);
 });
+
+// ---------- after the internal review (round 1) ----------
+
+test("review R1/R3/R4/R6a: releases survive other canvas changes, owners survive a forged start, ids are checked, two newer runs go together", async () => {
+  const root = path.join(TMP, "review1");
+  const src = fs.realpathSync(fs.mkdtempSync(path.join(TMP, "review1-src-")));
+  const a = writeRun(root), b = writeRun(root), c = writeRun(root);
+  let m = managerOf(root);
+  const link = await linkWith(m, root, a.runId, src);
+  m = managerOf(root);
+  const twoLink = await linkWith(m, root, null, fs.realpathSync(fs.mkdtempSync(path.join(TMP, "review1-src-"))));
+  await m.shutdown();
+  const file = path.join(root, "canvas.json");
+  const cv = JSON.parse(fs.readFileSync(file, "utf8"));
+  cv.links.find((l) => l.linkId === twoLink).runIds = [b.runId, c.runId];
+  cv.owners = { [a.runId]: "ws-a", [b.runId]: "common", [c.runId]: "common" };
+  fs.writeFileSync(file, JSON.stringify(cv));
+  const prints = () => [a, b, c].map((r) => footprint(r.dir));
+  const before = prints();
+  m = managerOf(root);
+
+  // R4: ids are checked in main, not only by the IPC layer
+  assert.equal(code(await m.releaseNewerLink({ commandId: "not-a-uuid", linkId: link, runId: a.runId })), "invalid_argument");
+  // R3: a forged start whose request id names a newer run leaves that run's owner alone
+  const spare = await linkWith(m, root, null, fs.realpathSync(fs.mkdtempSync(path.join(TMP, "review1-src-"))));
+  m = managerOf(root);
+  assert.equal(code(await m.startOnLink({ linkId: spare, requestId: a.runId, goal: { text: "g", criteria: ["c"], checks: [] } })), "run_newer_version");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owners[a.runId], "ws-a");
+
+  const r = await m.releaseNewerLink({ commandId: randomUUID(), linkId: link, runId: a.runId });
+  assert.equal(code(r), "ok");
+  // R6a: a link with two newer runs is let go with both, one entry each, one commandId
+  const both = randomUUID();
+  const r2 = await m.releaseNewerLink({ commandId: both, linkId: twoLink, runId: c.runId });
+  assert.equal(code(r2), "ok", JSON.stringify(r2));
+  assert.equal(r2.value.runId, c.runId);
+  assert.equal((await m.releaseNewerLink({ commandId: both, linkId: twoLink, runId: b.runId })).value.runId, b.runId, "the other run's entry answers its repeat");
+  // R1: an unrelated card deleted afterwards keeps the releases
+  const cards = (await m.canvas()).value.agents.filter((x) => x.project !== src);
+  assert.equal(code(await m.deleteAgent(cards[0].agentId)), "ok");
+  const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.deepEqual(saved.releasedNewerRuns.map((x) => x.runId).sort(), [a.runId, b.runId, c.runId].sort());
+  assert.equal(saved.owners[a.runId], "ws-a");
+  assert.deepEqual((await m.canvas()).value.releasedNewerRuns.length, 3, "the canvas read shows the releases");
+  await m.shutdown();
+  assert.deepEqual(prints(), before, "the runs' files are unchanged");
+});
+
+test("review R5: a chain failure on the first record of a compatible journal is the raw view with its chain error, not a replay conflict", () => {
+  const root = path.join(TMP, "review5");
+  const r = writeRun(root, { first: { minReaderVersion: 1 } });
+  const jp = path.join(r.dir, "journal.jsonl");
+  fs.writeFileSync(jp, fs.readFileSync(jp, "utf8").replace('"planVersion":2', '"planVersion":3'));
+  const p = parseJournal(fs.readFileSync(jp), r.runId);
+  assert.equal(p.integrity.status, "newer_version");
+  assert.deepEqual([p.integrity.detail.chain.status, p.integrity.detail.chain.detail.line, p.integrity.detail.chain.detail.code], ["corrupt", 1, "bad_hash"]);
+  assert.equal(p.integrity.detail.fallback, undefined);
+});

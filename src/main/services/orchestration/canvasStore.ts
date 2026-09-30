@@ -159,7 +159,8 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
       for (const id of [...c.links.flatMap((l) => l.runIds), ...Object.keys(c.owners ?? {})]) if (!known.has(id)) known.set(id, await exists(id));
       const owners = Object.fromEntries(Object.entries(c.owners ?? {}).filter(([id]) => known.get(id)));
       const shown = withRuns(c, (l) => l.runIds.filter((id) => known.get(id)));
-      return Object.keys(owners).length ? { ...shown, owners } : { agents: shown.agents, links: shown.links };
+      return Object.keys(owners).length ? { ...shown, owners }
+        : { agents: shown.agents, links: shown.links, ...(c.releasedNewerRuns?.length ? { releasedNewerRuns: c.releasedNewerRuns } : {}) };
     }),
 
     createAgent: (input: { agentId: string; provider: OrchestrationProviderKind; project: string; bounds: OrchestrationBounds; workspaceId: string }) =>
@@ -195,7 +196,7 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
       const links = c.links.filter((l) => l.fromAgentId === agentId || l.toAgentId === agentId);
       for (const l of links) refuseBusy(await busy(l), "link_active_run", "stop the run of this card's link first");
       return {
-        next: { agents: c.agents.filter((a) => a.agentId !== agentId), links: c.links.filter((l) => !links.includes(l)), owners: ownersFixed(c, links) },
+        next: { ...c, agents: c.agents.filter((a) => a.agentId !== agentId), links: c.links.filter((l) => !links.includes(l)), owners: ownersFixed(c, links) },
         value: null
       };
     }),
@@ -223,31 +224,33 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
     }),
 
     // A link held by a newer version's run is let go (proposed amendment to acceptance-review-spec.md §2.2): the link is
-    // removed, which frees its folder, the run keeps its workspace (ownersFixed), and the release is written down so a
-    // later version finds its run without a link. Only that link's own run, and only while busy() says it is a newer
-    // version's; any other run of the link that is busy here refuses it. A repeat of commandId answers the same.
+    // removed, which frees its folder, its runs keep their workspace (ownersFixed), and the release is written down so a
+    // later version finds its run without a link. The named run must be the link's and, by busy(), a newer version's;
+    // other newer runs of the link are let go with it (one entry each, one commandId); any other run of the link that is
+    // busy here refuses it. A repeat of commandId answers the same entry.
     releaseNewer: (input: { commandId: string; linkId: string; runId: string; appVersion: string }, busy: Busy) =>
       change<OrchestrationReleasedNewerRun>(async (c) => {
-        const done = c.releasedNewerRuns?.find((r) => r.commandId === input.commandId);
-        if (done) {
-          if (done.linkId !== input.linkId || done.runId !== input.runId) refuse("request_conflict", "this commandId belongs to another release");
-          return { next: null, value: done };
+        if (![input.commandId, input.linkId, input.runId].every((x) => typeof x === "string" && UUID.test(x))) refuse("invalid_argument", "commandId, linkId and runId must be UUIDs");
+        const done = c.releasedNewerRuns?.filter((r) => r.commandId === input.commandId) ?? [];
+        if (done.length) {
+          const same = done.find((r) => r.linkId === input.linkId && r.runId === input.runId);
+          return same ? { next: null, value: same } : refuse("request_conflict", "this commandId belongs to another release");
         }
         const link = linkOf(c, input.linkId);
         if (!link.runIds.includes(input.runId)) refuse("link_run_mismatch", "the run is not this link's");
         if (await busy({ ...link, runIds: [input.runId] }) !== "newer") refuse("run_not_newer", "only a newer version's run is let go this way");
+        const newer = [input.runId];
         for (const other of link.runIds.filter((id) => id !== input.runId)) {
           const b = await busy({ ...link, runIds: [other] });
-          if (b === "newer") refuse("link_newer_runs", "another newer version's run holds this link");
-          if (b) refuse("link_active_run", "another run of this link is not finished");
+          if (b === "newer") newer.push(other);
+          else if (b) refuse("link_active_run", "another run of this link is not finished");
         }
-        const entry: OrchestrationReleasedNewerRun = {
-          runId: input.runId, linkId: link.linkId, folder: agentOf(c, link.fromAgentId).project,
-          releasedAt: new Date().toISOString(), appVersion: input.appVersion, commandId: input.commandId
-        };
+        const releasedAt = new Date().toISOString();
+        const folder = agentOf(c, link.fromAgentId).project;
+        const entries = newer.map((runId): OrchestrationReleasedNewerRun => ({ runId, linkId: link.linkId, folder, releasedAt, appVersion: input.appVersion, commandId: input.commandId }));
         return {
-          next: { ...c, links: c.links.filter((l) => l.linkId !== link.linkId), owners: ownersFixed(c, [link]), releasedNewerRuns: [...(c.releasedNewerRuns ?? []), entry] },
-          value: entry
+          next: { ...c, links: c.links.filter((l) => l.linkId !== link.linkId), owners: ownersFixed(c, [link]), releasedNewerRuns: [...(c.releasedNewerRuns ?? []), ...entries] },
+          value: entries[0]
         };
       }),
 
@@ -306,7 +309,9 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
         // run_newer_version: the id names a newer version's run, never this request's
         const conflict = error instanceof Error && ["request_conflict", "run_newer_version"].includes((error as { code?: string }).code ?? "");
         if (!reserved && (conflict || !(await exists(requestId)))) {
-          const { [requestId]: _, ...owners } = current.owners ?? {};
+          // an owner written before this request (an existing run's, e.g. a newer version's) stays
+          const { [requestId]: _, ...without } = current.owners ?? {};
+          const owners = c.owners?.[requestId] ? current.owners ?? {} : without;
           await save({ ...withRuns(current, (l) => (l.linkId === linkId ? l.runIds.filter((id) => id !== requestId) : l.runIds)), owners }).catch(() => {});
         }
         throw error;

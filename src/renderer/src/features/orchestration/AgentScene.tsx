@@ -96,7 +96,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
         const to = boundsOf.get(link.toAgentId);
         if (!from || !to) return null;
         const view = runOf(link);
-        const busy = view !== null && ACTIVE_STATUSES.includes(view.status);
+        const busy = view !== null && (ACTIVE_STATUSES.includes(view.status) || !!view.newer); // a newer version's run holds its link whatever its journaled status
         return <Line key={link.linkId} from={rightMid(from)} to={leftMid(to)} className={`agent-link ${busy ? "agent-link--busy" : ""}`} />;
       })}
       {preview && boundsOf.get(preview.from) && (
@@ -181,7 +181,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
         const a = rightMid(from);
         const b = leftMid(to);
         const view = runOf(link);
-        const busy = view !== null && ACTIVE_STATUSES.includes(view.status);
+        const busy = view !== null && (ACTIVE_STATUSES.includes(view.status) || !!view.newer); // a newer version's run holds its link whatever its journaled status
         return (
           <div key={link.linkId} className={`agent-link__chip${view?.permission ? " agent-link__chip--needs-you" : ""}`} data-interactive="true" data-agent-link-id={link.linkId}
             role="group" aria-label={t(locale, "orchLink")}
