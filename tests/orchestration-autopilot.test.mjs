@@ -104,9 +104,9 @@ const FINAL = { answer: { verdict: "complete", findings: [], question: null } };
 const EXEC = (extra = {}) => ({ answer: { summary: "done", done: true }, ...extra });
 const b64 = (s) => Buffer.from(s).toString("base64");
 
-function manager(env, root = path.join(TMP, `root-${++n}`)) {
+function manager(env, root = path.join(TMP, `root-${++n}`), stopGraceMs = 2000) {
   const m = createRunManager({
-    root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
+    root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH)
   });
   m.root = root;
@@ -569,7 +569,11 @@ test("step by step: the plan is shown and the run stops after each stage", OPTS,
 test("stop during preparation; after a restart a waiting prompt is not carried over and nothing runs by itself", OPTS, async () => {
   const src = project({});
   const root = path.join(TMP, `root-${++n}`);
-  const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]) }, root);
+  // The stop reaches the step's shell first (SIGINT to the leader), then its group after the supervisor's 5 s + 3 s
+  // graces. A shell that does not exec its last command (dash, /bin/sh on Debian/Ubuntu) outlives the SIGINT, so the
+  // run's grace must outlast those graces for the step's end to be journaled before the run is "stopped" (the
+  // application's default grace is 20 s).
+  const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]) }, root, 20_000);
   await createProfileStore(root).save(src, { ...(await suggestProfile(src)), checks: ["true"], prepare: { steps: [{ command: "sleep 60", unless: null }], auto: true } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot" } })).ok);

@@ -294,7 +294,8 @@ async function nativeRun(kidRedirect) {
   const providers = path.join(dir, "providers.json");
   fs.writeFileSync(providers, JSON.stringify({
     codex: { executable: codex, version: "codex-cli 0.155.1", ...p }, claude: { executable: claude, version: "2.1.281 (Claude Code)", ...p },
-    shell: "/bin/sh", checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
+    // A check executable must be its own real path; on Debian/Ubuntu /bin/sh is a symlink to dash.
+    shell: fs.realpathSync("/bin/sh"), checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
   }));
   const launch = { command: NODE, args: [path.join(ROOT, "src/orchestration/supervisor.mjs")], env: {} };
   const m = createRunManager({
