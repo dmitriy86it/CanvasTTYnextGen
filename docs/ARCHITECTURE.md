@@ -207,8 +207,8 @@ Diff against `baseline`, not `HEAD`. If you had uncommitted work at start, the b
 
 - **Platforms.**
   - A run can complete on macOS only. The check sandbox is Seatbelt (`sandbox-exec`).
-  - On Linux, turns start but every check pauses the run with `sandbox_unavailable`, where only Stop is allowed.
-  - Windows is refused (`unsupported_platform`); the menu items are still shown.
+  - On Linux and Windows orchestration is unavailable: new agent cards, links, goals (autopilot included) and Resume are refused with `unsupported_platform` before any CLI, login shell or model call, and readiness reports a `platform` blocker without measuring anything. The renderer shows these items inactive with the hint "Orchestration is currently available on macOS only". One function decides (`orchestrationAvailable` in `src/shared/orchestration.ts`); the run manager takes the platform as a dependency.
+  - Runs already on disk (made on macOS, or paused with `sandbox_unavailable` by an older version) stay listed and readable there, and can be stopped and unlinked.
 - **CLIs**, pinned:
   - Codex CLI 0.155.1: model `gpt-6-astra`, reasoning high, `read-only` sandbox, no user config or rules.
   - Claude Code 2.1.281: model `claude-sonnet-5`, `structured-edit` (a candidate mode: Read/Edit/Write/Glob/Grep, no shell, `--max-budget-usd 1` per turn).
