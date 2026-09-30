@@ -689,7 +689,8 @@ function normalizePluginCanvas(candidate: unknown, fallback: readonly PluginCanv
       size: {
         width: clamp(source.size.width, 240, 1_600),
         height: clamp(source.size.height, 140, 1_100)
-      }
+      },
+      ...workspaceField(source.workspaceId)
     });
     ids.add(source.id);
   }
@@ -719,7 +720,8 @@ export function normalizeCanvasRegions(
       size: {
         width: clamp(source.size.width, 360, 4_000),
         height: clamp(source.size.height, 240, 3_000)
-      }
+      },
+      ...workspaceField(source.workspaceId)
     });
     ids.add(source.id);
   }
@@ -748,7 +750,8 @@ export function normalizeStickyNotes(
       size: {
         width: clamp(source.size.width, STICKY_NOTE_MIN_SIZE.width, STICKY_NOTE_MAX_SIZE.width),
         height: clamp(source.size.height, STICKY_NOTE_MIN_SIZE.height, STICKY_NOTE_MAX_SIZE.height)
-      }
+      },
+      ...workspaceField(source.workspaceId)
     });
     ids.add(source.id);
   }
@@ -767,8 +770,15 @@ function normalizeBrowserCanvas(candidate: unknown, fallback: BrowserCanvasState
     size: {
       width: clamp(source.size.width, 560, 1_600),
       height: clamp(source.size.height, 380, 1_100)
-    }
+    },
+    ...workspaceField(source.workspaceId)
   };
+}
+
+// Project workspaces: the optional owner of a canvas item (workspaces-spec.md §2); anything else is dropped, and a
+// missing field means the common canvas.
+function workspaceField(value: unknown): { workspaceId?: string } {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value) ? { workspaceId: value } : {};
 }
 
 function normalizeShortcuts(candidate: unknown, fallback: ShortcutBindings): ShortcutBindings {

@@ -9,6 +9,8 @@ import { registerIpc } from "./ipc/registerIpc";
 import { SettingsStore } from "./services/SettingsStore";
 import { TerminalManager, terminalEnvironment } from "./services/TerminalManager";
 import { TerminalSessionStore } from "./services/TerminalSessionStore";
+import { migrateWorkspaces, WorkspaceStore } from "./services/WorkspaceStore";
+import { runOwners, workspaceOf } from "../shared/workspaceOwnership";
 import { LimitsService } from "./services/LimitsService";
 import {
   createProviderCliRegistry,
@@ -123,6 +125,7 @@ let agentRuntimeBridge: AgentRuntimeBridge | null = null;
 let agentRuntimeHelper: RuntimeHookHelperLaunch | null = null;
 let providerClis: ProviderCliRegistry | null = null;
 let orchestration: RunManager | null = null;
+let workspaceStore: WorkspaceStore | null = null;
 const pluginWindows = new Map<BrowserWindow, string>();
 let servicesReady = false;
 let startupRunning = false;
@@ -216,6 +219,24 @@ async function initializeServices(): Promise<void> {
   const kimiHomeDirectory = resolveKimiHomeDirectory();
   recoverKimiConfigurationOnStartup(kimiHomeDirectory);
   const userDataPath = app.getPath("userData");
+  // Before any other store exists: the files the migration copies are still (workspaces-spec.md §3).
+  const workspaceMigration = await migrateWorkspaces(userDataPath);
+  if (workspaceMigration.error) console.warn(`CanvasTTY workspaces are unavailable: ${workspaceMigration.error}`);
+  workspaceStore = new WorkspaceStore(userDataPath, workspaceMigration, async (id) => {
+    const known = (w: string) => workspaceStore!.get().workspaces.some((x) => x.id === w);
+    const s = settings.get();
+    const items = [...s.canvasRegions, ...s.stickyNotes, ...s.pluginCanvas, ...(s.browserCanvas ? [s.browserCanvas] : [])];
+    let cards = items.filter((item) => workspaceOf(item, known) === id).length
+      + (terminalManager?.listMetadata().filter((m) => workspaceOf(m, known) === id).length ?? 0);
+    let runs = 0;
+    const canvas = await orchestration?.canvas();
+    if (!canvas?.ok) throw new Error("the agent canvas could not be read");
+    cards += canvas.value.agents.filter((a) => workspaceOf(a, known) === id).length;
+    const owner = runOwners(canvas.value, known);
+    const runIds = new Set([...Object.keys(canvas.value.owners ?? {}), ...canvas.value.links.flatMap((l) => l.runIds)]);
+    for (const runId of runIds) if (owner(runId) === id) runs++;
+    return { cards, runs };
+  });
   const settings = new SettingsStore(userDataPath, app.getLocale());
   await settings.load();
   pluginManager = new PluginManager(userDataPath);
@@ -335,6 +356,7 @@ async function initializeServices(): Promise<void> {
     }
   }, providerClis, agentBrowserBridge ?? undefined, agentRuntimeBridge ?? undefined, settings.get().agentLifecycleHooksEnabled);
   const terminalSessionStore = new TerminalSessionStore(userDataPath);
+  terminalManager.configureWorkspaces({ active: () => workspaceStore!.activeId(), isOpen: (id) => workspaceStore!.isOpen(id) });
   terminalManager.configureSessionPersistence(terminalSessionStore, settings.get().restoreTerminalSessions);
   await terminalManager.restorePersistedSessions();
   limitsService = new LimitsService(providerClis, app.getVersion());
@@ -388,6 +410,7 @@ async function initializeServices(): Promise<void> {
     githubAuth: githubAuth!,
     hermesHud: hermesHudService,
     orchestration: droppedReplies && isAbsolute(droppedReplies) ? dropCommandReplies(orchestration, droppedReplies) : orchestration,
+    workspaces: workspaceStore,
     getMainWindow: () => mainWindow,
     applyBrowserSettings: async (next) => {
       agentRuntimeBridge?.setCoreHooksEnabled(next.agentLifecycleHooksEnabled);

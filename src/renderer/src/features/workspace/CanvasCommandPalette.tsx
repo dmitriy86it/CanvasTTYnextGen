@@ -28,6 +28,9 @@ interface CanvasCommandPaletteProps {
   onCreateOrchestrationAgent(provider: "codex" | "claude"): void;
   onOpenBrowser(): void;
   onOpenSettings(): void;
+  // Project workspaces: one command per open workspace, in the switcher's order (⌘1…⌘9 on macOS).
+  workspaces?: readonly { id: string; title: string }[];
+  onSwitchWorkspace?(id: string): void;
   onClose(): void;
 }
 
@@ -54,6 +57,8 @@ export function CanvasCommandPalette({
   onCreateOrchestrationAgent,
   onOpenBrowser,
   onOpenSettings,
+  workspaces = [],
+  onSwitchWorkspace,
   onClose
 }: CanvasCommandPaletteProps): React.JSX.Element {
   const input = useRef<HTMLInputElement>(null);
@@ -68,6 +73,16 @@ export function CanvasCommandPalette({
       searchDetail: PROVIDERS[session.provider].label,
       provider: session.provider,
       run: () => onFocusSession(session)
+    })),
+    ...workspaces.map((w, i) => ({
+      id: `workspace:${w.id}`,
+      group: "actions" as const,
+      kind: "action" as const,
+      label: `${t(locale, "wsPaletteSwitch")}: ${w.title}`,
+      searchDetail: t(locale, "wsBar"),
+      icon: "blocks" as const,
+      ...(window.canvasTTY.window.isMacOS && i < 9 ? { shortcut: `⌘${i + 1}` } : {}),
+      run: () => onSwitchWorkspace?.(w.id)
     })),
     {
       id: "create:region",
@@ -126,7 +141,7 @@ export function CanvasCommandPalette({
       shortcut: window.canvasTTY.window.isMacOS ? "⌘," : "Ctrl+,",
       run: onOpenSettings
     }
-  ], [launcherItems, locale, onCreateNote, onCreateRegion, onFocusSession, onLaunch, onOpenBrowser, onOpenSettings, sessions]);
+  ], [launcherItems, locale, onCreateNote, onCreateOrchestrationAgent, onCreateRegion, onFocusSession, onLaunch, onOpenBrowser, onOpenSettings, onSwitchWorkspace, sessions, workspaces]);
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase(locale);
     if (!normalized) return commands;

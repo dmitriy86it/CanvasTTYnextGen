@@ -42,6 +42,7 @@ interface CanvasContextMenuProps {
   onEditNote(): void;
   onBringNoteToFront(): void;
   onDeleteNote(): void;
+  onMoveToWorkspace(): void;
   onClose(): void;
 }
 
@@ -63,6 +64,7 @@ export function CanvasContextMenu({
   onEditNote,
   onBringNoteToFront,
   onDeleteNote,
+  onMoveToWorkspace,
   onClose
 }: CanvasContextMenuProps): React.JSX.Element {
   const menu = useRef<HTMLDivElement>(null);
@@ -215,6 +217,9 @@ export function CanvasContextMenu({
           <CanvasMenuRow icon="sticky-note" role="menuitem" onClick={onCreateNote}>
             {t(locale, "canvasMenuNoteInRegion")}
           </CanvasMenuRow>
+          <CanvasMenuRow icon="maximize" role="menuitem" data-ws-move-menu onClick={onMoveToWorkspace}>
+            {t(locale, "wsMoveToWorkspace")}
+          </CanvasMenuRow>
           <CanvasMenuDivider />
           <CanvasMenuRow icon="trash" danger role="menuitem" onClick={onDeleteRegion}>
             {t(locale, "canvasMenuDeleteRegion")}
@@ -234,11 +239,20 @@ export function CanvasContextMenu({
           <CanvasMenuRow icon="bring-to-front" role="menuitem" onClick={onBringNoteToFront}>
             {t(locale, "canvasMenuBringToFront")}
           </CanvasMenuRow>
+          <CanvasMenuRow icon="maximize" role="menuitem" data-ws-move-menu onClick={onMoveToWorkspace}>
+            {t(locale, "wsMoveToWorkspace")}
+          </CanvasMenuRow>
           <CanvasMenuDivider />
           <CanvasMenuRow icon="trash" danger role="menuitem" onClick={onDeleteNote}>
             {t(locale, "deleteStickyNote")}
           </CanvasMenuRow>
         </>
+      )}
+
+      {kind === "card" && (
+        <CanvasMenuRow icon="maximize" role="menuitem" data-ws-move-menu onClick={onMoveToWorkspace}>
+          {t(locale, "wsMoveToWorkspace")}
+        </CanvasMenuRow>
       )}
     </div>
   );

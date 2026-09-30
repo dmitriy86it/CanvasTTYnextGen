@@ -41,6 +41,16 @@ const orchestration = createOrchestrationClient({
 
 const api: CanvasTTYApi = {
   orchestration,
+  workspaces: {
+    get: () => ipcRenderer.invoke(IPC.workspacesGet),
+    create: (input) => ipcRenderer.invoke(IPC.workspacesCreate, input),
+    update: (id, patch) => ipcRenderer.invoke(IPC.workspacesUpdate, id, patch),
+    activate: (id) => ipcRenderer.invoke(IPC.workspacesActivate, id),
+    setCamera: (id, camera) => ipcRenderer.invoke(IPC.workspacesSetCamera, id, camera),
+    close: (id) => ipcRenderer.invoke(IPC.workspacesClose, id),
+    reopen: (id) => ipcRenderer.invoke(IPC.workspacesReopen, id),
+    remove: (id) => ipcRenderer.invoke(IPC.workspacesRemove, id)
+  },
   evenG2: {
     state: () => ipcRenderer.invoke(IPC.evenG2State),
     command: (command) => ipcRenderer.invoke(IPC.evenG2Command, command),
@@ -182,6 +192,7 @@ const api: CanvasTTYApi = {
     resize: (id: string, cols: number, rows: number) => ipcRenderer.send(IPC.terminalResize, id, cols, rows),
     setBounds: (id: string, bounds: SessionBounds) => ipcRenderer.send(IPC.terminalBounds, id, bounds),
     rename: (id: string, title: string) => ipcRenderer.invoke(IPC.terminalRename, id, title),
+    setWorkspace: (id: string, workspaceId: string) => ipcRenderer.invoke(IPC.terminalSetWorkspace, id, workspaceId),
     dispose: (id: string) => ipcRenderer.invoke(IPC.terminalDispose, id),
     onData: (listener: (event: TerminalDataEvent) => void) => subscribe(IPC.terminalData, listener),
     onSession: (listener: (event: SessionEvent) => void) => subscribe(IPC.terminalSession, listener),

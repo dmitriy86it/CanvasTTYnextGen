@@ -1,7 +1,8 @@
 import type { Point, Size } from "../../../../shared/contracts";
 
-export type CanvasContextHit = "empty" | "region" | "note" | "native" | "blocked";
-export type CanvasContextMenuKind = "empty" | "region" | "note";
+// card: the header of a terminal, agent, browser or plugin card (its body keeps its own context menu).
+export type CanvasContextHit = "empty" | "region" | "note" | "card" | "native" | "blocked";
+export type CanvasContextMenuKind = "empty" | "region" | "note" | "card";
 export type CanvasSubmenuSide = "left" | "right";
 
 interface HorizontalBounds {

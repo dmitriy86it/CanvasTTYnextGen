@@ -42,6 +42,7 @@ export interface CanvasWheelNavigationController {
   /** True from the first zooming step until 160 ms of silence. */
   zooming: boolean;
   applyCanvasWheel(event: CanvasWheelInput): void;
+  cancelPendingPan(): void;
   zoomBy(factor: number): void;
 }
 
@@ -107,6 +108,13 @@ export function useCanvasWheelNavigation({
       y: cameraRef.current.y - delta.y
     });
   }, [cameraRef, commitCamera]);
+
+  // Drops a pan still waiting for its frame: it was made on the canvas that was shown when it began.
+  const cancelPendingPan = useCallback((): void => {
+    if (panFrame.current !== null) cancelAnimationFrame(panFrame.current);
+    panFrame.current = null;
+    pendingPan.current = { x: 0, y: 0 };
+  }, []);
 
   const applyCanvasWheel = useCallback((event: CanvasWheelInput): void => {
     window.canvasTTY.canvasNavigation.armOwnerWheelSequence(event.clientX, event.clientY);
@@ -263,6 +271,7 @@ export function useCanvasWheelNavigation({
     }),
     zooming,
     applyCanvasWheel,
+    cancelPendingPan,
     zoomBy
   };
 }

@@ -173,6 +173,7 @@ export interface SessionBounds {
 export interface StickyNote extends SessionBounds {
   id: string;
   text: string;
+  workspaceId?: string;
 }
 
 export const STICKY_NOTE_MIN_SIZE: Size = { width: 180, height: 140 };
@@ -181,6 +182,37 @@ export const STICKY_NOTE_DEFAULT_SIZE: Size = { width: 300, height: 220 };
 
 export interface CameraState extends Point {
   zoom: number;
+}
+
+// Project workspaces (docs/agent-orchestration/implementation/workspaces-spec.md). A card belongs to the workspace its
+// optional `workspaceId` names; a missing or unknown id means the common canvas, where every older card lives.
+export const COMMON_WORKSPACE_ID = "common";
+export interface WorkspaceRecord {
+  id: string;
+  title: string; // "" for the common canvas until renamed: the renderer shows its localized name
+  root: string | null; // the main project folder, offered by default in the dialogs of new cards
+  createdAt: string;
+  closed: boolean; // hidden from the switcher; nothing in it is stopped
+  camera: CameraState | null; // null: the HOME camera on the first visit
+}
+export interface WorkspacesState {
+  available: boolean; // false: the migration could not make its backup; only the common canvas, in memory
+  error: string | null;
+  activeId: string;
+  workspaces: WorkspaceRecord[];
+}
+export type WorkspacesResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
+export interface WorkspacesApi {
+  get(): Promise<WorkspacesState>;
+  // activate: false keeps the active workspace (arranging older cards into new workspaces).
+  create(input: { title: string; root: string | null; activate?: boolean }): Promise<WorkspacesResult<WorkspacesState>>;
+  update(id: string, patch: { title?: string; root?: string | null }): Promise<WorkspacesResult<WorkspacesState>>;
+  activate(id: string): Promise<WorkspacesResult<WorkspacesState>>;
+  // Always names the workspace the camera belongs to: a late write lands there and nowhere else.
+  setCamera(id: string, camera: CameraState): Promise<WorkspacesResult<null>>;
+  close(id: string): Promise<WorkspacesResult<WorkspacesState>>;
+  reopen(id: string): Promise<WorkspacesResult<WorkspacesState>>;
+  remove(id: string): Promise<WorkspacesResult<WorkspacesState>>;
 }
 
 export interface AppSettings {
@@ -241,6 +273,7 @@ export interface CreateSessionRequest {
   profile: LaunchProfileId;
   position: Point;
   title?: string;
+  workspaceId?: string; // absent: the active workspace (requests of integrations)
 }
 
 export interface SessionMetadata {
@@ -257,6 +290,7 @@ export interface SessionMetadata {
   startedAt: number;
   exitCode: number | null;
   failureDetails: string | null;
+  workspaceId?: string;
 }
 
 export interface SessionSnapshot extends SessionMetadata {
@@ -468,12 +502,14 @@ export interface PluginCanvasInstance {
   title: string;
   position: Point;
   size: Size;
+  workspaceId?: string;
 }
 
 export interface CanvasRegion extends SessionBounds {
   id: string;
   title: string;
   color: string;
+  workspaceId?: string;
 }
 
 export interface PluginSessionInfo {
@@ -534,7 +570,9 @@ export interface PluginPlaylistFile {
   size: number;
 }
 
-export interface BrowserCanvasState extends SessionBounds {}
+export interface BrowserCanvasState extends SessionBounds {
+  workspaceId?: string;
+}
 
 export interface BrowserViewportClipBounds extends Size {
   x: number;
@@ -905,6 +943,7 @@ export interface LimitsSnapshot {
 export interface CanvasTTYApi {
   evenG2: import('./evenG2.ts').EvenG2Api;
   orchestration: import('./orchestration.ts').OrchestrationApi;
+  workspaces: WorkspacesApi;
   appVersion(): Promise<string>;
   clipboard: {
     readText(): Promise<string>;
@@ -1015,6 +1054,8 @@ export interface CanvasTTYApi {
     resize(id: string, cols: number, rows: number): void;
     setBounds(id: string, bounds: SessionBounds): void;
     rename(id: string, title: string): Promise<SessionMetadata>;
+    // Moves a terminal to another workspace; the process, its output and its id stay.
+    setWorkspace(id: string, workspaceId: string): Promise<SessionMetadata>;
     dispose(id: string): Promise<void>;
     onData(listener: (event: TerminalDataEvent) => void): () => void;
     onSession(listener: (event: SessionEvent) => void): () => void;
@@ -1152,6 +1193,15 @@ export const IPC = {
   terminalBounds: "terminal:bounds",
   terminalRename: "terminal:rename",
   terminalDispose: "terminal:dispose",
+  terminalSetWorkspace: "terminal:set-workspace",
+  workspacesGet: "workspaces:get",
+  workspacesCreate: "workspaces:create",
+  workspacesUpdate: "workspaces:update",
+  workspacesActivate: "workspaces:activate",
+  workspacesSetCamera: "workspaces:set-camera",
+  workspacesClose: "workspaces:close",
+  workspacesReopen: "workspaces:reopen",
+  workspacesRemove: "workspaces:remove",
   terminalData: "terminal:data",
   terminalSession: "terminal:session",
   terminalRemoved: "terminal:removed",

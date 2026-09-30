@@ -32,6 +32,7 @@ export interface PersistedTerminalSession {
   cwd: string;
   position: Point;
   size: Size;
+  workspaceId?: string;
 }
 
 interface PersistedTerminalSessionState {
@@ -107,7 +108,8 @@ export function persistedTerminalSession(metadata: SessionMetadata): PersistedTe
     titleCustomized: metadata.titleCustomized,
     cwd: metadata.cwd,
     position: { ...metadata.position },
-    size: { ...metadata.size }
+    size: { ...metadata.size },
+    ...(metadata.workspaceId ? { workspaceId: metadata.workspaceId } : {})
   };
 }
 
@@ -141,11 +143,16 @@ export function normalizePersistedTerminalSessions(candidate: unknown): Persiste
       size: {
         width: clamp(session.size.width, 420, 1_600),
         height: clamp(session.size.height, 260, 1_100)
-      }
+      },
+      ...(isWorkspaceId(session.workspaceId) ? { workspaceId: session.workspaceId } : {})
     });
     ids.add(session.id);
   }
   return { version: TERMINAL_SESSION_STORE_VERSION, sessions };
+}
+
+function isWorkspaceId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(value);
 }
 
 function isSessionId(value: unknown): value is string {

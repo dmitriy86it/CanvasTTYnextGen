@@ -1,4 +1,4 @@
-import { extname } from "node:path";
+import { extname, isAbsolute } from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from "electron";
@@ -30,6 +30,8 @@ import { normalizeExternalUrl } from "../../shared/externalUrl";
 import { assertMainRenderer } from "./mainRenderer";
 import { registerOrchestrationIpc } from "./orchestrationIpc";
 import type { RunManager } from "../services/orchestration/manager";
+import type { WorkspaceStore } from "../services/WorkspaceStore";
+import type { CameraState } from "../../shared/contracts";
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const MEDIA_MIME: Record<string, string> = {
@@ -51,6 +53,7 @@ interface Dependencies {
   githubAuth: GithubAuthService;
   hermesHud: HermesHudService;
   orchestration: RunManager;
+  workspaces: WorkspaceStore;
   getMainWindow(): BrowserWindow | null;
   applyBrowserSettings(settings: AppSettings): Promise<void> | void;
   setCanvasNavigationShortcutCapture(active: boolean): void;
@@ -73,6 +76,7 @@ export function registerIpc({
   githubAuth,
   hermesHud,
   orchestration,
+  workspaces,
   getMainWindow,
   applyBrowserSettings,
   setCanvasNavigationShortcutCapture,
@@ -614,6 +618,38 @@ export function registerIpc({
   onMain(IPC.terminalBounds, (_event, id: string, bounds: SessionBounds) => terminals.setBounds(id, bounds));
   handleMain(IPC.terminalRename, (_event, id: string, title: string) => terminals.rename(id, title));
   handleMain(IPC.terminalDispose, (_event, id: string) => terminals.dispose(id));
+  handleMain(IPC.terminalSetWorkspace, (_event, id: unknown, workspaceId: unknown) => {
+    if (typeof id !== "string" || typeof workspaceId !== "string") throw new Error("Invalid terminal workspace request.");
+    return terminals.setWorkspace(id, workspaceId);
+  });
+
+  // Project workspaces (workspaces-spec.md §4): every rule is the store's; arguments are checked here first.
+  const wsId = (v: unknown): string => {
+    if (typeof v !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(v)) throw new Error("Invalid workspace id.");
+    return v;
+  };
+  const wsRoot = (v: unknown): string | null => {
+    if (v === null) return null;
+    if (typeof v !== "string" || !isAbsolute(v) || v.length > 4_096 || v.includes("\0")) throw new Error("Invalid workspace folder.");
+    return v;
+  };
+  handleMain(IPC.workspacesGet, () => workspaces.get());
+  handleMain(IPC.workspacesCreate, (_event, input: unknown) => {
+    const o = input as { title?: unknown; root?: unknown; activate?: unknown } | null;
+    if (!o || typeof o !== "object" || typeof o.title !== "string" || o.title.length > 200) throw new Error("Invalid workspace request.");
+    if (o.activate !== undefined && typeof o.activate !== "boolean") throw new Error("Invalid workspace request.");
+    return workspaces.create({ title: o.title, root: wsRoot(o.root ?? null), ...(o.activate === false ? { activate: false } : {}) });
+  });
+  handleMain(IPC.workspacesUpdate, (_event, id: unknown, patch: unknown) => {
+    const o = patch as { title?: unknown; root?: unknown } | null;
+    if (!o || typeof o !== "object" || (o.title !== undefined && (typeof o.title !== "string" || o.title.length > 200))) throw new Error("Invalid workspace request.");
+    return workspaces.update(wsId(id), { ...(o.title !== undefined ? { title: o.title as string } : {}), ...(o.root !== undefined ? { root: wsRoot(o.root) } : {}) });
+  });
+  handleMain(IPC.workspacesActivate, (_event, id: unknown) => workspaces.activate(wsId(id)));
+  handleMain(IPC.workspacesSetCamera, (_event, id: unknown, camera: unknown) => workspaces.setCamera(wsId(id), camera as CameraState));
+  handleMain(IPC.workspacesClose, (_event, id: unknown) => workspaces.close(wsId(id)));
+  handleMain(IPC.workspacesReopen, (_event, id: unknown) => workspaces.reopen(wsId(id)));
+  handleMain(IPC.workspacesRemove, (_event, id: unknown) => workspaces.remove(wsId(id)));
 
   const publishWindowState = (window: BrowserWindow): void => {
     if (!window.isDestroyed()) window.webContents.send(IPC.windowState, readWindowState(window));

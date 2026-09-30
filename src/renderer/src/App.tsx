@@ -23,7 +23,9 @@ import type {
   SessionBounds,
   SessionSnapshot,
   StickyNote,
-  WindowState
+  WindowState,
+  WorkspaceRecord,
+  WorkspacesState
 } from "../../shared/contracts";
 import {
   DEFAULT_HOME_ACCENT_COLORS,
@@ -32,7 +34,8 @@ import {
   DEFAULT_CANVAS_LAUNCHER_ITEMS,
   DEFAULT_RADIAL_LAUNCHER_ITEMS,
   DEFAULT_UI_SCALE,
-  DEFAULT_SHORTCUTS
+  DEFAULT_SHORTCUTS,
+  COMMON_WORKSPACE_ID
 } from "../../shared/contracts";
 import { normalizeExternalUrl } from "../../shared/externalUrl";
 import { TitleBar } from "./components/TitleBar";
@@ -44,8 +47,10 @@ import { persistSettingsUpdate } from "./features/settings/persistSettings";
 import { PluginBrowserOpenQueue } from "./features/plugins/PluginBrowserOpenQueue";
 import { TerminalLinkDialog } from "./features/terminal/TerminalLinkDialog";
 import { WorkspaceCanvas } from "./features/workspace/WorkspaceCanvas";
+import { createCameraSaver, knownWorkspaces, withBounds, workspaceOf } from "./features/workspaces/workspaceModel";
+import type { WorkspaceControls, MovableKind } from "./features/workspaces/WorkspaceUi";
 import type { LimitsLoadState } from "./features/home/homeModel";
-import { t } from "./lib/i18n";
+import { t, type TranslationKey } from "./lib/i18n";
 import {
   mergeSessionSnapshots,
   upsertSession,
@@ -174,11 +179,25 @@ function contrastRatio(left: number, right: number): number {
   return (brightest + 0.05) / (darkest + 0.05);
 }
 
+const INITIAL_WORKSPACES: WorkspacesState = {
+  available: true, error: null, activeId: COMMON_WORKSPACE_ID,
+  workspaces: [{ id: COMMON_WORKSPACE_ID, title: "", root: null, createdAt: "", closed: false, camera: null }]
+};
+
 export function App(): React.JSX.Element {
   const [settings, setSettings] = useState(FALLBACK_SETTINGS);
+  // Project workspaces (workspaces-spec.md §5): main holds them; the renderer shows the cards of the active one.
+  const [workspaces, setWorkspaces] = useState<WorkspacesState>(INITIAL_WORKSPACES);
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
+  const activeIdRef = useRef(workspaces.activeId);
+  activeIdRef.current = workspaces.activeId;
+  const [browserElsewhere, setBrowserElsewhere] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionSnapshot[]>([]);
   const [limits, setLimits] = useState<LimitsSnapshot | null>(null);
   const [limitsLoadState, setLimitsLoadState] = useState<LimitsLoadState>("loading");
+  // The home widget never says "no sessions" before the list is known.
+  const [sessionsLoadState, setSessionsLoadState] = useState<LimitsLoadState>("loading");
   const [mediaData, setMediaData] = useState<string | null>(null);
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
   const [browser, setBrowser] = useState<BrowserSnapshot>(EMPTY_BROWSER_SNAPSHOT);
@@ -242,16 +261,31 @@ export function App(): React.JSX.Element {
 
     const settingsRequest = window.canvasTTY.settings.get();
     const sessionsRequest = window.canvasTTY.terminal.list().then((loadedSessions) => {
-      if (active) setSessions((current) => mergeSessionSnapshots(current, loadedSessions));
+      if (active) {
+        setSessions((current) => mergeSessionSnapshots(current, loadedSessions));
+        setSessionsLoadState("ready");
+      }
       return loadedSessions;
+    }, (error: unknown) => {
+      if (active) setSessionsLoadState("error");
+      throw error;
     });
     const pluginsRequest = window.canvasTTY.plugins.list();
+    const workspacesRequest = window.canvasTTY.workspaces.get();
 
-    void Promise.all([settingsRequest, sessionsRequest, pluginsRequest])
-      .then(async ([loadedSettings, _loadedSessions, loadedPlugins]) => {
+    void Promise.all([settingsRequest, sessionsRequest, pluginsRequest, workspacesRequest])
+      .then(async ([loadedSettings, _loadedSessions, loadedPlugins, loadedWorkspaces]) => {
         if (!active) return;
         setSettings(loadedSettings);
         setPlugins(loadedPlugins);
+        setWorkspaces(loadedWorkspaces);
+        activeIdRef.current = loadedWorkspaces.activeId;
+        workspacesLoaded.current = true;
+        const saved = loadedWorkspaces.workspaces.find((w) => w.id === loadedWorkspaces.activeId)?.camera ?? null;
+        if (saved) {
+          isHomeCamera.current = false;
+          setCamera(saved);
+        }
         if (loadedSettings.browserCanvas && browserApi) {
           const browserState = await browserApi.open();
           if (active) setBrowser(browserState);
@@ -271,6 +305,14 @@ export function App(): React.JSX.Element {
       unsubscribeRemoved();
     };
   }, [showToast]);
+
+  const retrySessions = useCallback((): void => {
+    setSessionsLoadState("loading");
+    window.canvasTTY.terminal.list().then((loadedSessions) => {
+      setSessions((current) => mergeSessionSnapshots(current, loadedSessions));
+      setSessionsLoadState("ready");
+    }, () => setSessionsLoadState("error"));
+  }, []);
 
   useEffect(() => {
     const browserApi = window.canvasTTY.browser;
@@ -320,6 +362,63 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener("resize", recenterHome);
   }, [settings.homeGridSize]);
 
+  // The camera of each workspace: saved some time after it last changed, always for the workspace it was made in.
+  const cameraSaver = useRef<ReturnType<typeof createCameraSaver> | null>(null);
+  const workspacesLoaded = useRef(false);
+  cameraSaver.current ??= createCameraSaver((id, saved) => {
+    setWorkspaces((current) => ({ ...current, workspaces: current.workspaces.map((w) => (w.id === id ? { ...w, camera: saved } : w)) }));
+    void window.canvasTTY.workspaces.setCamera(id, saved).catch(() => undefined);
+  });
+  useEffect(() => {
+    // Until the workspaces are known the camera belongs to none of them: a failed load must not overwrite "common".
+    if (ready && workspacesLoaded.current) cameraSaver.current!.schedule(activeIdRef.current, camera);
+  }, [camera, ready]);
+  useEffect(() => {
+    const flush = (): void => cameraSaver.current!.flush();
+    window.addEventListener("beforeunload", flush);
+    return () => window.removeEventListener("beforeunload", flush);
+  }, []);
+
+  const knownWorkspace = useMemo(() => knownWorkspaces(workspaces), [workspaces]);
+  const activeWorkspace = workspaces.workspaces.find((w) => w.id === workspaces.activeId) ?? null;
+  // A new card's folder: the workspace's main folder when it has one.
+  const defaultDirectory = activeWorkspace?.root ?? settings.lastDirectory;
+
+  // Switching shows another canvas; nothing is started or stopped (§5). The camera of the workspace left is saved
+  // first, with its own id.
+  const switchWorkspace = useCallback((id: string, record?: WorkspaceRecord): void => {
+    const target = record ?? workspacesRef.current.workspaces.find((w) => w.id === id);
+    if (!target) return;
+    const reopen = target.closed;
+    if (id !== activeIdRef.current) {
+      cameraSaver.current!.flush();
+      activeIdRef.current = id;
+      setActiveSessionId(null);
+      setBrowserSelected(false);
+      setRenamingSessionId(null);
+      isHomeCamera.current = !target.camera;
+      setCamera(target.camera ?? homeCamera(settingsRef.current.homeGridSize));
+    } else if (!reopen) return;
+    setWorkspaces((current) => ({
+      ...current, activeId: id,
+      workspaces: current.workspaces.some((w) => w.id === id)
+        ? current.workspaces.map((w) => (w.id === id ? { ...w, closed: false } : w))
+        : [...current.workspaces, { ...target, closed: false }]
+    }));
+    void window.canvasTTY.workspaces.activate(id).then((r) => {
+      if (!r.ok) showToast(t(settingsRef.current.locale, "wsActionFailed"));
+    }, () => showToast(t(settingsRef.current.locale, "wsActionFailed")));
+  }, []);
+
+  // A state main answered with: its list, keeping the cameras this window already has (they were saved already).
+  const adoptWorkspaces = useCallback((next: WorkspacesState): void => {
+    setWorkspaces((current) => ({
+      ...next, activeId: current.activeId,
+      workspaces: next.workspaces.map((w) => ({ ...w, camera: current.workspaces.find((c) => c.id === w.id)?.camera ?? w.camera }))
+    }));
+    if (next.activeId !== activeIdRef.current) switchWorkspace(next.activeId, next.workspaces.find((w) => w.id === next.activeId));
+  }, [switchWorkspace]);
+
   const persistSettings = useCallback(async (patch: Partial<AppSettings>): Promise<void> => {
     await persistSettingsUpdate(
       (nextPatch) => window.canvasTTY.settings.update(nextPatch),
@@ -336,32 +435,40 @@ export function App(): React.JSX.Element {
     }
   }, [persistSettings, settings.locale, showToast]);
 
+  const changeCamera = useCallback((nextCamera: CameraState, workspaceId?: string): void => {
+    // A frame of a gesture made in the workspace just left arrives after the switch: it is not this workspace's camera.
+    if (workspaceId !== undefined && workspaceId !== activeIdRef.current) return;
+    isHomeCamera.current = false;
+    setCamera(nextCamera);
+  }, []);
+
   const createSession = useCallback(async (
     provider: ProviderId,
     profile: LaunchProfileId,
     cwd: string,
     requestedCenter?: Point
   ): Promise<SessionSnapshot> => {
+    const workspaceId = activeIdRef.current;
     const position = requestedCenter
       ? centeredWindowPosition(requestedCenter, { width: 700, height: 430 })
-      : nextSessionPosition(sessions.length, settings.homeGridSize);
-    const session = await window.canvasTTY.terminal.create({ provider, profile, cwd, position });
+      : nextSessionPosition(sessions.filter((item) => workspaceOf(item, knownWorkspace) === workspaceId).length, settings.homeGridSize);
+    const session = await window.canvasTTY.terminal.create({ provider, profile, cwd, position, workspaceId });
     setSessions((current) => upsertSnapshot(current, session));
-    setActiveSessionId(session.id);
+    if (activeIdRef.current === workspaceId) setActiveSessionId(session.id);
     await saveSettings({ lastDirectory: cwd });
-    isHomeCamera.current = false;
-    setCamera(focusCamera(position, session.size));
+    // Labelled with the workspace it was opened in: after a switch meanwhile, the camera shown is left alone.
+    changeCamera(focusCamera(position, session.size), workspaceId);
     return session;
-  }, [sessions.length, saveSettings, settings.homeGridSize]);
+  }, [changeCamera, knownWorkspace, sessions, saveSettings, settings.homeGridSize]);
 
   const openTerminal = useCallback(async (position?: Point): Promise<void> => {
     try {
-      await createSession("terminal", "normal", settings.lastDirectory, position);
+      await createSession("terminal", "normal", defaultDirectory, position);
       showToast(t(settings.locale, "terminalStarted"));
     } catch (error) {
       showToast(error instanceof Error ? error.message : t(settings.locale, "launchFailed"));
     }
-  }, [createSession, settings.lastDirectory, settings.locale, showToast]);
+  }, [createSession, defaultDirectory, settings.locale, showToast]);
 
   const openAgent = useCallback((provider: AgentProviderId, position?: Point): void => {
     setLaunchPosition(position ?? null);
@@ -439,13 +546,16 @@ export function App(): React.JSX.Element {
     void saveSettings({ pluginCanvas });
   }, [saveSettings]);
 
-  const changeBrowserBounds = useCallback((browserCanvas: BrowserCanvasState): void => {
+  const changeBrowserBounds = useCallback((bounds: BrowserCanvasState): void => {
+    // The card's own drag and resize send bounds alone; its workspace comes from the card as it is now (§1, §4).
+    const browserCanvas = withBounds(browserCanvasRef.current, bounds);
     browserCanvasRef.current = browserCanvas;
     setSettings((current) => ({ ...current, browserCanvas }));
     void saveSettings({ browserCanvas });
   }, [saveSettings]);
 
-  const createCanvasRegion = useCallback((region: CanvasRegion): void => {
+  const createCanvasRegion = useCallback((created: CanvasRegion): void => {
+    const region = { ...created, workspaceId: activeIdRef.current };
     const canvasRegions = [...settingsRef.current.canvasRegions, region];
     settingsRef.current = { ...settingsRef.current, canvasRegions };
     setSettings((current) => ({ ...current, canvasRegions }));
@@ -459,7 +569,8 @@ export function App(): React.JSX.Element {
     void saveSettings({ canvasRegions });
   }, [saveSettings]);
 
-  const createStickyNote = useCallback((note: StickyNote): void => {
+  const createStickyNote = useCallback((created: StickyNote): void => {
+    const note = { ...created, workspaceId: activeIdRef.current };
     const stickyNotes = [...settingsRef.current.stickyNotes, note];
     settingsRef.current = { ...settingsRef.current, stickyNotes };
     setSettings((current) => ({ ...current, stickyNotes }));
@@ -507,22 +618,26 @@ export function App(): React.JSX.Element {
         y: bounds.position.y - previous.position.y
       };
       if (delta.x !== 0 || delta.y !== 0) {
+        // Only the cards of the region's own workspace go with it; hidden cards of other workspaces stay.
+        const known = knownWorkspaces(workspacesRef.current);
+        const own = workspaceOf(previous, known);
+        const inside = (item: { workspaceId?: string } & SessionBounds): boolean => workspaceOf(item, known) === own && boundsInsideRegion(item, previous);
         const movedSessions = sessions.map((session) => {
-          if (!boundsInsideRegion(session, previous)) return session;
+          if (!inside(session)) return session;
           const moved = translateBounds(session, delta);
           window.canvasTTY.terminal.setBounds(session.id, moved);
           return { ...session, ...moved };
         });
         const pluginCanvas = settingsRef.current.pluginCanvas.map((instance) => {
-          if (!boundsInsideRegion(instance, previous)) return instance;
+          if (!inside(instance)) return instance;
           const moved = translateBounds(instance, delta);
           return { ...instance, ...moved };
         });
         const currentBrowser = settingsRef.current.browserCanvas;
-        const browserCanvas = currentBrowser && boundsInsideRegion(currentBrowser, previous)
-          ? translateBounds(currentBrowser, delta)
+        const browserCanvas = currentBrowser && inside(currentBrowser)
+          ? { ...currentBrowser, ...translateBounds(currentBrowser, delta) }
           : currentBrowser;
-        const stickyNotes = settingsRef.current.stickyNotes.map((note) => boundsInsideRegion(note, previous)
+        const stickyNotes = settingsRef.current.stickyNotes.map((note) => inside(note)
           ? { ...note, ...translateBounds(note, delta) }
           : note);
         setSessions(movedSessions);
@@ -552,18 +667,23 @@ export function App(): React.JSX.Element {
   const focusPluginCanvas = useCallback((id: string): void => {
     const instance = settings.pluginCanvas.find((candidate) => candidate.id === id);
     if (!instance) return;
+    switchWorkspace(workspaceOf(instance, knownWorkspaces(workspacesRef.current)));
     setActiveSessionId(null);
     setBrowserSelected(false);
     isHomeCamera.current = false;
     setCamera(focusCamera(instance.position, instance.size, PLUGIN_CANVAS_FOCUS_ZOOM));
-  }, [settings.pluginCanvas]);
+  }, [settings.pluginCanvas, switchWorkspace]);
 
   const openBrowser = useCallback(async (url?: string, requestedCenter?: Point): Promise<void> => {
     const browserApi = window.canvasTTY.browser;
     if (!browserApi) throw new Error(t(settings.locale, "browserRestartRequired"));
     const existingBrowserCanvas = browserCanvasRef.current;
     const homeSize = homeGridPixelSize(settings.homeGridSize);
+    // The one browser card belongs to one workspace; opening it from elsewhere shows it where it is (§5).
+    if (existingBrowserCanvas) switchWorkspace(workspaceOf(existingBrowserCanvas, knownWorkspaces(workspacesRef.current)));
+    const workspaceId = activeIdRef.current;
     const browserCanvas = existingBrowserCanvas ?? {
+      workspaceId,
       position: requestedCenter
         ? centeredWindowPosition(requestedCenter, { width: 920, height: 620 })
         : {
@@ -584,11 +704,11 @@ export function App(): React.JSX.Element {
       }
     }
     setSettingsOpen(false);
+    if (activeIdRef.current !== workspaceId) return; // switched away meanwhile: the camera shown is left alone
     setActiveSessionId(null);
     setBrowserSelected(true);
-    isHomeCamera.current = false;
-    setCamera(focusCamera(browserCanvas.position, browserCanvas.size));
-  }, [persistSettings, sessions.length, settings.homeGridSize, settings.locale, settings.pluginCanvas.length]);
+    changeCamera(focusCamera(browserCanvas.position, browserCanvas.size), workspaceId);
+  }, [changeCamera, persistSettings, sessions.length, settings.homeGridSize, settings.locale, settings.pluginCanvas.length, switchWorkspace]);
 
   useEffect(() => {
     return window.canvasTTY.plugins.onBrowserOpenRequested((request) => {
@@ -611,6 +731,12 @@ export function App(): React.JSX.Element {
   }), [openBrowser]);
 
   const openBrowserFromUi = useCallback((position?: Point): void => {
+    const existing = browserCanvasRef.current;
+    const where = existing ? workspaceOf(existing, knownWorkspaces(workspacesRef.current)) : null;
+    if (where && where !== activeIdRef.current) {
+      setBrowserElsewhere(where);
+      return;
+    }
     void openBrowser(undefined, position).catch((error: unknown) => {
       showToast(error instanceof Error ? error.message : t(settings.locale, "browserActionFailed"));
     });
@@ -631,11 +757,12 @@ export function App(): React.JSX.Element {
 
   const focusBrowser = useCallback((): void => {
     if (!settings.browserCanvas) return;
+    switchWorkspace(workspaceOf(settings.browserCanvas, knownWorkspaces(workspacesRef.current)));
     setActiveSessionId(null);
     setBrowserSelected(true);
     isHomeCamera.current = false;
     setCamera(focusCamera(settings.browserCanvas.position, settings.browserCanvas.size));
-  }, [settings.browserCanvas]);
+  }, [settings.browserCanvas, switchWorkspace]);
 
   const disposeSession = useCallback((id: string): void => {
     void window.canvasTTY.terminal.dispose(id);
@@ -645,11 +772,12 @@ export function App(): React.JSX.Element {
   }, []);
 
   const focusSession = useCallback((session: SessionSnapshot): void => {
+    switchWorkspace(workspaceOf(session, knownWorkspaces(workspacesRef.current)));
     setBrowserSelected(false);
     setActiveSessionId(session.id);
     isHomeCamera.current = false;
     setCamera(focusCamera(session.position, session.size));
-  }, []);
+  }, [switchWorkspace]);
 
   const renameSession = useCallback(async (id: string, title: string): Promise<void> => {
     try {
@@ -659,11 +787,6 @@ export function App(): React.JSX.Element {
       showToast(t(settings.locale, "renameFailed"));
     }
   }, [settings.locale, showToast]);
-
-  const changeCamera = useCallback((nextCamera: CameraState): void => {
-    isHomeCamera.current = false;
-    setCamera(nextCamera);
-  }, []);
 
   const goHome = useCallback((): void => {
     isHomeCamera.current = true;
@@ -846,9 +969,11 @@ export function App(): React.JSX.Element {
       instance.pluginId === plugin.manifest.id && instance.contributionId === contribution.id
     ));
     if (existing) {
+      // shown where it is, as focusPluginCanvas does: its workspace first, then that workspace's camera
+      const where = workspaceOf(existing, knownWorkspaces(workspacesRef.current));
+      switchWorkspace(where);
       setSettingsOpen(false);
-      isHomeCamera.current = false;
-      setCamera(focusCamera(existing.position, existing.size, PLUGIN_CANVAS_FOCUS_ZOOM));
+      changeCamera(focusCamera(existing.position, existing.size, PLUGIN_CANVAS_FOCUS_ZOOM), where);
       return;
     }
     const index = settings.pluginCanvas.length;
@@ -868,13 +993,13 @@ export function App(): React.JSX.Element {
         x: homeSize.width + 160 + (index % 2) * 760,
         y: Math.floor(index / 2) * 500 + 20
       },
-      size: contribution.defaultSize
+      size: contribution.defaultSize,
+      workspaceId: activeIdRef.current
     };
     await saveSettings({ pluginCanvas: [...settings.pluginCanvas, instance] });
     setSettingsOpen(false);
-    isHomeCamera.current = false;
-    setCamera(focusCamera(instance.position, instance.size, PLUGIN_CANVAS_FOCUS_ZOOM));
-  }, [saveSettings, settings.homeGridSize, settings.pluginCanvas]);
+    changeCamera(focusCamera(instance.position, instance.size, PLUGIN_CANVAS_FOCUS_ZOOM), instance.workspaceId);
+  }, [changeCamera, saveSettings, settings.homeGridSize, settings.pluginCanvas, switchWorkspace]);
 
   const openPluginContribution = useCallback(async (
     plugin: InstalledPlugin,
@@ -990,11 +1115,121 @@ export function App(): React.JSX.Element {
     }) as React.CSSProperties,
     [appearance.homeAccentColors, appearance.homeAccentPreset, settings.uiScale]
   );
-  const workspaceSettings = useMemo(() => homeEditDraft ? {
-    ...settings,
-    homeGridSize: homeEditDraft.homeGridSize,
-    homeLayout: homeEditDraft.homeLayout
-  } : settings, [homeEditDraft, settings]);
+  // The active workspace's cards only; every list itself stays whole in settings and main (§5).
+  const inActiveWorkspace = useCallback((item: { workspaceId?: string }): boolean => (
+    workspaceOf(item, knownWorkspace) === workspaces.activeId
+  ), [knownWorkspace, workspaces.activeId]);
+  const visibleSessions = useMemo(() => sessions.filter(inActiveWorkspace), [inActiveWorkspace, sessions]);
+  const workspaceSettings = useMemo(() => {
+    const base = homeEditDraft ? { ...settings, homeGridSize: homeEditDraft.homeGridSize, homeLayout: homeEditDraft.homeLayout } : settings;
+    return {
+      ...base,
+      lastDirectory: defaultDirectory,
+      canvasRegions: base.canvasRegions.filter(inActiveWorkspace),
+      stickyNotes: base.stickyNotes.filter(inActiveWorkspace),
+      pluginCanvas: base.pluginCanvas.filter(inActiveWorkspace),
+      browserCanvas: base.browserCanvas && inActiveWorkspace(base.browserCanvas) ? base.browserCanvas : null
+    };
+  }, [defaultDirectory, homeEditDraft, inActiveWorkspace, settings]);
+
+  const workspaceError = useCallback((r: { ok: false; code: string }): string => (
+    t(settingsRef.current.locale, `wsError_${r.code}` as TranslationKey) ?? `${t(settingsRef.current.locale, "wsActionFailed")} (${r.code})`
+  ), []);
+  // dx: the shift that keeps the card from covering one of the target workspace (workspaceModel.roomFor).
+  const moveItem = useCallback(async (kind: MovableKind, id: string, target: string, dx = 0): Promise<string | null> => {
+    const shifted = <T extends { position: Point }>(x: T): T => (dx ? { ...x, position: { x: x.position.x + dx, y: x.position.y } } : x);
+    try {
+      if (kind === "terminal") {
+        const metadata = await window.canvasTTY.terminal.setWorkspace(id, target);
+        setSessions((current) => upsertSession(current, metadata));
+        if (dx) changeSessionBounds(id, { position: shifted(metadata).position, size: metadata.size });
+      } else {
+        const cur = settingsRef.current;
+        const patch: Partial<AppSettings> = kind === "region"
+          ? { canvasRegions: cur.canvasRegions.map((x) => (x.id === id ? shifted({ ...x, workspaceId: target }) : x)) }
+          : kind === "note"
+            ? { stickyNotes: cur.stickyNotes.map((x) => (x.id === id ? shifted({ ...x, workspaceId: target }) : x)) }
+            : kind === "plugin"
+              ? { pluginCanvas: cur.pluginCanvas.map((x) => (x.id === id ? shifted({ ...x, workspaceId: target }) : x)) }
+              : { browserCanvas: cur.browserCanvas ? shifted({ ...cur.browserCanvas, workspaceId: target }) : null };
+        settingsRef.current = { ...cur, ...patch };
+        if (patch.browserCanvas !== undefined) browserCanvasRef.current = patch.browserCanvas;
+        await persistSettings(patch);
+      }
+      setActiveSessionId(null);
+      setBrowserSelected(false);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : t(settingsRef.current.locale, "wsActionFailed");
+    }
+  }, [changeSessionBounds, persistSettings]);
+  const workspaceControls: WorkspaceControls = useMemo(() => ({
+    state: workspaces,
+    activeId: workspaces.activeId,
+    allSessions: sessions,
+    allSettings: settings,
+    notify: showToast,
+    switchTo: (id: string) => switchWorkspace(id),
+    focusBounds: (bounds: SessionBounds) => {
+      isHomeCamera.current = false;
+      setCamera(focusCamera(bounds.position, bounds.size));
+    },
+    create: async (title: string, root: string | null, activate?: boolean) => {
+      const r = await window.canvasTTY.workspaces.create({ title, root, ...(activate === false ? { activate: false } : {}) }).catch(() => null);
+      if (!r) return t(settingsRef.current.locale, "wsActionFailed");
+      if (!r.ok) return workspaceError(r);
+      adoptWorkspaces(r.value);
+      return null;
+    },
+    update: async (id: string, patch: { title?: string; root?: string | null }) => {
+      const r = await window.canvasTTY.workspaces.update(id, patch).catch(() => null);
+      if (!r) return t(settingsRef.current.locale, "wsActionFailed");
+      if (!r.ok) return workspaceError(r);
+      adoptWorkspaces(r.value);
+      return null;
+    },
+    close: async (id: string) => {
+      const r = await window.canvasTTY.workspaces.close(id).catch(() => null);
+      if (!r) return t(settingsRef.current.locale, "wsActionFailed");
+      if (!r.ok) return workspaceError(r);
+      adoptWorkspaces(r.value);
+      return null;
+    },
+    remove: async (id: string) => {
+      const r = await window.canvasTTY.workspaces.remove(id).catch(() => null);
+      if (!r) return t(settingsRef.current.locale, "wsActionFailed");
+      if (!r.ok) return workspaceError(r);
+      adoptWorkspaces(r.value);
+      return null;
+    },
+    moveItem,
+    browserElsewhere,
+    closeBrowserNotice: () => setBrowserElsewhere(null),
+    goToBrowser: () => {
+      setBrowserElsewhere(null);
+      focusBrowser();
+    },
+    bringBrowserHere: async () => {
+      setBrowserElsewhere(null);
+      const target = activeIdRef.current;
+      const error = await moveItem("browser", "browser", target);
+      const moved = settingsRef.current.browserCanvas;
+      if (error || !moved) {
+        showToast(error ?? t(settingsRef.current.locale, "wsActionFailed"));
+        return;
+      }
+      if (activeIdRef.current !== target) return; // switched away meanwhile: the camera shown is left alone
+      setBrowserSelected(true);
+      changeCamera(focusCamera(moved.position, moved.size), target);
+    },
+    disposeSession: (id: string) => window.canvasTTY.terminal.dispose(id),
+    stopSession: (id: string) => window.canvasTTY.terminal.stop(id),
+    openSession: (id: string) => {
+      const session = sessions.find((s) => s.id === id);
+      if (session) focusSession(session);
+      return !!session;
+    }
+  }), [adoptWorkspaces, browserElsewhere, changeCamera, focusBrowser, focusSession, moveItem, sessions, settings, showToast, switchWorkspace, workspaceError, workspaces]);
 
   return (
     <div className={rootClasses} style={rootStyle}>
@@ -1003,8 +1238,11 @@ export function App(): React.JSX.Element {
         {!ready && <div className="loading-screen">{t(settings.locale, "loading")}</div>}
         <WorkspaceCanvas
           settings={workspaceSettings}
+          workspace={workspaceControls}
           mediaData={mediaData}
-          sessions={sessions}
+          sessions={visibleSessions}
+          sessionsLoadState={sessionsLoadState}
+          onRetrySessions={retrySessions}
           limits={limits}
           limitsLoadState={limitsLoadState}
           plugins={plugins}
@@ -1072,7 +1310,7 @@ export function App(): React.JSX.Element {
 
       <AgentLaunchDialog
         provider={launchProvider}
-        settings={settings}
+        settings={workspaceSettings}
         onClose={() => {
           setLaunchProvider(null);
           setLaunchPosition(null);

@@ -91,6 +91,8 @@ export class TerminalManager {
   private lifecycleHooksEnabled: boolean;
   private sessionStore: TerminalSessionStore | null = null;
   private sessionPersistenceEnabled = false;
+  // Project workspaces: where a terminal created without a workspace goes (the active one) and which may receive one.
+  private workspaces: { active(): string; isOpen(id: string): boolean } | null = null;
   private suppressPersistence = false;
 
   constructor(
@@ -107,6 +109,21 @@ export class TerminalManager {
     this.agentRuntime = agentRuntime;
     this.spawnPty = spawnPty;
     this.lifecycleHooksEnabled = lifecycleHooksEnabled;
+  }
+
+  configureWorkspaces(workspaces: { active(): string; isOpen(id: string): boolean }): void {
+    this.workspaces = workspaces;
+  }
+
+  // A running terminal changes workspace in place: the same process, output and id (workspaces-spec.md §4).
+  setWorkspace(id: string, workspaceId: string): SessionMetadata {
+    const session = this.sessions.get(id);
+    if (!session) throw new Error("Terminal session does not exist.");
+    if (typeof workspaceId !== "string" || !(this.workspaces?.isOpen(workspaceId) ?? false)) throw new Error("No such open workspace.");
+    session.metadata.workspaceId = workspaceId;
+    this.emitSession(session.metadata);
+    this.schedulePersistence();
+    return structuredClone(session.metadata);
   }
 
   configureSessionPersistence(store: TerminalSessionStore, enabled: boolean): void {
@@ -176,6 +193,8 @@ export class TerminalManager {
   create(request: CreateSessionRequest): SessionSnapshot {
     assertCreateRequest(request);
     assertDirectory(request.cwd);
+    const workspaceId = request.workspaceId ?? this.workspaces?.active();
+    if (request.workspaceId !== undefined && !(this.workspaces?.isOpen(request.workspaceId) ?? false)) throw new Error("No such open workspace.");
 
     const id = randomUUID();
     const metadata: SessionMetadata = {
@@ -191,7 +210,8 @@ export class TerminalManager {
       status: initialSessionStatus(request.provider),
       startedAt: Date.now(),
       exitCode: null,
-      failureDetails: null
+      failureDetails: null,
+      ...(workspaceId ? { workspaceId } : {})
     };
     const awaitMeasuredGrid = request.provider === "grok"
       && this.providerClis.get(request.provider).state === "available";
@@ -404,7 +424,8 @@ export class TerminalManager {
       status: initialSessionStatus(descriptor.provider),
       startedAt: Date.now(),
       exitCode: null,
-      failureDetails: null
+      failureDetails: null,
+      ...(descriptor.workspaceId ? { workspaceId: descriptor.workspaceId } : {})
     };
 
     let process: IPty | null = null;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   AgentProviderId,
   AppSettings,
@@ -20,7 +20,7 @@ import type {
 } from "../../../../shared/contracts";
 import { UiIcon } from "../../components/UiIcon";
 import { t } from "../../lib/i18n";
-import { displayCanvasNavigationBinding, matchesPhysicalOrLayoutKey } from "../../lib/shortcuts";
+import { displayCanvasNavigationBinding, matchesPhysicalOrLayoutKey, matchesShortcut } from "../../lib/shortcuts";
 import { BrowserCard } from "../browser/BrowserCard";
 import type { LimitsLoadState } from "../home/homeModel";
 import { homeGridPixelSize, homeLayoutFitsGrid } from "../home/homeLayout";
@@ -28,6 +28,11 @@ import { HomeZone } from "../home/HomeZone";
 import { RadialLauncher } from "../launcher/QuickRadialMenu";
 import { StickyNoteCard } from "../notes/StickyNoteCard";
 import { stickyNoteAtPoint } from "../notes/stickyNoteBounds";
+import { AgentScene } from "../orchestration/AgentScene";
+import { OrchestrationOverlays } from "../orchestration/OrchestrationDialogs";
+import { activityRuns } from "../orchestration/runStatus";
+import { useAgentCanvasUi } from "../orchestration/useAgentCanvasUi";
+import { useOrchestration } from "../orchestration/useOrchestration";
 import { PluginCanvasCard } from "../plugins/PluginCanvasCard";
 import { TerminalCard } from "../terminal/TerminalCard";
 import { CanvasCommandPalette } from "./CanvasCommandPalette";
@@ -64,6 +69,7 @@ import {
 } from "./canvasWidgetFocus";
 import { boundsIntersect } from "./minimapGeometry";
 import {
+  agentLayerId,
   browserLayerId,
   noteLayerId,
   parseCanvasLayerId,
@@ -74,6 +80,11 @@ import { snapMove } from "./snap";
 import { useCanvasPointerNavigation } from "./useCanvasPointerNavigation";
 import { useCanvasWheelNavigation } from "./useCanvasWheelNavigation";
 import { useCanvasWidgetFocus } from "./useCanvasWidgetFocus";
+import { closeHasWork, closeRunStatus, folderHolderOf, knownWorkspaces, runOwners, workspaceCounts, workspaceOf } from "../workspaces/workspaceModel";
+import {
+  BrowserElsewhereDialog, WorkspaceBar, WorkspaceDialogs, workspaceTitle,
+  type WorkspaceControls, type WorkspaceDialog
+} from "../workspaces/WorkspaceUi";
 
 const CANVAS_OVERLAY_PLACEMENTS: CanvasOverlayPlacement[] = [
   "top-left",
@@ -121,9 +132,12 @@ type RegionMovePreview = {
 };
 
 interface WorkspaceCanvasProps {
-  settings: AppSettings;
+  settings: AppSettings; // the active workspace's items only
+  workspace: WorkspaceControls;
   mediaData: string | null;
   sessions: SessionSnapshot[];
+  sessionsLoadState: LimitsLoadState;
+  onRetrySessions(): void;
   limits: LimitsSnapshot | null;
   limitsLoadState: LimitsLoadState;
   plugins: InstalledPlugin[];
@@ -131,7 +145,8 @@ interface WorkspaceCanvasProps {
   browserViewVisible: boolean;
   homeEditing: boolean;
   camera: CameraState;
-  onCameraChange(camera: CameraState): void;
+  // workspaceId: the workspace shown when the change was made; the application drops it once another is shown.
+  onCameraChange(camera: CameraState, workspaceId: string): void;
   onGoHome(): void;
   onOpenSettings(): void;
   onOpenAgent(provider: AgentProviderId, position?: Point): void;
@@ -175,7 +190,7 @@ interface WorkspaceCanvasProps {
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element {
   const {
-    settings, mediaData, sessions, limits, limitsLoadState, plugins, browser,
+    settings, workspace, mediaData, sessions, sessionsLoadState, onRetrySessions, limits, limitsLoadState, plugins, browser,
     browserViewVisible, homeEditing, camera, onCameraChange, onGoHome,
     onOpenSettings, onOpenAgent, onOpenTerminal, onOpenBrowser, onOpenTerminalUrl, onFocusSession,
     activeSessionId, browserSelected, renamingSessionId, onSelectSession,
@@ -189,6 +204,87 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     onStickyNoteBoundsChange, onStickyNoteTextChange, onDeleteStickyNote
   } = props;
   const viewport = useRef<HTMLDivElement>(null);
+  // Orchestration agent cards live in main (stage-8-contract.md §2), not in settings.
+  const orch = useOrchestration();
+  const agentUi = useAgentCanvasUi(orch, settings.locale, workspace.activeId);
+  // Project workspaces (workspaces-spec.md §5–§6): this canvas draws the active workspace's agents; the widget, the
+  // switcher's counts and the history read every workspace from the same state.
+  const knownWorkspace = useMemo(() => knownWorkspaces(workspace.state), [workspace.state]);
+  const ownerOfRun = useMemo(() => runOwners(orch.canvas, knownWorkspace), [knownWorkspace, orch.canvas]);
+  const visibleAgents = useMemo(() => orch.canvas.agents.filter((a) => workspaceOf(a, knownWorkspace) === workspace.activeId),
+    [knownWorkspace, orch.canvas.agents, workspace.activeId]);
+  const sceneOrch = useMemo(() => {
+    const ids = new Set(visibleAgents.map((a) => a.agentId));
+    return { ...orch, canvas: { ...orch.canvas, agents: visibleAgents, links: orch.canvas.links.filter((l) => ids.has(l.fromAgentId)) } };
+  }, [orch, visibleAgents]);
+  const manyWorkspaces = workspace.state.workspaces.length > 1;
+  const placeName = useCallback((id: string) => workspaceTitle(settings.locale, workspace.state.workspaces.find((w) => w.id === id)), [settings.locale, workspace.state.workspaces]);
+  // The home widget's runs: every link's latest run from the application's own state, in any project and workspace.
+  const orchestrationActivity = useMemo(() => ({
+    status: orch.canvasStatus,
+    rows: (now: number) => {
+      const rows = activityRuns(settings.locale, {
+        links: orch.canvas.links, agents: orch.canvas.agents, runs: orch.runs,
+        entries: (runId) => orch.activity[runId]?.entries ?? [],
+        lastRecordAt: (runId) => orch.journals[runId]?.records.at(-1)?.ts ?? null,
+        runErrors: orch.runErrors, stageTitles: orch.stageTitles, now
+      });
+      if (!manyWorkspaces) return rows;
+      const named = (r: typeof rows.active[number]) => ({ ...r, project: `${placeName(ownerOfRun(r.runId))} · ${r.project}` });
+      return { active: rows.active.map(named), recent: rows.recent.map(named) };
+    }
+  }), [manyWorkspaces, orch.activity, orch.canvas, orch.canvasStatus, orch.journals, orch.runErrors, orch.runs, orch.stageTitles, ownerOfRun, placeName, settings.locale]);
+  const widgetSessions = useMemo(() => (manyWorkspaces
+    ? workspace.allSessions.map((s) => ({ ...s, title: `${placeName(workspaceOf(s, knownWorkspace))} · ${s.title}` }))
+    : workspace.allSessions), [knownWorkspace, manyWorkspaces, placeName, workspace.allSessions]);
+  const counts = workspaceCounts({
+    sessions: workspace.allSessions,
+    runs: orchestrationActivity.rows(Date.now()).active.map((r) => ({ runId: r.runId, state: r.line?.state ?? null })),
+    owner: ownerOfRun, known: knownWorkspace
+  });
+  const [wsDialog, setWsDialog] = useState<WorkspaceDialog | null>(null);
+  // From the widget or the history: the run's own workspace, its lead card in view, its panel.
+  const openRunInWorkspace = useCallback((runId: string, tab?: "summary", target = ownerOfRun(runId)): void => {
+    workspace.switchTo(target);
+    const link = orch.canvas.links.find((l) => l.runIds.at(-1) === runId);
+    const lead = link ? orch.canvas.agents.find((a) => a.agentId === link.fromAgentId) : undefined;
+    if (lead && workspaceOf(lead, knownWorkspace) === target) workspace.focusBounds(lead.bounds);
+    if (link && !tab) agentUi.openRun(link.linkId);
+    else if (link) agentUi.openPanel(link.linkId, { tab });
+    else agentUi.openRunById(runId, tab);
+  }, [agentUi, knownWorkspace, orch.canvas, ownerOfRun, workspace]);
+  // The run holding the folder and its workspace are main's answer, not rebuilt here from snapshots.
+  const folderBusy = useCallback((held: unknown) => {
+    const h = folderHolderOf(held, knownWorkspace);
+    return h && { name: placeName(h.workspaceId), runReadable: h.runReadable,
+      open: () => { agentUi.closeGoal(); openRunInWorkspace(h.runId, undefined, h.workspaceId); } };
+  }, [agentUi, knownWorkspace, openRunInWorkspace, placeName]);
+  // Where cards stand in each workspace, for placing a moved card where it covers nothing (HOME is in every one).
+  const workspaceLayout = useMemo(() => {
+    const home = { position: { x: 0, y: 0 }, size: homeGridPixelSize(settings.homeGridSize) };
+    const all = workspace.allSettings;
+    const items = [...workspace.allSessions, ...all.stickyNotes, ...all.pluginCanvas, ...(all.browserCanvas ? [all.browserCanvas] : [])];
+    return {
+      occupiedIn: (ws: string) => [home, ...items.filter((x) => workspaceOf(x, knownWorkspace) === ws),
+        ...orch.canvas.agents.filter((a) => workspaceOf(a, knownWorkspace) === ws).map((a) => a.bounds)],
+      boxesOf: (item: string, ids: string[]) => item === "agents"
+        ? orch.canvas.agents.filter((a) => ids.includes(a.agentId)).map((a) => a.bounds)
+        : item === "terminal" ? workspace.allSessions.filter((x) => ids.includes(x.id))
+          : item === "region" ? all.canvasRegions.filter((x) => ids.includes(x.id))
+            : item === "note" ? all.stickyNotes.filter((x) => ids.includes(x.id))
+              : item === "plugin" ? all.pluginCanvas.filter((x) => ids.includes(x.id))
+                : all.browserCanvas ? [all.browserCanvas] : []
+    };
+  }, [knownWorkspace, orch.canvas.agents, settings.homeGridSize, workspace.allSessions, workspace.allSettings]);
+  const openWsDialog = useCallback((d: WorkspaceDialog): void => {
+    // Hiding a workspace with no work in it asks nothing; an open shell is not work (§6).
+    if (d.kind === "close" && !closeHasWork({ workspaceId: d.id, sessions: workspace.allSessions, links: orch.canvas.links, owner: ownerOfRun,
+      runStatus: (r) => closeRunStatus(orch.runs[r]?.view), known: knownWorkspace })) {
+      void workspace.close(d.id).then((text) => text && workspace.notify(text));
+      return;
+    }
+    setWsDialog(d);
+  }, [knownWorkspace, orch.canvas.links, orch.runs, ownerOfRun, workspace]);
   const [contextMenu, setContextMenu] = useState<CanvasMenuState | null>(null);
   const [regionEditor, setRegionEditor] = useState<RegionEditorState | null>(null);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -207,9 +303,11 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
   const [overlayRects, setOverlayRects] = useState<SessionBounds[]>([]);
   const cameraRef = useRef(camera);
   cameraRef.current = camera;
+  const shownWorkspace = useRef(workspace.activeId);
+  shownWorkspace.current = workspace.activeId;
   const commitCamera = useCallback((next: CameraState): void => {
     cameraRef.current = next;
-    onCameraChange(next);
+    onCameraChange(next, shownWorkspace.current);
   }, [onCameraChange]);
 
   const updateRegionMovePreview = useCallback((regionId: string, bounds: SessionBounds | null): void => {
@@ -285,8 +383,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     ...renderedSessions.map((session) => terminalLayerId(session.id)),
     ...renderedPluginCanvas.filter((instance) => renderablePluginIds.has(instance.id)).map((instance) => pluginLayerId(instance.id)),
     ...(renderedBrowserCanvas ? [browserLayerId] : []),
-    ...renderedStickyNotes.map((note) => noteLayerId(note.id))
-  ], [renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
+    ...renderedStickyNotes.map((note) => noteLayerId(note.id)),
+    ...visibleAgents.map((card) => agentLayerId(card.agentId))
+  ], [visibleAgents, renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
   const [layerOrder, setLayerOrder] = useState<string[]>(activeLayerIds);
   useEffect(() => {
     setLayerOrder((current) => reconcileCanvasLayerOrder(current, activeLayerIds));
@@ -302,16 +401,18 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     }
     if (renderedBrowserCanvas) result.set(browserLayerId, renderedBrowserCanvas);
     for (const note of renderedStickyNotes) result.set(noteLayerId(note.id), note);
+    for (const card of visibleAgents) result.set(agentLayerId(card.agentId), card.bounds);
     return result;
-  }, [renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
+  }, [visibleAgents, renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
   const browserOccluded = renderedBrowserCanvas !== null
     && canvasLayerIsOccluded(browserLayerId, layerOrder, boundsByLayer);
-  // Every window on the canvas, in the order they are rendered: terminals, plugin canvases, browser, notes.
+  // Every window on the canvas, in the order they are rendered: terminals, plugin canvases, browser, notes, agents.
   const allWindowBounds: SessionBounds[] = [
     ...renderedSessions,
     ...renderedPluginCanvas.filter((instance) => renderablePluginIds.has(instance.id)),
     ...(renderedBrowserCanvas ? [renderedBrowserCanvas] : []),
-    ...renderedStickyNotes
+    ...renderedStickyNotes,
+    ...visibleAgents.map((card) => card.bounds)
   ];
 
   const homeBounds: SessionBounds = {
@@ -379,9 +480,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
       if (ref.kind === "terminal" && ref.targetId !== null) onSessionBoundsChange(ref.targetId, moved);
       else if (ref.kind === "plugin" && ref.targetId !== null) onPluginCanvasBoundsChange(ref.targetId, moved);
       else if (ref.kind === "note" && ref.targetId !== null) onStickyNoteBoundsChange(ref.targetId, moved);
+      else if (ref.kind === "agent" && ref.targetId !== null) orch.moveAgent(ref.targetId, moved);
       else if (ref.kind === "browser") onBrowserBoundsChange({ ...settings.browserCanvas, ...moved });
     }
-  }, [boundsByLayer, homeBounds, onBrowserBoundsChange, onPluginCanvasBoundsChange,
+  }, [boundsByLayer, homeBounds, onBrowserBoundsChange, onPluginCanvasBoundsChange, orch.moveAgent,
     onSessionBoundsChange, onStickyNoteBoundsChange, renderedCanvasRegions, settings.browserCanvas, settings.snapToGrid]);
 
   const focusController = useCanvasWidgetFocus({
@@ -465,6 +567,17 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     onGroupDragStart: beginGroupDrag,
     onGroupDrag: commitGroupDrag
   });
+  // A gesture begun in one workspace ends there: a wheel pan waiting for its frame and a pointer pan, marquee or group
+  // drag are dropped before the next frame, so they cannot move the camera of the workspace now shown.
+  const { cancelPendingPan } = wheelNavigation;
+  const { handlePointerCancel } = pointerNavigation;
+  const firstWorkspace = useRef(true);
+  useLayoutEffect(() => {
+    if (firstWorkspace.current) { firstWorkspace.current = false; return; }
+    cancelPendingPan();
+    handlePointerCancel();
+    setRegionMovePreview(null); // a region move carries its cards: a group move too
+  }, [workspace.activeId, cancelPendingPan, handlePointerCancel]);
   // Live preview of a travelled group drag: every selected layer of every kind moves together.
   const withGroupNudge = <T extends SessionBounds>(layerId: string, item: T): T => (
     marqueeSelection.has(layerId) && pointerNavigation.groupNudge
@@ -492,7 +605,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     return clampCanvasMenuPosition(
       viewportPoint(clientX, clientY),
       { width: bounds.width, height: bounds.height },
-      { width: 300 * settings.uiScale, height: 380 * settings.uiScale }
+      { width: 300 * settings.uiScale, height: 470 * settings.uiScale }
     );
   }, [settings.uiScale, viewportPoint]);
   const worldPoint = useCallback((clientX: number, clientY: number): Point => {
@@ -586,6 +699,18 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     }
     const handleShortcut = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      // ⌘1…⌘9 switch workspaces on macOS only: xterm sends no ⌘ chord to the terminal there, while Ctrl+digit is a
+      // control code of the terminal and Ctrl+Alt is AltGr on other systems (workspaces-spec.md §5).
+      // A chord the person bound to Home or Rename in the settings keeps that meaning.
+      if (window.canvasTTY.window.isMacOS && event.metaKey && !event.ctrlKey && !event.shiftKey && /^Digit[1-9]$/.test(event.code)
+        && !matchesShortcut(event, settings.shortcuts.home) && !matchesShortcut(event, settings.shortcuts.renameWindow)) {
+        const target = workspace.state.workspaces.filter((w) => !w.closed)[Number(event.code.slice(5)) - 1];
+        if (target) {
+          event.preventDefault();
+          workspace.switchTo(target.id);
+        }
+        return;
+      }
       // Matched on the physical key: these chords must work on a non-Latin layout, where
       // the K key reports `key: "л"` and `event.key` alone would never match.
       if (matchesPhysicalOrLayoutKey(event, "KeyK", "k")) {
@@ -603,7 +728,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     };
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [browserViewVisible, homeEditing, onOpenSettings]);
+  }, [browserViewVisible, homeEditing, onOpenSettings, workspace]);
 
   return (
     <div
@@ -649,13 +774,21 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
         const element = event.target as HTMLElement;
         const regionId = element.closest<HTMLElement>("[data-canvas-region-id]")?.dataset.canvasRegionId;
         const noteId = element.closest<HTMLElement>("[data-sticky-note-id]")?.dataset.stickyNoteId;
-        const hit: CanvasContextHit = element.closest("textarea, input, [contenteditable='true'], .terminal-card, .plugin-canvas-card, .browser-card")
+        // A card's header offers "Move to workspace…"; its body and fields keep their own menu.
+        const cardLayerId = !element.closest("textarea, input, [contenteditable='true'], button")
+          && element.closest(".terminal-card__header, .agent-card__header, .browser-card__header, .plugin-canvas-card__header")
+          ? element.closest<HTMLElement>("[data-canvas-layer-id]")?.dataset.canvasLayerId
+          : undefined;
+        const hit: CanvasContextHit = cardLayerId ? "card" : element.closest("textarea, input, [contenteditable='true'], .terminal-card, .plugin-canvas-card, .browser-card")
           ? "native"
           : noteId
             ? "note"
             : regionId
               ? "region"
-              : element.closest(".home-zone, .canvas-overlays, .canvas-menu, .canvas-region-editor, [data-interactive='true']")
+              // The home zone's box is larger than its tiles: its bare background is empty canvas to the user.
+              : element.classList.contains("home-zone") && !homeEditing
+                ? "empty"
+                : element.closest(".home-zone, .canvas-overlays, .canvas-menu, .canvas-region-editor, [data-interactive='true']")
                 ? "blocked"
                 : "empty";
         const kind = routeCanvasContextMenu(hit, homeEditing);
@@ -667,7 +800,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
           kind,
           position: menuPosition(event.clientX, event.clientY),
           worldPoint: worldPoint(event.clientX, event.clientY),
-          targetId: kind === "region" ? regionId : kind === "note" ? noteId : undefined
+          targetId: kind === "region" ? regionId : kind === "note" ? noteId : kind === "card" ? cardLayerId : undefined
         };
         if (radialLauncher) {
           pendingRadialContextMenu.current = nextContextMenu;
@@ -698,7 +831,12 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
         <HomeZone
           settings={settings}
           mediaData={mediaData}
-          sessions={sessions}
+          sessions={widgetSessions}
+          sessionsLoadState={sessionsLoadState}
+          orchestration={orchestrationActivity}
+          onRetryActivity={() => { if (sessionsLoadState === "error") onRetrySessions(); orch.retry(); }}
+          onOpenRun={(linkId) => { const r = orch.canvas.links.find((l) => l.linkId === linkId)?.runIds.at(-1); if (r) openRunInWorkspace(r); }}
+          onOpenRunSummary={(linkId) => { const r = orch.canvas.links.find((l) => l.linkId === linkId)?.runIds.at(-1); if (r) openRunInWorkspace(r, "summary"); }}
           limits={limits}
           limitsLoadState={limitsLoadState}
           plugins={plugins}
@@ -831,7 +969,8 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
               zoom={camera.zoom}
               camera={camera}
               visible={browserViewVisible && !homeEditing && contextMenu === null
-                && regionEditor === null && !commandPaletteOpen && radialLauncher === null
+                && regionEditor === null && !commandPaletteOpen && radialLauncher === null && !agentUi.overlayOpen
+                && wsDialog === null && workspace.browserElsewhere === null
                 && !browserOccluded && !browserUnderOverlay}
               stackIndex={canvasLayerZIndex(layerOrder, browserLayerId)}
               uiScale={settings.uiScale}
@@ -885,6 +1024,22 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
               groupSelected={marqueeSelection.has(noteLayerId(note.id))}
             />
           ))}
+          <AgentScene
+            orch={sceneOrch}
+            ui={agentUi}
+            locale={settings.locale}
+            zoom={camera.zoom}
+            snapEnabled={settings.snapToGrid}
+            worldPoint={worldPoint}
+            zIndexOf={(layerId) => canvasLayerZIndex(layerOrder, layerId)}
+            groupSelected={(layerId) => marqueeSelection.has(layerId)}
+            withNudge={withGroupNudge}
+            snapTargetsFor={(layerId) => [
+              homeBounds,
+              ...renderedCanvasRegions.map((candidate) => ({ position: candidate.position, size: candidate.size })),
+              ...[...boundsByLayer].filter(([id]) => id !== layerId).map(([, bounds]) => bounds)
+            ]}
+          />
         </div>
       </div>
 
@@ -928,6 +1083,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
             onOpenBrowser(contextMenu.worldPoint);
             setContextMenu(null);
           }}
+          onCreateOrchestrationAgent={(provider) => {
+            agentUi.openCreate(provider, contextMenu.worldPoint);
+            setContextMenu(null);
+          }}
           onOpenSettings={() => {
             onOpenSettings();
             setContextMenu(null);
@@ -960,6 +1119,25 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
           onDeleteNote={() => {
             if (contextMenu.targetId) onDeleteStickyNote(contextMenu.targetId);
             setContextMenu(null);
+          }}
+          onMoveToWorkspace={() => {
+            const target = contextMenu.targetId;
+            setContextMenu(null);
+            if (!target) return;
+            if (contextMenu.kind === "region") {
+              setWsDialog({ kind: "move", item: "region", id: target, label: settings.canvasRegions.find((r) => r.id === target)?.title ?? "" });
+              return;
+            }
+            if (contextMenu.kind === "note") {
+              setWsDialog({ kind: "move", item: "note", id: target, label: t(settings.locale, "stickyNote") });
+              return;
+            }
+            const ref = parseCanvasLayerId(target);
+            if (!ref) return;
+            if (ref.kind === "browser") setWsDialog({ kind: "move", item: "browser", id: "browser", label: t(settings.locale, "browser") });
+            else if (ref.kind === "terminal" && ref.targetId) setWsDialog({ kind: "move", item: "terminal", id: ref.targetId, label: sessions.find((x) => x.id === ref.targetId)?.title ?? "" });
+            else if (ref.kind === "plugin" && ref.targetId) setWsDialog({ kind: "move", item: "plugin", id: ref.targetId, label: settings.pluginCanvas.find((x) => x.id === ref.targetId)?.title ?? "" });
+            else if (ref.kind === "agent" && ref.targetId) setWsDialog({ kind: "move", item: "agents", id: ref.targetId, label: "" });
           }}
           onClose={() => setContextMenu(null)}
         />
@@ -1014,13 +1192,27 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
             setRegionEditor({ mode: "create", focus: "title", position: centerMenuPosition(), worldPoint: viewportCenterWorldPoint() });
           }}
           onCreateNote={() => createNote(viewportCenterWorldPoint())}
+          onCreateOrchestrationAgent={(provider) => {
+            setCommandPaletteOpen(false);
+            agentUi.openCreate(provider, viewportCenterWorldPoint());
+          }}
           onOpenBrowser={() => onOpenBrowser(viewportCenterWorldPoint())}
           onOpenSettings={onOpenSettings}
+          workspaces={workspace.state.workspaces.filter((w) => !w.closed).map((w) => ({ id: w.id, title: workspaceTitle(settings.locale, w) }))}
+          onSwitchWorkspace={(id) => { setCommandPaletteOpen(false); workspace.switchTo(id); }}
           onClose={() => setCommandPaletteOpen(false)}
         />
       )}
 
+      <OrchestrationOverlays orch={orch} ui={agentUi} locale={settings.locale} defaultProject={settings.lastDirectory} folderBusy={folderBusy} />
+      <WorkspaceDialogs dialog={wsDialog} controls={workspace} orch={orch} layout={workspaceLayout} locale={settings.locale}
+        onClose={() => setWsDialog(null)} onOpenRun={(runId) => openRunInWorkspace(runId)} />
+      <BrowserElsewhereDialog controls={workspace} locale={settings.locale} />
+
       <div className="canvas-overlays" ref={overlays}>
+        <div className="canvas-overlay-slot canvas-overlay-slot--top-center">
+          <WorkspaceBar controls={workspace} counts={counts} locale={settings.locale} onDialog={openWsDialog} />
+        </div>
         {CANVAS_OVERLAY_PLACEMENTS.map((placement) => (
           <div className={`canvas-overlay-slot canvas-overlay-slot--${placement}`} key={placement}>
             {settings.minimapPlacement === placement && (
@@ -1028,7 +1220,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
                 canvasRegions={renderedCanvasRegions} sessions={renderedSessions} stickyNotes={renderedStickyNotes}
                 pluginCanvas={renderedPluginCanvas} browserCanvas={renderedBrowserCanvas}
                 locale={settings.locale} interactionMode={settings.minimapInteractionMode}
-                onCameraChange={commitCamera} />
+                workspaceId={workspace.activeId} onCameraChange={commitCamera} />
             )}
             {settings.canvasControlsPlacement === placement && (
               <div className="canvas-controls" data-interactive="true">

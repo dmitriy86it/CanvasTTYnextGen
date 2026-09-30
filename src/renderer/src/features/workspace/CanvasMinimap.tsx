@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import type {
   BrowserCanvasState,
@@ -34,6 +34,7 @@ interface CanvasMinimapProps {
   browserCanvas: BrowserCanvasState | null;
   locale: LocaleId;
   interactionMode: MinimapInteractionMode;
+  workspaceId: string; // the workspace shown: a drag begun in one ends when another is shown
   onCameraChange(camera: CameraState): void;
 }
 
@@ -61,6 +62,7 @@ export function CanvasMinimap({
   browserCanvas,
   locale,
   interactionMode,
+  workspaceId,
   onCameraChange
 }: CanvasMinimapProps): React.JSX.Element {
   const surface = useRef<HTMLSpanElement>(null);
@@ -68,6 +70,9 @@ export function CanvasMinimap({
   const dragState = useRef<MinimapDragState | null>(null);
   const [viewportSize, setViewportSize] = useState<Size>({ width: 1, height: 1 });
   cameraRef.current = camera;
+
+  // A switch drops the drag before the next frame; the rest of its moves (the capture stays until release) do nothing.
+  useLayoutEffect(() => { dragState.current = null; }, [workspaceId]);
 
   useEffect(() => {
     const element = viewport.current;
