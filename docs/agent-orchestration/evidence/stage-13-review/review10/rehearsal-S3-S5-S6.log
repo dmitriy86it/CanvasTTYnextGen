@@ -1,0 +1,55 @@
+[+1.5s] S3: preparing the project
+[+3.1s] link diagnostics: linked (link-diag-01-s3-app.json)
+[+5.2s] S3: run 85531ea3 started
+[+7.5s] S3: «Продолжить» after paused(plan_review), next=review_plan
+[+8.7s] S3: prompt answered allow_once — test/read command inside the project: npm test 2>&1 | tail -12; shasum -a 256 tests/duration.accept.test.mjs; git status --short
+[+11.0s] S3: «Продолжить» after paused(stage_done), next=stage_done
+[+12.8s] ok   S3: run completed
+[+12.9s] ok   S3: tests/duration.accept.test.mjs unchanged
+[+12.9s] ok   S3: prepared by the run (node_modules/.package-lock.json)
+[+13.0s] ok   S3: npm test passes in the person's shell after the run
+[+13.0s] ok   S3: orchestrator turns within 8 (4)
+[+13.0s] ok   S3: every Claude session was started with --permission-mode acceptEdits (argv)
+[+13.0s] ok   S3: Claude reported permissionMode acceptEdits (system/init) for every session
+[+13.0s] ok   S3: Codex reported approvalPolicy on-request, sandbox workspaceWrite (thread reply) for every thread
+[+13.0s] ok   S3: no «rights differ» warning in the panel
+[+13.0s] ok   S3: the run stopped for the plan and after the accepted stage
+[+13.0s] ok   S3 (rehearsal): the compound read/test command was answered «Разрешить один раз» by the rule
+[+13.0s] ok   S3 (rehearsal): the thread parameters the fake Codex received
+[+13.1s] S5: preparing the project
+[+14.7s] link diagnostics: linked (link-diag-02-s5-app.json)
+[+15.9s] S5: run fc0a00f7 started
+[+17.3s] S5: Вернуть план — S5: the first plan is sent back once with feedback
+[+17.6s] S5: Одобрить план — S5: the plan after the feedback is approved
+[+20.4s] ok   S5: run completed
+[+20.5s] ok   S5: tests/clamp.accept.test.mjs unchanged
+[+20.5s] ok   S5: prepared by the run (node_modules/.package-lock.json)
+[+20.6s] ok   S5: npm test passes in the person's shell after the run
+[+20.6s] ok   S5: orchestrator turns within 8 (4)
+[+20.6s] ok   S5: Claude reported permissionMode plan from the project's settings (system/init)
+[+20.6s] ok   S5: no permission flag passed (rights «Как в моём терминале»)
+[+20.6s] ok   S5: ExitPlanMode reached the person (can_use_tool), was sent back once, then approved
+[+20.6s] ok   S5: the feedback was acted on (tests/clamp-feedback.test.mjs)
+[+20.6s] ok   S5 (rehearsal): the fake Claude got the plan back with the feedback text
+[+20.7s] S6: preparing the project
+[+22.4s] link diagnostics: linked (link-diag-03-s6-app.json)
+[+25.6s] S6: run e833c807 started
+[+55.6s] ok   S6-during-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)
+[+55.6s] S6-during-qa: quit {"code":0,"signal":null} in 5178 ms; status {"reason":"app_closed","status":"paused"}; finish.intent(commit) finish.result(done) finish.intent(push) finish.result(done) finish.intent(qa) finish.result(unknown)
+[+56.0s] S6: «Продолжить» after paused(app_closed), next=app_closed
+[+57.2s] S6: «Продолжить» after paused(finish_unconfirmed), next=finish_check
+[+59.2s] ok   S6: run completed
+[+59.2s] ok   S6: tests/duration.accept.test.mjs unchanged
+[+59.2s] ok   S6: prepared by the run (node_modules/.package-lock.json)
+[+59.3s] ok   S6: npm test passes in the person's shell after the run
+[+59.3s] ok   S6: orchestrator turns within 8 (4)
+[+59.3s] ok   S6: the commit is confirmed
+[+59.3s] ok   S6: the pushed commit carries the trailer CanvasTTY-Run
+[+59.3s] ok   S6: git ls-remote of the bare repository shows the commit on the branch
+[+59.3s] ok   S6: QA verified with the expected version
+[+59.3s] ok   S6: the deploy ran once, not again after the restart
+[+59.4s] ok   S6: the project folder's main and working tree are untouched (the work is in the worktree)
+[+81.2s] ok   S6-after-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)
+[+81.2s] S6-after-qa: quit {"code":0,"signal":null} in 150 ms; status {"reason":null,"status":"completed"}; finish.intent(commit) finish.result(done) finish.intent(push) finish.result(done) finish.intent(qa) finish.result(unknown) finish.result(done,established)
+[+81.2s] ok   S6: after quitting when QA was done and restarting, nothing ran (journal, deploy, verification unchanged)
+{"ok":true,"halted":null,"failures":[],"turnsTotal":12,"interventions":7,"out":"<repo>/docs/agent-orchestration/evidence/stage-13-review/review10/rehearsal-S3-S5-S6","tmp":"/private/tmp/cto-real-auto-rh-2MFzV9"}

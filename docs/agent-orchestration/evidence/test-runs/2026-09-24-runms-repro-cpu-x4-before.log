@@ -1,0 +1,21 @@
+✔ runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached) (3750.464333ms)
+ℹ executor turn active +2300 ms after createdAt (runMs 3000); 34:run.created 686:workspace.created 691:run.status(running) 1480:orch.turn(plan) 1494:turn.intent 1509:turn.finished 1653:plan.recorded 2128:orch.turn(execute) 2278:turn.intent
+✖ runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review (15869.74225ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49879.687542
+
+✖ failing tests:
+
+test at tests/orchestration-service-review.test.mjs:199:1
+✖ runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review (15869.74225ms)
+  Error: timed out waiting for check.started; now paused(limit_reached); +15750 ms since createdAt; timeline 28:run.created 731:workspace.created 734:run.status(running) 1366:orch.turn(plan) 1391:turn.intent 1407:turn.finished 1533:plan.recorded 1969:orch.turn(execute) 1981:turn.intent 1994:turn.finished 6044:run.status(paused/limit_reached)
+      at file://~/dev/CanvasTTYnextGen/tests/orchestration-service-review.test.mjs:138:25
+      at async TestContext.<anonymous> (file://~/dev/CanvasTTYnextGen/tests/orchestration-service-review.test.mjs:205:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

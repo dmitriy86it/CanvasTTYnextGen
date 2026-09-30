@@ -1,0 +1,70 @@
+[+11.9s] ok   S7: both CLIs answered «Проверить окружение»
+[+12.0s] ok   S7: the project is unchanged by the probe (git status)
+[+12.0s] ok   S7: no run was started
+[+12.0s] S3: preparing the project
+[+19.1s] S3: run efc55317 started
+[+24.8s] S3: «Продолжить» after paused(plan_review), next=review_plan
+[+32.4s] S3: «Продолжить» after paused(stage_done), next=stage_done
+[+35.8s] ok   S3: run completed
+[+35.9s] ok   S3: tests/duration.accept.test.mjs unchanged
+[+35.9s] ok   S3: prepared by the run (node_modules/.package-lock.json)
+[+36.6s] ok   S3: npm test passes in the person's shell after the run
+[+36.6s] ok   S3: orchestrator turns within 8 (4)
+[+36.6s] ok   S3: every Claude session was started with --permission-mode acceptEdits (argv)
+[+36.6s] ok   S3: Claude reported permissionMode acceptEdits (system/init) for every session
+[+36.6s] ok   S3: Codex reported approvalPolicy on-request, sandbox workspaceWrite (thread reply) for every thread
+[+36.6s] ok   S3: no «rights differ» warning in the panel
+[+36.6s] ok   S3: the run stopped for the plan and after the accepted stage
+[+36.6s] ok   S3 (rehearsal): the thread parameters the fake Codex received
+[+36.8s] S4: preparing the project
+[+41.0s] S4 gate: release-form reported by Claude false, by Codex false
+[+44.4s] S4: run a9bae9a0 started
+[+50.9s] S4: Отправить форму — S4: the plan form filled as the assignment says
+[+54.0s] S4: Отправить форму — S4: the api form filled as the assignment says
+[+55.9s] S4: Отклонить (форма) — S4: the web form is declined by design
+[+63.9s] ok   S4: run completed
+[+63.9s] ok   S4: tests/receipts.accept.test.mjs unchanged
+[+63.9s] ok   S4: prepared by the run (node_modules/.package-lock.json)
+[+64.4s] ok   S4: npm test passes in the person's shell after the run
+[+64.4s] ok   S4: orchestrator turns within 8 (4)
+[+64.5s] ok   S4: values the form does not allow are not sent
+[+64.5s] ok   S4: the server received only valid answers (its own check)
+[+64.5s] ok   S4: the server got the api form as filled and the web form declined
+[+64.5s] ok   S4: used, not only loaded: every receipt in the project carries a nonce the server made for a call
+[+64.5s] ok   S4: Claude called the tool and its forms reached the person (server log: client claude)
+[+64.5s] ok   S4: Codex called the tool and its form reached the person (server log: client codex)
+[+64.5s] ok   S4 (rehearsal): every form the fake CLIs forwarded was answered
+[+64.6s] S5: preparing the project
+[+70.0s] S5: run 1be30a1c started
+[+76.3s] S5: Вернуть план — S5: the first plan is sent back once with feedback
+[+76.8s] S5: Одобрить план — S5: the plan after the feedback is approved
+[+84.8s] ok   S5: run completed
+[+84.9s] ok   S5: tests/clamp.accept.test.mjs unchanged
+[+84.9s] ok   S5: prepared by the run (node_modules/.package-lock.json)
+[+85.6s] ok   S5: npm test passes in the person's shell after the run
+[+85.6s] ok   S5: orchestrator turns within 8 (4)
+[+85.6s] ok   S5: Claude reported permissionMode plan from the project's settings (system/init)
+[+85.6s] ok   S5: no permission flag passed (rights «Как в моём терминале»)
+[+85.6s] ok   S5: ExitPlanMode reached the person (can_use_tool), was sent back once, then approved
+[+85.6s] ok   S5: the feedback was acted on (tests/clamp-feedback.test.mjs)
+[+85.6s] ok   S5 (rehearsal): the fake Claude got the plan back with the feedback text
+[+85.8s] S6: preparing the project
+[+93.5s] S6: run ad7dbf2a started
+[+152.9s] ok   S6-during-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)
+[+152.9s] S6-during-qa: quit {"code":0,"signal":null} in 15412 ms; status {"reason":"app_closed","status":"paused"}; finish.intent(commit) finish.result(done) finish.intent(push) finish.result(done) finish.intent(qa) finish.result(unknown)
+[+153.7s] S6: «Продолжить» after paused(app_closed), next=app_closed
+[+154.6s] S6: «Продолжить» after paused(finish_unconfirmed), next=finish_check
+[+157.0s] ok   S6: run completed
+[+157.1s] ok   S6: tests/duration.accept.test.mjs unchanged
+[+157.1s] ok   S6: prepared by the run (node_modules/.package-lock.json)
+[+157.6s] ok   S6: npm test passes in the person's shell after the run
+[+157.6s] ok   S6: orchestrator turns within 8 (4)
+[+157.7s] ok   S6: the commit is confirmed
+[+157.8s] ok   S6: the pushed commit carries the trailer CanvasTTY-Run
+[+157.8s] ok   S6: git ls-remote of the bare repository shows the commit on the branch
+[+157.8s] ok   S6: QA verified with the expected version
+[+157.8s] ok   S6: the deploy ran once, not again after the restart
+[+157.8s] ok   S6: the project folder's main and working tree are untouched (the work is in the worktree)
+[+181.7s] ok   S6-after-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)
+[+181.7s] S6-after-qa: quit {"code":0,"signal":null} in 224 ms; status {"reason":null,"status":"completed"}; finish.intent(commit) finish.result(done) finish.intent(push) finish.result(done) finish.intent(qa) finish.result(unknown) finish.result(done,established)
+[+181.7s] ok   S6: after quitting when QA was done and restarting, nothing ran (journal, deploy, verification unchanged)

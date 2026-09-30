@@ -1,0 +1,16 @@
+[+0.4s] ok   runtime measured claude 2.1.282
+[+0.5s] turn 1: the CLI asked (tool Bash); denied
+[+1.5s] turn 1: completed in 0.1 s; events 6; control_request ["can_use_tool"]
+[+1.5s] ok   turn 1 completed
+[+1.5s] ok   turn 1 system/init observed
+[+1.5s] ok   turn 1 result success
+[+1.5s] ok   turn 1 session id consistent
+[+1.5s] ok   turn 1 left no process
+[+1.5s] ok   turn 1 answer is "lantern"
+[+2.6s] turn 2: completed in 0.1 s; events 3; control_request []
+[+2.6s] ok   turn 2 completed
+[+2.6s] ok   turn 2 resumed the same session id
+[+2.6s] ok   turn 2 result success
+[+2.6s] ok   turn 2 left no process
+[+2.6s] ok   turn 2 remembers "lantern"
+[+2.6s] ok   dry: the scripted prompt reached the probe and was denied

@@ -1,0 +1,5 @@
+Orchestration smoke: mode=packaged node=v26.8.1 electron=43.2.0 platform=darwin-arm64 os=27.0.0
+Packaged app: <pkg>/release/mac-arm64/CanvasTTY.app/Contents/MacOS/CanvasTTY
+Packaged helper: <pkg>/release/mac-arm64/CanvasTTY.app/Contents/Resources/orchestration/supervisor.mjs; asar entries: 734; resource files: 329
+CANVASTTY_ORCHESTRATION_SMOKE_READY {"ok":true,"failures":[],"helperPath":"<pkg>/release/mac-arm64/CanvasTTY.app/Contents/Resources/orchestration/supervisor.mjs","answer":{"bytes":116736,"cksum":735922207,"envLeak":false},"expected":{"bytes":116736,"cksum":735922207},"turns":[{"outcome":"completed","delivery":"ok","report":"valid","groupCleared":true,"pids":{"supervisor":15949,"pgid":15952},"pidsGone":true},{"outcome":"stopped","delivery":"ok","report":"not_checked","groupCleared":true,"pids":{"supervisor":15957,"pgid":15958},"pidsGone":true}]}
+Orchestration smoke passed (packaged).

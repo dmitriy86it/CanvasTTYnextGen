@@ -1,0 +1,18 @@
+  • electron-builder  version=26.15.3 os=27.0.0
+  • loaded configuration  file=~/dev/CanvasTTYnextGen/electron-builder.yml
+  • @electron/rebuild already used by electron-builder, please consider to remove excess dependency from devDependencies
+
+To ensure your native dependencies are always matched electron version, simply add script `"postinstall": "electron-builder install-app-deps" to your `package.json`
+  • detected workspace root for project using lock file  pm=npm config=undefined resolved=~/dev/CanvasTTYnextGen projectDir=~/dev/CanvasTTYnextGen
+  • executing @electron/rebuild  electronVersion=43.2.0 arch=arm64 buildFromSource=false workspaceRoot=~/dev/CanvasTTYnextGen projectDir=./ appDir=./
+  • installing native dependencies  arch=arm64
+  • preparing       moduleName=node-pty arch=arm64
+  • finished        moduleName=node-pty arch=arm64
+  • completed installing native dependencies
+  • packaging       platform=darwin arch=arm64 electron=43.2.0 appOutDir=<pkg>/release/mac-arm64
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=<pkg>/release/mac-arm64
+  • searching for node modules  pm=npm searchDir=~/dev/CanvasTTYnextGen
+  • executing @electron/fuses  electronPath=<pkg>/release/mac-arm64/CanvasTTY.app
+  • signing         file=<pkg>/release/mac-arm64/CanvasTTY.app platform=darwin type=distribution identityName=- identityHash=none provisioningProfile=none
+  • skipped macOS notarization  reason=`notarize` options were set explicitly `false`

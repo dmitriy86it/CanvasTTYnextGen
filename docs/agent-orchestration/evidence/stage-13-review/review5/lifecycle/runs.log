@@ -1,0 +1,235 @@
+=== run 1 2026-09-25T04:11:32Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (671.802083ms)
+✔ test database: a run is refused in main too, not only by the dialog (204.153916ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (895.510917ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (193.941917ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (6333.872791ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (93.356667ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (157.674292ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (580.399125ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (9008.006834ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (11499.247958ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (5464.242417ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (7232.694416ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (11842.785667ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (3711.081125ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (8751.034625ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (3722.643708ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (4521.833709ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (2640.851041ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ duration_ms 78080.894875
+=== run 2 2026-09-25T04:12:51Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (537.774125ms)
+✔ test database: a run is refused in main too, not only by the dialog (94.338292ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (401.568875ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (114.459625ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (4110.061791ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (79.17025ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (73.56225ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (228.061416ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (4912.151042ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (9082.180209ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (6236.312042ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (8343.780958ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (13145.658ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (6571.917833ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (10545.103083ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (5734.739083ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (7150.373583ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (5249.336334ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ duration_ms 83492.390167
+=== run 3 2026-09-25T04:14:14Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (894.098459ms)
+✔ test database: a run is refused in main too, not only by the dialog (139.757583ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (431.544458ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (117.770334ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (5870.7925ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (192.184417ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (99.385625ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (387.609333ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (8185.292542ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (11520.461875ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (7100.0865ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (7658.715125ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (14627.16575ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (8921.043208ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (11786.358084ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (11567.000458ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (6092.545959ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (3932.536792ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ duration_ms 100524.533959
+=== run 4 2026-09-25T04:15:55Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (586.860833ms)
+✔ test database: a run is refused in main too, not only by the dialog (111.718042ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (290.608ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (102.436292ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (3889.986917ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (67.656291ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (63.565292ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (260.548166ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (5462.978792ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (8060.797708ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (3036.391625ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (4551.384375ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (7504.1555ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (3086.791416ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (6901.490334ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (3624.570458ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (6849.90075ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (2626.846667ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ duration_ms 57559.115792
+=== run 5 2026-09-25T04:16:52Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (373.406083ms)
+✔ test database: a run is refused in main too, not only by the dialog (70.216083ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (533.338666ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (75.997167ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (3049.894125ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (64.911458ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (58.004875ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (481.737291ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (4690.7315ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (10474.537917ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (7187.022917ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (8578.529458ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (14885.079ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (7328.83775ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (11031.626042ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (5592.372375ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (7187.646042ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (5473.18375ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ duration_ms 87702.462875
+=== run 6 2026-09-25T04:18:20Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (945.005875ms)
+✔ test database: a run is refused in main too, not only by the dialog (229.549667ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (527.154667ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (219.739ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (6433.011166ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (159.328416ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (169.107458ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (520.359333ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (11200.7005ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (8480.733583ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (3044.1155ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (4756.852375ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (6496.07625ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (3081.766166ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (6982.52125ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (3731.498125ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (3975.867084ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (2430.957042ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ duration_ms 63804.693375
+=== importers of orchestrationService/journal/manager/store (29 files, once) 2026-09-25T04:24:32Z
+exit=0
+ℹ tests 296
+ℹ pass 296
+ℹ fail 0
+ℹ skipped 0
+ℹ duration_ms 285635.096625
+=== npm run typecheck: exit 0
+=== after the shutdown-window fix (shellOp/qaVerify refuse while shuttingDown; drive catch -> app_closed), test D added
+=== lifecycle run 1 2026-09-25T04:27:39Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (1443.271209ms)
+✔ test database: a run is refused in main too, not only by the dialog (172.258542ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (792.059ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (571.551875ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (8224.022458ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (147.43175ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (189.078666ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (682.506208ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (15007.7015ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (17755.435667ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (8005.516625ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (13409.497166ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (26192.7415ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (14675.56625ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (18520.770875ms)
+✔ a QA deploy that succeeds while the application closes: its verification does not start; after the restart it runs once, on resume (16572.826792ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (17539.100083ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (15180.082542ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (11019.590625ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ duration_ms 187834.584667
+=== lifecycle run 2 2026-09-25T04:30:47Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (1913.379917ms)
+✔ test database: a run is refused in main too, not only by the dialog (423.330583ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (1067.590542ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (317.588084ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (14157.845459ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (373.597708ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (268.504917ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (741.437958ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (16804.881375ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (20515.27675ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (11629.966041ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (14951.442125ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (26971.177292ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (13782.556458ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (19389.206375ms)
+✔ a QA deploy that succeeds while the application closes: its verification does not start; after the restart it runs once, on resume (14551.468459ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (13575.690167ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (12684.01025ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (11091.438083ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ duration_ms 197172.970541
+=== lifecycle run 3 2026-09-25T04:34:04Z
+exit=0
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (1517.911709ms)
+✔ test database: a run is refused in main too, not only by the dialog (175.796916ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (707.908709ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (199.999833ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (8711.4885ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (274.895042ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (349.954167ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (934.847417ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (15695.056917ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (18627.35825ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (11731.5925ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (14741.317208ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (21994.775666ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (11718.115083ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (15576.200583ms)
+✔ a QA deploy that succeeds while the application closes: its verification does not start; after the restart it runs once, on resume (15612.985ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (12271.928709ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (13510.843833ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (12305.583791ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ duration_ms 179188.303458
+=== stage13-qa + autopilot + manager-review + service-races 2026-09-25T04:37:03Z
+exit=0
+ℹ tests 69
+ℹ pass 69
+ℹ fail 0
+ℹ duration_ms 413425.82025
+=== npm run typecheck: exit 0

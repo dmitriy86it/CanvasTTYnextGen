@@ -1,0 +1,31 @@
+✖ M6: a reservation that cannot be written leaves neither a run nor an owner; the repeat makes one run owned by its workspace (22658.254041ms)
+✖ M6: after a crash between the reservation and the run, the reserved id is hidden, and the repeat keeps its owner (22621.876875ms)
+ℹ Error: A resource generated asynchronous activity after the test ended. This activity created the error "Error: A FileHandle object was closed during garbage collection. This used to be allowed with a deprecation warning but is now considered an error. Please close FileHandle objects explicitly. File descriptor: 14 (/private<TMPDIR>/…)" which triggered an uncaughtException event, caught by the test runner.
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45488.007542
+
+✖ failing tests:
+
+test at tests/workspaces-main.test.mjs:374:1
+✖ M6: a reservation that cannot be written leaves neither a run nor an owner; the repeat makes one run owned by its workspace (22658.254041ms)
+  Error: the run paused with sandbox_unavailable: the check sandbox cannot be applied in this environment (a nested sandbox?) (last state: paused:sandbox_unavailable)
+      at file://<REPO>/tests/workspaces-main.test.mjs:314:44
+      at async untilCompleted (file://<REPO>/tests/workspaces-main.test.mjs:307:3)
+      at async TestContext.<anonymous> (file://<REPO>/tests/workspaces-main.test.mjs:395:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at tests/workspaces-main.test.mjs:399:1
+✖ M6: after a crash between the reservation and the run, the reserved id is hidden, and the repeat keeps its owner (22621.876875ms)
+  Error: the run paused with sandbox_unavailable: the check sandbox cannot be applied in this environment (a nested sandbox?) (last state: paused:sandbox_unavailable)
+      at file://<REPO>/tests/workspaces-main.test.mjs:314:44
+      at async untilCompleted (file://<REPO>/tests/workspaces-main.test.mjs:307:3)
+      at async TestContext.<anonymous> (file://<REPO>/tests/workspaces-main.test.mjs:422:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

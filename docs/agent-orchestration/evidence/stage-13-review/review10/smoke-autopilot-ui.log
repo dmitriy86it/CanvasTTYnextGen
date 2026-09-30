@@ -1,0 +1,7 @@
+{
+  "ok": false,
+  "error": "Error: timeout: link (false)\n    at waitForValue (file://<repo>/scripts/orchestration-app-kit.mjs:56:9)\n    at async file://<repo>/scripts/smoke-autopilot-ui.mjs:101:3",
+  "passed": [],
+  "failures": [],
+  "shots": "/private/tmp/cto-autopilot-cws177/shots"
+}

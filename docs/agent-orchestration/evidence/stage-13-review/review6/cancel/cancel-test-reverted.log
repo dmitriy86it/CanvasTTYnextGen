@@ -1,0 +1,126 @@
+# 2026-09-25T09:00:37Z new cancel test with orchestrationService.ts REVERTED to the pre-fix version (expected red)
+✖ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (4699.52175ms)
+✖ the deadline passes between a QA deploy and its verification: the verification is not admitted (4875.112209ms)
+✖ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (4638.052292ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (5349.798042ms)
+✖ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (4205.660667ms)
+✖ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (4729.477041ms)
+✖ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (1841.367709ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (2223.084875ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 2
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32836.467292
+
+✖ failing tests:
+
+test at tests/orchestration-stage13-cancel.test.mjs:172:1
+✖ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (4699.52175ms)
+  AssertionError [ERR_ASSERTION]: the verification did not start
+  
+  'v\n' !== ''
+  
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:183:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'v\n',
+    expected: '',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/orchestration-stage13-cancel.test.mjs:191:1
+✖ the deadline passes between a QA deploy and its verification: the verification is not admitted (4875.112209ms)
+  AssertionError [ERR_ASSERTION]: a process was started that did not run
+  
+  4 !== 3
+  
+      at Object.allRan (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:88:26)
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:198:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 4,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/orchestration-stage13-cancel.test.mjs:207:1
+✖ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (4638.052292ms)
+  AssertionError [ERR_ASSERTION]: a process was started that did not run
+  
+  4 !== 3
+  
+      at Object.allRan (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:88:26)
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:218:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 4,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/orchestration-stage13-cancel.test.mjs:249:1
+✖ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (4205.660667ms)
+  AssertionError [ERR_ASSERTION]: a process was started that did not run
+  
+  4 !== 3
+  
+      at Object.allRan (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:88:26)
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:255:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 4,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/orchestration-stage13-cancel.test.mjs:265:1
+✖ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (4729.477041ms)
+  AssertionError [ERR_ASSERTION]: a process was started that did not run
+  
+  5 !== 4
+  
+      at Object.allRan (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:88:26)
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:271:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 5,
+    expected: 4,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/orchestration-stage13-cancel.test.mjs:292:1
+✖ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (1841.367709ms)
+  AssertionError [ERR_ASSERTION]: a process was started that did not run
+  
+  2 !== 1
+  
+      at Object.allRan (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:88:26)
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:298:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

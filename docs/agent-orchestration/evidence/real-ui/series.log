@@ -1,0 +1,33 @@
+[+0.2s] versions: codex-cli 0.155.1; 2.1.281 (Claude Code)
+[+6.4s] R1: run 7e69e6fd started
+[+80.7s] ok   R1: run completed
+[+80.7s] ok   R1: the last check passed
+[+80.7s] ok   R1: checkpoint created for each accepted stage (1)
+[+80.7s] ok   R1: baseline and stage refs in the source
+[+80.7s] ok   R1: the checkpoint changes only src/ and tests/
+[+80.8s] ok   R1: tests/clamp.accept.test.mjs identical (git blob) in the checkpoint
+[+80.8s] ok   R1: src/clamp.mjs is in the checkpoint
+[+80.9s] ok   R1: the source project (HEAD, branch, refs, status, files) is unchanged
+[+82.1s] R2: run 2ed6d9b2 started
+[+102.3s] R2: Claude process 98246 for turn 3318f35c
+[+102.6s] ok   R2: the started Claude turn ended stopped, the run is stopped
+[+162.7s] ok   R2: no operation after the accepted Stop (60 s)
+[+162.7s] ok   R2: no live CLI (or supervisor) process of the run
+[+162.7s] ok   R2: the source project is unchanged
+[+164.0s] R3: run e91a351f started
+[+186.7s] R3: Claude process 99647 for turn a15e7fb9; quitting
+[+187.5s] ok   R3: the app quit cleanly (code 0)
+[+187.5s] ok   R3: every process of the app ended (7)
+[+187.5s] ok   R3: the started turn was stopped by the quit; the run is paused(user_request)
+[+189.0s] ok   R3: after restart cards, link and runs as before
+[+249.1s] ok   R3: nothing continued by itself (60 s): no journal record, no CLI
+[+249.7s] ok   R3: the history is shown after restart
+[+300.0s] ok   R3: run completed
+[+300.0s] ok   R3: the last check passed
+[+300.0s] ok   R3: checkpoint created for each accepted stage (1)
+[+300.1s] ok   R3: baseline and stage refs in the source
+[+300.1s] ok   R3: the checkpoint changes only src/ and tests/
+[+300.1s] ok   R3: tests/clamp.accept.test.mjs identical (git blob) in the checkpoint
+[+300.1s] ok   R3: src/clamp.mjs is in the checkpoint
+[+300.2s] ok   R3: the source project is unchanged
+[+303.4s] ok   series end: no process of the app left

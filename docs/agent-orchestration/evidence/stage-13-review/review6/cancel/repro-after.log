@@ -1,0 +1,10 @@
+# 2026-09-25T08:55:00Z repro AFTER fix: node --test /private/tmp/canvastty-stage13-review6-deadline.test.mjs
+✔ Deadline during a successful deploy must not start its QA verification (30814.273084ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31156.181375

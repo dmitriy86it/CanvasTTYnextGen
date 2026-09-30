@@ -1,0 +1,6 @@
+[+1.3s] versions: codex-cli 0.155.1; 2.1.283 (Claude Code); DB_* in login shell: none
+[+3.1s] S4X: preparing the project
+[+5.4s] link diagnostics: linked (link-diag-01-s4x-app.json)
+[+11.3s] S4X gate: release-form for codex: unsupported (other: {"claude":null,"codex":"unsupported"})
+[+11.3s] HALT: S4X blocked: codex does not report release-form as ready (unsupported); no model turn
+[+13.7s] ok   global ~/.codex/config.toml and ~/.claude/settings.json unchanged

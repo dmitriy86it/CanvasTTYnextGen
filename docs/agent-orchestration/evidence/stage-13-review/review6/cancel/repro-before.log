@@ -1,0 +1,29 @@
+# 2026-09-25T08:53:18Z repro BEFORE fix: node --test /private/tmp/canvastty-stage13-review6-deadline.test.mjs
+✖ Deadline during a successful deploy must not start its QA verification (30768.865416ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 31327.710041
+
+✖ failing tests:
+
+test at ../../../../private/tmp/canvastty-stage13-review6-deadline.test.mjs:128:1
+✖ Deadline during a successful deploy must not start its QA verification (30768.865416ms)
+  AssertionError [ERR_ASSERTION]: QA verify ran after runMs deadline; final={"runId":"2d60533b-c7f0-4378-8daa-294ed1ec36e1","status":"paused","reason":"limit_reached","revision":2,"stage":null,"turns":4,"halted":false,"active":null,"permission":null,"pendingPermissions":0,"workMode":"project","workDir":"/private/var/folders/jn/zh0lz5bd0j777khtw76rv1t00000gn/T/canvastty-lifecycle-QHTeu1/project-1","progress":{"mode":"autopilot","branch":null,"access":{"claude":"terminal","codex":"terminal"},"checks":[{"id":"cmd-1","title":"true","status":"passed","class":null}],"prepare":null,"finish":[{"step":"commit","asked":true,"status":"done","established":false,"commit":"b6a60cd888f6abb74a424fe99474cf87412fd28e","evidence":"f97c674acdba5afcc367bd93c66d567543ad95e184f6122679cc10c9b4d39bcc"},{"step":"push","asked":false,"status":"not_started","established":false,"commit":null,"evidence":null},{"step":"qa","asked":true,"status":"done","established":false,"commit":"b6a60cd888f6abb74a424fe99474cf87412fd28e","evidence":"b169140fc87bd12aa1a1099ea01846ca1ba46e5e7ad87326b85894781ec83589","version":"not_checked","observed":null}],"grantsApplied":0}}
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///private/tmp/canvastty-stage13-review6-deadline.test.mjs:147:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

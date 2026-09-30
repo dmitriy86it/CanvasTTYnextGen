@@ -1,0 +1,110 @@
+
+> canvastty@1.5.3 build
+> npm run build:speech && npm run build:even && npm run typecheck && electron-vite build
+
+
+> canvastty@1.5.3 build:speech
+> node scripts/build-companion-speech.mjs
+
+<REPO>/artifacts/companion-speech/arm64/canvastty-speech: replacing existing signature
+<REPO>/artifacts/companion-speech/arm64/libggml-base.dylib: replacing existing signature
+<REPO>/artifacts/companion-speech/arm64/libggml-cpu.dylib: replacing existing signature
+<REPO>/artifacts/companion-speech/arm64/libggml-metal.dylib: replacing existing signature
+<REPO>/artifacts/companion-speech/arm64/libggml.dylib: replacing existing signature
+<REPO>/artifacts/companion-speech/arm64/libtranscribe.dylib: replacing existing signature
+{"engine":"transcribe.cpp","version":"0.2.3"}
+Built bundled G2 speech for arm64
+
+> canvastty@1.5.3 build:even
+> npm run build --workspace integrations/even-g2
+
+
+> canvastty-even-g2@0.5.6 build
+> vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 29 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/assets/ibm-plex-mono-vietnamese-400-normal-DDuiU_S-.woff       5.62 kB
+dist/assets/ibm-plex-mono-cyrillic-ext-400-normal-DMdlQ8Kv.woff     5.82 kB
+dist/assets/ibm-plex-mono-vietnamese-400-normal-BulugwFq.woff2      5.86 kB
+dist/assets/ibm-plex-sans-vietnamese-400-normal-fK1oJ5dG.woff       6.39 kB
+dist/assets/ibm-plex-sans-vietnamese-600-normal-DgdngZtN.woff       6.58 kB
+dist/assets/ibm-plex-sans-vietnamese-500-normal-BEb3_waV.woff       6.58 kB
+dist/assets/ibm-plex-mono-cyrillic-ext-400-normal-xuaO2J-f.woff2    6.91 kB
+dist/assets/ibm-plex-mono-cyrillic-400-normal-CEL4l2ZJ.woff         7.20 kB
+dist/assets/ibm-plex-sans-vietnamese-400-normal-DG4YqDda.woff2      8.20 kB
+dist/assets/ibm-plex-mono-cyrillic-400-normal-BSMlKf0J.woff2        8.35 kB
+dist/assets/ibm-plex-sans-vietnamese-500-normal-e4dixQRQ.woff2      8.41 kB
+dist/assets/ibm-plex-sans-vietnamese-600-normal-DpPYBSTl.woff2      8.46 kB
+dist/assets/ibm-plex-sans-greek-400-normal-D9ESIMu3.woff            8.76 kB
+dist/assets/ibm-plex-sans-greek-500-normal-CuWXN6rf.woff            9.14 kB
+dist/assets/ibm-plex-sans-greek-600-normal-D-CqTdkO.woff            9.22 kB
+dist/assets/ibm-plex-sans-greek-400-normal-_efipK4i.woff2           9.94 kB
+dist/assets/ibm-plex-sans-cyrillic-ext-400-normal-Dsrv2Tcn.woff    10.28 kB
+dist/assets/ibm-plex-sans-greek-600-normal-DzTrcv_p.woff2          10.36 kB
+dist/assets/ibm-plex-sans-greek-500-normal-JMMifIXV.woff2          10.37 kB
+dist/assets/ibm-plex-sans-cyrillic-ext-500-normal-DB5PtV2g.woff    10.59 kB
+dist/assets/ibm-plex-sans-cyrillic-ext-600-normal-Bz0x94Yp.woff    10.61 kB
+dist/index.html                                                    11.64 kB │ gzip:  3.40 kB
+dist/assets/ibm-plex-mono-latin-ext-400-normal-D3D2R8hC.woff       11.76 kB
+dist/assets/ibm-plex-sans-cyrillic-ext-400-normal-g30qAdWV.woff2   12.14 kB
+dist/assets/ibm-plex-sans-cyrillic-ext-600-normal-DUMzJB7m.woff2   12.30 kB
+dist/assets/ibm-plex-sans-cyrillic-ext-500-normal-Cs5J6C77.woff2   12.30 kB
+dist/assets/ibm-plex-mono-latin-400-normal-CvHOgSBP.woff           13.14 kB
+dist/assets/ibm-plex-mono-latin-ext-400-normal-BmRBH3aV.woff2      13.34 kB
+dist/assets/ibm-plex-sans-cyrillic-400-normal-BTotfTJu.woff        13.51 kB
+dist/assets/ibm-plex-sans-cyrillic-500-normal-ByOcLdNv.woff        13.85 kB
+dist/assets/ibm-plex-sans-cyrillic-600-normal-BGq0mW3O.woff        13.88 kB
+dist/assets/ibm-plex-sans-latin-ext-400-normal-RBey6euL.woff       14.36 kB
+dist/assets/ibm-plex-mono-latin-400-normal-DMJ8VG8y.woff2          14.70 kB
+dist/assets/ibm-plex-sans-latin-ext-500-normal-D0aIdm-b.woff       14.73 kB
+dist/assets/ibm-plex-sans-latin-ext-600-normal-DIrixKbi.woff       14.77 kB
+dist/assets/ibm-plex-sans-cyrillic-400-normal-DZqxrq2p.woff2       14.80 kB
+dist/assets/ibm-plex-sans-cyrillic-500-normal-CocWQlwt.woff2       15.00 kB
+dist/assets/ibm-plex-sans-cyrillic-600-normal-71GNu3SW.woff2       15.04 kB
+dist/assets/ibm-plex-sans-latin-ext-400-normal-C5H60-Va.woff2      15.98 kB
+dist/assets/ibm-plex-sans-latin-ext-600-normal-DOrvGEcy.woff2      16.44 kB
+dist/assets/ibm-plex-sans-latin-ext-500-normal-DakdToA3.woff2      16.45 kB
+dist/assets/ibm-plex-sans-latin-400-normal-CYLoc0-x.woff           22.10 kB
+dist/assets/ibm-plex-sans-latin-400-normal-CDDApCn2.woff2          22.58 kB
+dist/assets/ibm-plex-sans-latin-600-normal-Cu4Hd6ag.woff           23.87 kB
+dist/assets/ibm-plex-sans-latin-500-normal-BgVn5rGT.woff           23.91 kB
+dist/assets/ibm-plex-sans-latin-500-normal-6ng42L7E.woff2          24.18 kB
+dist/assets/ibm-plex-sans-latin-600-normal-CuJfVYMP.woff2          24.25 kB
+dist/assets/index-LkFjhLHd.css                                     17.28 kB │ gzip:  3.81 kB
+dist/assets/index-BSZ1DTau.js                                     162.72 kB │ gzip: 62.35 kB
+
+✓ built in 93ms
+
+> canvastty@1.5.3 typecheck
+> tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json
+
+vite v7.3.6 building ssr environment for production...
+transforming...
+✓ 112 modules transformed.
+rendering chunks...
+out/main/index.js  1,286.96 kB
+✓ built in 560ms
+vite v7.3.6 building ssr environment for production...
+transforming...
+✓ 6 modules transformed.
+rendering chunks...
+out/preload/browser.cjs   2.03 kB
+out/preload/plugin.cjs    2.11 kB
+out/preload/index.cjs    21.62 kB
+✓ built in 16ms
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 154 modules transformed.
+rendering chunks...
+../../out/renderer/index.html                      0.64 kB
+../../out/renderer/assets/grok-DyNlDo2w.png       11.63 kB
+../../out/renderer/assets/kimi-CohI-NvZ.ico       15.09 kB
+../../out/renderer/assets/codex-D0g8sCle.png     146.20 kB
+../../out/renderer/assets/hermes-CIhgC6OS.png    574.27 kB
+../../out/renderer/assets/index-D1yVDDrO.css     159.81 kB
+../../out/renderer/assets/index-CEQgvCnE.js    1,951.70 kB
+✓ built in 674ms

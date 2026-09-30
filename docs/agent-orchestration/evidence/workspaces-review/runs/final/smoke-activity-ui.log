@@ -1,0 +1,52 @@
+ok   empty only once every source answered
+ok   no terminal, orchestration working: the widget is not empty
+ok   A: working while B waits for an answer
+ok   B: the reason it waits
+ok   A: project and kind named
+ok   A: who works on which stage
+ok   one row per run, not one per participant
+ok   the participants fold out inside the row
+ok   the terminal and both runs are listed together
+ok   the executor card is not done while the lead reviews
+ok   lead card: reviews the stage by its title
+ok   no summary button before the end
+ok   long texts stay inside the lead card
+ok   the lead card's action line does not cover its buttons
+ok   long texts stay inside the executor card
+ok   the executor card's action line does not cover its buttons
+ok   the tab is not switched by itself
+ok   outcome: the goal of this run
+ok   completed is said to be about this run, not the project
+ok   stages counted apart
+ok   check commands counted apart, never as tests
+ok   the test count is not claimed
+ok   the lead's remaining remarks listed
+ok   the lead's own words about what is left are shown
+ok   no next step in the report: not specified, not invented
+ok   what the executor did (its claim)
+ok   confirmed facts and agents' claims are marked apart
+ok   no raw JSON in the summary
+ok   commit/push/QA: their real state
+ok   1280×800: long titles wrap, no sideways scroll
+ok   the summary panel is wide
+ok   the panel expands within the window
+ok   a structured answer in the feed is shown as text, not JSON
+ok   opening the summary and every tab starts no CLI process
+ok   ended runs leave the active rows; the paused one stays
+ok   recent results: long project names never push the summary button out
+ok   a stopped run is not a success
+ok   R2: the required commands not started are counted
+ok   R2: each never started, zero attempts
+ok   the ended run's cards offer the summary
+ok   after the reload nothing started again
+ok   the runs stay as they ended
+ok   R3: the lead's open remarks are shown while paused, before any final review
+ok   R3: which review they come from
+ok   R4: an unreadable journal is an error with retry, not empty or done
+ok   R4: no summary without the error beside it
+ok   R4: the retry loads the journal (complete, no error)
+ok   R4: a report text that failed loads on its own retry
+ok   R4: errors and retries start no CLI process
+ok   R4: a retry creates no run and changes none
+
+50 passed, 0 failed; shots: <WSR>/final/smoke-activity-ui-shots

@@ -1,0 +1,49 @@
+[+1.9s] S4C: preparing the project
+[+5.0s] S4C gate: ready
+[+6.5s] S4C: run e05af790 started
+[+10.5s] S4C: Отправить форму — S4C: the api form filled as the assignment says
+[+10.8s] S4C: Отклонить (форма) — S4C: the web form is declined by design
+[+14.9s] ok   S4C: run completed
+[+14.9s] ok   S4C: tests/receipts.accept.test.mjs unchanged
+[+14.9s] ok   S4C: prepared by the run (node_modules/.package-lock.json)
+[+15.0s] ok   S4C: npm test passes in the person's shell after the run
+[+15.0s] ok   S4C: orchestrator turns within 8 (4)
+[+15.1s] ok   S4C: the server was started by claude and called
+[+15.1s] ok   S4C: foreign: no call or form of another provider or role, no conflicting lines of one nonce
+[+15.1s] ok   S4C: api: exactly one call, answered accept
+[+15.1s] ok   S4C: api: the call is the form the app showed (nonce in its message, claude/executor, release-form)
+[+15.1s] ok   S4C: api: invalid answers were stopped before the server (≥2 tried, none sent)
+[+15.1s] ok   S4C: api: the server got the answer given in the form
+[+15.1s] ok   S4C: web: exactly one call, answered decline
+[+15.1s] ok   S4C: web: the call is the form the app showed (nonce in its message, claude/executor, release-form)
+[+15.1s] ok   S4C: web: the server got the decline as action decline
+[+15.1s] ok   S4C: release_ticket calls of claude completed
+[+15.1s] ok   S4C: release/receipts.txt holds exactly the servers' result lines
+[+15.1s] ok   S4C: every confirmed tool prompt was release-form release_ticket
+[+15.1s] ok   S4C: the acceptance test is unchanged
+[+15.1s] ok   S4C: the checks passed
+[+15.2s] S4X: preparing the project
+[+18.0s] S4X gate: ready
+[+19.5s] S4X: run 06f04bd4 started
+[+22.4s] S4X: Отправить форму — S4X: the plan-a form filled as the assignment says
+[+22.7s] S4X: Отклонить (форма) — S4X: the plan-b form is declined by design
+[+26.7s] ok   S4X: run completed
+[+26.8s] ok   S4X: tests/receipts.accept.test.mjs unchanged
+[+26.8s] ok   S4X: prepared by the run (node_modules/.package-lock.json)
+[+26.9s] ok   S4X: npm test passes in the person's shell after the run
+[+26.9s] ok   S4X: orchestrator turns within 8 (4)
+[+26.9s] ok   S4X: the server was started by codex and called
+[+26.9s] ok   S4X: foreign: no call or form of another provider or role, no conflicting lines of one nonce
+[+26.9s] ok   S4X: plan-a: exactly one call, answered accept
+[+26.9s] ok   S4X: plan-a: the call is the form the app showed (nonce in its message, codex/lead, release-form)
+[+26.9s] ok   S4X: plan-a: invalid answers were stopped before the server (≥2 tried, none sent)
+[+26.9s] ok   S4X: plan-a: the server got the answer given in the form
+[+26.9s] ok   S4X: plan-b: exactly one call, answered decline
+[+26.9s] ok   S4X: plan-b: the call is the form the app showed (nonce in its message, codex/lead, release-form)
+[+26.9s] ok   S4X: plan-b: the server got the decline as action decline
+[+26.9s] ok   S4X: release_ticket calls of codex completed
+[+26.9s] ok   S4X: release/receipts.txt holds exactly the servers' result lines
+[+26.9s] ok   S4X: every confirmed tool prompt was release-form release_ticket
+[+26.9s] ok   S4X: the acceptance test is unchanged
+[+26.9s] ok   S4X: the checks passed
+[+29.7s] ok   global ~/.codex/config.toml and ~/.claude/settings.json unchanged

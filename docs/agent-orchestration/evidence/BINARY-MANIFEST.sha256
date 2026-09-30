@@ -28,6 +28,7 @@ f1da3f7db5c4c7798f237ad08539df24230588176d0975dc6415a474e30fa56a  real-stage-13/
 68c0af46eca6c40a30b1e9dd90f8c0292c07e51e708e89eb3aff5e973baa292b  real-stage-13/series-S3-S5-S6-attempt3/shots/S3-prompt-1.png  198754
 7b9e5606a9189b9d4c91b28c4bad9721ce20305eede1b00f28fdb2cce91ef97c  real-stage-13/series-S3-S5-S6-attempt3/shots/halt.png  198746
 b8b74216824ae153afc376b109a323056d5cf62380665db71850da86503d58da  real-stage-13/series-S3-S5-S6-attempt3/shots/link-diag-01-s3-app.png  94807
+90f9cca88d5594cb408084040654439c21bdd360521f56e51c9757d83ee586e2  real-stage-13/series-S3-S5-S6-attempt4/series.log  927
 8c81fe5532893a424991249d9ed8e17f497080d0bba12ac10e3fe8a94f695c1f  real-stage-13/series-S3-S5-S6-attempt4/shots/S3-00-settings.png  191518
 66e3cb65edca0fbc0327212fdd667c2767ec0c93de4e92a60fb289a2ea1faf00  real-stage-13/series-S3-S5-S6-attempt4/shots/S3-01-goal-ready.png  218520
 23ce262a0b6fbf4a59162af65d59b27918c333541c982ad71085bbffae171cae  real-stage-13/series-S3-S5-S6-attempt4/shots/S3-02-preparing.png  189613
@@ -35,6 +36,8 @@ b8b74216824ae153afc376b109a323056d5cf62380665db71850da86503d58da  real-stage-13/
 c5b3d1f37ab05b70c46b762fde2b05aa1ffb1d33589cbf854100f02b6d56c9ce  real-stage-13/series-S3-S5-S6-attempt4/shots/S3-prompt-1.png  204359
 0433f7c6f74fdbfff2e2f64131474323a0c5be644eb5013296e4cb8c10fb0c84  real-stage-13/series-S3-S5-S6-attempt4/shots/halt.png  191466
 0b77278b283a02911990b86a4a1406b84e97a121cdc4e57eb6de0d2f0a2fec92  real-stage-13/series-S3-S5-S6-attempt4/shots/link-diag-01-s3-app.png  87571
+7d76648e6c0f6f0f1188e7045a1152b5c1704954b9db2088b60645c4d80b930d  real-stage-13/series-S3-S5-S6-attempt5/rehearsal/poll/series.log  2975
+7447eefb6a353ffb492be0824bf1f39ff027750ac63760d76d9f5ca6abc5a29a  real-stage-13/series-S3-S5-S6-attempt5/rehearsal/timeout/series.log  659
 f32e14b901f1e8a826330aa4326c4da44c7200b1db99eb018a6dd8896f58a711  real-stage-13/series-S3-S5-S6-attempt5/shots/S3-00-settings.png  191742
 d13516d36c200954d936618739b973adf810e8fdb589e32cfec9de3602d27ac2  real-stage-13/series-S3-S5-S6-attempt5/shots/S3-01-goal-ready.png  218288
 ebfcbba7b1c56d813dd56f07bb09887b0d3432f5063d94867f32a68b010b1ee0  real-stage-13/series-S3-S5-S6-attempt5/shots/S3-02-preparing.png  188907
@@ -61,6 +64,7 @@ d35bce6d0f8c9ad456aa31bd2f546e6f65cc47bb6b986f7aec290263b37cd38b  real-stage-13/
 a1f8b7e549c3843993e82335e2b26b760c9babaed01e0909b6ecd7b95fca8e44  real-stage-13/series-S3-S5-S6/link-diag-01-s3-app.png  86572
 a09d3520925d1a517d1f9182a855ac797d68939f179dfb9770fa1e2ca8373255  real-stage-13/series-S3-S7-attempt1/halt.png  85873
 ea78cbac5da391fafce57039fc9b3b328dcd8fa2b66b9864b345d7f12fdb97bd  real-stage-13/series-S3-S7-attempt2/halt.png  86439
+4b329aa56efb6184ed2f9b761c0bdf0d39a41dee95a56d36444454f0939c9cc5  real-stage-13/series-S5-S6-attempt1/rehearsal/series.log  3907
 347d2f17c1d8a94993b0cca9fdcf9e0e86eb4d7695e9f1579031b95b84877829  real-stage-13/series-S5-S6-attempt1/shots/S5-01-goal-ready.png  220219
 72ff93894b012ecfdcd5ac851f2612a2a7a8be711bc573c5ad8ecc04540552ef  real-stage-13/series-S5-S6-attempt1/shots/S5-02-preparing.png  186720
 892f2332fb4ca12e3ab571b9bcf7fc73154b16eb7cd14af405f0ee115a76606a  real-stage-13/series-S5-S6-attempt1/shots/S5-03-final.png  183596
@@ -144,6 +148,7 @@ c1a44ca8697635c6abce2123dc0af7b705b9c12fc7d724959aa30475ecb89983  stage-13-revie
 7c02b1bb8fa88c7b9ba911db07db8c39acc15e40ce0a05533cf17a5586e7c335  stage-13-review/review10/rehearsal-S3-S5-S6/shots/link-diag-01-s3-app.png  87253
 ab2a483d0837944bcb0cb4cc6d749254ea998407ea01136085e21ee20b006cf3  stage-13-review/review10/rehearsal-S3-S5-S6/shots/link-diag-02-s5-app.png  115709
 514e42764cec70e331c733130182313813196a130d53f458c044ef7d772e64b4  stage-13-review/review10/rehearsal-S3-S5-S6/shots/link-diag-03-s6-app.png  141498
+900c4b695ae06ea494af8e2f4f2a83d411034858a4c3c7d5d28647970c3609aa  stage-13-review/review4/verifier/repro-before.log  3251
 04414fafa8f2b0b9a75be3563466b4041ad9e209751df9f5f8473ef251bbb5ce  stage-13-review/review5/series/rehearsal-S3-S7/shots/S3-00-settings.png  212591
 040e9758c6ee427d8d625cf5fef2f5ed4b421872e7a1760df43647e0f331c24e  stage-13-review/review5/series/rehearsal-S3-S7/shots/S3-01-goal-ready.png  241294
 1b5e74077ea650b8a905c44f89906a11ae99a8c0877dcaf30868c59b443fbf6d  stage-13-review/review5/series/rehearsal-S3-S7/shots/S3-02-preparing.png  200032

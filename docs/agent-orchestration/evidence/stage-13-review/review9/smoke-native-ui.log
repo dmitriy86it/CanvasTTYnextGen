@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "passed": 21,
+  "failures": [],
+  "fakeCliProcesses": 8,
+  "shots": "/private/tmp/cto-native-jMtZS3/shots",
+  "exit": {
+    "code": 0,
+    "signal": null
+  }
+}

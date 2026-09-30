@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "passed": 41,
+  "failures": [],
+  "fakeCliProcesses": 16,
+  "shots": "/private/tmp/cto-autopilot-xhLmow/shots",
+  "exit": {
+    "code": 0,
+    "signal": null
+  }
+}

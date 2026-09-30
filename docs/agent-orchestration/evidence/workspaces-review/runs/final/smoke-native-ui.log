@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "passed": 21,
+  "failures": [],
+  "fakeCliProcesses": 8,
+  "shots": "<WSR>/final/smoke-native-ui-shots",
+  "exit": {
+    "code": 0,
+    "signal": null
+  }
+}

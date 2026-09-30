@@ -1,0 +1,11 @@
+# external repro, final, prepare.ts sha256 f31a5e9837f14b6f9ffd7aeb5f766d11fdffaf3785d4793b958a298c3abd4c94
+✔ return inside unused function must not become SQLite ok (7.945958ms)
+✔ return in false conditional must not become SQLite ok (3.5805ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 172.342625

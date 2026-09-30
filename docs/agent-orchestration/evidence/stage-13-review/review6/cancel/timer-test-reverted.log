@@ -1,0 +1,29 @@
+# 2026-09-25T09:13:55Z timer regression with the re-arm reverted (expected red)
+✖ the deadline timer reads the service's clock: a held clock does not stop the operation, a clock past the deadline does (11820.986875ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13411.232709
+
+✖ failing tests:
+
+test at tests/orchestration-stage13-cancel.test.mjs:326:1
+✖ the deadline timer reads the service's clock: a held clock does not stop the operation, a clock past the deadline does (11820.986875ms)
+  AssertionError [ERR_ASSERTION]: a timer that fired while the clock stood still did not stop the deploy
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file://<repo>/tests/orchestration-stage13-cancel.test.mjs:334:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

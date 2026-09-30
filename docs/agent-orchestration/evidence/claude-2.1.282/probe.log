@@ -1,0 +1,14 @@
+[+0.5s] ok   runtime measured claude 2.1.282
+[+8.4s] turn 1: completed in 6.9 s; events 24; control_request []
+[+8.4s] ok   turn 1 completed
+[+8.4s] ok   turn 1 system/init observed
+[+8.4s] ok   turn 1 result success
+[+8.4s] ok   turn 1 session id consistent
+[+8.4s] ok   turn 1 left no process
+[+8.4s] ok   turn 1 answer is "lantern"
+[+18.1s] turn 2: completed in 8.7 s; events 25; control_request []
+[+18.1s] ok   turn 2 completed
+[+18.1s] ok   turn 2 resumed the same session id
+[+18.1s] ok   turn 2 result success
+[+18.1s] ok   turn 2 left no process
+[+18.1s] ok   turn 2 remembers "lantern"

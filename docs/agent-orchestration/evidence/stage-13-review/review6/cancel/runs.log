@@ -1,0 +1,389 @@
+===== 2026-09-25T09:00:44Z node --test tests/orchestration-stage13-cancel.test.mjs
+✔ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (4935.371542ms)
+✔ the deadline passes between a QA deploy and its verification: the verification is not admitted (4565.198833ms)
+✔ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (4153.81925ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (4618.570291ms)
+✔ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (5075.486083ms)
+✔ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (4959.271459ms)
+✔ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (4552.810834ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (1784.283416ms)
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 34934.796292
+exit=0
+===== 2026-09-25T09:01:19Z node --test tests/orchestration-stage13-cancel.test.mjs
+✔ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (4975.184667ms)
+✔ the deadline passes between a QA deploy and its verification: the verification is not admitted (4627.563542ms)
+✔ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (4104.097541ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (4756.403083ms)
+✔ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (4829.180583ms)
+✔ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (6625.859542ms)
+✔ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (5445.509625ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (1872.313667ms)
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 37519.366792
+exit=0
+===== 2026-09-25T09:01:57Z node --test tests/orchestration-stage13-cancel.test.mjs
+✔ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (5207.355583ms)
+✔ the deadline passes between a QA deploy and its verification: the verification is not admitted (4793.26975ms)
+✔ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (4166.292083ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (4766.78225ms)
+✔ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (4806.189583ms)
+✔ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (4968.990375ms)
+✔ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (4877.963125ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (1859.789083ms)
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 35855.298916
+exit=0
+===== 2026-09-25T09:02:32Z node --test tests/orchestration-stage13-lifecycle.test.mjs
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (540.771208ms)
+✔ test database: a run is refused in main too, not only by the dialog (111.8555ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (597.604875ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (118.546708ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (5003.601ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (96.504875ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (85.426125ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (540.255792ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (6017.953042ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (8765.440875ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (4105.9185ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (5100.839875ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (8812.244292ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (4567.572ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (8243.379084ms)
+✔ a QA deploy that succeeds while the application closes: its verification does not start; after the restart it runs once, on resume (4852.4865ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (4039.762375ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (4349.291375ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (3485.763ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 69913.666875
+exit=0
+===== 2026-09-25T09:03:42Z node --test tests/orchestration-stage13-qa.test.mjs
+✔ qaVersion: only a full id on the first non-empty line counts, compared whole (1.334959ms)
+✔ profile: reportsVersion is a boolean, false by default (3.842209ms)
+✔ a comment mentioning $CANVASTTY_COMMIT confirms no version: passed, not_checked (4909.927375ms)
+✔ the expected id printed to stdout without the contract is not read: not_checked (4088.518ms)
+✔ contract: an old version is a mismatch, paused; resuming reruns only the verification until it reports the commit (5604.948ms)
+✔ contract: an empty result, or the id only on stdout, is not_reported (4448.972791ms)
+✔ contract: garbage or an abbreviated id is invalid; nothing of it is kept as observed (9485.427167ms)
+✔ contract: the delivered commit reported (blank line, upper case) is confirmed and the run completes (4569.85825ms)
+✔ a failed deploy is failed: the verification does not run, no version (4880.987125ms)
+✔ after the answer of the deploy was lost: only the verification runs, with the contract it confirms (9101.233833ms)
+✔ each verification gets a new empty result file in the run's folder: an earlier report does not confirm (4906.522666ms)
+ℹ tests 11
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 52314.810208
+exit=0
+===== 2026-09-25T09:04:35Z node --test tests/orchestration-autopilot.test.mjs
+✔ rights: each mode says what it turns into; the installed Claude's own --help decides what is offered (329.128875ms)
+✔ preparation: steps from lock files, only the missing ones; failures are told apart (172.048167ms)
+✔ readiness: missing dependencies are prepared, not sent to the terminal; a production test database blocks (124.241125ms)
+✔ MCP forms: fields from the schema, the answer checked against them, nothing filled in (2.400875ms)
+✔ project profile: saved per project; a grant is found only for the same tool and parameters (163.618292ms)
+✔ direnv: an allowed .envrc is applied, one not allowed is said and not applied (462.422708ms)
+✔ finish helpers: a commit message carries the run, the remote's answer is read exactly (0.355208ms)
+✔ activity: what each CLI reports it loaded, sub-agents from their own events (1.13625ms)
+✔ drivers: an MCP form and a plan are answered with what the person gave (17.979959ms)
+✔ IPC: mode, actions after success, the new decisions, form content and plan feedback are validated (0.892167ms)
+✔ autopilot on a Node project: node_modules missing is prepared, a failing test is fixed, one saved permission is not asked again (12753.562791ms)
+✔ autopilot on a Laravel project from its profile: composer, .env and key are prepared, the test is fixed (4803.580375ms)
+✔ an environment failure of a check is prepared once, not sent to the agents as a code error (5102.913334ms)
+✔ MCP form, plan exit and sub-agents reach the panel; a wrong form answer is refused (4732.283291ms)
+✔ rights modes reach each CLI exactly; the probe asks without a model turn (5112.747542ms)
+✔ after success in a worktree: commit and push to the configured branch, QA confirmed by its own check (6289.674875ms)
+✔ push and QA are refused unless the project has them configured (80.898125ms)
+✔ a QA deploy whose answer was lost is never run again: only its verification decides (9593.820917ms)
+✔ step by step: the plan is shown and the run stops after each stage (8282.342417ms)
+✔ stop during preparation; after a restart a waiting prompt is not carried over and nothing runs by itself (8767.985875ms)
+✔ panel model: the board says who works, what is checked and whether the person must act (7.717042ms)
+✔ a commit in the project folder takes only the run's files; the changes stay listed against the start (6254.405209ms)
+ℹ tests 22
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 73508.688417
+exit=0
+===== 2026-09-25T09:05:48Z node --test tests/orchestration-service-races.test.mjs
+✔ stop during an executor turn: answered at once, stopping, the turn is stopped, then stopped and nothing more (4353.48375ms)
+✔ stop during a check: the check is not_verified(stopped), the run is stopped, no review follows (9189.754834ms)
+✔ late answer after the grace: stopped without the turn, the late turn.finished is recorded, nothing continues (6785.2415ms)
+✔ late answer within the grace: stopped only after the late turn.finished, and nothing continues (5116.293208ms)
+✔ duplicate command: the stored result, no second action; a reused id with another payload is refused without a record (2930.185209ms)
+✔ stale revision: rejected(stale_revision), no status change, revision unchanged (2962.982458ms)
+✔ pause during a turn: pausing, the turn finishes, paused(user_request), nothing next; resume continues to completed (11757.2415ms)
+✔ pause, then pause_after_turn off: running again and the cycle goes on past the turn (9338.869459ms)
+✔ step: exactly one external operation, then paused(step_done) (12158.177ms)
+✔ limit turns: paused(limit_reached) before the next operation; raise_limit → paused(user_request); resume continues (11515.80225ms)
+✔ limit roundsPerStage: reviews always fix → limit_reached instead of another executor round (15290.915667ms)
+✔ limit replans: reviews always replan → limit_reached instead of another plan (15589.360792ms)
+✔ loop: the same findings twice on different runKeys → loop_suspected before the roundsPerStage limit (14715.336167ms)
+✔ loop: the state returns A → B → A with the same failing check → loop_suspected (15637.19125ms)
+✔ clarify during the final review: that review cannot complete the run; a new final review with version 1 does (11711.215708ms)
+✔ journal write fails on a command during a turn: halted, the turn is stopped, commands store_failed, reopen pauses (5316.75325ms)
+✔ journal write fails on turn.finished: halted, no check and no turn after it, reopen pauses (4717.593125ms)
+✔ crash with a turn in flight: reopened paused(outcome_unknown), no repeat; retry_turn then resume runs a new turn (10107.749709ms)
+✔ crash during a check: reopened with the check not_verified(interrupted), nothing re-run, the check process is gone (7177.821375ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 206668.796
+exit=0
+===== 2026-09-25T09:09:15Z node --test tests/orchestration-manager-review.test.mjs
+✔ create: concurrent identical requests and equivalent spellings of one project are one run (2646.309709ms)
+✔ create: concurrent requests with one requestId and another goal or project — one run, the other request_conflict (5533.078584ms)
+✔ create: after creation and after a restart, only the equivalent request is a repeat (2429.824375ms)
+✔ watch: an unwatch, a reload or a closed window before the watch settles leaves no subscription (3.661625ms)
+✔ watch: quick watch/unwatch/watch and concurrent watches end with exactly the newest subscription (1.32825ms)
+✔ watch: a refused watch leaves nothing and does not remove a newer subscription (0.701459ms)
+✔ preload: several listeners of one run use one main subscription; the last to leave releases it (0.727542ms)
+✔ preload: events that arrive before the snapshot wait for it; an older snapshot never rolls a listener back (0.170209ms)
+✔ preload: quick watch/unwatch/watch, a refused watch and a listener that left before the snapshot (0.174417ms)
+✔ a subscriber sees the executor at work before the turn ends, and idle after; stamps only grow (10559.358875ms)
+✔ a subscriber sees the project check running before it ends (12476.866ms)
+✔ a failed journal write is announced: halted reaches the subscriber (2007.988959ms)
+✔ the application's providers: Codex gpt-6-astra/high and Claude claude-sonnet-5/$1 reach the fake CLIs' argv (12202.970208ms)
+✔ the application refuses a CLI version outside the proven combination (Claude 2.1.280) before anything starts (187.2395ms)
+✔ shutdown while a create is still reading the project path: shutting_down, no run, no writer, no turn (394.258625ms)
+✔ a create registered before shutdown finishes under its control: the run is left paused and closed (2123.774833ms)
+✔ shutdown twice, sequentially and concurrently, is safe; a manager after it creates as before (12654.945916ms)
+ℹ tests 17
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ duration_ms 63864.6585
+exit=0
+===== 2026-09-25T09:10:40Z npm run typecheck
+
+> canvastty@1.5.3 typecheck
+> tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json
+
+exit=0
+===== 2026-09-25T09:10:42Z npm run build
+../../out/renderer/assets/kimi-CohI-NvZ.ico       15.09 kB
+../../out/renderer/assets/codex-D0g8sCle.png     146.20 kB
+../../out/renderer/assets/hermes-CIhgC6OS.png    574.27 kB
+../../out/renderer/assets/index-DCGB6ocd.css     150.90 kB
+../../out/renderer/assets/index-Cc5OXzFe.js    1,796.20 kB
+✓ built in 2.42s
+exit=0
+===== stop/shutdown repros of review 6 after the fix
+✔ Stop during a successful deploy must not start its QA verification (5403.867834ms)
+ℹ pass 1
+ℹ fail 0
+===== red check: see cancel-test-reverted.log (orchestrationService.ts reverted to the pre-fix copy: 6 fail / 2 pass; the 2 green ones are regression cover: commit->push is stopped by nextAction's runMs check, a Stop during a prep step by the existing post-step check)
+##### addendum: the deadline timer re-arms by the service clock (armOperation)
+===== 2026-09-25T09:13:55Z node --test tests/orchestration-stage13-cancel.test.mjs
+✔ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (6481.586417ms)
+✔ the deadline passes between a QA deploy and its verification: the verification is not admitted (5762.983166ms)
+✔ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (5248.82075ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (7110.803125ms)
+✔ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (7031.783167ms)
+✔ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (7142.543ms)
+✔ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (6782.824459ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (2273.465ms)
+✔ the deadline timer reads the service's clock: a held clock does not stop the operation, a clock past the deadline does (5597.183209ms)
+ℹ tests 9
+ℹ pass 9
+ℹ fail 0
+ℹ duration_ms 53901.870458
+exit=0
+===== 2026-09-25T09:14:49Z node --test tests/orchestration-stage13-cancel.test.mjs
+✔ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (7384.116375ms)
+✔ the deadline passes between a QA deploy and its verification: the verification is not admitted (6111.399083ms)
+✔ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (2937.177333ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (3617.825417ms)
+✔ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (3802.107791ms)
+✔ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (3623.547625ms)
+✔ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (3341.024292ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (1427.902375ms)
+✔ the deadline timer reads the service's clock: a held clock does not stop the operation, a clock past the deadline does (3630.693791ms)
+ℹ tests 9
+ℹ pass 9
+ℹ fail 0
+ℹ duration_ms 36188.53325
+exit=0
+===== 2026-09-25T09:15:26Z node --test tests/orchestration-stage13-cancel.test.mjs
+✔ the deadline stops a QA deploy that then succeeds: no verification, paused(limit_reached), the deploy is not repeated (3574.912042ms)
+✔ the deadline passes between a QA deploy and its verification: the verification is not admitted (3270.666791ms)
+✔ Stop during a QA deploy that then succeeds: no verification, stopped, nothing continues (2889.853375ms)
+✔ the deadline passes right after the commit: the push is not started; after raising the limit it runs once (3213.93225ms)
+✔ the deadline passes between the remote's address check and the push: nothing is pushed, no intent is recorded (3549.476459ms)
+✔ the deadline passes between a push and its ls-remote: pushed, not confirmed; after the resumes only ls-remote runs (3374.929792ms)
+✔ the deadline passes between two preparation steps: the second does not start; it runs after the limit is raised (3187.147917ms)
+✔ Stop during a preparation step that then succeeds: the next step does not start (1362.5515ms)
+✔ the deadline timer reads the service's clock: a held clock does not stop the operation, a clock past the deadline does (3580.546458ms)
+ℹ tests 9
+ℹ pass 9
+ℹ fail 0
+ℹ duration_ms 28237.782208
+exit=0
+===== 2026-09-25T09:15:54Z node --test tests/orchestration-stage13-lifecycle.test.mjs
+✔ test database: commented phpunit lines, a local working database, the process environment and a config cache (350.645083ms)
+✔ test database: a run is refused in main too, not only by the dialog (68.600833ms)
+✔ preparation: a changed lock file makes the install needed again; the .env step never overwrites .env (480.017084ms)
+✔ preparation in a worktree: the .env step is added although the project folder has its .env; the test database is read from .env.example (80.428667ms)
+✔ the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12) (4069.36175ms)
+✔ readiness: protocol versions are compared exactly (RT-7) (66.290417ms)
+✔ a mode of rights the installed CLI does not offer is refused at the start (RT-9) (67.244333ms)
+✔ direnv for a worktree run: never the project's allowance carried over (RT-10.4) (475.741667ms)
+✔ closed during preparation, A: the stopped step's result is in before the journal closes (prepare.finished stopped) (4350.5325ms)
+✔ closed during preparation, B: the step outlives shutdown(), reopening sees the preparation interrupted (7121.90025ms)
+✔ a check that breaks its own environment again is prepared for once per executor turn, then the person decides (2740.916291ms)
+✔ a commit that does not hold the checked content is not done, and nothing is pushed (LC-7) (3783.306542ms)
+✔ a confirmed commit of an older state is committed again and only the commit of the checked state is pushed (LC-7) (6063.650083ms)
+✔ QA: a deploy that went through with a failing verification is 'deployed, not confirmed'; resuming runs only the verification (LC-8) (3217.063458ms)
+✔ closed during a QA deploy that outlives shutdown(): its late success starts no verification and writes nothing (6792.804917ms)
+✔ a QA deploy that succeeds while the application closes: its verification does not start; after the restart it runs once, on resume (3465.96275ms)
+✔ push: a push URL or a rewrite the person did not allow stops the push before anything is sent (LC-9) (3057.467291ms)
+✔ files the environment preparation made are left out of the commit (LC-10) (2966.440333ms)
+✔ a prompt the CLI marks for the person is never answered by a saved decision nor offered to be saved (2495.32825ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ duration_ms 52077.925125
+exit=0
+===== 2026-09-25T09:16:46Z node --test tests/orchestration-stage13-qa.test.mjs
+✔ qaVersion: only a full id on the first non-empty line counts, compared whole (0.885083ms)
+✔ profile: reportsVersion is a boolean, false by default (6.608541ms)
+✔ a comment mentioning $CANVASTTY_COMMIT confirms no version: passed, not_checked (3498.619375ms)
+✔ the expected id printed to stdout without the contract is not read: not_checked (2841.586917ms)
+✔ contract: an old version is a mismatch, paused; resuming reruns only the verification until it reports the commit (3522.158833ms)
+✔ contract: an empty result, or the id only on stdout, is not_reported (2852.084042ms)
+✔ contract: garbage or an abbreviated id is invalid; nothing of it is kept as observed (5873.866875ms)
+✔ contract: the delivered commit reported (blank line, upper case) is confirmed and the run completes (2906.944083ms)
+✔ a failed deploy is failed: the verification does not run, no version (2828.751125ms)
+✔ after the answer of the deploy was lost: only the verification runs, with the contract it confirms (6171.719166ms)
+✔ each verification gets a new empty result file in the run's folder: an earlier report does not confirm (3247.253167ms)
+ℹ tests 11
+ℹ pass 11
+ℹ fail 0
+ℹ duration_ms 33991.395208
+exit=0
+===== 2026-09-25T09:17:20Z node --test tests/orchestration-autopilot.test.mjs
+✔ rights: each mode says what it turns into; the installed Claude's own --help decides what is offered (162.235ms)
+✔ preparation: steps from lock files, only the missing ones; failures are told apart (112.524541ms)
+✔ readiness: missing dependencies are prepared, not sent to the terminal; a production test database blocks (81.624833ms)
+✔ MCP forms: fields from the schema, the answer checked against them, nothing filled in (1.440292ms)
+✔ project profile: saved per project; a grant is found only for the same tool and parameters (135.87925ms)
+✔ direnv: an allowed .envrc is applied, one not allowed is said and not applied (429.959416ms)
+✔ finish helpers: a commit message carries the run, the remote's answer is read exactly (0.364958ms)
+✔ activity: what each CLI reports it loaded, sub-agents from their own events (1.072541ms)
+✔ drivers: an MCP form and a plan are answered with what the person gave (17.938709ms)
+✔ IPC: mode, actions after success, the new decisions, form content and plan feedback are validated (0.792292ms)
+✔ autopilot on a Node project: node_modules missing is prepared, a failing test is fixed, one saved permission is not asked again (9141.874084ms)
+✔ autopilot on a Laravel project from its profile: composer, .env and key are prepared, the test is fixed (3592.872416ms)
+✔ an environment failure of a check is prepared once, not sent to the agents as a code error (3439.250083ms)
+✔ MCP form, plan exit and sub-agents reach the panel; a wrong form answer is refused (2637.389166ms)
+✔ rights modes reach each CLI exactly; the probe asks without a model turn (2966.674166ms)
+✔ after success in a worktree: commit and push to the configured branch, QA confirmed by its own check (3408.498791ms)
+✔ push and QA are refused unless the project has them configured (61.242291ms)
+✔ a QA deploy whose answer was lost is never run again: only its verification decides (7591.529167ms)
+✔ step by step: the plan is shown and the run stops after each stage (8317.742125ms)
+✔ stop during preparation; after a restart a waiting prompt is not carried over and nothing runs by itself (8007.889042ms)
+✔ panel model: the board says who works, what is checked and whether the person must act (12.690209ms)
+✔ a commit in the project folder takes only the run's files; the changes stay listed against the start (5863.228625ms)
+ℹ tests 22
+ℹ pass 22
+ℹ fail 0
+ℹ duration_ms 56502.007375
+exit=0
+===== 2026-09-25T09:18:17Z node --test tests/orchestration-service-races.test.mjs
+✔ stop during an executor turn: answered at once, stopping, the turn is stopped, then stopped and nothing more (4530.774541ms)
+✔ stop during a check: the check is not_verified(stopped), the run is stopped, no review follows (9270.099834ms)
+✔ late answer after the grace: stopped without the turn, the late turn.finished is recorded, nothing continues (6493.50125ms)
+✔ late answer within the grace: stopped only after the late turn.finished, and nothing continues (4400.149917ms)
+✔ duplicate command: the stored result, no second action; a reused id with another payload is refused without a record (3105.490625ms)
+✔ stale revision: rejected(stale_revision), no status change, revision unchanged (2350.564208ms)
+✔ pause during a turn: pausing, the turn finishes, paused(user_request), nothing next; resume continues to completed (11891.706834ms)
+✔ pause, then pause_after_turn off: running again and the cycle goes on past the turn (11459.009083ms)
+✔ step: exactly one external operation, then paused(step_done) (14347.786916ms)
+✔ limit turns: paused(limit_reached) before the next operation; raise_limit → paused(user_request); resume continues (12529.242125ms)
+✔ limit roundsPerStage: reviews always fix → limit_reached instead of another executor round (15413.207291ms)
+✔ limit replans: reviews always replan → limit_reached instead of another plan (13897.046583ms)
+✔ loop: the same findings twice on different runKeys → loop_suspected before the roundsPerStage limit (11131.85225ms)
+✔ loop: the state returns A → B → A with the same failing check → loop_suspected (14071.939458ms)
+✔ clarify during the final review: that review cannot complete the run; a new final review with version 1 does (8339.589625ms)
+✔ journal write fails on a command during a turn: halted, the turn is stopped, commands store_failed, reopen pauses (4282.019792ms)
+✔ journal write fails on turn.finished: halted, no check and no turn after it, reopen pauses (4762.376292ms)
+✔ crash with a turn in flight: reopened paused(outcome_unknown), no repeat; retry_turn then resume runs a new turn (13509.573208ms)
+✔ crash during a check: reopened with the check not_verified(interrupted), nothing re-run, the check process is gone (9517.049375ms)
+ℹ tests 19
+ℹ pass 19
+ℹ fail 0
+ℹ duration_ms 205499.039833
+exit=0
+===== 2026-09-25T09:21:42Z node --test tests/orchestration-manager-review.test.mjs
+✔ create: concurrent identical requests and equivalent spellings of one project are one run (2146.641166ms)
+✔ create: concurrent requests with one requestId and another goal or project — one run, the other request_conflict (4391.92175ms)
+✔ create: after creation and after a restart, only the equivalent request is a repeat (2566.510292ms)
+✔ watch: an unwatch, a reload or a closed window before the watch settles leaves no subscription (1.547584ms)
+✔ watch: quick watch/unwatch/watch and concurrent watches end with exactly the newest subscription (1.438625ms)
+✔ watch: a refused watch leaves nothing and does not remove a newer subscription (0.860792ms)
+✔ preload: several listeners of one run use one main subscription; the last to leave releases it (0.950916ms)
+✔ preload: events that arrive before the snapshot wait for it; an older snapshot never rolls a listener back (0.153083ms)
+✔ preload: quick watch/unwatch/watch, a refused watch and a listener that left before the snapshot (0.129167ms)
+✔ a subscriber sees the executor at work before the turn ends, and idle after; stamps only grow (10176.103458ms)
+✔ a subscriber sees the project check running before it ends (11837.285125ms)
+✔ a failed journal write is announced: halted reaches the subscriber (1901.874459ms)
+✔ the application's providers: Codex gpt-6-astra/high and Claude claude-sonnet-5/$1 reach the fake CLIs' argv (11646.433375ms)
+✔ the application refuses a CLI version outside the proven combination (Claude 2.1.280) before anything starts (98.6445ms)
+✔ shutdown while a create is still reading the project path: shutting_down, no run, no writer, no turn (383.140958ms)
+✔ a create registered before shutdown finishes under its control: the run is left paused and closed (1956.596958ms)
+✔ shutdown twice, sequentially and concurrently, is safe; a manager after it creates as before (12604.896584ms)
+ℹ tests 17
+ℹ pass 17
+ℹ fail 0
+ℹ duration_ms 60170.464083
+exit=0
+===== 2026-09-25T09:22:43Z node --test tests/orchestration-service-review.test.mjs
+✔ runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached) (5729.366792ms)
+✔ runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review (16176.586125ms)
+✔ late answer after the deadline: turn.finished is a fact, no review.recorded, no completed (14689.059084ms)
+✔ a run within its runMs budget completes as before (9941.069708ms)
+✔ the timeoutMs given to an agent is min(role limit, time left of runMs) (11134.46875ms)
+✔ executorTurnMs is enforced by the service: stop() at the timeout, turn.finished(stopped), paused(environment_error) (5048.329334ms)
+✔ after the deadline no internal step runs either: reopen, resume → paused(limit_reached), no completed (12021.122166ms)
+✔ raise_limit runMs: a value with no future deadline is invalid_command; a sufficient one → user_request, resume completes (14640.958042ms)
+✔ checkpoint 1 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes (12641.918375ms)
+✔ checkpoint 2 in Git without checkpoint.created: reopen pauses, resume records it with the same commit and completes (16018.521042ms)
+✔ checkpoint 1 in Git rewritten after the failure (another tree and message): resume → paused(shared_git_tampered), nothing recorded (12194.404625ms)
+✔ checkpoint 1 in Git rewritten after the failure (the same tree and parent, another message): resume → paused(shared_git_tampered), nothing recorded (14514.402208ms)
+✔ executable replaced while the lead reviews: a new check fails, the stage is not accepted on the old result (18399.396292ms)
+✔ executable replaced, then close and reopen: resume does not reuse the old passed result (19091.224708ms)
+✔ executable unchanged across close, reopen and resume: no repeated check (8469.92475ms)
+ℹ tests 15
+ℹ pass 15
+ℹ fail 0
+ℹ duration_ms 220899.834917
+exit=0
+===== 2026-09-25T09:26:23Z npm run typecheck
+exit=0
+===== 2026-09-25T09:26:25Z node --test /private/tmp/canvastty-stage13-review6-deadline.test.mjs
+✔ Deadline during a successful deploy must not start its QA verification (30765.930292ms)
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+ℹ duration_ms 30967.09675
+exit=0

@@ -1,0 +1,32 @@
+[+6.3s] R1: run 7d4eed44 started
+[+22.4s] ok   R1: run completed
+[+22.4s] ok   R1: the last check passed
+[+22.4s] ok   R1: checkpoint created for each accepted stage (1)
+[+22.5s] ok   R1: baseline and stage refs in the source
+[+22.5s] ok   R1: the checkpoint changes only src/ and tests/
+[+22.6s] ok   R1: tests/clamp.accept.test.mjs identical (git blob) in the checkpoint
+[+22.6s] ok   R1: src/clamp.mjs is in the checkpoint
+[+22.9s] ok   R1: the source project (HEAD, branch, refs, status, files) is unchanged
+[+24.9s] R2: run 1a829113 started
+[+26.5s] R2: Claude process 88931 for turn 03a66aa1
+[+31.6s] ok   R2: the started Claude turn ended stopped, the run is stopped
+[+86.7s] ok   R2: no operation after the accepted Stop (60 s)
+[+86.7s] ok   R2: no live CLI (or supervisor) process of the run
+[+86.8s] ok   R2: the source project is unchanged
+[+87.9s] R3: run 3eb9e15b started
+[+88.8s] R3: Claude process 89534 for turn 8c743022; quitting
+[+94.1s] ok   R3: the app quit cleanly (code 0)
+[+94.1s] ok   R3: every process of the app ended (8)
+[+94.1s] ok   R3: the started turn was stopped by the quit; the run is paused(user_request)
+[+95.7s] ok   R3: after restart cards, link and runs as before
+[+155.8s] ok   R3: nothing continued by itself (60 s): no journal record, no CLI
+[+156.7s] ok   R3: the history is shown after restart
+[+170.0s] ok   R3: run completed
+[+170.0s] ok   R3: the last check passed
+[+170.0s] ok   R3: checkpoint created for each accepted stage (1)
+[+170.1s] ok   R3: baseline and stage refs in the source
+[+170.1s] ok   R3: the checkpoint changes only src/ and tests/
+[+170.2s] ok   R3: tests/clamp.accept.test.mjs identical (git blob) in the checkpoint
+[+170.2s] ok   R3: src/clamp.mjs is in the checkpoint
+[+170.4s] ok   R3: the source project is unchanged
+[+173.6s] ok   series end: no process of the app left

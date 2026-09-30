@@ -1,0 +1,20 @@
+PASS S0-driver-1280x800-repo-length-path
+PASS S0r-driver-1280x800-this-repo
+PASS S0b-natural-1280x800-repo-length-path
+PASS S1-below-left-1280x800
+PASS S2-right
+PASS S3-left
+PASS S4-below
+PASS S5a-zoom-in-pan
+PASS S5b-zoom-out-pan
+PASS S6-1440x900-natural
+PASS S6b-1440x900-below-left
+PASS S7a-short-path-natural
+PASS S7a-short-path-below-left
+PASS S7b-long-path-natural
+PASS S7b-long-path-below-left
+PASS K1-keyboard-link
+PASS K2-escape-after-port-press
+FAIL K4-second-mouse-mid-drag — {"previewBefore":true,"lost":0,"previewAfter":true,"links":1,"retry":{"ok":false,"linksAdded":[],"messages":[]}}
+PASS K3-escape-mid-drag
+18 passed, 1 failed -> <repo>/docs/agent-orchestration/evidence/stage-13-review/review7/verify/review8.json

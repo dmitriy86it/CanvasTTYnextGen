@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "failures": [],
+  "fakeCliProcesses": 16,
+  "runA": {
+    "runId": "e9bb9507-0762-484f-98f1-f976a6a0107f",
+    "status": "completed",
+    "reason": null,
+    "revision": 2,
+    "stage": null,
+    "turns": 4,
+    "halted": false,
+    "active": null
+  },
+  "runB": {
+    "runId": "c8b95e83-74f3-4b54-8688-f987bd690939",
+    "status": "completed",
+    "reason": null,
+    "revision": 5,
+    "stage": null,
+    "turns": 4,
+    "halted": false,
+    "active": null
+  }
+}

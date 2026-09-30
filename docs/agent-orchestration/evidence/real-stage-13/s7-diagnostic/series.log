@@ -1,0 +1,5 @@
+[+1.7s] versions: codex-cli 0.155.1; 2.1.282 (Claude Code); DB_* in login shell: none
+[+4.7s] link diagnostics: linked (link-diag.json)
+[+17.7s] ok   S7: both CLIs answered «Проверить окружение»
+[+17.7s] ok   S7: the project is unchanged by the probe (git status)
+[+17.7s] ok   S7: no run was started

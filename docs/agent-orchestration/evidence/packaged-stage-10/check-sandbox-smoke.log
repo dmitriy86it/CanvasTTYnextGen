@@ -1,0 +1,66 @@
+Check sandbox smoke: mode=packaged electron=<pkg>/release/mac-arm64/CanvasTTY.app/Contents/MacOS/CanvasTTY helpers=<pkg>/release/mac-arm64/CanvasTTY.app/Contents/Resources/orchestration os=27.0.0
+{
+  "unit": {
+    "status": "passed",
+    "reason": null,
+    "exitCode": 0,
+    "cleanup": {
+      "groupCleared": true,
+      "sandboxCleared": true,
+      "killed": 0,
+      "observed": "process_group_and_sandbox_scan"
+    },
+    "selftest": {
+      "passed": true,
+      "checks": 55,
+      "failed": []
+    },
+    "journal": {
+      "status": "passed",
+      "reason": null
+    }
+  },
+  "unit-broken": {
+    "status": "failed",
+    "reason": null,
+    "exitCode": 1,
+    "cleanup": {
+      "groupCleared": true,
+      "sandboxCleared": true,
+      "killed": 0,
+      "observed": "process_group_and_sandbox_scan"
+    },
+    "selftest": {
+      "passed": true,
+      "checks": 55,
+      "failed": []
+    },
+    "journal": {
+      "status": "failed",
+      "reason": null
+    }
+  },
+  "escapee": {
+    "status": "passed",
+    "reason": null,
+    "exitCode": 0,
+    "cleanup": {
+      "groupCleared": true,
+      "sandboxCleared": true,
+      "killed": 1,
+      "observed": "process_group_and_sandbox_scan"
+    },
+    "selftest": {
+      "passed": true,
+      "checks": 55,
+      "failed": []
+    },
+    "journal": {
+      "status": "passed",
+      "reason": null
+    },
+    "pid": 15680,
+    "pidAlive": false
+  }
+}
+Check sandbox smoke passed (packaged).

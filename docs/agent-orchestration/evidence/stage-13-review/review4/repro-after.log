@@ -1,0 +1,10 @@
+✔ return inside unused function must not become SQLite ok (4.576667ms)
+✔ return in false conditional must not become SQLite ok (2.23125ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 127.864375

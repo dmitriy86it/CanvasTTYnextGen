@@ -1,0 +1,23 @@
+[+1.3s] versions: codex-cli 0.155.1; 2.1.283 (Claude Code); DB_* in login shell: none
+[+3.2s] S6: preparing the project
+[+5.7s] link diagnostics: linked (link-diag-01-s6-app.json)
+[+9.0s] S6: run 0783db6d started
+[+122.8s] ok   S6-during-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)
+[+122.8s] S6-during-qa: quit {"code":0,"signal":null} in 5194 ms; status {"reason":"app_closed","status":"paused"}; finish.intent(commit) finish.result(done) finish.intent(push) finish.result(done) finish.intent(qa) finish.result(unknown)
+[+133.5s] S6: «Продолжить» after paused(app_closed), next=app_closed
+[+139.7s] S6: «Продолжить» after paused(finish_unconfirmed), next=finish_check
+[+141.7s] ok   S6: run completed
+[+141.8s] ok   S6: tests/duration.accept.test.mjs unchanged
+[+141.8s] ok   S6: prepared by the run (node_modules/.package-lock.json)
+[+142.4s] ok   S6: npm test passes in the person's shell after the run
+[+142.4s] ok   S6: orchestrator turns within 8 (4)
+[+142.4s] ok   S6: the commit is confirmed
+[+142.4s] ok   S6: the pushed commit carries the trailer CanvasTTY-Run
+[+142.4s] ok   S6: git ls-remote of the bare repository shows the commit on the branch
+[+142.4s] ok   S6: QA verified with the expected version
+[+142.4s] ok   S6: the deploy ran once, not again after the restart
+[+142.5s] ok   S6: the project folder's main and working tree are untouched (the work is in the worktree)
+[+164.4s] ok   S6-after-qa: after the restart nothing continued by itself (20 s: journal, CLI processes)
+[+164.4s] S6-after-qa: quit {"code":0,"signal":null} in 152 ms; status {"reason":null,"status":"completed"}; finish.intent(commit) finish.result(done) finish.intent(push) finish.result(done) finish.intent(qa) finish.result(unknown) finish.result(done,established)
+[+164.4s] ok   S6: after quitting when QA was done and restarting, nothing ran (journal, deploy, verification unchanged)
+{"ok":true,"halted":null,"failures":[],"turnsTotal":4,"interventions":2,"out":"<scratchpad>/series-S6-attempt2","tmp":"<tmp>"}

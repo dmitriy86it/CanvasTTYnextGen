@@ -1,0 +1,12 @@
+[+1.4s] versions: codex-cli 0.155.1; 2.1.283 (Claude Code); DB_* in login shell: none
+[+11.7s] S7 claude timing (limit 60000 ms): initialize 918/59999 ms answered; mcp_status 1/59082 ms answered
+[+11.7s] S7 codex timing (limit 60000 ms): initialize 63/60000 ms answered; config/read 19/59936 ms answered; skills/list 152/59917 ms answered; plugin/installed 941/59765 ms answered; hooks/list 64/58824 ms answered; account/read 2/58759 ms answered; mcpServerStatus/list#1 4223/58757 ms answered
+[+11.7s] ok   S7: the environment check finished
+[+11.7s] ok   S7: exactly one answer from Claude and one from Codex
+[+11.7s] ok   S7: claude answered without an error
+[+11.7s] ok   S7: claude: the MCP list is whole (a confirmed empty list counts)
+[+11.7s] ok   S7: codex answered without an error
+[+11.7s] ok   S7: codex: the MCP list is whole (a confirmed empty list counts)
+[+11.7s] ok   S7: the project is unchanged by the probe (git status)
+[+11.7s] ok   S7: no run was started
+[+14.0s] ok   global ~/.codex/config.toml and ~/.claude/settings.json unchanged

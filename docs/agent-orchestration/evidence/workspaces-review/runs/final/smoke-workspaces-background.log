@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "passed": [
+    "the wheel point is empty canvas",
+    "before hiding: the run is at work, not among the results",
+    "the minimized window is hidden to the page (no switch keeps it painted)",
+    "while hidden: the run goes on to completed in main",
+    "while hidden: every line reached main's buffer (no loss)",
+    "the window is visible again",
+    "after the return: the terminal shows the last line printed while hidden",
+    "after the return: the widget shows the run as finished, as main has it",
+    "the wheel moved A's camera",
+    "hidden right after the gesture: A's camera is saved for A (maybe late)",
+    "after a restart: A with the camera of that gesture",
+    "a wheel pan of A waits for its frame",
+    "the pending pan of A did not move B's camera",
+    "B's saved camera is B's own",
+    "A's saved camera is the one A showed at the switch",
+    "the middle-button drag pans A",
+    "the rest of A's drag did not move or save B's camera"
+  ],
+  "failures": [],
+  "notes": {
+    "hideMs": 1,
+    "hiddenAfterWork": "hidden",
+    "drawnWhileHidden": false,
+    "widgetUpdatedWhileHidden": true,
+    "restoredBy": "toggleMaximize",
+    "showMs": 3,
+    "terminalCatchUpMs": 0,
+    "widgetCatchUpMs": 1,
+    "cameraSavedHiddenMs": 1,
+    "framesAtRelease": 0
+  },
+  "shots": "<WSR>/final/smoke-workspaces-background-shots"
+}

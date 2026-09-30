@@ -1,0 +1,17 @@
+{
+  "ok": false,
+  "passed": [
+    "migration: one common canvas",
+    "migration: one finished backup",
+    "migration: the backup holds the older files as they were; a file never made is absent",
+    "migration: canvas.json is not rewritten",
+    "migration: the older region, note, agents and link are shown on the common canvas",
+    "migration: agents keep their places and get no field",
+    "a new workspace opens",
+    "the common canvas's cards are not drawn in A"
+  ],
+  "failures": [
+    "error: TypeError: Cannot read properties of undefined (reading 'id')\n    at create (file://<REPO>/scripts/smoke-workspaces-ui.mjs:154:54)\n    at async file://<REPO>/scripts/smoke-workspaces-ui.mjs:159:13"
+  ],
+  "shots": "<WSR>/fixer-ui/run4/smoke-workspaces-ui"
+}

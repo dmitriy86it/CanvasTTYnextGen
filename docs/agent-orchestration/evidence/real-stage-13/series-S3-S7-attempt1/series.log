@@ -1,0 +1,6 @@
+[+1.4s] versions: codex-cli 0.155.1; 2.1.282 (Claude Code); DB_* in login shell: none
+[+24.8s] HALT: Error: timeout: link (false)
+    at Object.waitFor (file://~/dev/CanvasTTYnextGen/scripts/orchestration-app-kit.mjs:90:13)
+    at async linkAgents (file://~/dev/CanvasTTYnextGen/scripts/real-autopilot-series.mjs:446:3)
+    at async runProbe (file://~/dev/CanvasTTYnextGen/scripts/real-autopilot-series.mjs:660:16)
+    at async file://~/dev/CanvasTTYnextGen/scripts/real-autopilot-series.mjs:690:29

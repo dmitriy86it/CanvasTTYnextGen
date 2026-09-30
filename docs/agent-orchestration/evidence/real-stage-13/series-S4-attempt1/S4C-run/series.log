@@ -1,0 +1,27 @@
+[+1.3s] versions: codex-cli 0.155.1; 2.1.283 (Claude Code); DB_* in login shell: none
+[+4.0s] S4C: preparing the project
+[+6.6s] link diagnostics: linked (link-diag-01-s4c-app.json)
+[+13.1s] S4C gate: release-form for claude: connected (other: {"claude":"connected","codex":null})
+[+16.1s] S4C: run 7507c9f3 started
+[+59.8s] S4C: Отправить форму — S4C: the api form filled as the assignment says
+[+63.4s] S4C: Отклонить (форма) — S4C: the web form is declined by design
+[+125.1s] ok   S4C: run completed
+[+125.1s] ok   S4C: tests/receipts.accept.test.mjs unchanged
+[+125.1s] ok   S4C: prepared by the run (node_modules/.package-lock.json)
+[+128.7s] ok   S4C: npm test passes in the person's shell after the run
+[+128.7s] ok   S4C: orchestrator turns within 8 (4)
+[+128.8s] ok   S4C: the server was started by claude and called
+[+128.8s] ok   S4C: foreign: no call or form of another provider or role, no conflicting lines of one nonce
+[+128.8s] ok   S4C: api: exactly one call, answered accept
+[+128.8s] ok   S4C: api: the call is the form the app showed (nonce in its message, claude/executor, release-form)
+[+128.8s] ok   S4C: api: invalid answers were stopped before the server (≥2 tried, none sent)
+[+128.8s] ok   S4C: api: the server got the answer given in the form
+[+128.8s] ok   S4C: web: exactly one call, answered decline
+[+128.8s] ok   S4C: web: the call is the form the app showed (nonce in its message, claude/executor, release-form)
+[+128.8s] ok   S4C: web: the server got the decline as action decline
+[+128.8s] ok   S4C: release_ticket calls of claude completed
+[+128.8s] ok   S4C: release/receipts.txt holds exactly the servers' result lines
+[+128.8s] ok   S4C: every confirmed tool prompt was release-form release_ticket
+[+128.8s] ok   S4C: the acceptance test is unchanged
+[+128.8s] ok   S4C: the checks passed
+[+139.2s] ok   global ~/.codex/config.toml and ~/.claude/settings.json unchanged

@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "passed": 46,
+  "failures": [],
+  "fakeCliProcesses": 16,
+  "shots": "<WSR>/final/smoke-orchestration-ui-shots",
+  "exits": [
+    {
+      "code": 0,
+      "signal": null
+    },
+    {
+      "code": 0,
+      "signal": null
+    }
+  ]
+}

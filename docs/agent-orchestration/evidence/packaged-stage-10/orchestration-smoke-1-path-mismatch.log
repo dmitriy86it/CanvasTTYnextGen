@@ -1,0 +1,13 @@
+Orchestration smoke: mode=packaged node=v26.8.1 electron=43.2.0 platform=darwin-arm64 os=27.0.0
+Packaged app: <pkg>/release/mac-arm64/CanvasTTY.app/Contents/MacOS/CanvasTTY
+Packaged helper: <pkg>/release/mac-arm64/CanvasTTY.app/Contents/Resources/orchestration/supervisor.mjs; asar entries: 734; resource files: 329
+CANVASTTY_ORCHESTRATION_SMOKE_READY {"ok":true,"failures":[],"helperPath":"<pkg>/release/mac-arm64/CanvasTTY.app/Contents/Resources/orchestration/supervisor.mjs","answer":{"bytes":116736,"cksum":735922207,"envLeak":false},"expected":{"bytes":116736,"cksum":735922207},"turns":[{"outcome":"completed","delivery":"ok","report":"valid","groupCleared":true,"pids":{"supervisor":15457,"pgid":15458},"pidsGone":true},{"outcome":"stopped","delivery":"ok","report":"not_checked","groupCleared":true,"pids":{"supervisor":15463,"pgid":15466},"pidsGone":true}]}
+file://~/dev/CanvasTTYnextGen/scripts/smoke-orchestration.mjs:51
+  if (failures.length) throw new Error(`Orchestration smoke failed: ${failures.join("; ")}`);
+                             ^
+
+Error: Orchestration smoke failed: helper path <pkg>/release/mac-arm64/CanvasTTY.app/Contents/Resources/orchestration/supervisor.mjs
+    at file://~/dev/CanvasTTYnextGen/scripts/smoke-orchestration.mjs:51:30
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v26.8.1

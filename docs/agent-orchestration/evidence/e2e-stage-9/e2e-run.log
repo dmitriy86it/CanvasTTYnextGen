@@ -1,0 +1,44 @@
+[e2e +4.1s] run A
+[e2e +17.8s] ok   A: plan → executor → check → review for each of two stages → final review
+[e2e +17.8s] ok   A: a checkpoint after each stage's accepting review, before the next operation
+[e2e +17.8s] ok   A: both checks passed
+[e2e +17.8s] ok   A: the journal ends completed
+[e2e +17.9s] ok   A: the source's HEAD, branch, refs, status and working files are unchanged
+[e2e +17.9s] ok   A: the source only gained refs/canvastty/<runId>/* refs
+[e2e +17.9s] ok   A: the panel shows the two-stage plan
+[e2e +18.1s] ok   5: a failed text load is said in words (no path, no errno code)
+[e2e +18.4s] ok   5: Repeat loads the text once it is readable
+[e2e +18.5s] run B
+[e2e +20.4s] ok   B: while pausing, Keep running and Stop are offered
+[e2e +22.0s] ok   B: Pause lets the executor's turn end and starts nothing after it
+[e2e +22.0s] ok   B: paused: Resume, Step, Stop
+[e2e +27.4s] ok   B: Step runs exactly one operation (the check) and pauses
+[e2e +28.3s] ok   B: Resume continues: review (fix), executor round 2
+[e2e +36.4s] ok   B: after the accepted Stop no operation starts
+[e2e +36.4s] ok   B: the active executor turn ended stopped; no CLI call after the Stop
+[e2e +36.6s] run C
+[e2e +38.4s] ok   turn crash: the main process was killed (SIGKILL, no shutdown)
+[e2e +38.4s] ok   turn crash: every process of the killed application ended by itself (8 processes)
+[e2e +38.4s] launch 2
+[e2e +41.9s] ok   3: after the crash: cards, geometry and link (with its runs) as before
+[e2e +41.9s] ok   3: nothing repeated by itself: no journal record, no CLI call, no run opened
+[e2e +43.6s] ok   3: the interrupted turn is shown as paused, outcome unknown
+[e2e +43.6s] ok   3: the recovery actions are offered (accept, retry, reset, Stop), not Resume
+[e2e +43.6s] ok   3: the history of the run is shown
+[e2e +43.6s] ok   3: opening the panel starts nothing
+[e2e +43.7s] ok   4: the dropped reply is reported; the command is pending
+[e2e +43.7s] ok   4: main carried the recover out once
+[e2e +44.9s] ok   4: after a window reload the panel still offers to repeat the command
+[e2e +46.1s] ok   4: the repeat after the reload is answered with the recorded result, nothing done twice
+[e2e +52.4s] ok   4: the repeated Resume is carried out once; the retried turn runs once, then check, review, final review
+[e2e +52.5s] run D
+[e2e +58.7s] ok   check crash: the main process was killed (SIGKILL, no shutdown)
+[e2e +58.7s] ok   check crash: every process of the killed application ended by itself (8 processes)
+[e2e +58.7s] launch 3
+[e2e +62.2s] ok   3: after the crash during the check nothing repeated by itself
+[e2e +63.8s] ok   3: the run with the interrupted check is shown paused, recovered
+[e2e +63.8s] ok   3: Resume, Step and Stop are offered
+[e2e +63.8s] ok   3: the interrupted check is not run again by itself
+[e2e +69.9s] ok   3: the interrupted check is not_verified(interrupted); Resume runs it again (a new check run) and it passes
+[e2e +70.0s] ok   1: at the end the source's HEAD, branch, refs, status and working files are unchanged
+[e2e +70.3s] ok   no process of the test left

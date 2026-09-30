@@ -1,0 +1,25 @@
+✖ URL of inactive SQLite connection must not hide active MySQL URL (3.82575ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 90.55975
+
+✖ failing tests:
+
+test at ../../../../private/tmp/canvastty-stage13-review3-testdb.mjs:6:1
+✖ URL of inactive SQLite connection must not hide active MySQL URL (3.82575ms)
+  AssertionError [ERR_ASSERTION]: {"db":{"connection":"sqlite","host":null,"port":null,"database":":memory:","source":"process","explicit":true,"risky":false,"configCached":false,"service":"not_needed","url":{"variable":"SQLITE_URL","source":"process","parsed":true},"urlVariables":["SQLITE_URL","DATABASE_URL"]},"item":{"id":"testdb","level":"ok","detail":"sqlite from SQLITE_URL (from the login shell's environment)","facts":{"source":"process","connection":"sqlite","host":"","database":":memory:","variable":"SQLITE_URL","reason":"for_tests"}}}
+      at TestContext.<anonymous> (file:///private/tmp/canvastty-stage13-review3-testdb.mjs:14:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'ok',
+    expected: 'ok',
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,12 @@
+✔ runMs expires during an executor turn: the turn is stopped, turn.finished(stopped), paused(limit_reached) (6092.733583ms)
+ℹ executor turn started; service clock released after 2267 ms of preparation (runMs 3000)
+✔ runMs expires during a check: the check is not_verified(stopped), paused(limit_reached), no review (12651.420625ms)
+ℹ check started; service clock released after 2949 ms of preparation (runMs 6000)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 49130.548875

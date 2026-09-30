@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "passed": 46,
+  "failures": [],
+  "fakeCliProcesses": 16,
+  "shots": "/private/tmp/cto-ui-7RY0yU/shots",
+  "exits": [
+    {
+      "code": 0,
+      "signal": null
+    },
+    {
+      "code": 0,
+      "signal": null
+    }
+  ]
+}
