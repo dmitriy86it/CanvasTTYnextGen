@@ -74,7 +74,7 @@ const argvOf = (input) => {
   assert.equal(built.ok, true, built.detail);
   return built.spec.argv;
 };
-const valueOf = (argv, flag) => {
+const flagValue = (argv, flag) => {
   assert.equal(argv.filter((a) => a === flag).length, 1, `${flag} exactly once`);
   return argv[argv.indexOf(flag) + 1];
 };
@@ -103,30 +103,30 @@ test("structured-edit argv: required restrictions present, dangerous flags absen
     for (const flag of ["-p", "--safe-mode", "--restricted", "--strict-mcp-config", "--disable-slash-commands", "--verbose"]) {
       assert.ok(argv.includes(flag), flag);
     }
-    assert.equal(valueOf(argv, "--output-format"), "stream-json");
-    assert.equal(valueOf(argv, "--permission-mode"), "dontAsk", "never auto/acceptEdits/bypassPermissions");
-    assert.equal(valueOf(argv, "--permission-prompts"), "none");
-    assert.deepEqual(JSON.parse(valueOf(argv, "--json-schema")), SCHEMA);
+    assert.equal(flagValue(argv, "--output-format"), "stream-json");
+    assert.equal(flagValue(argv, "--permission-mode"), "dontAsk", "never auto/acceptEdits/bypassPermissions");
+    assert.equal(flagValue(argv, "--permission-prompts"), "none");
+    assert.deepEqual(JSON.parse(flagValue(argv, "--json-schema")), SCHEMA);
 
-    const tools = list(valueOf(argv, "--tools"));
+    const tools = list(flagValue(argv, "--tools"));
     assert.deepEqual([...tools].sort(), [...EDIT_TOOLS].sort());
     for (const t of ["Bash", "WebFetch", "WebSearch", "Task"]) assert.equal(tools.includes(t), false, t);
 
-    const allowed = list(valueOf(argv, "--allowedTools"));
+    const allowed = list(flagValue(argv, "--allowedTools"));
     assert.ok(allowed.includes("Edit(/**)"), "edits only under the working directory");
     for (const bare of ["Edit", "Write", "Bash"]) assert.equal(allowed.includes(bare), false, `bare ${bare} would approve any path`);
     assert.equal(allowed.some((a) => a.startsWith("Bash") || a.startsWith("Write(") || a.startsWith("mcp__")), false, JSON.stringify(allowed));
 
-    const disallowed = list(valueOf(argv, "--disallowedTools"));
+    const disallowed = list(flagValue(argv, "--disallowedTools"));
     for (const d of ["mcp__*", "Edit(/.git/**)", "Edit(/.claude/**)"]) assert.ok(disallowed.includes(d), d);
 
-    const settings = JSON.parse(valueOf(argv, "--settings"));
+    const settings = JSON.parse(flagValue(argv, "--settings"));
     assert.equal(settings?.permissions?.blockReadsOutsideWorkingDirectories, true);
 
     const sessionFlag = input.session.kind === "new" ? "--session-id" : "--resume";
-    assert.equal(valueOf(argv, sessionFlag), SESSION);
-    if (input.model) assert.equal(valueOf(argv, "--model"), "model-b");
-    if (input.maxBudgetUsd) assert.equal(valueOf(argv, "--max-budget-usd"), "0.5");
+    assert.equal(flagValue(argv, sessionFlag), SESSION);
+    if (input.model) assert.equal(flagValue(argv, "--model"), "model-b");
+    if (input.maxBudgetUsd) assert.equal(flagValue(argv, "--max-budget-usd"), "0.5");
   }
 });
 

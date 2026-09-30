@@ -217,7 +217,7 @@ function phpTokens(src: string): Tok[] | null {
       i = j + 1;
       continue;
     }
-    const m = /^(?:(\d[\d_.]*)|([$\\A-Za-z_][\w\\]*)|(=>|\.\.\.|::|->|\?\?|[^]))/.exec(src.slice(i, i + 200))!;
+    const m = /^(?:(\d[\d_.]*)|([$\\A-Za-z_][\w\\]*)|(=>|\.\.\.|::|->|\?\?|[\s\S]))/.exec(src.slice(i, i + 200))!;
     out.push({ t: m[1] ? "num" : m[2] ? "id" : "op", v: m[0] });
     i += m[0].length;
   }
@@ -293,7 +293,7 @@ function phpValue(toks: Tok[]): PhpValue {
 
 const kw = (x: Tok | undefined, word: string) => x?.t === "id" && x.v.toLowerCase() === word;
 // `use A\B[ as C][, ...]` of classes only: `use function`/`use const` may make env() another function
-function useStatement(s: Tok[]): boolean {
+function isUseStatement(s: Tok[]): boolean {
   if (!kw(s[0], "use") || kw(s[1], "function") || kw(s[1], "const")) return false;
   return splitTop(s.slice(1), ",").every((p) => (p.length === 1 || (p.length === 3 && kw(p[1], "as"))) && p.every((x) => x.t === "id"));
 }
@@ -310,7 +310,7 @@ export function parseDatabaseConfig(php: string): PhpValue {
   if (stmts.length > 1 && stmts.at(-1)!.length === 0) stmts.pop(); // the `;` of the last statement
   let i = 0;
   if (kw(stmts[i]?.[0], "declare") && stmts[i][1]?.v === "(" && closing(stmts[i], 1) === stmts[i].length - 1) i++;
-  while (stmts[i] && useStatement(stmts[i])) i++;
+  while (stmts[i] && isUseStatement(stmts[i])) i++;
   if (!kw(stmts[i]?.[0], "return")) return { kind: "unsupported", what: i < stmts.length ? "config/database.php has statements other than `use` before `return`" : "config/database.php is not a plain `return [...]`" };
   if (i !== stmts.length - 1) return { kind: "unsupported", what: "config/database.php has statements after `return`" };
   const value = phpValue(stmts[i].slice(1));

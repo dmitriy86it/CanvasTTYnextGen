@@ -83,7 +83,7 @@ test("the intent is journaled before the result; a passed check becomes a fact o
   const checkRunId = randomUUID();
   await writer.recordCheckStarted(started(ws, base, checkRunId));
 
-  let state = writer.state();
+  const state = writer.state();
   assert.equal(state.checks[checkRunId].status, "in_flight", "started alone is not a verdict");
   assert.equal(state.checks[checkRunId].evidenceFingerprint, null);
 

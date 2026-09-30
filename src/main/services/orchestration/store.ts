@@ -11,7 +11,6 @@ import {
   MAX_JOURNAL_BYTES,
   MAX_LINE_BYTES,
   MAX_TEXT_BYTES,
-  TERMINAL_STATUSES,
   ZERO_HASH,
   applyRecord,
   buildRecord,

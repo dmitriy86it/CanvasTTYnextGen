@@ -2,7 +2,7 @@
 export function cleanTerminalText(value: string): string {
   return value
     .split(/\r?\n/)
-    .filter((line) => !/^\s*[─━═\-]{6,}\s*$/.test(line))
+    .filter((line) => !/^\s*[─━═-]{6,}\s*$/.test(line))
     .filter((line) => !/^\s*[◦•●]?\s*Working\s*\(/i.test(line))
     .filter(
       (line) =>

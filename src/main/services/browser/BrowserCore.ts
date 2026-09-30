@@ -8,11 +8,11 @@ import type {
   BrowserResult,
   BrowserSnapshot
 } from "../../../shared/contracts.ts";
-import { BrowserAutomationService, type BrowserPointerResult } from "./BrowserAutomationService.ts";
-import { BrowserAuditStore } from "./BrowserAuditStore.ts";
+import type { BrowserAutomationService, BrowserPointerResult } from "./BrowserAutomationService.ts";
+import type { BrowserAuditStore } from "./BrowserAuditStore.ts";
 import { BrowserCommandDispatcher } from "./BrowserCommandDispatcher.ts";
 import { BrowserKernelError, throwIfAborted } from "./BrowserErrors.ts";
-import { BrowserPolicyService, DEFAULT_BROWSER_URL } from "./BrowserPolicyService.ts";
+import { type BrowserPolicyService, DEFAULT_BROWSER_URL } from "./BrowserPolicyService.ts";
 
 export interface BrowserCoreTab {
   id: string;

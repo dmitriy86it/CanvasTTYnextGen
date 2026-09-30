@@ -6,7 +6,7 @@ import type {
 } from "../../../shared/contracts.ts";
 import type { BrowserCanvasNativeWheelSink } from "./BrowserCanvasFreeze.ts";
 import {
-  BrowserCanvasCursorController,
+  type BrowserCanvasCursorController,
   browserCanvasNavigationCursor
 } from "./BrowserCanvasCursor.ts";
 import { browserCanvasNavigationPointerType } from "./BrowserCanvasWheel.ts";

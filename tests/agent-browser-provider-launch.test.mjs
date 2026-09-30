@@ -156,7 +156,7 @@ test("codexMcpArgs returns one complete table that replaces a same-name global s
   const prefix = `mcp_servers.${MCP_SERVER_NAME}`;
   const expected = [
     "-c",
-    `${prefix}={command=${JSON.stringify(helper.command)},args=[${helper.args.map(JSON.stringify).join(",")}],env={\"ELECTRON_RUN_AS_NODE\"=\"1\"},env_vars=[\"CANVASTTY_AGENT_BROWSER_ADDRESS\",\"CANVASTTY_AGENT_ID\",\"CANVASTTY_AGENT_CONNECTION_ID\",\"CANVASTTY_TERMINAL_SESSION_ID\",\"CANVASTTY_AGENT_PROVIDER\",\"CANVASTTY_AGENT_CAPABILITY\"],enabled=true,required=true,default_tools_approval_mode=\"approve\",enabled_tools=[${APPROVED_BROWSER_TOOL_NAMES.map(JSON.stringify).join(",")}],disabled_tools=[]}`
+    `${prefix}={command=${JSON.stringify(helper.command)},args=[${helper.args.map(JSON.stringify).join(",")}],env={"ELECTRON_RUN_AS_NODE"="1"},env_vars=["CANVASTTY_AGENT_BROWSER_ADDRESS","CANVASTTY_AGENT_ID","CANVASTTY_AGENT_CONNECTION_ID","CANVASTTY_TERMINAL_SESSION_ID","CANVASTTY_AGENT_PROVIDER","CANVASTTY_AGENT_CAPABILITY"],enabled=true,required=true,default_tools_approval_mode="approve",enabled_tools=[${APPROVED_BROWSER_TOOL_NAMES.map(JSON.stringify).join(",")}],disabled_tools=[]}`
   ];
   assert.deepEqual(codexMcpArgs(helper), expected);
 });

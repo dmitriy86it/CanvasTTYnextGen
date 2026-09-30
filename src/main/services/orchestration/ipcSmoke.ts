@@ -11,7 +11,7 @@ const ledgerLines = (file: string) => { try { return readFileSync(file, "utf8").
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Runs in the page, through window.canvasTTY only.
-const RENDERER = String.raw`(async (p) => {
+const RENDERER = `(async (p) => {
   const o = window.canvasTTY.orchestration;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const goal = (text, extra = {}) => ({ text, criteria: ["tests pass"], checks: ["node-test"], ...extra });

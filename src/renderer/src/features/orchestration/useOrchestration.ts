@@ -10,7 +10,6 @@ import type {
   OrchestrationCanvas,
   OrchestrationCatalog,
   OrchestrationGoalInput,
-  OrchestrationHistoryRecord,
   OrchestrationProviderKind,
   OrchestrationResult,
   OrchestrationRunView

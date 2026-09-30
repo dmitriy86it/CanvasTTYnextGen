@@ -7,5 +7,3 @@ declare global {
     canvasTTY: CanvasTTYApi;
   }
 }
-
-export {};

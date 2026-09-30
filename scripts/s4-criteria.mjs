@@ -26,7 +26,7 @@ export function s4Verdict(f) {
   const lines = server.filter((e) => e.type === "call" || e.type === "call_failed");
   // one call per nonce: a repeated line of the same nonce is the same call, not another one
   const byNonce = new Map();
-  let conflicting = [];
+  const conflicting = [];
   for (const c of lines.filter((e) => e.type === "call" && mine(e))) {
     const seen = byNonce.get(c.nonce);
     if (!seen) byNonce.set(c.nonce, c);

@@ -307,7 +307,7 @@ export function endingDetail(e: TurnEnding | undefined): Record<string, string |
 
 // ---------- per-run log ----------
 
-export interface ActivityListener { (entries: OrchestrationActivityEntry[]): void }
+export type ActivityListener = (entries: OrchestrationActivityEntry[]) => void;
 
 interface RunLog {
   entries: OrchestrationActivityEntry[]; // the newest, ≤ memoryEntries

@@ -168,7 +168,7 @@ function plannedArgv() {
 const ARGV = plannedArgv();
 
 // The --real command reproducing this plan: every option explicit, so a changed default cannot change the run.
-const shq = (a) => /^[A-Za-z0-9_\/.,:=@%+-]+$/.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`;
+const shq = (a) => /^[A-Za-z0-9_/.,:=@%+-]+$/.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`;
 function realCommand() {
   const argv = [NODE, fileURLToPath(import.meta.url), "--real", "--scenarios", scenarioKey,
     "--claude-model", CFG.claudeModel, "--codex-model", CFG.codexModel, "--codex-effort", CFG.codexEffort, "--max-budget-usd", String(CFG.maxBudgetUsd),

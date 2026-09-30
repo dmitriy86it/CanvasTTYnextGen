@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { FIXTURES, NODE, byText, canvasState, card, cardText, createAgent, launch as launchApp, q, runs, sleep, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, card, cardText, createAgent, launch as launchApp, q, runs, workspace } from "./orchestration-app-kit.mjs";
 
 const { TMP, D, project, script } = workspace("cto-stopnr-");
 const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? path.resolve(process.argv[i + 1]) : null; };
