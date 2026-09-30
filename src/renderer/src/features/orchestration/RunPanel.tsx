@@ -727,7 +727,9 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
 
       <Section id="next" title={t(locale, "orchSum_next")} locale={locale}>
         {next ? <p className="orch-panel__text" data-sum-next>{next} <Src locale={locale} kind="agent" /></p> : missing}
-        <p className="orch-hint">{t(locale, "orchSumAppHint")}: {tr(locale, `orchNext_${nextStepKey(view, orch.activity[runId]?.entries ?? [])}`)}</p>
+        {view.newer
+          ? <p className="orch-hint" data-orch-read-only-next>{t(locale, "orchReadOnlyHint")}</p>
+          : <p className="orch-hint">{t(locale, "orchSumAppHint")}: {tr(locale, `orchNext_${nextStepKey(view, orch.activity[runId]?.entries ?? [])}`)}</p>}
       </Section>
     </div>
   );
@@ -744,14 +746,54 @@ type RunPanelProps = {
 
 export function RunPanel(props: RunPanelProps): React.JSX.Element {
   const newer = props.runId ? props.orch.runs[props.runId]?.view.newer : undefined;
-  return newer ? <NewerRunPanel runId={props.runId!} locale={props.locale} onClose={props.onClose} newer={newer} /> : <CurrentRunPanel {...props} />;
+  // a newer journal that declared minReaderVersion this build reads: the whole panel, read-only
+  return newer && !newer.compatible
+    ? <NewerRunPanel orch={props.orch} runId={props.runId!} locale={props.locale} onClose={props.onClose} newer={newer} />
+    : <CurrentRunPanel {...props} />;
 }
+
+// "Release link" for a link held by a newer version's run (proposed amendment to acceptance-review-spec.md §2.2):
+// asked to confirm first, then one command whose commandId is kept, so a repeat after a lost answer is the same release.
+export function ReleaseNewerLink({ orch, linkId, runId, locale }: { orch: Orchestration; linkId: string; runId: string; locale: LocaleId }): React.JSX.Element {
+  const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const commandId = useRef<string | null>(null);
+  const release = async (): Promise<void> => {
+    commandId.current ??= crypto.randomUUID();
+    setSending(true);
+    setError(null);
+    const r = await orch.releaseNewerLink({ commandId: commandId.current, linkId, runId });
+    setSending(false);
+    const text = outcomeText(locale, r.outcome);
+    if (text) setError(text);
+    else setConfirming(false);
+  };
+  return (
+    <div className="orch-release" data-orch-release={linkId}>
+      {!confirming
+        ? <button type="button" data-orch-release-link onClick={() => setConfirming(true)}>{t(locale, "orchReleaseLink")}</button>
+        : (
+          <div className="orch-hint orch-hint--warn" role="alertdialog" aria-label={t(locale, "orchReleaseLink")} data-orch-release-confirm>
+            <span>{t(locale, "orchReleaseConfirm")}</span>
+            <span className="orch-form__actions">
+              <button type="button" className="orch-danger" disabled={sending} data-orch-release-do onClick={() => void release()}>{t(locale, "orchReleaseDo")}</button>
+              <button type="button" disabled={sending} onClick={() => { setConfirming(false); setError(null); }}>{t(locale, "orchCancel")}</button>
+            </span>
+          </div>
+        )}
+      {error && <p className="dialog-error" role="alert" data-orch-release-error>{error}</p>}
+    </div>
+  );
+}
+const linkOfRun = (orch: Orchestration, runId: string): string | null => orch.canvas.links.find((l) => l.runIds.includes(runId))?.linkId ?? null;
 
 // A run a newer version of the application wrote (acceptance-review-spec.md §2.2): its goal and its records as they are
 // (only the hash chain is checked, nothing is interpreted), and no action but closing.
-function NewerRunPanel({ runId, locale, onClose, newer }: {
-  runId: string; locale: LocaleId; onClose(): void; newer: NonNullable<OrchestrationRunView["newer"]>;
+function NewerRunPanel({ orch, runId, locale, onClose, newer }: {
+  orch: Orchestration; runId: string; locale: LocaleId; onClose(): void; newer: NonNullable<OrchestrationRunView["newer"]>;
 }): React.JSX.Element {
+  const linkId = linkOfRun(orch, runId);
   const [journal, setJournal] = useState<RunJournalState>({ records: [], next: 0, status: "loading" });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -778,6 +820,12 @@ function NewerRunPanel({ runId, locale, onClose, newer }: {
         <p>{t(locale, "orchNewerHint")}</p>
         <p data-orch-newer-goal><b>{t(locale, "orchGoalTask")}:</b> {newer.goal ?? t(locale, "orchNewerNoGoal")}</p>
         {newer.chain !== "ok" && <p className="dialog-error" data-orch-newer-chain={newer.chain}>{t(locale, "orchNewerChain")}</p>}
+        {newer.fallback && (
+          <p className="dialog-error" data-orch-newer-fallback={newer.fallback.code}>
+            {t(locale, "orchNewerFallback").replace("{line}", String(newer.fallback.line)).replace("{code}", newer.fallback.code)}
+          </p>
+        )}
+        {linkId && <ReleaseNewerLink orch={orch} linkId={linkId} runId={runId} locale={locale} />}
       </section>
       <div className="orch-panel__body">
         <section className="orch-panel__section">
@@ -926,7 +974,8 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
     return `${t(locale, "orchSilence")}${p.lastEventAt ? ` ${t(locale, "orchSilenceLast")} ${time(locale, p.lastEventAt)} (${duration(locale, now - Date.parse(p.lastEventAt))})` : ""}`;
   };
 
-  const tabs: PanelTab[] = ["summary", "overview", "activity", "changes", "log", "history"];
+  // a newer version's run: its changes are not read here (main refuses them), so there is no tab for them
+  const tabs: PanelTab[] = view?.newer ? ["summary", "overview", "activity", "log", "history"] : ["summary", "overview", "activity", "changes", "log", "history"];
   const roleFilter = useCallback((e: OrchestrationActivityEntry) => panel.role === "check"
     ? (e.role === "check" || e.role === "run") && FEED_KINDS.has(e.kind)
     : (e.role === panel.role && FEED_KINDS.has(e.kind)) || (e.role === "run" && e.kind === "status"), [panel.role]);
@@ -965,6 +1014,13 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <button type="button" className="orch-primary" onClick={() => onView({ tab: "summary" })}>{t(locale, "orchSummaryOpen")}</button>
               </div>
             )}
+            {view.newer && (
+              <div className="orch-hint orch-hint--warn" role="status" data-orch-read-only={view.newer.version}>
+                <strong>{t(locale, "orchReadOnly")}</strong>
+                <span>{t(locale, "orchReadOnlyHint")}</span>
+                {runId && linkOfRun(orch, runId) && <ReleaseNewerLink orch={orch} linkId={linkOfRun(orch, runId)!} runId={runId} locale={locale} />}
+              </div>
+            )}
             <p className="orch-summary__who" data-orch-working>{who}</p>
             {top && progress && (
               <dl className="orch-board" data-orch-board data-action={top.action ? "yes" : "no"}>
@@ -984,7 +1040,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               </dl>
             )}
             {accessMismatch && <p className="dialog-error" data-orch-access-mismatch>{t(locale, "orchAccessMismatchWarn")}</p>}
-            <p className="orch-summary__next" data-orch-next><b>{t(locale, "orchNextStep")}:</b> {tr(locale, `orchNext_${nextStepKey(view, activity.entries)}`)}</p>
+            {!view.newer && <p className="orch-summary__next" data-orch-next><b>{t(locale, "orchNextStep")}:</b> {tr(locale, `orchNext_${nextStepKey(view, activity.entries)}`)}</p>}
             {head.headline === "awaiting_plan_review" && plan.length > 0 && (
               <ol className="orch-summary__plan" data-orch-summary-plan start={planFirst}>{plan.map((p, i) => <li key={i}><strong>{p.title}</strong><span>{p.task}</span></li>)}</ol>
             )}
@@ -995,7 +1051,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                   : <>{t(locale, view.workMode === "project" ? "orchWhereProject" : "orchWhereCopy")} <code>{view.workDir}</code></>}
               </p>
             )}
-            {view.permission && (
+            {view.permission && !view.newer && (
               <PermissionBlock key={view.permission.requestId} locale={locale} request={view.permission} more={(view.pendingPermissions ?? 1) - 1} sending={sending}
                 onDecide={(decision, extra) => void send("permission", { requestId: view.permission!.requestId, decision, ...extra })} />
             )}
@@ -1041,7 +1097,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 </>}
               </div>
             )}
-            {!busy && onNewGoal && <button type="button" className="orch-primary" onClick={onNewGoal}>{t(locale, "orchNewGoal")}</button>}
+            {!busy && onNewGoal && !view.newer && <button type="button" className="orch-primary" onClick={onNewGoal}>{t(locale, "orchNewGoal")}</button>}
             {sending && <div className="orch-hint">{t(locale, "orchSending")}</div>}
             {!sending && unknown.length > 0 && (
               <div className="orch-panel__unknown" role="status">
@@ -1190,7 +1246,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               <ActivityList key={`l:${panel.role}`} locale={locale} entries={activity.entries} gaps={activity.gaps} filter={logFilter}
                 emptyText={t(locale, "orchLogEmpty")} silence={null} />
             )}
-            {panel.tab === "changes" && runId && <ChangesTab locale={locale} runId={runId} seq={state?.seq ?? 0} inPlace={view.workMode === "project"} />}
+            {panel.tab === "changes" && runId && !view.newer && <ChangesTab locale={locale} runId={runId} seq={state?.seq ?? 0} inPlace={view.workMode === "project"} />}
             {panel.tab === "history" && (
               <section className="orch-panel__section">
                 <ol className="orch-history">

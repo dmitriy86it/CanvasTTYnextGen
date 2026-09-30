@@ -519,6 +519,7 @@ function buildRunManager(): RunManager {
     root: join(app.getPath("userData"), "orchestration"),
     workspaceOpen: (id) => workspaceStore?.isOpen(id) ?? false,
     workspaceKnown: (id) => workspaceStore?.get().workspaces.some((w) => w.id === id) ?? false,
+    appVersion: () => app.getVersion(),
     gitPath: () => found("git"),
     nodePath: () => found("node"),
     launch,

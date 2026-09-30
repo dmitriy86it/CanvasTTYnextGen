@@ -1151,6 +1151,7 @@ export const IPC = {
   orchestrationAgentDelete: "orchestration:agent-delete",
   orchestrationLinkCreate: "orchestration:link-create",
   orchestrationLinkDelete: "orchestration:link-delete",
+  orchestrationLinkReleaseNewer: "orchestration:link-release-newer",
   orchestrationLinkStart: "orchestration:link-start",
   orchestrationAgentGroupMove: "orchestration:agent-group-move",
   orchestrationActivity: "orchestration:activity",

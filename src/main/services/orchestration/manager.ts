@@ -36,7 +36,7 @@ import type { CheckRegistry, PreparedDeps } from "./checks.ts";
 import { DEFAULT_LIMITS } from "./cycle.ts";
 import type { Goal } from "./cycle.ts";
 import { MAX_JOURNAL_BYTES, MAX_LINE_BYTES, MAX_TEXT_BYTES, TERMINAL_STATUSES, canonical, isSha256, isTextRef, isUuid, needsRecovery, newerGoal, newerVersion, parseJournal, unfinishedWork } from "./journal.ts";
-import type { JournalRecord, TextRef } from "./journal.ts";
+import type { JournalRecord, RunState, TextRef } from "./journal.ts";
 import { createOrchestrationService, progressOf, runView } from "./orchestrationService.ts";
 import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchestrationService.ts";
 import { readRun, readText } from "./store.ts";
@@ -59,6 +59,9 @@ import type {
 const run = promisify(execFile);
 const MAX_HISTORY_PAGE = 200;
 
+// Written by a newer version: read-only here, whether its records replay by v1 rules or not.
+const newerIntegrity = (status: string): boolean => status === "newer_version" || status === "newer_version_compatible";
+
 export interface RunManagerDeps {
   root: string; // <userData>/orchestration
   // Resolved when a run is created or opened, never on construction.
@@ -76,6 +79,7 @@ export interface RunManagerDeps {
   // Does this workspace exist (hidden ones included)? A card of an unknown one is on the common canvas. Missing in a
   // plain-JS caller: every id counts as its own workspace (the raw comparison of before).
   workspaceKnown(workspaceId: string): boolean;
+  appVersion?(): string; // written down when a newer version's link is let go
 }
 
 export interface NativeOpts { direnv: boolean; direnvCwd?: string; worktreePending?: boolean }
@@ -295,6 +299,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const held = handles.get(runId); // after the read: the handle's state as it is now
     if (held) return { seq: held.seq(), tick: held.tick(), view: held.view(), integrity: read.integrity.status, open: true };
     if (read.integrity.status === "newer_version") return newerSnapshot(runId, read.integrity.detail);
+    if (read.integrity.status === "newer_version_compatible") return compatibleSnapshot(runId, read.state!, read.integrity.detail);
     if (!read.state) refuse("journal_corrupt", "the run's journal has no valid start");
     const st = read.state!;
     // Where it works and what is done, as the open run would show it (UX-5): from the marker, the goal and the journal.
@@ -317,26 +322,44 @@ export function createRunManager(deps: RunManagerDeps) {
   // A0 bridge (acceptance-review-spec.md §2.2): a run written by a newer version is listed and its history read, and
   // nothing else: no open, recovery, stop, command or CLI. Shown as paused (it may still go on in that version) with the
   // goal of its run.created, never as a damaged journal.
-  async function newerSnapshot(runId: string, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" } }): Promise<OrchestrationRunSnapshot> {
+  async function newerSnapshot(runId: string, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" }; fallback?: { line: number; code: string } }): Promise<OrchestrationRunSnapshot> {
     const records = await journal(runId);
-    const ref = newerGoal(records);
-    const goal = ref ? await readText(deps.root, runId, ref).then((b) => {
-      const g = JSON.parse(b.toString("utf8")) as { text?: unknown };
-      return typeof g.text === "string" ? g.text : null;
-    }).catch(() => null) : null;
+    const goal = await newerGoalText(runId, records);
     const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
     return {
       seq: records.at(-1)?.seq ?? 0, tick: 0, integrity: "newer_version", open: false,
       view: {
         runId, status: "paused", reason: "newer_version", revision: 0, stage: null, turns: 0, halted: false, active: null,
         ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
-        newer: { version: detail.version, chain: detail.chain.status, goal }
+        newer: { version: detail.version, chain: detail.chain.status, goal, ...(detail.fallback ? { fallback: detail.fallback } : {}) }
       }
+    };
+  }
+  const newerGoalText = async (runId: string, records: JournalRecord[]): Promise<string | null> => {
+    const ref = newerGoal(records);
+    return ref ? readText(deps.root, runId, ref).then((b) => {
+      const g = JSON.parse(b.toString("utf8")) as { text?: unknown };
+      return typeof g.text === "string" ? g.text : null;
+    }).catch(() => null) : null;
+  };
+  // A newer journal that declares minReaderVersion this build reads: its whole state by v1 rules, as journaled (no
+  // recovery is shown or recorded), and still nothing but reading: it is never opened, stopped or continued here.
+  async function compatibleSnapshot(runId: string, st: RunState, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" } }): Promise<OrchestrationRunSnapshot> {
+    const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
+    const goalJson = await readText(deps.root, runId, st.goal).then((b) => JSON.parse(b.toString("utf8")) as Goal, () => null);
+    const view = runView(st, false, null, {
+      ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
+      ...(goalJson ? { progress: progressOf(st, goalJson, place?.branch ?? null) } : {})
+    });
+    const goal = typeof (goalJson as { text?: unknown } | null)?.text === "string" ? (goalJson as { text: string }).text : null;
+    return {
+      seq: st.lastSeq, tick: 0, integrity: "newer_version_compatible", open: false,
+      view: { ...view, active: null, permission: null, pendingPermissions: 0, newer: { version: detail.version, chain: detail.chain.status, goal, compatible: true } }
     };
   }
   // The state of a run this version can open and change; a newer version's run is refused without touching it.
   function continuable(read: RunReadResult) {
-    if (read.integrity.status === "newer_version") refuse("run_newer_version", "the run was created by a newer version of the application");
+    if (newerIntegrity(read.integrity.status)) refuse("run_newer_version", "the run was created by a newer version of the application");
     return read.state ?? refuse("journal_corrupt", "the run's journal has no valid start");
   }
 
@@ -383,7 +406,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const p = (async () => {
       const existing = await readRun(deps.root, runId).catch(() => null);
       // a journal this version cannot continue (a newer version's, a damaged one) is refused before any agent or CLI
-      if (existing && !existing.state) continuable(existing); // run_newer_version or journal_corrupt
+      if (existing && (!existing.state || newerIntegrity(existing.integrity.status))) continuable(existing); // run_newer_version or journal_corrupt
       if (existing?.state) {
         const stored = JSON.parse((await readText(deps.root, runId, existing.state.goal)).toString("utf8")) as Record<string, unknown>;
         return stored.requestKey === key ? { runId, created: false } : conflict();
@@ -524,6 +547,9 @@ export function createRunManager(deps: RunManagerDeps) {
     deleteAgent: (agentId: string) => result(() => canvas.deleteAgent(agentId, busy)),
     createLink: (input: { linkId: string; fromAgentId: string; toAgentId: string }) => result(() => canvas.createLink(input)),
     deleteLink: (linkId: string) => result(() => canvas.deleteLink(linkId, busy)),
+    // Only a link that holds a newer version's run (busy says "newer" for that run), and only its own run.
+    releaseNewerLink: (input: { commandId: string; linkId: string; runId: string }) =>
+      result(() => canvas.releaseNewer({ ...input, appVersion: deps.appVersion?.() ?? "unknown" }, busy)),
     startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }) => result(() => {
       notOpen();
       return canvas.startOnLink(input.linkId, input.requestId, busy, exists, (source) => createRun({ requestId: input.requestId, source, goal: input.goal }));

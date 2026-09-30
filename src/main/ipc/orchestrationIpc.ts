@@ -227,6 +227,11 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
       { linkId: string; fromAgentId: string; toAgentId: string }];
   }, manager.createLink));
   handleMain(IPC.orchestrationLinkDelete, (_e, linkId: unknown) => checked(() => [uuid(linkId, "linkId")] as [string], manager.deleteLink));
+  handleMain(IPC.orchestrationLinkReleaseNewer, (_e, input: unknown) => checked(() => {
+    const o = obj(input, "request", ["commandId", "linkId", "runId"]);
+    return [{ commandId: uuid(o.commandId, "commandId"), linkId: uuid(o.linkId, "linkId"), runId: uuid(o.runId, "runId") }] as [
+      { commandId: string; linkId: string; runId: string }];
+  }, manager.releaseNewerLink));
   handleMain(IPC.orchestrationLinkStart, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "requestId", "goal"]);
     return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal) }] as [

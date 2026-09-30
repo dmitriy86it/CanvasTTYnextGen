@@ -686,7 +686,7 @@ export function HomeZone({
 
 const RUN_TONE: Record<ActivityState, "working" | "waiting" | "idle"> = {
   starting: "working", working: "working", checking: "working", waiting_agent: "working", waiting_user: "waiting",
-  paused: "waiting", stopping: "idle", completed: "idle", stopped: "idle", failed: "idle"
+  paused: "waiting", stopping: "idle", completed: "idle", stopped: "idle", failed: "idle", read_only: "idle"
 };
 const RUN_ICON: Partial<Record<ActivityState, "working" | "attention" | "error" | "done">> = {
   starting: "working", working: "working", checking: "working", waiting_user: "attention", failed: "error", completed: "done"

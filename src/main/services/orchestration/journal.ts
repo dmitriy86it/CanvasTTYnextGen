@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import type { ReportStatus, TurnOutcome } from "./types.ts";
 
 export const JOURNAL_VERSION = 1;
+// The highest minReaderVersion this build can read: a newer journal that declares it may be replayed by v1 rules.
+export const READER_VERSION = 1;
 export const ZERO_HASH = "0".repeat(64);
 export const MAX_LINE_BYTES = 64 * 1024; // one record, without '\n'
 export const MAX_JOURNAL_BYTES = 64 * 1024 * 1024;
@@ -258,8 +260,14 @@ export type ChainIntegrity =
   | { status: "torn_tail"; detail: { offset: number; bytes: number } }
   | { status: "corrupt"; detail: { line: number; offset: number; code: CorruptCode } }; // line is 1-based
 // newer_version: written by a newer version (acceptance-review-spec.md §2.2): only its hash chain is checked (chain), no
-// record is replayed, and nothing may write to it.
-export type JournalIntegrity = ChainIntegrity | { status: "newer_version"; detail: { version: number; chain: ChainIntegrity } };
+// record is replayed, and nothing may write to it. fallback: it declared minReaderVersion this build can read, but a
+// record did not replay by v1 rules (line, code), so it is shown like any other newer journal.
+// newer_version_compatible: a newer journal whose first record declares minReaderVersion ≤ READER_VERSION: replayed by
+// v1 rules (unknown fields ignored), shown whole, and still never written (the proposed amendment to §2.2).
+export type NewerFallback = { line: number; code: "unknown_record" | "invalid_event" | "replay_conflict" };
+export type JournalIntegrity = ChainIntegrity
+  | { status: "newer_version"; detail: { version: number; chain: ChainIntegrity; fallback?: NewerFallback } }
+  | { status: "newer_version_compatible"; detail: { version: number; minReaderVersion: number; chain: ChainIntegrity } };
 
 export class JournalError extends Error {
   readonly code: CorruptCode;
@@ -301,11 +309,22 @@ const PREPARE_STATUSES: readonly string[] = ["done", "not_needed", "failed", "st
 const str = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
 const strOrNull = (v: unknown, max: number) => v === null || str(v, max);
 const oneOf = (v: unknown, list: readonly string[]) => typeof v === "string" && list.includes(v);
+// Lenient validation of a compatible newer record (minReaderVersion): every object a key check accepted is noted with
+// the keys it knows, extra keys are allowed, and the record is then projected onto those keys. null: v1 (strict).
+let known: WeakMap<object, Set<string>> | null = null;
+const note = (o: Record<string, unknown>, keys: readonly string[]): true => {
+  const set = known!.get(o) ?? new Set<string>();
+  for (const k of keys) set.add(k);
+  known!.set(o, set);
+  return true;
+};
 const exactKeys = (o: unknown, keys: readonly string[]): o is Record<string, unknown> =>
-  isRecord(o) && Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
+  known ? isRecord(o) && keys.every((k) => Object.hasOwn(o, k)) && note(o, keys)
+    : isRecord(o) && Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
 // All of `keys` and nothing but them and `optional` (fields added later: older journals stay valid).
 const keysWithin = (o: unknown, keys: readonly string[], optional: readonly string[]): o is Record<string, unknown> =>
-  isRecord(o) && keys.every((k) => Object.hasOwn(o, k)) && Object.keys(o).every((k) => keys.includes(k) || optional.includes(k));
+  known ? isRecord(o) && keys.every((k) => Object.hasOwn(o, k)) && note(o, [...keys, ...optional])
+    : isRecord(o) && keys.every((k) => Object.hasOwn(o, k)) && Object.keys(o).every((k) => keys.includes(k) || optional.includes(k));
 const isLocks = (v: unknown) => isRecord(v) && Object.keys(v).length <= 16
   && Object.entries(v).every(([k, x]) => k.length > 0 && k.length <= 100 && isSha256(x));
 
@@ -960,6 +979,35 @@ export function parseJournal(buf: Uint8Array, runId: string): ParsedJournal {
   return { records, state, integrity: { status: "ok" }, validBytes: offset };
 }
 
+// minReaderVersion of a newer journal's first record: an integer, or null (absent, not an integer, unreadable).
+export function minReaderVersion(buf: Uint8Array): number | null {
+  const nl = buf.indexOf(0x0a);
+  const end = nl < 0 ? buf.length : nl;
+  if (end > MAX_LINE_BYTES) return null;
+  try {
+    const m = (JSON.parse(utf8.decode(buf.subarray(0, end))) as { minReaderVersion?: unknown } | null)?.minReaderVersion;
+    return isInt(m) ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+// A compatible newer record as v1 reads it: its v1 event data with the fields v1 does not know left out. null: its type
+// or data is not v1's.
+function asV1(rec: JournalRecord): JournalRecord | null {
+  known = new WeakMap();
+  try {
+    if (!isValidEventData(rec.type, rec.data)) return null;
+    const seen = known;
+    const project = (v: unknown): unknown => Array.isArray(v) ? v.map(project)
+      : isRecord(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => !seen.has(v) || seen.get(v)!.has(k)).map(([k, x]) => [k, project(x)]))
+        : v;
+    return { v: 1, seq: rec.seq, ts: rec.ts, runId: rec.runId, type: rec.type, prevHash: rec.prevHash, hash: rec.hash, data: project(rec.data) as Record<string, unknown> } as JournalRecord;
+  } finally {
+    known = null;
+  }
+}
+
 // The version of a journal written by a newer version: an integer v above JOURNAL_VERSION in its first line (also one
 // without its '\n'; only that line is looked at, the rest is never parsed as events). null: any other journal — also a
 // first line torn inside its JSON, whose version cannot be read: such a journal stays corrupt.
@@ -978,6 +1026,59 @@ export function newerVersion(buf: Uint8Array): number | null {
 // A0 bridge (acceptance-review-spec.md §2.2): the valid prefix of the chain (seq, prevHash, hash, runId, one version),
 // with state null. Records keep their own types and data; nothing is replayed (no applyRecord).
 function parseNewerJournal(buf: Uint8Array, runId: string, version: number): ParsedJournal {
+  const min = minReaderVersion(buf);
+  if (min !== null && min >= 1 && min <= READER_VERSION) {
+    const compatible = parseCompatibleJournal(buf, runId, version, min);
+    if (!("fallback" in compatible)) return compatible;
+    const raw = parseRawNewerJournal(buf, runId, version);
+    return compatible.fallback ? withFallback(raw, compatible.fallback) : raw;
+  }
+  return parseRawNewerJournal(buf, runId, version);
+}
+
+const withFallback = (p: ParsedJournal, fallback: NewerFallback): ParsedJournal =>
+  p.integrity.status === "newer_version" ? { ...p, integrity: { status: "newer_version", detail: { ...p.integrity.detail, fallback } } } : p;
+
+// minReaderVersion ≤ READER_VERSION: the chain is checked as for any newer journal, and each record is replayed by v1
+// rules (its unknown fields ignored). A record v1 cannot apply (an unknown type, data v1 rejects, a replay conflict)
+// sends the whole journal back to the raw view, with where and why.
+// fallback null: nothing was replayed (the chain fails on the first record, or the file is over the limit): the raw
+// view says why through its chain, not as a record v1 could not apply.
+function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number, min: number): ParsedJournal | { fallback: NewerFallback | null } {
+  const records: JournalRecord[] = [];
+  let state: RunState | null = null;
+  let offset = 0;
+  let line = 1;
+  const done = (chain: ChainIntegrity): ParsedJournal | { fallback: NewerFallback | null } => state === null ? { fallback: null }
+    : { records, state, integrity: { status: "newer_version_compatible", detail: { version, minReaderVersion: min, chain } }, validBytes: offset };
+  if (buf.length > MAX_JOURNAL_BYTES) return { fallback: null };
+  while (offset < buf.length) {
+    const nl = buf.indexOf(0x0a, offset);
+    if (nl < 0) return done({ status: "torn_tail", detail: { offset, bytes: buf.length - offset } });
+    let rec: JournalRecord;
+    try {
+      rec = parseLine(buf.subarray(offset, nl), runId, records.at(-1) ?? null, version);
+    } catch (error) {
+      if (error instanceof JournalError) return done({ status: "corrupt", detail: { line, offset, code: error.code } });
+      throw error;
+    }
+    const v1 = asV1(rec);
+    if (!v1) return { fallback: { line, code: Object.hasOwn(DATA_SCHEMAS, rec.type) ? "invalid_event" : "unknown_record" } };
+    try {
+      state = applyRecord(state, v1);
+    } catch (error) {
+      if (error instanceof JournalError) return { fallback: { line, code: "replay_conflict" } };
+      throw error;
+    }
+    records.push(rec);
+    offset = nl + 1;
+    line++;
+  }
+  return done({ status: "ok" });
+}
+
+// Only the envelope and the chain: the records as they are, state null.
+function parseRawNewerJournal(buf: Uint8Array, runId: string, version: number): ParsedJournal {
   const records: JournalRecord[] = [];
   let offset = 0;
   let line = 1;

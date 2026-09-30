@@ -193,7 +193,13 @@ export interface OrchestrationRunView {
   progress?: OrchestrationRunProgress;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only
   // (status paused, reason newer_version), never opened or changed here. chain: the hash chain of what was read.
-  newer?: { version: number; chain: "ok" | "torn_tail" | "corrupt"; goal: string | null };
+  // compatible: its journal declares minReaderVersion this build reads, so the view is its whole state (status and
+  // reason as journaled), still read-only. fallback: it declared that, but a record did not replay by v1 rules
+  // (line, code), so only its goal and records are shown.
+  newer?: {
+    version: number; chain: "ok" | "torn_tail" | "corrupt"; goal: string | null;
+    compatible?: boolean; fallback?: { line: number; code: string } | null;
+  };
 }
 
 // QA version evidence, kept apart from "the verification command exited 0":
@@ -223,7 +229,7 @@ export interface OrchestrationRunSnapshot {
   seq: number;
   tick: number;
   view: OrchestrationRunView;
-  integrity: "ok" | "torn_tail" | "corrupt" | "newer_version";
+  integrity: "ok" | "torn_tail" | "corrupt" | "newer_version" | "newer_version_compatible";
   open: boolean; // held by this application process (the run's only writer)
 }
 
@@ -351,6 +357,17 @@ export interface OrchestrationCanvas {
   // The workspace each run belongs to, written with the run's reservation and never moved after it. A run missing
   // here belongs to the workspace of the link that holds it, else to the common canvas.
   owners?: Record<string, string>;
+  // Links let go of newer versions' runs (releaseNewerLink): a later version finds its run without a link here.
+  releasedNewerRuns?: OrchestrationReleasedNewerRun[];
+}
+
+export interface OrchestrationReleasedNewerRun {
+  runId: string;
+  linkId: string;
+  folder: string; // the project folder the link held
+  releasedAt: string;
+  appVersion: string; // the version that let it go
+  commandId: string;
 }
 
 // folder_busy: the run that holds the project folder (by main's busy rule), its owner workspace (unknown → common) and
@@ -377,6 +394,9 @@ export interface OrchestrationApi {
   moveAgentGroup(agentIds: string[], workspaceId: string): Promise<OrchestrationResult<OrchestrationCanvas>>;
   createLink(input: { linkId: string; fromAgentId: string; toAgentId: string }): Promise<OrchestrationResult<OrchestrationAgentLink>>;
   deleteLink(linkId: string): Promise<OrchestrationResult<null>>;
+  // A link held by a newer version's run is let go here (proposed amendment to acceptance-review-spec.md §2.2): the
+  // link is removed and its folder freed, the run's files stay as they are. A repeat of commandId answers the same.
+  releaseNewerLink(input: { commandId: string; linkId: string; runId: string }): Promise<OrchestrationResult<OrchestrationReleasedNewerRun>>;
   // Creates a run on the link: the source is the lead card's project, chosen in main.
   startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
   // The listener gets the run's current state first (the snapshot, as an event), then only newer states in order;

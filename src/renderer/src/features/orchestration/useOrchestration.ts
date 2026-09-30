@@ -172,7 +172,9 @@ export function useOrchestration() {
   }, []);
   useEffect(() => {
     for (const [runId, s] of Object.entries(runs)) {
-      if (s.view.newer) continue; // a newer version's records are never interpreted here: its panel reads them as they are
+      // a newer version's records are never interpreted here (its panel reads them as they are), unless its journal
+      // declared minReaderVersion this build reads: then they are v1 records with fields v1 ignores
+      if (s.view.newer && !s.view.newer.compatible) continue;
       const j = journalRef.current[runId];
       // a failed read waits for retry(); otherwise read when the run moved past what was read
       if (!j || (j.status !== "error" && s.seq >= j.next)) void syncJournal(runId);
@@ -255,6 +257,10 @@ export function useOrchestration() {
       apply(() => api().createLink(input), (link) => setCanvas((c) => (c.links.some((l) => l.linkId === link.linkId) ? c : { ...c, links: [...c.links, link] }))),
 
     deleteLink: (linkId: string) => apply(() => api().deleteLink(linkId), () => setCanvas((c) => ({ ...c, links: c.links.filter((l) => l.linkId !== linkId) }))),
+
+    // commandId: one per confirmation, so a repeat after a lost answer is the same release.
+    releaseNewerLink: (input: { commandId: string; linkId: string; runId: string }) =>
+      apply(() => api().releaseNewerLink(input), () => { setCanvas((c) => ({ ...c, links: c.links.filter((l) => l.linkId !== input.linkId) })); void reload(); }),
 
     // refused: main's answer as it came, so a folder_busy refusal can name the run holding the folder
     startOnLink: async (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }) => {
