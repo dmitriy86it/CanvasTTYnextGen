@@ -416,7 +416,8 @@ async function initializeServices(): Promise<void> {
       agentRuntimeBridge?.setCoreHooksEnabled(next.agentLifecycleHooksEnabled);
       terminalManager?.setLifecycleHooksEnabled(next.agentLifecycleHooksEnabled);
       agentBrowserBridge?.setEnabled(next.browserAgentAccess);
-      browserService?.setRestoreTabs(next.browserRestoreTabs);
+      void browserService?.setRestoreTabs(next.browserRestoreTabs)
+        .catch((error) => console.warn("CanvasTTY could not apply the browser tab restore setting.", error));
       browserService?.cancelCanvasNavigationGesture();
       browserService?.setCanvasWheelCaptureMode(next.canvasWheelCaptureMode);
       canvasNavigationInput?.setBindings({
