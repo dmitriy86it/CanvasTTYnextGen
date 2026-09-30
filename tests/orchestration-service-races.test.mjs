@@ -714,7 +714,7 @@ async function listedAfterCrash(p, runId) {
   const file = path.join(p.root, "runs", runId, "journal.jsonl");
   const bytes = fs.readFileSync(file).length;
   const none = () => { throw new Error("not resolved on a read"); };
-  const m = createRunManager({ root: p.root, gitPath: none, launch: none, nodePath: none, agents: async () => none() });
+  const m = createRunManager({ platform: "darwin", root: p.root, gitPath: none, launch: none, nodePath: none, agents: async () => none() });
   const got = (await m.get(runId)).value;
   const listed = (await m.list()).value.find((s) => s.view.runId === runId);
   assert.deepEqual(listed, got, "list and get show the same");

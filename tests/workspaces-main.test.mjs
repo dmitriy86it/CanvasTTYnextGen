@@ -287,6 +287,7 @@ function project() {
 }
 const OPEN = new Set([COMMON_WORKSPACE_ID, "ws-a", "ws-b"]);
 const managerDeps = (root) => ({
+  platform: "darwin", // the engine under test; the platform gate has its own tests
   root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, workspaceOpen: (id) => OPEN.has(id), workspaceKnown: (id) => OPEN.has(id),
   agents: async () => createTestAgents({ plan: { report: plan("only stage") }, execute: { report: executed() }, review: { report: review("accept") }, final_review: { report: review("complete") } })
 });

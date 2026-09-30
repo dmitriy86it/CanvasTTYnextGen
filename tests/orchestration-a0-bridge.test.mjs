@@ -181,6 +181,7 @@ const agentsFor = () => createTestAgents({
   review: { report: review("accept") }, final_review: { report: review("complete") }
 });
 const managerOf = (root, agents) => createRunManager({
+  platform: "darwin", // the engine under test; the platform gate has its own tests
   root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000
 });
 async function until(fn, what, ms = 60_000) {
@@ -283,7 +284,7 @@ test("A0 canvas: a link whose run a newer version wrote is kept, with link_newer
   fs.writeFileSync(file, JSON.stringify(cv));
   const before = footprint(r.dir);
   let agentCalls = 0;
-  m = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: async () => { agentCalls++; return null; } });
+  m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: async () => { agentCalls++; return null; } });
   const code = (res) => (res.ok ? "ok" : res.code);
   assert.equal(code(await m.deleteLink(link)), "link_newer_run");
   assert.equal(code(await m.deleteAgent(lead)), "link_newer_run");

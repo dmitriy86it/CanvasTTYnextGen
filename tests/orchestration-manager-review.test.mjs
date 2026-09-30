@@ -57,6 +57,7 @@ const footprint = (src) => ({ refs: g(src, "for-each-ref"), head: g(src, "rev-pa
 function manager(root, agents, extra = {}) {
   const calls = { agents: 0 };
   const m = createRunManager({
+    platform: "darwin", // the engine under test; the platform gate has its own tests
     root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE,
     agents: extra.agents ?? (async () => (calls.agents++, agents)), stopGraceMs: 2000
   });

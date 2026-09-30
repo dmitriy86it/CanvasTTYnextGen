@@ -46,6 +46,7 @@ const agents = (execute = { report: executed() }) => createTestAgents({
   plan: { report: plan("only stage") }, execute, review: { report: review("accept") }, final_review: { report: review("complete") }
 });
 const manager = (root, a = agents()) => createRunManager({
+  platform: "darwin", // the engine under test; the platform gate has its own tests
   root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => a, stopGraceMs: 2000
 });
 const box = (x = 0, y = 0) => ({ position: { x, y }, size: { width: 320, height: 180 } });

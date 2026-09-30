@@ -51,6 +51,7 @@ function project() {
 function manager(root, agents) {
   const calls = { agents: 0, git: 0, launch: 0, node: 0 };
   const m = createRunManager({
+    platform: "darwin", // the engine under test; the platform gate has its own tests
     root,
     gitPath: () => (calls.git++, GIT),
     launch: () => (calls.launch++, LAUNCH),
