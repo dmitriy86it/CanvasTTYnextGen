@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/444612f7-cda1-4fd6-8514-2f4fac9cc520
 |:--|:--|:--|:--|
 | **Electron**<br>electron-vite | **React**<br>TypeScript | **xterm.js**<br>node-pty | **Codex**<br>Claude · Kimi · OpenCode · Hermes · Grok Build |
 
-Интерфейс приложения сейчас поддерживает английский и русский языки. Документация также доступна на упрощённом китайском.
+Интерфейс приложения сейчас поддерживает английский и русский языки.
 
 ## Один канвас, настоящие сессии
 
@@ -34,7 +34,16 @@ Raoden Loom не устанавливает CLI провайдеров. Если
 
 ## Установка
 
-Скачайте свежий релиз из [GitHub Releases](https://github.com/howdeploy/CanvasTTY/releases): AppImage/deb для Linux x86_64, установщик и portable-версию для Windows x64, dmg/zip для macOS на Apple Silicon. Бандлы macOS подписаны ad-hoc и проходят проверку целостности, но не имеют Developer ID и notarization Apple; пакеты Windows остаются неподписанными. Сборки для Intel Mac ещё нет. Сначала прочитайте про [установку и локальные данные](docs/installing-and-security.ru.md).
+Скачайте свежий релиз из [GitHub Releases](https://github.com/dmitriy86it/CanvasTTYnextGen/releases): AppImage/deb для Linux x86_64, установщик и portable-версию для Windows x64, dmg/zip для macOS на Apple Silicon. Бандлы macOS подписаны ad-hoc и проходят проверку целостности, но не имеют Developer ID и notarization Apple; пакеты Windows остаются неподписанными. Сборки для Intel Mac ещё нет. Сначала прочитайте про [установку и локальные данные](docs/installing-and-security.ru.md).
+
+| Платформа | Холст, терминалы, браузер, плагины | Оркестрация агентов |
+|:--|:--|:--|
+| macOS arm64 | Да | Да, проверки проекта выполняются в песочнице Seatbelt |
+| Linux x86_64 | Да | Ходы запускаются; первая проверка проекта ставит запуск на паузу `sandbox_unavailable` (доступна только остановка) |
+| Windows x64 | Да | Недоступна: отказ `unsupported_platform`, пункты меню при этом видны |
+| macOS Intel | Сборок нет | — |
+
+Подробнее: [требования и ограничения оркестрации](docs/ARCHITECTURE.md#requirements-and-limits).
 
 Или запустите из исходников:
 
@@ -80,6 +89,10 @@ npm test
 npm run typecheck
 npm run build
 ```
+
+## Благодарности
+
+Raoden Loom — форк [CanvasTTY](https://github.com/howdeploy/CanvasTTY) от [howdeploy](https://github.com/howdeploy).
 
 ## Лицензия
 
