@@ -8,7 +8,7 @@ import { t, type TranslationKey } from "../../lib/i18n";
 import { agentLayerId, pastCanvasDragThreshold } from "../workspace/canvasSelectionGesture";
 import { AgentCard } from "./AgentCard";
 import { linkTrace } from "./linkTrace";
-import { ACTIVE_STATUSES, activeRole, agentState, participantState, TERMINAL_STATUSES, type AgentState } from "./runModel";
+import { ACTIVE_STATUSES, activeRole, agentState, orchestrationAvailableHere, orchestrationEntry, participantState, TERMINAL_STATUSES, type AgentState } from "./runModel";
 import { ReleaseNewerLink } from "./RunPanel";
 import { duration, roleStatus, type StatusLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
@@ -42,6 +42,7 @@ function Line({ from, to, className }: { from: Point; to: Point; className: stri
 
 export function AgentScene(props: AgentSceneProps): React.JSX.Element {
   const { orch, ui, locale, zoom } = props;
+  const entry = orchestrationEntry(orchestrationAvailableHere());
   const portDrag = useRef<{ from: string; pointerId: number; start: Point; moved: boolean } | null>(null);
   const [preview, setPreview] = useState<{ from: string; to: Point } | null>(null);
 
@@ -127,14 +128,15 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             snapTargets={props.snapTargetsFor(layerId)}
             onBoundsChange={(agentId, next) => orch.moveAgent(agentId, next)}
             onDelete={(agentId) => void ui.deleteAgent(agentId)}
-            onPortActivate={(agentId) => ui.setLinkingFrom(ui.linkingFrom === agentId ? null : agentId)}
+            portDisabledHint={entry.hint ? t(locale, entry.hint) : undefined}
+            onPortActivate={(agentId) => { if (!entry.disabled) ui.setLinkingFrom(ui.linkingFrom === agentId ? null : agentId); }}
             onConnectHere={(agentId) => { if (ui.linkingFrom) void ui.connect(ui.linkingFrom, agentId); }}
             onOpenRun={() => { if (link) ui.openRun(link.linkId); }}
             onSummary={() => { if (link) ui.openPanel(link.linkId, { tab: "summary" }); }}
             onObserve={() => { if (link) ui.openPanel(link.linkId, { tab: "activity", role: card.role }); }}
             onPortDown={(agentId, event) => {
               linkTrace("port.down", { agentId, pointerId: event.pointerId, button: event.button, x: event.clientX, y: event.clientY });
-              if (event.button !== 0) return;
+              if (event.button !== 0 || entry.disabled) return;
               event.preventDefault();
               event.stopPropagation();
               event.currentTarget.setPointerCapture(event.pointerId);
@@ -190,7 +192,8 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             <span className="agent-link__state">
               {view?.permission ? t(locale, "orchLinkNeedsYou") : view?.newer ? t(locale, "orchReadOnly") : view ? t(locale, `orchStatus_${view.status}` as TranslationKey) : t(locale, "orchNoRun")}
             </span>
-            {!busy && <button type="button" onClick={() => ui.openGoal(link.linkId)}>{t(locale, "orchNewGoal")}</button>}
+            {!busy && <button type="button" disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
+              onClick={() => ui.openGoal(link.linkId)}>{t(locale, "orchNewGoal")}</button>}
             {view && <button type="button" onClick={() => ui.openRun(link.linkId)}>{t(locale, "orchOpenRun")}</button>}
             {view?.newer && <ReleaseNewerLink orch={orch} linkId={link.linkId} runId={view.runId} locale={locale} />}
             {view && <button type="button" onClick={() => {

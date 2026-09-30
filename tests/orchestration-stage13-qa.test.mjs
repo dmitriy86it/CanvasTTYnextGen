@@ -62,6 +62,7 @@ function script() {
   return dir;
 }
 const manager = (root, providers) => createRunManager({
+  platform: "darwin", // the engine under test; the platform gate has its own tests
   root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
   agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providers, () => LAUNCH)
 });

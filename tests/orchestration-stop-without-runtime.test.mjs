@@ -96,7 +96,7 @@ test("stage 4–11 run: paused, restart with a CLI of another version, Stop, the
   let release;
   const agents = createTestAgents({ plan: { report: plan("only stage") }, execute: { report: executed(), hold: new Promise((r) => { release = r; }) },
     review: { report: review("accept") }, final_review: { report: review("complete") } });
-  const m1 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000 });
+  const m1 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000 });
   const cards = await linked(m1, src);
   const runId = randomUUID();
   assert.equal(code(await m1.startOnLink({ linkId: cards.link.linkId, requestId: runId, goal: { text: "extend sum", criteria: ["sum works"], checks: ["node-test"] } })), "ok");
@@ -105,14 +105,14 @@ test("stage 4–11 run: paused, restart with a CLI of another version, Stop, the
   release();
 
   const { asked, fail } = missing("unsupported_version");
-  const m2 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
+  const m2 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
   await stopAfterRestart(m2, asked, runId, cards, "unsupported_version");
   const other = await linked(m2, src);
   assert.equal(code(await m2.startOnLink({ linkId: other.link.linkId, requestId: randomUUID(), goal: { text: "x", criteria: ["y"], checks: ["node-test"] } })),
     "unsupported_version", "a new start still refuses the version");
   await m2.shutdown();
 
-  const m3 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
+  const m3 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
   assert.equal((await m3.get(runId)).value.view.status, "stopped", "the stop is in the journal");
   await m3.shutdown();
 });
@@ -143,7 +143,7 @@ test("native run: paused, restart without the CLIs, Stop, the cards can be delet
     shell: fs.realpathSync("/bin/sh"), checkEnv: { PATH: "/usr/bin:/bin", HOME: TMP }
   }));
   const legacy = async () => { throw new Error("the restricted runtime is not used by a native goal"); };
-  const m1 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: legacy, native: testNativeRuntime(file, () => LAUNCH) });
+  const m1 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: legacy, native: testNativeRuntime(file, () => LAUNCH) });
   const cards = await linked(m1, src);
   const runId = randomUUID();
   assert.equal(code(await m1.startOnLink({ linkId: cards.link.linkId, requestId: runId, goal: { text: "x", criteria: ["y"], checks: [], commands: ["true"], workMode: "project" } })), "ok");
@@ -151,7 +151,7 @@ test("native run: paused, restart without the CLIs, Stop, the cards can be delet
   await m1.shutdown();
 
   const { asked, fail } = missing("provider_unavailable");
-  const m2 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: legacy, native: fail });
+  const m2 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: legacy, native: fail });
   await stopAfterRestart(m2, asked, runId, cards, "provider_unavailable");
   assert.equal(fs.readFileSync(path.join(src, "README.md"), "utf8"), "project\n", "the project is untouched");
   await m2.shutdown();
@@ -174,7 +174,7 @@ test("concurrent Stop/Resume and two Stops on a restored run: no stop-only handl
   let release;
   const agents = createTestAgents({ plan: { report: plan("only stage") }, execute: { report: executed(), hold: new Promise((r) => { release = r; }) },
     review: { report: review("accept") }, final_review: { report: review("complete") } });
-  const m1 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000 });
+  const m1 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000 });
   t.after(async () => { release(); await m1.shutdown(); }); // a failed assertion leaves nothing running
   const runs = [];
   for (let i = 0; i < 3; i++) {
@@ -188,7 +188,7 @@ test("concurrent Stop/Resume and two Stops on a restored run: no stop-only handl
   release();
 
   const { asked, fail } = missing("unsupported_version");
-  const m2 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
+  const m2 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
   t.after(() => m2.shutdown());
   const rev = async (id) => (await m2.get(id)).value.view.revision;
   const cmd = (id, kind, expectedRevision, commandId = randomUUID()) => m2.command(id, { commandId, expectedRevision, command: { kind } });
@@ -238,7 +238,7 @@ test("concurrent Stop/Resume and two Stops on a restored run: no stop-only handl
   await m2.shutdown();
 
   // The journals: readable, intact, one continuous sequence, each stop recorded once.
-  const m3 = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
+  const m3 = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: fail, stopGraceMs: 2000 });
   for (const id of runs) {
     const s = (await m3.get(id)).value;
     assert.equal(s.integrity, "ok", id);

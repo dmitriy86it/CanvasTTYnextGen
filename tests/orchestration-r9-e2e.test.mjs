@@ -40,7 +40,7 @@ async function pausedRun() {
   for (const a of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "fixture"]]) g(src, ...a);
   const root = path.join(TMP, `root-${n}`);
   const agents = createTestAgents({ plan: { report: plan("one") } });
-  const m = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000 });
+  const m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, agents: async () => agents, stopGraceMs: 2000 });
   const runId = randomUUID();
   const created = await m.create({ requestId: runId, source: src, goal: { text: "extend sum", criteria: ["sum works"], checks: ["node-test"], reviewPlan: true } });
   assert.ok(created.ok, JSON.stringify(created));

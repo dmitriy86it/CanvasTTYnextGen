@@ -378,7 +378,16 @@ export interface OrchestrationFolderHolder { runId: string; workspaceId: string;
 export type OrchestrationResult<T> = { ok: true; value: T }
   | ({ ok: false; code: string; message: string } & Partial<OrchestrationFolderHolder>);
 
+// Where a run can finish. Every project check runs in the Seatbelt sandbox (sandbox-exec), which exists only on macOS
+// (arm64 and x64 alike); elsewhere a run would spend model turns and then pause at its first check for good. So the
+// application starts, continues and links nothing there (code unsupported_platform); existing runs stay readable and
+// can be stopped.
+export function orchestrationAvailable(platform: string): boolean {
+  return platform === "darwin";
+}
+
 export interface OrchestrationApi {
+  available: boolean; // orchestrationAvailable() on this machine: the renderer greys out what main would refuse
   catalog(): Promise<OrchestrationResult<OrchestrationCatalog>>;
   list(): Promise<OrchestrationResult<OrchestrationRunSnapshot[]>>;
   get(runId: string): Promise<OrchestrationResult<OrchestrationRunSnapshot>>;

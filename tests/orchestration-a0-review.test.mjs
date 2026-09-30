@@ -65,6 +65,7 @@ function footprint(dir) {
   return out;
 }
 const managerOf = (root, agents = null) => createRunManager({
+  platform: "darwin", // the engine under test; the platform gate has its own tests
   root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: async () => agents, appVersion: () => "1.5.6-test"
 });
 const code = (res) => (res.ok ? "ok" : res.code);

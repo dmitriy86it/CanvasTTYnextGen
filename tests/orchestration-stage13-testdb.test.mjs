@@ -340,7 +340,7 @@ function manager(checkEnv, root = path.join(TMP, `root-${++n}`)) {
   const file = path.join(TMP, `providers-${++n}.json`);
   fs.writeFileSync(file, JSON.stringify({ codex: { executable: wrapper("codex"), version: "codex-cli 0.155.1", ...p }, claude: { executable: wrapper("claude"), version: "2.1.281 (Claude Code)", ...p },
     shell, checkEnv: { ...GIT_ENV, PATH: `/usr/bin:/bin:${path.dirname(GIT)}`, ...checkEnv } }));
-  const m = createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
+  const m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH) });
   m.root = root;
   return m;

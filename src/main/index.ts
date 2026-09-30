@@ -518,6 +518,7 @@ function buildRunManager(): RunManager {
   const testProviders = developmentEnv("CANVASTTY_ORCHESTRATION_TEST_PROVIDERS");
   return createRunManager({
     root: join(app.getPath("userData"), "orchestration"),
+    platform: process.platform,
     workspaceOpen: (id) => workspaceStore?.isOpen(id) ?? false,
     workspaceKnown: (id) => workspaceStore?.get().workspaces.some((w) => w.id === id) ?? false,
     appVersion: () => app.getVersion(),

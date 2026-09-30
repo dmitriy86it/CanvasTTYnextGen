@@ -101,6 +101,7 @@ const b64 = (s) => Buffer.from(s).toString("base64");
 
 function manager(env, root = path.join(TMP, `root-${++n}`), codexVersion) {
   const m = createRunManager({
+    platform: "darwin", // the engine under test; the platform gate has its own tests
     root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env, codexVersion), () => LAUNCH)
   });

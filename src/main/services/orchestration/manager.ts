@@ -22,7 +22,7 @@ import type { AvailableProviderCli, ProviderCliRegistry } from "../providerCliRe
 import { createActivityLog, createRunActivity } from "./activity.ts";
 import { createNativeAgents, createProviderAgents } from "./agents.ts";
 import { applyDirenv, captureLoginEnv } from "./loginEnv.ts";
-import { assessReadiness, suggestCommands, testDbItem } from "./readiness.ts";
+import { assessReadiness, platformItem, suggestCommands, testDbItem } from "./readiness.ts";
 import { accessMapping, claudeModesFromHelp, codexModesFor } from "./access.ts";
 import type { AgentAccess } from "./access.ts";
 import { commitMessage } from "./finish.ts";
@@ -45,6 +45,7 @@ import type { SupervisorLaunch } from "./types.ts";
 import { diffTreeNames, diffTreePath, openWorkspace, readWorkspacePlace } from "./workspace.ts";
 import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
+import { orchestrationAvailable } from "../../../shared/orchestration.ts";
 import type {
   OrchestrationAgentLink,
   OrchestrationBounds,
@@ -80,6 +81,9 @@ export interface RunManagerDeps {
   // plain-JS caller: every id counts as its own workspace (the raw comparison of before).
   workspaceKnown(workspaceId: string): boolean;
   appVersion?(): string; // written down when a newer version's link is let go
+  // The machine's platform (process.platform by default). Where orchestrationAvailable() is false nothing new is
+  // linked, started or continued; existing runs are read, stopped and unlinked. Engine tests on Linux pass "darwin".
+  platform?: string;
 }
 
 export interface NativeOpts { direnv: boolean; direnvCwd?: string; worktreePending?: boolean }
@@ -166,6 +170,11 @@ export function createRunManager(deps: RunManagerDeps) {
     if (!(deps.workspaceOpen ?? ((w: string) => w === COMMON_WORKSPACE_ID))(id)) refuse("workspace_unavailable", "no such open workspace");
   };
   const notOpen = () => { if (closing) refuse("shutting_down", "the application is closing"); };
+  const platform = deps.platform ?? process.platform;
+  // Before any CLI, login shell, prepared dependency or model call.
+  const platformOk = () => {
+    if (!orchestrationAvailable(platform)) refuse("unsupported_platform", `orchestration is available only on macOS: project checks need its Seatbelt sandbox (this is ${platform})`);
+  };
   const runIdOk = (runId: unknown): string => (isUuid(runId) ? runId : refuse("invalid_argument", "runId must be a UUID"));
 
   const activityFanout = new Map<string, () => void>();
@@ -396,6 +405,7 @@ export function createRunManager(deps: RunManagerDeps) {
   // The explicit command that starts a run: created, then driven automatically. requestId is the runId.
   async function createRun(req: OrchestrationCreateRequest): Promise<{ runId: string; created: boolean }> {
     notOpen();
+    platformOk();
     const runId = runIdOk(req.requestId);
     const { key, source } = await requestIdentity(req);
     // From here to creating.set nothing awaits: one attempt per requestId, joined only by an identical request, and
@@ -537,6 +547,7 @@ export function createRunManager(deps: RunManagerDeps) {
     // workspaceId: always sent over IPC; a direct call without one places the card on the common canvas.
     createAgent: (input: { agentId: string; provider: OrchestrationProviderKind; project: string; bounds: OrchestrationBounds; workspaceId?: string }) =>
       result(() => {
+        platformOk();
         const workspaceId = input.workspaceId ?? COMMON_WORKSPACE_ID;
         workspaceOk(workspaceId);
         return canvas.createAgent({ ...input, workspaceId });
@@ -545,18 +556,21 @@ export function createRunManager(deps: RunManagerDeps) {
       result(async () => { workspaceOk(workspaceId); await canvas.moveGroup(agentIds, workspaceId, busy); return canvas.read(exists); }),
     moveAgent: (agentId: string, bounds: OrchestrationBounds) => result(() => canvas.moveAgent(agentId, bounds)),
     deleteAgent: (agentId: string) => result(() => canvas.deleteAgent(agentId, busy)),
-    createLink: (input: { linkId: string; fromAgentId: string; toAgentId: string }) => result(() => canvas.createLink(input)),
+    createLink: (input: { linkId: string; fromAgentId: string; toAgentId: string }) => result(() => { platformOk(); return canvas.createLink(input); }),
     deleteLink: (linkId: string) => result(() => canvas.deleteLink(linkId, busy)),
     // Only a link that holds a newer version's run (busy says "newer" for that run), and only its own run.
     releaseNewerLink: (input: { commandId: string; linkId: string; runId: string }) =>
       result(() => canvas.releaseNewer({ ...input, appVersion: deps.appVersion?.() ?? "unknown" }, busy)),
     startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }) => result(() => {
       notOpen();
+      platformOk();
       return canvas.startOnLink(input.linkId, input.requestId, busy, exists, (source) => createRun({ requestId: input.requestId, source, goal: input.goal }));
     }),
 
     command: (runId: string, input: { commandId: string; expectedRevision: number; command: RunCommand }) => result(async (): Promise<CommandOutcome> => {
       notOpen();
+      // Only Stop here: any other command opens the run with its runtime (the CLIs, the login shell) to continue it.
+      if (input.command?.kind !== "stop") platformOk();
       if (input.command?.kind === "stop") {
         // An opening or another stop under way decides first whether this process holds the run: one owner of its journal.
         for (let p; (p = stopping.get(runIdOk(runId)) ?? opening.get(runId)); ) await p.catch(() => {});
@@ -632,6 +646,8 @@ export function createRunManager(deps: RunManagerDeps) {
       const link = c.links.find((l) => l.linkId === input.linkId) ?? refuse("link_not_found", "no such link");
       const lead = c.agents.find((a) => a.agentId === link.fromAgentId) ?? refuse("link_not_found", "the link has no lead");
       const holder = await folderHolder(c, lead.project, link.linkId, busy, known);
+      // Nothing is measured where a run could not finish: no CLI and no login shell for a start that is refused anyway.
+      if (!orchestrationAvailable(platform)) return { ready: false, items: [platformItem(platform)] };
       const profile = (await profiles.get(lead.project)) ?? await suggestProfile(lead.project);
       const key = `${input.workMode === "worktree" ? "worktree" : "folder"}:${lead.project}`;
       const cached = runtimes.get(key);
@@ -643,7 +659,7 @@ export function createRunManager(deps: RunManagerDeps) {
       let gitPath: string | null = null;
       try { gitPath = deps.gitPath(); } catch { gitPath = null; }
       const r = await assessReadiness({
-        project: lead.project, commands: input.commands, workMode: input.workMode, platform: process.platform, gitPath,
+        project: lead.project, commands: input.commands, workMode: input.workMode, platform, gitPath,
         prepare: profile.prepare,
         runtime: measured, checkedVersions: NATIVE_PROTOCOL_CHECKED, busy: holder !== null
       });
@@ -658,7 +674,7 @@ export function createRunManager(deps: RunManagerDeps) {
       const project = await leadProject(linkId);
       const saved = await profiles.get(project);
       const profile = saved ?? await suggestProfile(project);
-      const rt = capabilities ? await nativeOf(project) : null;
+      const rt = capabilities && orchestrationAvailable(platform) ? await nativeOf(project) : null;
       const help = rt?.claudeHelp ? await rt.claudeHelp().catch(() => "") : "";
       const codexChecked = !!rt && NATIVE_PROTOCOL_CHECKED.codex.includes(parseCliVersion("codex", rt.versions.codex) ?? "");
       let gitPath: string | null = null;
@@ -697,6 +713,7 @@ export function createRunManager(deps: RunManagerDeps) {
     // What the CLIs report they loaded for this project, asked without a model turn. Only on the person's request.
     probe: (linkId: string, options: { mcpReady?: string } = {}) => result(async (): Promise<OrchestrationEnvironmentReport> => {
       notOpen();
+      platformOk();
       const project = await leadProject(linkId);
       if (!deps.native) refuse("provider_unavailable", "no native agent runtime");
       const rt = await deps.native!(project, await direnvOf(project));

@@ -32,6 +32,7 @@ interface AgentCardProps {
   onPortMove(event: React.PointerEvent<HTMLButtonElement>): void;
   onPortUp(event: React.PointerEvent<HTMLButtonElement>): void;
   onPortActivate(agentId: string): void;
+  portDisabledHint?: string; // linking is unavailable on this platform: the port is shown, inactive, with this hint
   onConnectHere(agentId: string): void;
   onOpenRun(agentId: string): void;
   onObserve(agentId: string): void;
@@ -144,7 +145,8 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
           className="agent-card__port"
           type="button"
           aria-label={t(locale, "orchPort")}
-          title={t(locale, "orchPort")}
+          title={props.portDisabledHint ?? t(locale, "orchPort")}
+          disabled={props.portDisabledHint !== undefined}
           aria-pressed={linking === "source"}
           onPointerDown={(event) => props.onPortDown(card.agentId, event)}
           onPointerMove={props.onPortMove}

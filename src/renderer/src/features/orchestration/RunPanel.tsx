@@ -18,6 +18,7 @@ import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
 import {
   ACTIVE_STATUSES,
+  actionEnabled,
   availableActions,
   TERMINAL_STATUSES,
   board,
@@ -30,6 +31,8 @@ import {
   outcomeOf,
   parsePlan,
   nextStepKey,
+  orchestrationAvailableHere,
+  orchestrationEntry,
   participantState,
   pauseEnding,
   resultFacts,
@@ -947,6 +950,10 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
 
   const actions = view ? availableActions(view) : [];
   const has = (a: RunAction) => actions.includes(a);
+  // On a platform without orchestration: every action shown, only Stop active.
+  const available = orchestrationAvailableHere();
+  const off = (a: RunAction) => !actionEnabled(a, available);
+  const entry = orchestrationEntry(available);
   const busy = view !== null && ACTIVE_STATUSES.includes(view.status);
   const open = state?.open ?? true;
   const lead = participantState("lead", view, activity.entries, open);
@@ -1052,7 +1059,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               </p>
             )}
             {view.permission && !view.newer && (
-              <PermissionBlock key={view.permission.requestId} locale={locale} request={view.permission} more={(view.pendingPermissions ?? 1) - 1} sending={sending}
+              <PermissionBlock key={view.permission.requestId} locale={locale} request={view.permission} more={(view.pendingPermissions ?? 1) - 1} sending={sending || off("permission")}
                 onDecide={(decision, extra) => void send("permission", { requestId: view.permission!.requestId, decision, ...extra })} />
             )}
 
@@ -1061,18 +1068,18 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <h4>{t(locale, "orchQuestion")}</h4>
                 <p className="orch-panel__text">{questionText ?? t(locale, "orchLoading")}</p>
                 <textarea ref={answerBox} rows={3} value={answer} placeholder={t(locale, "orchAnswerPlaceholder")} onChange={(e) => setAnswer(e.target.value)} />
-                <button type="button" className="orch-primary" disabled={sending || !answer.trim()}
+                <button type="button" className="orch-primary" disabled={sending || !answer.trim() || off("answer")}
                   onClick={() => void send("answer", { questionId: d.question!.questionId, text: answer.trim() }, () => setAnswer(""))}>{t(locale, "orchAnswer")}</button>
               </div>
             )}
             {actions.length > 0 && (
               <div className="orch-panel__actions">
-                {has("pause") && <button type="button" disabled={sending} onClick={() => void send("pause")}>{t(locale, "orchPause")}</button>}
-                {has("keep_running") && <button type="button" disabled={sending} onClick={() => void send("keep_running")}>{t(locale, "orchKeepRunning")}</button>}
-                {has("resume") && <button type="button" className="orch-primary" disabled={sending} data-orch-resume={head.next} onClick={() => void send("resume")}>
+                {has("pause") && <button type="button" disabled={sending || off("pause")} onClick={() => void send("pause")}>{t(locale, "orchPause")}</button>}
+                {has("keep_running") && <button type="button" disabled={sending || off("keep_running")} onClick={() => void send("keep_running")}>{t(locale, "orchKeepRunning")}</button>}
+                {has("resume") && <button type="button" className="orch-primary" disabled={sending || off("resume")} data-orch-resume={head.next} onClick={() => void send("resume")}>
                   {head.next === "finish_retry" && pending ? `${t(locale, "orchFinishRetry")}: ${tr(locale, `orchFinishStep_${pending.step}`)}` : t(locale, "orchResume")}
                 </button>}
-                {has("step") && <button type="button" disabled={sending} onClick={() => void send("step")}>{t(locale, "orchStep")}</button>}
+                {has("step") && <button type="button" disabled={sending || off("step")} onClick={() => void send("step")}>{t(locale, "orchStep")}</button>}
                 {has("stop") && <button type="button" className="orch-danger" disabled={sending} onClick={() => void send("stop")}>{t(locale, "orchStop")}</button>}
               </div>
             )}
@@ -1082,22 +1089,24 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                   {(["turns", "roundsPerStage", "replans", "runMs"] as const).map((k) => <option key={k} value={k}>{tr(locale, `orchLimit_${k}`)}</option>)}
                 </select>
                 <input type="number" min={1} value={limit.value} onChange={(e) => setLimit((l) => ({ ...l, value: e.target.value }))} />
-                <button type="button" disabled={sending || !(Number(limit.value) > 0)}
+                <button type="button" disabled={sending || !(Number(limit.value) > 0) || off("raise_limit")}
                   onClick={() => void send("raise_limit", { limit: limit.kind, value: limit.kind === "runMs" ? Number(limit.value) * 60_000 : Number(limit.value) })}>{t(locale, "orchRaiseLimit")}</button>
               </div>
             )}
             {has("recover") && (
               <div className="orch-panel__actions">
-                <button type="button" disabled={sending} onClick={() => void send("recover", { recover: "accept" })}>{t(locale, "orchRecoverAccept")}</button>
-                <button type="button" disabled={sending} onClick={() => void send("recover", { recover: "retry_turn" })}>{t(locale, "orchRecoverRetry")}</button>
+                <button type="button" disabled={sending || off("recover")} onClick={() => void send("recover", { recover: "accept" })}>{t(locale, "orchRecoverAccept")}</button>
+                <button type="button" disabled={sending || off("recover")} onClick={() => void send("recover", { recover: "retry_turn" })}>{t(locale, "orchRecoverRetry")}</button>
                 <label className="orch-check"><input type="checkbox" checked={confirmReset} onChange={(e) => setConfirmReset(e.target.checked)} /><span>{t(locale, "orchRecoverConfirm")}</span></label>
                 {view.workMode !== "project" && <>
-                  <button type="button" className="orch-danger" disabled={sending || !confirmReset}
+                  <button type="button" className="orch-danger" disabled={sending || !confirmReset || off("recover")}
                     onClick={() => void send("recover", { recover: "reset_to_checkpoint", confirm: true })}>{t(locale, "orchRecoverReset")}</button>
                 </>}
               </div>
             )}
-            {!busy && onNewGoal && !view.newer && <button type="button" className="orch-primary" onClick={onNewGoal}>{t(locale, "orchNewGoal")}</button>}
+            {!busy && onNewGoal && !view.newer && <button type="button" className="orch-primary" disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
+              onClick={onNewGoal}>{t(locale, "orchNewGoal")}</button>}
+            {entry.hint && actions.some(off) && <div className="orch-hint" data-orch-platform-hint>{t(locale, entry.hint)}</div>}
             {sending && <div className="orch-hint">{t(locale, "orchSending")}</div>}
             {!sending && unknown.length > 0 && (
               <div className="orch-panel__unknown" role="status">
@@ -1231,7 +1240,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                   <section className="orch-panel__section">
                     <h4>{t(locale, "orchClarify")}</h4>
                     <textarea rows={2} value={clarify} placeholder={t(locale, "orchClarifyPlaceholder")} onChange={(e) => setClarify(e.target.value)} />
-                    <button type="button" disabled={sending || !clarify.trim()}
+                    <button type="button" disabled={sending || !clarify.trim() || off("clarify")}
                       onClick={() => void send("clarify", { text: clarify.trim() }, () => setClarify(""))}>{t(locale, "orchClarify")}</button>
                   </section>
                 )}

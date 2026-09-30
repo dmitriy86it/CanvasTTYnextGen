@@ -299,6 +299,7 @@ async function nativeRun(kidRedirect) {
   }));
   const launch = { command: NODE, args: [path.join(ROOT, "src/orchestration/supervisor.mjs")], env: {} };
   const m = createRunManager({
+    platform: "darwin", // the engine under test; the platform gate has its own tests
     root: path.join(dir, "root"), gitPath: () => GIT, launch: () => launch, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used by a native goal"); }, native: testNativeRuntime(providers, () => launch)
   });

@@ -276,7 +276,7 @@ const snap = (seq, tick, status = "running") => ({ ok: true, value: { seq, tick,
 
 test("preload: several listeners of one run use one main subscription; the last to leave releases it", async () => {
   const f = fakeIpc();
-  const client = createOrchestrationClient(f.ipc);
+  const client = createOrchestrationClient(f.ipc, "darwin");
   const a = [], b = [];
   const wa = client.watch(RUN, (e) => a.push(e));
   const wb = client.watch(RUN, (e) => b.push(e));
@@ -299,7 +299,7 @@ test("preload: several listeners of one run use one main subscription; the last 
 
 test("preload: events that arrive before the snapshot wait for it; an older snapshot never rolls a listener back", async () => {
   const f = fakeIpc();
-  const client = createOrchestrationClient(f.ipc);
+  const client = createOrchestrationClient(f.ipc, "darwin");
   const got = [];
   const w = client.watch(RUN, (e) => got.push([e.seq, e.tick, e.view.status]));
   f.event(12, 1, "running");
@@ -315,7 +315,7 @@ test("preload: events that arrive before the snapshot wait for it; an older snap
 
 test("preload: quick watch/unwatch/watch, a refused watch and a listener that left before the snapshot", async () => {
   const f = fakeIpc();
-  const client = createOrchestrationClient(f.ipc);
+  const client = createOrchestrationClient(f.ipc, "darwin");
   const got = [];
   const w1 = client.watch(RUN, (e) => got.push(e));
   w1.unwatch();
