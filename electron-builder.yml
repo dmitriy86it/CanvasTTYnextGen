@@ -62,7 +62,7 @@ appImage:
 linux:
   icon: build/icon.png
   category: Utility
-  maintainer: howdeploy
+  maintainer: dmitriy86it
   syncDesktopName: true
   target:
     - AppImage
