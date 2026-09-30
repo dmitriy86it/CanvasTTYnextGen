@@ -25,6 +25,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Lint
+        run: npm run lint:ci
       - name: Audit repository secrets
         run: npm run audit:secrets
       - name: Run tests

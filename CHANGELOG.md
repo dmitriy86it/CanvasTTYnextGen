@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Added the Biome linter in lint-only mode (`npm run lint`, CI step Lint); the formatter stays off.
 - Documentation and CI: the README, package metadata and install guide point to this fork (releases, homepage, repository), the README gains a platform matrix and credits to the upstream CanvasTTY, the Simplified Chinese note is removed, and LICENSE adds the fork's copyright line. CI checks out the full history so the workspaces rollback test runs, and Linux jobs are pinned to `ubuntu-24.04`. Technical identifiers (`canvastty`, `appId`, data folder) are unchanged.
 
 ## 1.5.6

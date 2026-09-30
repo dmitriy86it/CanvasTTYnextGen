@@ -1,0 +1,88 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": false },
+  "files": {
+    "includes": [
+      "src/**",
+      "scripts/**",
+      "tests/**",
+      "integrations/even-g2/src/**",
+      "electron.vite.config.ts",
+      "!**/node_modules",
+      "!**/out",
+      "!**/release",
+      "!**/artifacts",
+      "!**/dist",
+      "!src/native/speech/vendor",
+      "!docs",
+      "!tests/fixtures/**/package-lock.json"
+    ]
+  },
+  // Lint only: no reformatting, no import sorting.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      // `recommended: true` is deprecated in Biome 2.5 in favour of this preset; same rule set.
+      "preset": "recommended",
+      "a11y": {
+        "noSvgWithoutTitle": "warn",
+        "useButtonType": "warn",
+        "useSemanticElements": "warn",
+        "useAriaPropsSupportedByRole": "warn",
+        "noStaticElementInteractions": "warn",
+        "noAutofocus": "warn",
+        "useKeyWithClickEvents": "warn",
+        "noNoninteractiveElementToInteractiveRole": "warn"
+      },
+      "complexity": {
+        "useOptionalChain": "warn",
+        "noImportantStyles": "warn",
+        "noAdjacentSpacesInRegex": "warn",
+        "noCommaOperator": "warn",
+        "noThisInStatic": "warn"
+      },
+      "correctness": {
+        "useHookAtTopLevel": "error",
+        "useExhaustiveDependencies": "warn",
+        "noUnusedFunctionParameters": "warn",
+        "noUnusedVariables": "warn",
+        "noUnusedPrivateClassMembers": "warn",
+        "noUnsafeFinally": "warn",
+        "noVoidTypeReturn": "off" // `return voidCall()` is a house idiom; tsc already checks void returns
+      },
+      "nursery": {
+        "noFloatingPromises": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "off", // `!` after checks tsc cannot follow is deliberate across the codebase
+        "useTemplate": "off" // concatenation vs template is a style choice here, not a defect
+      },
+      "suspicious": {
+        "noControlCharactersInRegex": "off", // terminal/ANSI and sanitizing code matches control characters on purpose
+        "noTemplateCurlyInString": "off", // literal `${...}` strings are intended (shell/env placeholders, generated source)
+        "noImplicitAnyLet": "off", // `let x;` is typed by tsc strict control-flow analysis
+        "noAssignInExpressions": "warn",
+        "useIterableCallbackReturn": "warn",
+        "noArrayIndexKey": "warn",
+        "noExplicitAny": "warn",
+        "noPrototypeBuiltins": "warn",
+        "noConfusingVoidType": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // noFloatingPromises is wanted only in src/main and src/preload. It is enabled above because
+      // an override alone does not start the type scanner the rule needs; it is switched off elsewhere here.
+      "includes": ["**", "!src/main/**", "!src/preload/**"],
+      "linter": { "rules": { "nursery": { "noFloatingPromises": "off" } } }
+    },
+    {
+      // Specificity order in the stylesheets is a deliberate cascade; the rule flags ~150 intended overrides.
+      "includes": ["**/*.css"],
+      "linter": { "rules": { "style": { "noDescendingSpecificity": "off" } } }
+    }
+  ]
+}
