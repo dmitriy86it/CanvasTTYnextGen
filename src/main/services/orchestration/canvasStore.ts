@@ -9,7 +9,8 @@ import type {
   OrchestrationAgentLink,
   OrchestrationBounds,
   OrchestrationCanvas,
-  OrchestrationProviderKind
+  OrchestrationProviderKind,
+  OrchestrationReleasedNewerRun
 } from "../../../shared/orchestration.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
 import { runOwners, workspaceOf } from "../../../shared/workspaceOwnership.ts";
@@ -25,6 +26,12 @@ const MAX_AGENTS = 200;
 const MAX_COORD = 10_000_000;
 const EMPTY: OrchestrationCanvas = { agents: [], links: [], owners: {} };
 const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const isReleased = (r: unknown): r is OrchestrationReleasedNewerRun => {
+  const o = r as Record<string, unknown> | null;
+  return typeof o === "object" && o !== null && [o.runId, o.linkId, o.commandId].every((x) => typeof x === "string" && UUID.test(x))
+    && [o.folder, o.releasedAt, o.appVersion].every((x) => typeof x === "string" && x.length <= 4096);
+};
 
 export const workspaceOfCard = (card: OrchestrationAgentCard | undefined): string => card?.workspaceId ?? COMMON_WORKSPACE_ID;
 
@@ -102,7 +109,8 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
           if (v.owners && typeof v.owners === "object" && !Array.isArray(v.owners)) {
             for (const [runId, ws] of Object.entries(v.owners)) if (typeof ws === "string" && WORKSPACE_ID.test(ws)) owners[runId] = ws;
           }
-          parsed = { agents: v.agents, links: v.links, owners };
+          const released = Array.isArray(v.releasedNewerRuns) ? v.releasedNewerRuns.filter(isReleased) : [];
+          parsed = { agents: v.agents, links: v.links, owners, ...(released.length ? { releasedNewerRuns: released } : {}) };
         }
       } catch { /* a damaged file starts empty; it is kept aside below */ }
       if (parsed === EMPTY) await rename(file, `${file}.damaged-${randomUUID()}`).catch(() => {});
@@ -213,6 +221,35 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
       refuseBusy(await busy(link), "link_active_run", "stop the run of this link first");
       return { next: { ...c, links: c.links.filter((l) => l.linkId !== linkId), owners: ownersFixed(c, [link]) }, value: null };
     }),
+
+    // A link held by a newer version's run is let go (proposed amendment to acceptance-review-spec.md §2.2): the link is
+    // removed, which frees its folder, the run keeps its workspace (ownersFixed), and the release is written down so a
+    // later version finds its run without a link. Only that link's own run, and only while busy() says it is a newer
+    // version's; any other run of the link that is busy here refuses it. A repeat of commandId answers the same.
+    releaseNewer: (input: { commandId: string; linkId: string; runId: string; appVersion: string }, busy: Busy) =>
+      change<OrchestrationReleasedNewerRun>(async (c) => {
+        const done = c.releasedNewerRuns?.find((r) => r.commandId === input.commandId);
+        if (done) {
+          if (done.linkId !== input.linkId || done.runId !== input.runId) refuse("request_conflict", "this commandId belongs to another release");
+          return { next: null, value: done };
+        }
+        const link = linkOf(c, input.linkId);
+        if (!link.runIds.includes(input.runId)) refuse("link_run_mismatch", "the run is not this link's");
+        if (await busy({ ...link, runIds: [input.runId] }) !== "newer") refuse("run_not_newer", "only a newer version's run is let go this way");
+        for (const other of link.runIds.filter((id) => id !== input.runId)) {
+          const b = await busy({ ...link, runIds: [other] });
+          if (b === "newer") refuse("link_newer_runs", "another newer version's run holds this link");
+          if (b) refuse("link_active_run", "another run of this link is not finished");
+        }
+        const entry: OrchestrationReleasedNewerRun = {
+          runId: input.runId, linkId: link.linkId, folder: agentOf(c, link.fromAgentId).project,
+          releasedAt: new Date().toISOString(), appVersion: input.appVersion, commandId: input.commandId
+        };
+        return {
+          next: { ...c, links: c.links.filter((l) => l.linkId !== link.linkId), owners: ownersFixed(c, [link]), releasedNewerRuns: [...(c.releasedNewerRuns ?? []), entry] },
+          value: entry
+        };
+      }),
 
     // A linked group moves whole, and only while none of its links has a run that is not finished (a paused run
     // included): such a run still owns its folder and processes. `agentIds` is the group the person confirmed; a group

@@ -12,7 +12,8 @@ import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
 import { finishStatus, participantState, runHeadline, TERMINAL_STATUSES } from "./runModel.ts";
 
-export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "stopped" | "failed";
+// read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
+export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "stopped" | "failed" | "read_only";
 export type Role = "lead" | "executor";
 export const QUIET_MS = 30_000;
 
@@ -113,6 +114,7 @@ function quietText(locale: LocaleId, state: ActivityState, last: string | null, 
 
 // The state of a run that is not moving by itself: waiting for the person, paused, stopping or ended.
 function heldState(locale: LocaleId, view: OrchestrationRunView): { state: ActivityState; doing: string; wait: string | null } | null {
+  if (view.newer) return { state: "read_only", doing: t(locale, "orchReadOnly"), wait: t(locale, "orchReason_newer_version") };
   if (view.halted) return { state: "waiting_user", doing: t(locale, "orchHeadline_halted"), wait: t(locale, "orchNext_halted") };
   if (view.permission && ["preparing", "running", "pausing"].includes(view.status)) {
     return { state: "waiting_user", doing: tr(locale, "orchNow_needsYou", { who: who(view.permission.role) }), wait: permissionReason(locale, view.permission) };

@@ -24,7 +24,7 @@ export const TERMINAL_STATUSES = ["stopped", "completed", "failed"];
 export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission";
 
 export function availableActions(view: OrchestrationRunView): RunAction[] {
-  if (view.halted) return [];
+  if (view.halted || view.newer) return []; // a newer version's run: nothing is sent to it from here
   const clarify: RunAction[] = view.reason === "journal_corrupt" ? [] : ["clarify"];
   switch (view.status) {
     case "preparing": return ["stop"];
@@ -53,11 +53,12 @@ export function activeRole(view: OrchestrationRunView | null): "lead" | "executo
   return a.purpose === "execute" ? "executor" : "lead";
 }
 
-export type AgentState = "idle" | "starting" | "working" | "waiting" | "needs_you" | "paused" | "stopping" | "completed" | "stopped" | "failed";
+export type AgentState = "idle" | "starting" | "working" | "waiting" | "needs_you" | "paused" | "stopping" | "completed" | "stopped" | "failed" | "read_only";
 // A card's state from its link's latest run: working only while its own role holds the turn; "needs_you" while its CLI
 // waits for the person's decision (the panel may be closed, so the card says it).
 export function agentState(role: "lead" | "executor", view: OrchestrationRunView | null): AgentState {
   if (!view) return "idle";
+  if (view.newer) return "read_only"; // a newer version's run, whatever its journaled status: only viewed here
   if (view.status === "completed" || view.status === "stopped" || view.status === "failed" || view.status === "stopping") return view.status;
   if (view.permission?.role === role) return "needs_you";
   if (view.status === "paused") return "paused";

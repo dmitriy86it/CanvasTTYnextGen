@@ -1065,6 +1065,9 @@ button { border: 0; }
 .agent-link__chip { position: absolute; padding: .3em .35em .3em .7em; display: flex; align-items: center; gap: .35em; border-radius: 99px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-md); font-size: calc(12px * var(--ui-scale, 1)); white-space: nowrap; transform: translate(-50%, -50%); }
 .agent-link__chip button { padding: .25em .6em; border-radius: 99px; }
 .agent-link__chip--needs-you { box-shadow: 0 0 0 2px var(--yellow), var(--shadow-md); }
+/* "Release link" of a newer version's run: its confirmation wraps under the chip's buttons instead of widening the chip */
+.agent-link__chip:has([data-orch-release-confirm]) { flex-wrap: wrap; width: min(420px, 90vw); border-radius: 14px; }
+.orch-release [data-orch-release-confirm] { white-space: normal; }
 .agent-link__state { font-weight: 800; }
 .orch-linking-hint { position: absolute; left: 50%; bottom: 24px; z-index: 520; padding: 10px 16px; border-radius: 12px; color: var(--text-dark); background: var(--yellow); box-shadow: var(--shadow-md); font-weight: 800; transform: translateX(-50%); pointer-events: none; }
 .orch-dialog { width: min(640px, 100%); max-height: calc(100vh - var(--titlebar-height) - 48px); overflow: auto; }

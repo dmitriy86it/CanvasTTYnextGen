@@ -403,7 +403,7 @@ function HistoryDialog({ controls, orch, locale, id, onClose, onOpenRun }: {
           {runs?.map((r) => (
             <li key={r.runId} data-ws-history-run={r.runId}>
               <span>{r.project || r.runId.slice(0, 8)}</span>
-              <span className="ws-list__state">{r.status === "newer" ? tk(locale, "orchNewerShort") : tk(locale, `orchStatus_${r.status}`)}</span>
+              <span className="ws-list__state">{r.status === "newer" ? tk(locale, "orchReadOnly") : tk(locale, `orchStatus_${r.status}`)}</span>
               <button type="button" data-ws-history-open onClick={() => { onOpenRun(r.runId); onClose(); }}>{t(locale, TERMINAL_STATUSES.includes(r.status) ? "orchTab_summary" : "orchOpenRun")}</button>
             </li>
           ))}

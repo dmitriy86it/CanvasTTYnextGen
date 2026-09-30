@@ -2,9 +2,12 @@
 // read-only next to a v1 run, on a temporary profile with fake Codex/Claude CLIs. Three launches on one user-data dir:
 //   first:    two links in one project; link A starts a v1 run that stops at the plan review;
 //   (closed): a v2 journal (goal text, v2-only records, valid hash chain) is written for link B;
-//   second:   link B says "newer version" and offers no new goal or delete; its panel shows the goal and the raw records
-//             and no action but closing; direct commands from the renderer are refused; the v1 run resumes to completed;
-//   third:    reopened, the same; the newer run's files never change (content, size, mode, mtime of every entry).
+//   second:   link B says "read only" and offers no new goal or delete; its cards say "read only" (never paused) with no
+//             continue or stop; its panel shows the goal and the raw records and no action but closing and "Release
+//             link"; direct commands from the renderer are refused; the v1 run resumes to completed;
+//   third:    reopened, the same; then "Release link" through the chip: confirmed, the link goes, the release is
+//             written down, the run stays in the workspace history read only;
+//   fourth:   reopened, the link stays gone. The newer run's files never change (content, size, mode, mtime).
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-a0-newer-ui.mjs [--shots <dir>]
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -84,7 +87,8 @@ const chip = (linkId) => q(`[data-agent-link-id="${linkId}"]`);
 const newerId = randomUUID();
 const GOAL = "Цель из более новой версии";
 let app;
-let linkA, linkB, v1;
+let linkA, linkB, v1, lb, newerDir;
+const canvasPath = path.join(root, "canvas.json");
 try {
   // =============== first launch: two links, a v1 run at the plan review ===============
   app = await launch();
@@ -103,7 +107,7 @@ try {
   await app.waitFor(`${chip(linkA)} && ${chip(linkB)} && true`, "both link chips");
   // one lead card per link lies on top of the other: move link B's pair away through main
   const c0 = await canvasState(app);
-  const lb = c0.links.find((l) => l.linkId === linkB);
+  lb = c0.links.find((l) => l.linkId === linkB);
   await app.ev(`Promise.all([${JSON.stringify(lb.fromAgentId)}, ${JSON.stringify(lb.toAgentId)}].map((id, i) => window.canvasTTY.orchestration.moveAgent(id, { position: { x: 40 + i * 380, y: 420 }, size: { width: 300, height: 176 } })))`);
   await app.ev("location.reload()");
   await app.waitFor(`${chip(linkA)} && ${chip(linkB)} && true`, "both link chips after the move");
@@ -116,8 +120,7 @@ try {
   app = null;
 
   // =============== between launches: the newer version's run on link B ===============
-  const newerDir = writeNewer(newerId, GOAL);
-  const canvasPath = path.join(root, "canvas.json");
+  newerDir = writeNewer(newerId, GOAL);
   const cv = JSON.parse(fs.readFileSync(canvasPath, "utf8"));
   cv.links.find((l) => l.linkId === linkB).runIds = [newerId];
   cv.owners = { ...(cv.owners ?? {}), [newerId]: "common" };
@@ -133,9 +136,15 @@ try {
   const nr = list.find((r) => r.runId === newerId);
   expect(nr?.status === "paused" && nr.reason === "newer_version" && nr.open === false, "second: the newer run is listed read-only", list);
   expect(list.some((r) => r.runId === v1), "second: the v1 run is listed", list);
-  await app.waitFor(`${chip(linkB)}.querySelector(".agent-link__state")?.textContent === "Более новая версия"`, "link B says newer version");
+  await app.waitFor(`${chip(linkB)}.querySelector(".agent-link__state")?.textContent === "Только просмотр"`, "link B says read only");
   const chipButtons = await app.ev(`[...${chip(linkB)}.querySelectorAll("button")].map((b) => b.textContent.trim())`);
   expect(!chipButtons.includes("Новая цель") && !chipButtons.includes("×"), "second: link B offers no new goal and no delete", chipButtons);
+  expect(chipButtons.includes("Отпустить связь"), "second: link B offers Release link", chipButtons);
+  const cardsB = await app.ev(`[${JSON.stringify(lb.fromAgentId)}, ${JSON.stringify(lb.toAgentId)}].map((id) => { const c = document.querySelector('[data-agent-id="' + id + '"]'); return {
+    state: c?.querySelector(".agent-card__state")?.textContent, line: c?.querySelector("[data-agent-now]")?.textContent ?? null,
+    buttons: [...(c?.querySelectorAll("button") ?? [])].map((b) => b.textContent.trim()), text: c?.textContent ?? "" }; })`);
+  expect(cardsB.every((c) => c.state === "Только просмотр" && c.line === "создан более новой версией Raoden Loom"), "second: link B's cards say read only, created by a newer version", cardsB);
+  expect(cardsB.every((c) => !c.buttons.some((b) => /Продолжить|Остановить/.test(b)) && !/пауз/i.test(c.text)), "second: no continue or stop on the cards, never paused", cardsB);
   await app.clickEl(byText(`[data-agent-link-id="${linkB}"] button`, "Открыть запуск"));
   await app.waitFor(`${q("[data-orch-newer]")} && true`, "the newer run's panel");
   await app.waitFor(`document.querySelectorAll("[data-orch-newer-history] li").length === 4`, "four records in the history");
@@ -147,7 +156,7 @@ try {
   expect(panel.version === "2" && panel.title.includes("более новой версией Raoden Loom"), "second: the panel names the newer version", panel);
   expect(panel.goal.includes(GOAL), "second: the goal of run.created is shown", panel.goal);
   expect(same(panel.types, ["run.created", "plan.recorded", "review.assessed", "plan.proposed"]), "second: the raw records are the history", panel.types);
-  expect(same(panel.buttons, ["Закрыть"]) || (panel.buttons.length === 1), "second: no action but closing", panel.buttons);
+  expect(same(panel.buttons, ["Закрыть", "Отпустить связь"]), "second: no action but closing and Release link", panel.buttons);
   expect(!/поврежд/i.test(panel.text), "second: not called damaged", panel.text);
   await app.shot("a0-02-newer-panel");
   const refused = await app.ev(`Promise.all(["stop", "resume", "step"].map((kind) => window.canvasTTY.orchestration.command({ runId: ${JSON.stringify(newerId)}, commandId: crypto.randomUUID(), expectedRevision: 0, command: { kind } }).then((r) => r.ok ? "accepted" : r.code)))`);
@@ -169,13 +178,42 @@ try {
 
   // =============== third launch: reopened ===============
   app = await launch();
-  await app.waitFor(`${chip(linkB)}?.querySelector(".agent-link__state")?.textContent === "Более новая версия"`, "reopened: link B says newer version");
+  await app.waitFor(`${chip(linkB)}?.querySelector(".agent-link__state")?.textContent === "Только просмотр"`, "reopened: link B says read only");
   await app.clickEl(byText(`[data-agent-link-id="${linkB}"] button`, "Открыть запуск"));
   await app.waitFor(`document.querySelectorAll("[data-orch-newer-history] li").length === 4`, "reopened: the history");
-  await sleep(500);
+  await app.key("Escape", "Escape", 27);
+  await app.waitFor(`!${q("[data-orch-newer]")}`, "reopened: panel closed");
+  // "Release link" through the chip: a confirmation that explains it, then the link goes
+  const v1Refused = await app.ev(`window.canvasTTY.orchestration.releaseNewerLink({ commandId: crypto.randomUUID(), linkId: ${JSON.stringify(linkA)}, runId: ${JSON.stringify(v1)} }).then((r) => r.ok ? "ok" : r.code)`);
+  expect(v1Refused === "run_not_newer", "third: a direct release of the v1 run's link is refused", v1Refused);
+  await app.clickEl(`${chip(linkB)}.querySelector("[data-orch-release-link]")`);
+  await app.waitFor(`${chip(linkB)}?.querySelector("[data-orch-release-confirm]") && true`, "the release confirmation");
+  const confirmText = await app.ev(`${chip(linkB)}.querySelector("[data-orch-release-confirm]").textContent`);
+  expect(/Журнал запуска не меняется/.test(confirmText) && /только для просмотра/.test(confirmText) && /окажется без связи/.test(confirmText), "third: the confirmation explains the release", confirmText);
+  await app.shot("a0-04-release-confirm");
+  expect(same(footprint(newerDir), before), "third: nothing changed before the confirmation", null);
+  await app.clickEl(`${chip(linkB)}.querySelector("[data-orch-release-do]")`);
+  await app.waitFor(`!${chip(linkB)}`, "link B is gone", 20_000);
+  const released = JSON.parse(fs.readFileSync(canvasPath, "utf8"));
+  expect(!released.links.some((l) => l.linkId === linkB) && released.releasedNewerRuns?.length === 1
+    && released.releasedNewerRuns[0].runId === newerId && released.releasedNewerRuns[0].linkId === linkB && released.releasedNewerRuns[0].folder === projectA
+    && typeof released.releasedNewerRuns[0].appVersion === "string", "third: canvas.json records the release", released.releasedNewerRuns);
+  const listed = (await runs(app)).find((r) => r.runId === newerId);
+  expect(listed?.reason === "newer_version", "third: the run is still listed read-only", listed);
+  await app.shot("a0-05-released");
   await app.stop();
   app = null;
   expect(same(footprint(newerDir), before), "third: the newer run's files are unchanged", footprint(newerDir));
+
+  // =============== fourth launch: the link stays gone ===============
+  app = await launch();
+  await app.waitFor(`${chip(linkA)} && true`, "fourth: link A chip");
+  await sleep(500);
+  expect(!(await app.ev(`!!${chip(linkB)}`)), "fourth: link B stays gone", null);
+  expect((await runs(app)).some((r) => r.runId === newerId), "fourth: the newer run is listed", null);
+  await app.stop();
+  app = null;
+  expect(same(footprint(newerDir), before), "fourth: the newer run's files are unchanged", footprint(newerDir));
   expect(!fs.existsSync(path.join(root, "activity", `${newerId}.jsonl`)), "no activity file for the newer run", null);
 } catch (error) {
   failures.push(`exception: ${error?.stack ?? error}`);

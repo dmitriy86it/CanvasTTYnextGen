@@ -1,0 +1,239 @@
+// A0 before its external review: a link held by a newer version's run can be let go here ("Release link"), such a run is
+// "read only" on its cards (never "paused"), store.deleteRun refuses it, and a newer journal that declares
+// minReaderVersion this build reads is replayed by v1 rules and shown whole — still read-only. v1 journals are unchanged.
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { after, test } from "node:test";
+import { findGit } from "../src/main/services/orchestration/git.ts";
+import { READER_VERSION, ZERO_HASH, buildRecord, canonical, parseJournal } from "../src/main/services/orchestration/journal.ts";
+import { createRunManager } from "../src/main/services/orchestration/manager.ts";
+import { deleteRun, openRun, readRun } from "../src/main/services/orchestration/store.ts";
+import { agentState, availableActions } from "../src/renderer/src/features/orchestration/runModel.ts";
+import { roleStatus, runStatus } from "../src/renderer/src/features/orchestration/runStatus.ts";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const GIT = findGit(process.env);
+const NODE = fs.realpathSync(process.execPath);
+const LAUNCH = { command: NODE, args: [path.join(HERE, "..", "src", "orchestration", "supervisor.mjs")], env: {} };
+const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "canvastty-a0r-")));
+after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+const sha = (b) => createHash("sha256").update(b).digest("hex");
+
+// Records as a newer version writes them; `first` adds top-level fields to the first record (minReaderVersion).
+function lines(runId, version, events, first = {}) {
+  const out = [];
+  let prev = null;
+  for (const [i, [type, data, extra]] of events.entries()) {
+    const body = { v: version, seq: i, ts: `2026-09-30T10:00:0${i % 10}.000Z`, runId, type, prevHash: prev ?? ZERO_HASH, data, ...(i === 0 ? first : {}), ...(extra ?? {}) };
+    const hash = sha(canonical(body));
+    out.push(canonical({ ...body, hash }) + "\n");
+    prev = hash;
+  }
+  return out;
+}
+// A v1-shaped run (created, running, completed) with fields v1 does not know, in the data and in the envelope.
+const RUN = (goal) => [
+  ["run.created", { goal, planVersion: 2 }],
+  ["run.status", { status: "running", reason: null, note: "v2 field" }, { origin: "v2" }],
+  ["run.status", { status: "completed", reason: null }]
+];
+function writeRun(root, { version = 2, first = {}, events = RUN, text = "compatible goal" } = {}) {
+  const runId = randomUUID();
+  const dir = path.join(root, "runs", runId);
+  fs.mkdirSync(path.join(dir, "texts"), { recursive: true, mode: 0o700 });
+  const g = Buffer.from(JSON.stringify({ text, criteria: ["c"], checks: [], commands: ["true"] }));
+  const ref = { sha256: sha(g), bytes: g.length };
+  fs.writeFileSync(path.join(dir, "texts", ref.sha256), g);
+  fs.writeFileSync(path.join(dir, "journal.jsonl"), lines(runId, version, events(ref), first).join(""));
+  return { runId, dir, text };
+}
+function footprint(dir) {
+  const out = {};
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = path.join(d, e.name);
+      const st = fs.lstatSync(p);
+      out[path.relative(dir, p)] = e.isDirectory() ? `dir ${st.mode}` : `${sha(fs.readFileSync(p))} ${st.size} ${st.mode} ${st.mtimeMs}`;
+      if (e.isDirectory()) walk(p);
+    }
+  };
+  walk(dir);
+  return out;
+}
+const managerOf = (root, agents = null) => createRunManager({
+  root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, agents: async () => agents, appVersion: () => "1.5.6-test"
+});
+const code = (res) => (res.ok ? "ok" : res.code);
+const COMMANDS = [
+  { kind: "stop" }, { kind: "resume" }, { kind: "step" }, { kind: "clarify", text: "x" },
+  { kind: "recover", action: "accept" }, { kind: "raise_limit", limit: "turns", value: 99 }
+];
+const bounds = { position: { x: 0, y: 0 }, size: { width: 300, height: 176 } };
+async function linkWith(m, root, runId, src) {
+  const lead = (await m.createAgent({ agentId: randomUUID(), provider: "codex", project: src, bounds })).value.agentId;
+  const exec = (await m.createAgent({ agentId: randomUUID(), provider: "claude", project: src, bounds })).value.agentId;
+  const link = (await m.createLink({ linkId: randomUUID(), fromAgentId: lead, toAgentId: exec })).value.linkId;
+  if (runId) {
+    await m.shutdown();
+    const file = path.join(root, "canvas.json");
+    const cv = JSON.parse(fs.readFileSync(file, "utf8"));
+    cv.links.find((l) => l.linkId === link).runIds = [runId];
+    fs.writeFileSync(file, JSON.stringify(cv));
+  }
+  return link;
+}
+
+// ---------- 1. Release link ----------
+
+test("release link: only a newer version's run on its own link; the link goes, the folder is free, the run's files stay", async () => {
+  const root = path.join(TMP, "release");
+  const src = fs.realpathSync(fs.mkdtempSync(path.join(TMP, "release-src-")));
+  const newer = writeRun(root, { first: {} }); // a plain A0 journal (no minReaderVersion)
+  const v1 = writeRun(root, { version: 1, events: (goal) => [["run.created", { goal }]] }); // a v1 run, preparing
+  let m = managerOf(root);
+  const link = await linkWith(m, root, newer.runId, src);
+  m = managerOf(root);
+  const v1Link = await linkWith(m, root, v1.runId, fs.realpathSync(fs.mkdtempSync(path.join(TMP, "release-src-"))));
+  m = managerOf(root);
+  const other = await linkWith(m, root, null, src);
+  const before = footprint(newer.dir);
+  const release = (input) => m.releaseNewerLink({ commandId: randomUUID(), ...input });
+
+  // refused: a v1 run, a run that is not the link's, a link that does not exist
+  assert.equal(code(await release({ linkId: v1Link, runId: v1.runId })), "run_not_newer");
+  assert.equal(code(await release({ linkId: link, runId: v1.runId })), "link_run_mismatch");
+  assert.equal(code(await release({ linkId: randomUUID(), runId: newer.runId })), "link_not_found");
+  // before: the folder is held by the newer run
+  assert.equal(code(await m.startOnLink({ linkId: other, requestId: randomUUID(), goal: { text: "g", criteria: ["c"], checks: [] } })), "folder_busy");
+
+  const commandId = randomUUID();
+  const r = await m.releaseNewerLink({ commandId, linkId: link, runId: newer.runId });
+  assert.equal(code(r), "ok", JSON.stringify(r));
+  assert.deepEqual([r.value.runId, r.value.linkId, r.value.folder, r.value.appVersion, r.value.commandId], [newer.runId, link, src, "1.5.6-test", commandId]);
+  const again = await m.releaseNewerLink({ commandId, linkId: link, runId: newer.runId });
+  assert.deepEqual(again.value, r.value, "a repeat of the commandId answers the same and changes nothing");
+  assert.equal(code(await m.releaseNewerLink({ commandId, linkId: v1Link, runId: v1.runId })), "request_conflict");
+  assert.equal(code(await release({ linkId: link, runId: newer.runId })), "link_not_found", "a new command for a released link");
+
+  const saved = JSON.parse(fs.readFileSync(path.join(root, "canvas.json"), "utf8"));
+  assert.equal(saved.links.some((l) => l.linkId === link), false, "the link is gone");
+  assert.deepEqual(saved.releasedNewerRuns, [r.value], "the release is written down once");
+  assert.ok(saved.owners[newer.runId], "the run keeps its workspace for the history");
+  assert.deepEqual(footprint(newer.dir), before, "the run's files are unchanged");
+  // the folder is free: a start on another link of it is no longer folder_busy (it goes on to create the run)
+  assert.notEqual(code(await m.startOnLink({ linkId: other, requestId: randomUUID(), goal: { text: "g", criteria: ["c"], checks: [] } })), "folder_busy");
+  // the run is still listed and read-only
+  const s = (await m.get(newer.runId)).value;
+  assert.equal(s.integrity, "newer_version");
+  assert.ok((await m.list()).value.some((x) => x.view.runId === newer.runId));
+  await m.shutdown();
+  // a restart reads the release back
+  m = managerOf(root);
+  assert.equal(code(await m.releaseNewerLink({ commandId, linkId: link, runId: newer.runId })), "ok");
+  await m.shutdown();
+  assert.deepEqual(footprint(newer.dir), before);
+});
+
+// ---------- 2. Read only on the cards, never paused ----------
+
+test("cards and widget: a newer version's run is read only, never paused, and offers no action", () => {
+  const view = { runId: randomUUID(), status: "paused", reason: "newer_version", revision: 0, stage: null, turns: 0, halted: false, active: null,
+    newer: { version: 2, chain: "ok", goal: "g" } };
+  for (const v of [view, { ...view, status: "completed", reason: null, newer: { ...view.newer, compatible: true } }]) {
+    for (const role of ["lead", "executor"]) {
+      assert.equal(agentState(role, v), "read_only");
+      const line = roleStatus("ru", role, { view: v, entries: [], open: false, stageTitles: null, now: Date.now() });
+      assert.deepEqual([line.state, line.doing, line.wait], ["read_only", "Только просмотр", "создан более новой версией Raoden Loom"]);
+    }
+    assert.deepEqual(availableActions(v), []);
+    const row = runStatus("en", { view: v, entries: [], open: false, stageTitles: null, now: Date.now() });
+    assert.equal(row.state, "read_only");
+    assert.doesNotMatch(`${row.doing} ${row.wait}`, /paus/i);
+  }
+});
+
+// ---------- 3. store.deleteRun ----------
+
+test("store.deleteRun refuses a newer version's run before the lock; a v1 run is deleted as before", async () => {
+  const root = path.join(TMP, "delete");
+  for (const first of [{}, { minReaderVersion: 1 }]) {
+    const r = writeRun(root, { first });
+    const before = footprint(r.dir);
+    await assert.rejects(deleteRun(root, r.runId), (e) => e.code === "run_newer_version");
+    assert.deepEqual(footprint(r.dir), before, "no lock, no rename");
+  }
+  const v1 = writeRun(root, { version: 1, events: (goal) => [["run.created", { goal }]] });
+  await deleteRun(root, v1.runId);
+  assert.equal(fs.existsSync(v1.dir), false);
+});
+
+// ---------- 4. minReaderVersion ----------
+
+test("minReaderVersion 1: replayed by v1 rules (unknown fields ignored), shown whole, and nothing may act on it", async () => {
+  assert.equal(READER_VERSION, 1);
+  const root = path.join(TMP, "compat");
+  const r = writeRun(root, { first: { minReaderVersion: 1 } });
+  const buf = fs.readFileSync(path.join(r.dir, "journal.jsonl"));
+  const p = parseJournal(buf, r.runId);
+  assert.deepEqual(p.integrity, { status: "newer_version_compatible", detail: { version: 2, minReaderVersion: 1, chain: { status: "ok" } } });
+  assert.equal(p.state.status, "completed");
+  assert.equal(p.records.length, 3);
+  const before = footprint(r.dir);
+  await assert.rejects(openRun(root, r.runId, { acceptTornTail: true }), (e) => e.code === "journal_newer_version");
+  assert.equal((await readRun(root, r.runId)).canContinue, false);
+
+  const m = managerOf(root);
+  const s = (await m.get(r.runId)).value;
+  assert.equal(s.integrity, "newer_version_compatible");
+  assert.deepEqual([s.view.status, s.view.newer.compatible, s.view.newer.goal, s.open], ["completed", true, r.text, false]);
+  for (const command of COMMANDS) assert.equal(code(await m.command(r.runId, { commandId: randomUUID(), expectedRevision: s.view.revision, command })), "run_newer_version", command.kind);
+  for (const res of [await m.changes(r.runId), await m.diff(r.runId, "a"), await m.create({ requestId: r.runId, source: TMP, goal: { text: r.text, criteria: ["c"], checks: [] } })]) {
+    assert.equal(code(res), "run_newer_version");
+  }
+  assert.equal((await m.history(r.runId, 0, 10)).value.records.length, 3);
+  assert.equal(m.openCount(), 0);
+  await m.shutdown();
+  assert.deepEqual(footprint(r.dir), before, "no lock, recovery, truncation or record");
+});
+
+test("minReaderVersion 2, absent, or not an integer: the A0 view as before", () => {
+  const root = path.join(TMP, "notcompat");
+  for (const first of [{ minReaderVersion: 2 }, {}, { minReaderVersion: "1" }, { minReaderVersion: 1.5 }, { minReaderVersion: 0 }]) {
+    const r = writeRun(root, { first });
+    const p = parseJournal(fs.readFileSync(path.join(r.dir, "journal.jsonl")), r.runId);
+    assert.deepEqual([p.integrity.status, p.state, p.integrity.detail.fallback], ["newer_version", null, undefined], JSON.stringify(first));
+    assert.equal(p.records.length, 3);
+  }
+});
+
+test("minReaderVersion 1 with a record v1 cannot apply: the A0 view, marked with where and why, never a crash", async () => {
+  const root = path.join(TMP, "fallback");
+  const cases = [
+    ["unknown_record", (goal) => [...RUN(goal).slice(0, 2), ["acceptance.decided", { stage: 1 }]]],
+    ["invalid_event", (goal) => [...RUN(goal).slice(0, 2), ["run.status", { status: "dancing", reason: null }]]],
+    ["replay_conflict", (goal) => [["run.status", { status: "running", reason: null }], ...RUN(goal)]]
+  ];
+  for (const [why, events] of cases) {
+    const r = writeRun(root, { first: { minReaderVersion: 1 }, events });
+    const p = parseJournal(fs.readFileSync(path.join(r.dir, "journal.jsonl")), r.runId);
+    assert.equal(p.integrity.status, "newer_version", why);
+    assert.equal(p.state, null);
+    assert.deepEqual(p.integrity.detail.fallback, { line: why === "replay_conflict" ? 1 : 3, code: why });
+    assert.equal(p.records.length, events({}).length, "the records as they are");
+    const m = managerOf(root);
+    const s = (await m.get(r.runId)).value;
+    assert.deepEqual([s.integrity, s.view.newer.compatible, s.view.newer.fallback?.code], ["newer_version", undefined, why]);
+    await m.shutdown();
+  }
+});
+
+test("v1 journals are written as before: v 1 and no minReaderVersion", () => {
+  const { record, line } = buildRecord(null, randomUUID(), "2026-09-30T10:00:00.000Z", "run.created", { goal: { sha256: "a".repeat(64), bytes: 1 } });
+  assert.equal(record.v, 1);
+  assert.equal("minReaderVersion" in JSON.parse(line.toString()), false);
+  assert.deepEqual(Object.keys(JSON.parse(line.toString())).sort(), ["data", "hash", "prevHash", "runId", "seq", "ts", "type", "v"]);
+});

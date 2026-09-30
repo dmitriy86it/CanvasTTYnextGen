@@ -52,6 +52,7 @@ export type StoreErrorCode =
   | "journal_corrupt"
   | "journal_torn_tail"
   | "journal_newer_version"
+  | "run_newer_version"
   | "text_missing"
   | "text_corrupt"
   | "text_too_large"
@@ -828,6 +829,11 @@ export async function deleteRun(root: string, runId: string, options: { hooks?: 
     if (errCode(error) === "ENOENT" || errCode(error) === "ENOTDIR") fail("run_not_found", `run ${runId} not found`);
     throw error;
   });
+  // A newer version's run is never deleted here (acceptance-review-spec.md §2.2): recognized as openRun does, before the
+  // lock, so its directory is not touched. A run without a readable journal is deleted as before.
+  const head = await readJournal(join(dir, JOURNAL)).catch(() => null);
+  const version = head === null ? null : newerVersion(Buffer.isBuffer(head) ? head : head.head);
+  if (version !== null) fail("run_newer_version", `the run was created by version ${version}`, { version });
   const lock = await acquireLock(dir, options.hooks);
   const trash = join(root, "runs", `.deleting-${runId}-${randomUUID()}`);
   try {
