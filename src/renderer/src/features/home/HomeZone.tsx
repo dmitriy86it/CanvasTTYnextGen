@@ -50,11 +50,23 @@ import {
   type LimitsLoadState
 } from "./homeModel";
 import { homeCanvasWidgetId } from "../workspace/canvasWidgetFocus";
+import { stateLabel, type ActivityRunRow, type ActivityState } from "../orchestration/runStatus";
+
+// Orchestration runs for the activity widget, built from the application's own state (runStatus.ts).
+export interface HomeOrchestrationActivity {
+  status: "loading" | "ready" | "error";
+  rows(now: number): { active: ActivityRunRow[]; recent: ActivityRunRow[] };
+}
 
 interface HomeZoneProps {
   settings: AppSettings;
   mediaData: string | null;
   sessions: SessionSnapshot[];
+  sessionsLoadState: LimitsLoadState;
+  orchestration: HomeOrchestrationActivity;
+  onRetryActivity(): void;
+  onOpenRun(linkId: string): void;
+  onOpenRunSummary(linkId: string): void;
   limits: LimitsSnapshot | null;
   limitsLoadState: LimitsLoadState;
   plugins: InstalledPlugin[];
@@ -243,6 +255,11 @@ export function HomeZone({
   settings,
   mediaData,
   sessions,
+  sessionsLoadState,
+  orchestration,
+  onRetryActivity,
+  onOpenRun,
+  onOpenRunSummary,
   limits,
   limitsLoadState,
   plugins,
@@ -433,17 +450,39 @@ export function HomeZone({
       );
     }
     if (widgetId === "core.sessions") {
+      const runs = orchestration.rows(now.getTime());
+      const failed = [
+        sessionsLoadState === "error" ? t(locale, "actSessionsError") : null,
+        orchestration.status === "error" ? t(locale, "actRunsError") : null
+      ].filter((x): x is string => x !== null);
+      const loading = sessionsLoadState === "loading" || orchestration.status === "loading";
+      const nothing = home.sessionRows.length === 0 && runs.active.length === 0 && runs.recent.length === 0;
       return (
         <section
           className="tile usage-list"
           data-session-row-colors={settings.sessionRowColorMode}
           data-wheel-owner="local"
           data-canvas-wheel-priority="local"
+          data-activity-load={failed.length ? "error" : loading ? "loading" : "ready"}
           aria-label={t(locale, "activeSessions")}
         >
-          {home.sessionRows.length === 0 ? (
-            <div className="home-empty">{t(locale, "noActiveSessions")}</div>
-          ) : home.sessionRows.map((session) => {
+          {failed.length > 0 && (
+            <div className="activity-list__error" role="alert">
+              <span>{failed.join(". ")}</span>
+              <button type="button" onClick={onRetryActivity}>{t(locale, "actRetry")}</button>
+            </div>
+          )}
+          {/* "No sessions" only when every source answered and is empty; never while loading or after a failure. */}
+          {nothing && !failed.length && (
+            loading
+              ? <div className="home-empty" aria-busy="true">{t(locale, "actLoading")}</div>
+              : <div className="home-empty">{t(locale, "noActiveSessions")}</div>
+          )}
+          {!nothing && loading && <div className="activity-list__hint" aria-busy="true">{t(locale, "actLoading")}</div>}
+          {runs.active.map((row) => (
+            <RunActivityRow key={row.runId} row={row} locale={locale} onOpen={() => onOpenRun(row.linkId)} />
+          ))}
+          {home.sessionRows.map((session) => {
             const statusIcon = sessionStatusIcon(session.status);
             const failureDetails = session.status === "failed"
               ? session.failureDetails ?? `${t(locale, "failureOutputUnavailable")}${session.exitCode ?? "unknown"}`
@@ -461,7 +500,7 @@ export function HomeZone({
                   <ProviderIcon provider={session.provider} size="medium" />
                   <span className="usage-row__copy">
                     <strong>{sessionStatusLabel(locale, session.status, session.provider)}</strong>
-                    <span>{session.title}</span>
+                    <span><em className="activity-kind">{t(locale, "actTerminal")}</em> {session.title}</span>
                   </span>
                   {!failureDetails && statusIcon && <UiIcon name={statusIcon} size={24} />}
                 </button>
@@ -471,6 +510,20 @@ export function HomeZone({
               </div>
             );
           })}
+          {runs.recent.length > 0 && (
+            <div className="activity-recent" data-activity-recent-list>
+              <h3>{t(locale, "actRecent")}</h3>
+              {runs.recent.map((row) => (
+                <div className="activity-recent__row" key={row.runId} data-activity-recent={row.runId} data-run-state={row.line?.state}>
+                  <button type="button" className="activity-recent__open" onClick={() => onOpenRun(row.linkId)} title={row.projectPath}>
+                    <strong>{row.project}</strong>
+                    <span>{row.line ? stateLabel(locale, row.line.state) : ""}{row.at ? ` · ${clockTime(locale, row.at)}` : ""}</span>
+                  </button>
+                  <button type="button" className="activity-recent__summary" onClick={() => onOpenRunSummary(row.linkId)}>{t(locale, "orchSummaryButton")}</button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       );
     }
@@ -628,6 +681,66 @@ export function HomeZone({
         );
       })}
     </section>
+  );
+}
+
+const RUN_TONE: Record<ActivityState, "working" | "waiting" | "idle"> = {
+  starting: "working", working: "working", checking: "working", waiting_agent: "working", waiting_user: "waiting",
+  paused: "waiting", stopping: "idle", completed: "idle", stopped: "idle", failed: "idle"
+};
+const RUN_ICON: Partial<Record<ActivityState, "working" | "attention" | "error" | "done">> = {
+  starting: "working", working: "working", checking: "working", waiting_user: "attention", failed: "error", completed: "done"
+};
+const clockTime = (locale: LocaleId, iso: string): string =>
+  new Date(iso).toLocaleTimeString(locale === "ru" ? "ru-RU" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+// One orchestration run: who works on what in which project, why it waits; the participants fold out inside the row.
+// Opening it shows the existing run; nothing is started.
+function RunActivityRow({ row, locale, onOpen }: { row: ActivityRunRow; locale: LocaleId; onOpen(): void }): React.JSX.Element {
+  const line = row.line;
+  const kind = <em className="activity-kind activity-kind--run">{t(locale, "actOrchestration")}</em>;
+  if (!line) {
+    return (
+      <div className="usage-row-wrap activity-run" data-activity-run={row.runId} data-run-state={row.load}>
+        <button className="usage-row" type="button" onClick={onOpen} title={row.projectPath}>
+          <UiIcon name={row.load === "error" ? "error" : "working"} size={24} />
+          <span className="usage-row__copy">
+            <strong>{row.project}</strong>
+            <span>{kind} {t(locale, row.load === "error" ? "actRunError" : "actLoading")}</span>
+          </span>
+        </button>
+      </div>
+    );
+  }
+  const icon = RUN_ICON[line.state];
+  const extra = line.wait ?? line.now;
+  const last = line.lastEventAt ? t(locale, "orchNow_lastEvent").replace("{time}", clockTime(locale, line.lastEventAt)) : null;
+  return (
+    <div className="usage-row-wrap activity-run" data-activity-run={row.runId} data-run-state={line.state}>
+      <button className="usage-row activity-run__main" type="button" data-session-tone={RUN_TONE[line.state]} onClick={onOpen}
+        aria-label={`${row.project}, ${stateLabel(locale, line.state)}: ${line.doing}`} title={row.projectPath}>
+        {line.actor === "lead" || line.actor === "executor"
+          ? <ProviderIcon provider={line.actor === "lead" ? "codex" : "claude"} size="medium" />
+          : <UiIcon name="blocks" size={28} />}
+        <span className="usage-row__copy">
+          <strong>{stateLabel(locale, line.state)} · {row.project}</strong>
+          <span>{kind} {line.doing}</span>
+          {extra && <span className="activity-run__extra" data-activity-extra>{extra}</span>}
+          {(line.quiet || last) && <span className="activity-run__time">{line.quiet ?? last}</span>}
+        </span>
+        {icon && <UiIcon name={icon} size={24} />}
+      </button>
+      <details className="activity-run__people">
+        <summary>{t(locale, "actParticipants")}</summary>
+        <ul>
+          {row.roles.map(({ role, line: r }) => (
+            <li key={role} data-activity-role={role} data-run-state={r.state}>
+              <b>{role === "lead" ? "Codex" : "Claude"}</b> · {stateLabel(locale, r.state)} — {r.doing}{r.wait ? ` (${r.wait})` : ""}
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
   );
 }
 

@@ -34,6 +34,7 @@ interface CanvasContextMenuProps {
   onCreateNote(): void;
   onLaunch(provider: ProviderId): void;
   onOpenBrowser(): void;
+  onCreateOrchestrationAgent(provider: "codex" | "claude"): void;
   onOpenSettings(): void;
   onRenameRegion(): void;
   onChangeRegionColor(color: string): void;
@@ -54,6 +55,7 @@ export function CanvasContextMenu({
   onCreateNote,
   onLaunch,
   onOpenBrowser,
+  onCreateOrchestrationAgent,
   onOpenSettings,
   onRenameRegion,
   onChangeRegionColor,
@@ -166,6 +168,13 @@ export function CanvasContextMenu({
           </div>
           <CanvasMenuRow icon="browser" role="menuitem" onClick={onOpenBrowser}>
             {t(locale, "canvasMenuOpenBrowser")}
+          </CanvasMenuRow>
+          <CanvasMenuDivider />
+          <CanvasMenuRow icon="plus" role="menuitem" onClick={() => onCreateOrchestrationAgent("codex")}>
+            {t(locale, "orchAgentCodex")}
+          </CanvasMenuRow>
+          <CanvasMenuRow icon="plus" role="menuitem" onClick={() => onCreateOrchestrationAgent("claude")}>
+            {t(locale, "orchAgentClaude")}
           </CanvasMenuRow>
           <CanvasMenuDivider />
           <CanvasMenuRow

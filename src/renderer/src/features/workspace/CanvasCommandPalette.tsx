@@ -25,6 +25,7 @@ interface CanvasCommandPaletteProps {
   onLaunch(provider: ProviderId): void;
   onCreateRegion(): void;
   onCreateNote(): void;
+  onCreateOrchestrationAgent(provider: "codex" | "claude"): void;
   onOpenBrowser(): void;
   onOpenSettings(): void;
   onClose(): void;
@@ -50,6 +51,7 @@ export function CanvasCommandPalette({
   onLaunch,
   onCreateRegion,
   onCreateNote,
+  onCreateOrchestrationAgent,
   onOpenBrowser,
   onOpenSettings,
   onClose
@@ -95,6 +97,15 @@ export function CanvasCommandPalette({
       searchDetail: `${t(locale, "canvasMenuLaunchAgent")} ${PROVIDERS[provider].label}`,
       provider,
       run: () => onLaunch(provider)
+    })),
+    ...(["codex", "claude"] as const).map((provider) => ({
+      id: `agent:${provider}`,
+      group: "actions" as const,
+      kind: "action" as const,
+      label: t(locale, provider === "codex" ? "orchAgentCodex" : "orchAgentClaude"),
+      searchDetail: `${t(locale, "canvasMenuActions")} agent ${provider}`,
+      icon: "plus" as const,
+      run: () => onCreateOrchestrationAgent(provider)
     })),
     {
       id: "open:browser",

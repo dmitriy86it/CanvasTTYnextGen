@@ -1,5 +1,6 @@
 * { box-sizing: border-box; }
-html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+/* clip, not hidden: a hidden box still scrolls to show a focused element, and nothing would scroll it back */
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: clip; }
 body { background: #20222c; user-select: none; }
 button, select, input { font: inherit; }
 button { border: 0; }
@@ -42,7 +43,7 @@ button { border: 0; }
 .workspace {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  overflow: clip;
   background-color: var(--canvas-bg);
   cursor: grab;
   isolation: isolate;
@@ -1018,3 +1019,268 @@ button { border: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* Orchestration agents (stage-8-contract.md): separate cards, not terminals. */
+.agent-card { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; overflow: visible; border: 1px solid color-mix(in srgb, var(--surface) 70%, transparent); border-radius: 14px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-lg); font-size: calc(13px * var(--ui-scale, 1)); }
+.agent-card--codex .agent-card__header { background: color-mix(in srgb, var(--blue) 30%, var(--surface-soft)); }
+.agent-card--claude .agent-card__header { background: color-mix(in srgb, var(--accent) 26%, var(--surface-soft)); }
+.agent-card:focus-within, .agent-card--selected { box-shadow: 0 0 0 3px var(--primary), var(--shadow-lg); }
+.agent-card--linking-target { box-shadow: 0 0 0 3px var(--yellow), var(--shadow-lg); }
+.agent-card__header { height: 3.15em; flex: 0 0 auto; padding: 0 .5em 0 .8em; display: flex; align-items: center; justify-content: space-between; gap: .6em; border-radius: 13px 13px 0 0; cursor: move; touch-action: none; }
+.agent-card__identity { min-width: 0; display: flex; align-items: center; gap: .55em; }
+.agent-card__identity strong { font: 850 .9em/1 var(--font-mono); text-transform: uppercase; }
+.agent-card__identity small { padding: .2em .5em; border-radius: 99px; background: rgba(255,255,255,.14); font-size: .8em; font-weight: 800; }
+.agent-card__close { width: 2.15em; height: 2.15em; display: grid; place-items: center; border-radius: .54em; color: var(--text-muted-on-dark); background: rgba(255,255,255,.08); cursor: pointer; }
+.agent-card__close:hover, .agent-card__close:focus-visible { color: white; background: var(--danger); }
+.agent-card__body { min-height: 0; flex: 1; padding: .7em .9em; display: flex; flex-direction: column; gap: .5em; }
+.agent-card__project { min-width: 0; display: flex; align-items: center; gap: .55em; }
+.agent-card__project > span { min-width: 0; display: flex; flex-direction: column; }
+.agent-card__project strong, .agent-card__project small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-card__project small { color: var(--text-muted-on-dark); font: .78em/1.3 var(--font-mono); }
+.agent-card__state { align-self: flex-start; padding: .25em .65em; border-radius: 99px; color: var(--text-dark); background: var(--secondary); font-weight: 800; }
+.agent-card__state--working { background: var(--success); animation: agent-pulse 1.4s ease-in-out infinite; }
+.agent-card__state--paused, .agent-card__state--stopping { background: var(--yellow); }
+.agent-card__state--needs_you { background: var(--yellow); animation: agent-pulse 1.4s ease-in-out infinite; }
+.agent-card:has(.agent-card__state--needs_you) { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.agent-card__state--failed { color: white; background: var(--danger); }
+.agent-card__state--completed { background: var(--primary); }
+@keyframes agent-pulse { 50% { opacity: .62; } }
+.agent-card__message { padding: .4em .6em; border-radius: 8px; color: white; background: var(--danger); font-size: .88em; }
+.agent-card__confirm { position: absolute; inset: 3.15em 0 0; z-index: 2; padding: .8em; display: flex; flex-direction: column; gap: .5em; border-radius: 0 0 13px 13px; background: var(--surface); }
+.agent-card__actions { margin-top: auto; display: flex; gap: .5em; }
+.agent-card__body button, .agent-link__chip button, .orch-panel button, .orch-form button { padding: .4em .8em; border-radius: 8px; color: var(--text-dark); background: var(--secondary); font-weight: 800; cursor: pointer; }
+.agent-card__body button:disabled, .orch-panel button:disabled, .orch-form button:disabled { opacity: .5; cursor: default; }
+.agent-card button.agent-card__connect { background: var(--yellow); }
+.agent-card button.agent-card__danger, .orch-panel button.orch-danger { color: white; background: var(--danger); }
+.orch-panel button.orch-primary, .orch-form button.orch-primary { background: var(--primary); }
+.agent-card__port { position: absolute; right: -.8em; top: 50%; width: 1.6em; height: 1.6em; margin-top: -.8em; border: 3px solid var(--surface); border-radius: 50%; background: var(--blue); cursor: crosshair; touch-action: none; }
+.agent-card__port:hover, .agent-card__port:focus-visible, .agent-card__port[aria-pressed="true"] { background: var(--yellow); box-shadow: 0 0 0 3px var(--yellow); }
+.agent-link { position: absolute; z-index: 0; height: 3px; margin-top: -1.5px; transform-origin: 0 50%; border-radius: 2px; background: var(--surface); pointer-events: none; }
+.agent-link::after { content: ""; position: absolute; right: -2px; top: -6px; border: 7.5px solid transparent; border-left: 11px solid var(--surface); border-right: 0; }
+.agent-link--busy { background: var(--success); }
+.agent-link--busy::after { border-left-color: var(--success); }
+.agent-link--preview { background: var(--yellow); opacity: .9; }
+.agent-link--preview::after { border-left-color: var(--yellow); }
+.agent-link__chip { position: absolute; padding: .3em .35em .3em .7em; display: flex; align-items: center; gap: .35em; border-radius: 99px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-md); font-size: calc(12px * var(--ui-scale, 1)); white-space: nowrap; transform: translate(-50%, -50%); }
+.agent-link__chip button { padding: .25em .6em; border-radius: 99px; }
+.agent-link__chip--needs-you { box-shadow: 0 0 0 2px var(--yellow), var(--shadow-md); }
+.agent-link__state { font-weight: 800; }
+.orch-linking-hint { position: absolute; left: 50%; bottom: 24px; z-index: 520; padding: 10px 16px; border-radius: 12px; color: var(--text-dark); background: var(--yellow); box-shadow: var(--shadow-md); font-weight: 800; transform: translateX(-50%); pointer-events: none; }
+.orch-dialog { width: min(640px, 100%); max-height: calc(100vh - var(--titlebar-height) - 48px); overflow: auto; }
+.orch-dialog .launch-dialog__toolbar { justify-content: space-between; align-items: center; }
+.orch-dialog__title { font-size: 18px; }
+.orch-form { display: flex; flex-direction: column; gap: 12px; }
+.orch-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; }
+.orch-field > span:first-child, .orch-field legend { font-size: 10px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; opacity: .62; }
+.orch-field input, .orch-field textarea, .orch-panel textarea, .orch-panel input, .orch-panel select { width: 100%; padding: 9px 11px; border: 0; border-radius: 10px; color: var(--text-dark); background: rgba(255,255,255,.72); font: inherit; }
+.orch-field--static strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+.orch-field__row { display: flex; gap: 8px; }
+.orch-field__row button { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.orch-check { display: flex; align-items: center; gap: 8px; }
+.orch-check input { width: auto; }
+.orch-limits { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.orch-limits legend { grid-column: 1 / -1; margin-bottom: 4px; }
+.orch-limits label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.orch-form__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.orch-hint { opacity: .7; font-size: 12px; }
+.orch-panel { position: absolute; right: 16px; top: 16px; bottom: 16px; z-index: 510; width: min(420px, calc(100% - 32px)); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-lg); color: var(--text); background: var(--surface); box-shadow: var(--shadow-lg); font-size: calc(13px * var(--ui-scale, 1)); }
+.orch-panel__header { padding: 12px 12px 12px 16px; display: flex; align-items: center; gap: 10px; background: var(--surface-soft); }
+.orch-panel__header code { opacity: .6; }
+.orch-panel__close { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0 !important; }
+.orch-panel__body { min-height: 0; flex: 1; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.orch-panel__empty { padding: 16px; opacity: .7; }
+.orch-panel__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.orch-panel__section { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.orch-panel__section h4 { margin: 0; font-size: 10px; letter-spacing: .11em; text-transform: uppercase; opacity: .62; }
+.orch-panel__row { flex-direction: row; align-items: center; }
+.orch-panel__text { margin: 0; white-space: pre-wrap; }
+.orch-plan, .orch-checks, .orch-history { width: 100%; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.orch-plan li span { display: block; opacity: .72; }
+.orch-plan__current { color: var(--primary); }
+.orch-checks__passed { color: var(--success); }
+.orch-checks__failed { color: var(--danger); }
+.orch-history { padding-left: 0; list-style: none; font-size: 12px; }
+.orch-history time { opacity: .55; font-family: var(--font-mono); }
+.orch-details { margin: 4px 0 2px; }
+.orch-details__toggle { padding: .2em .6em !important; font-size: 11px; }
+.orch-details__body { margin-top: 4px; padding: 8px 10px; border-radius: 8px; background: var(--surface-soft); }
+.orch-details__body ul { margin: 0; padding-left: 18px; }
+.orch-details__body pre { max-height: 240px; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.45 var(--font-mono); }
+.orch-details__missing { margin: 0; opacity: .8; font-style: italic; }
+.orch-details__error { margin: 0; color: var(--danger); }
+.orch-panel__unknown { padding: 8px 10px; border-radius: 10px; color: var(--text-dark); background: var(--yellow); }
+/* Pinned run summary: always above the tabs; on short windows it scrolls by itself so the tabs stay reachable. */
+.orch-summary { flex: 0 0 auto; max-height: 46vh; overflow: auto; margin: 12px 12px 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; border-radius: 12px; background: var(--surface-soft); box-shadow: inset 4px 0 0 var(--secondary); outline: none; transition: box-shadow .25s; }
+.orch-summary--working, .orch-summary--stopping_after_turn { box-shadow: inset 4px 0 0 var(--primary); }
+.orch-summary--awaiting_answer, .orch-summary--awaiting_plan_review, .orch-summary--needs_decision, .orch-summary--needs_action, .orch-summary--paused { box-shadow: inset 4px 0 0 var(--yellow); }
+.orch-summary--needs_setup, .orch-summary--failed, .orch-summary--halted { box-shadow: inset 4px 0 0 var(--danger); }
+.orch-summary--completed { box-shadow: inset 4px 0 0 var(--success); }
+.orch-summary--flash { box-shadow: inset 4px 0 0 var(--primary), 0 0 0 3px var(--primary); }
+.orch-summary:focus-visible { box-shadow: inset 4px 0 0 var(--primary), 0 0 0 2px var(--primary); }
+.orch-summary__headline { display: flex; flex-direction: column; gap: 2px; }
+.orch-summary__headline strong { font-size: 16px; }
+.orch-summary__headline span { opacity: .8; }
+.orch-summary__who, .orch-summary__next { margin: 0; }
+.orch-question { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: color-mix(in srgb, var(--yellow) 22%, transparent); }
+.orch-question h4 { margin: 0; font-size: 10px; letter-spacing: .11em; text-transform: uppercase; }
+.orch-question button { align-self: flex-start; }
+.orch-permission { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: color-mix(in srgb, var(--yellow) 22%, transparent); box-shadow: inset 4px 0 0 var(--yellow); }
+.orch-permission h4 { margin: 0; font-size: 10px; letter-spacing: .11em; text-transform: uppercase; }
+.orch-permission p { margin: 0; overflow-wrap: anywhere; }
+.orch-permission pre { max-height: 180px; margin: 4px 0 0; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+.orch-permission__q { margin: 0; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; border: 1px solid color-mix(in srgb, var(--secondary) 60%, transparent); border-radius: 8px; }
+.orch-summary__where { margin: 0; overflow-wrap: anywhere; font-size: 12px; }
+.orch-summary__where code { font-size: 11px; }
+.orch-summary__where--project { color: var(--yellow); font-weight: 700; }
+.orch-diffs { font-size: 12px; }
+.orch-diffs summary { cursor: pointer; opacity: .8; }
+.orch-diffs ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; }
+.orch-workmode label { align-items: flex-start; }
+.orch-tabs, .orch-roles { flex: 0 0 auto; margin: 10px 12px 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.orch-panel .orch-tabs button, .orch-panel .orch-roles button { padding: .35em .7em; background: transparent; box-shadow: inset 0 0 0 1px var(--secondary); color: inherit; }
+.orch-panel .orch-tabs button.orch-tabs__on, .orch-panel .orch-roles button.orch-roles__on { color: var(--text-dark); background: var(--secondary); }
+.orch-facts ul, .orch-people { width: 100%; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.orch-people li { padding: 8px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; border-radius: 10px; background: var(--surface-soft); }
+.orch-people li[data-phase="running"] { box-shadow: inset 4px 0 0 var(--success); }
+.orch-people li[data-phase="starting"], .orch-people li[data-phase="finishing"] { box-shadow: inset 4px 0 0 var(--primary); }
+.orch-people li[data-phase="interrupted"] { box-shadow: inset 4px 0 0 var(--danger); }
+.orch-limits-view { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+.orch-limits-view dt { opacity: .62; }
+.orch-limits-view dd { margin: 0; font-weight: 800; }
+.orch-feed { position: relative; min-height: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.orch-feed__list { min-height: 120px; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.orch-feed__item { padding: 3px 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; border-bottom: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent); }
+.orch-feed__item time { opacity: .55; font-family: var(--font-mono); }
+.orch-feed__text { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.orch-feed__item details, .orch-feed__gap { grid-column: 1 / -1; }
+.orch-feed__item pre { max-height: 220px; margin: 4px 0 0; padding: 6px 8px; overflow: auto; border-radius: 8px; background: var(--surface-soft); white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.45 var(--font-mono); }
+.orch-feed__item--error .orch-feed__text, .orch-feed__item--refusal .orch-feed__text { color: var(--danger); }
+.orch-feed__item--warning .orch-feed__text { color: var(--yellow); font-weight: 700; }
+.orch-feed__item--thinking .orch-feed__text { opacity: .6; font-style: italic; }
+.orch-feed__item--truncated .orch-feed__text, .orch-feed__gap { padding: 4px 8px; border-radius: 8px; color: var(--text-dark); background: var(--yellow); }
+.orch-feed__silence { padding: 6px 8px; border-radius: 8px; background: var(--surface-soft); font-style: italic; }
+.orch-panel .orch-feed__new { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--primary); box-shadow: var(--shadow-sm); }
+.orch-panel .orch-feed__earlier { align-self: flex-start; }
+.orch-panel__body[data-orch-body="activity"], .orch-panel__body[data-orch-body="log"] { overflow: hidden; }
+.orch-changes { display: flex; flex-direction: column; gap: 8px; }
+.orch-changes__files { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.orch-panel .orch-changes__file { width: 100%; padding: 4px 6px; display: flex; gap: 8px; text-align: left; color: inherit; background: transparent; font-weight: 400; }
+.orch-panel .orch-changes__file:hover { background: var(--surface-soft); }
+.orch-changes__file code { overflow-wrap: anywhere; }
+.orch-changes__status { flex: 0 0 auto; min-width: 6em; font-size: 11px; font-weight: 800; }
+.orch-changes__status--added { color: var(--success); }
+.orch-changes__status--deleted { color: var(--danger); }
+.orch-changes__diff, .orch-take pre { max-height: 300px; margin: 4px 0; padding: 8px; overflow: auto; border-radius: 8px; background: var(--surface-soft); white-space: pre; font: 11px/1.45 var(--font-mono); }
+.orch-take { padding: 10px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--secondary); }
+.orch-take h4 { margin: 0 0 4px; font-size: 10px; letter-spacing: .11em; text-transform: uppercase; opacity: .62; }
+.orch-take p { margin: 0; }
+.orch-panel .agent-card__observe, .agent-card__body button.agent-card__observe { background: var(--blue); color: white; }
+.orch-ready ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.orch-ready__item { padding: 6px 8px; display: grid; grid-template-columns: 1.4em 1fr; gap: 6px; border-radius: 8px; background: rgba(255,255,255,.08); font-size: 12px; }
+.orch-ready__item > span:last-child { display: flex; flex-direction: column; gap: 4px; }
+.orch-ready__mark { font-weight: 900; text-align: center; }
+.orch-ready__item--ok .orch-ready__mark { color: var(--success); }
+.orch-ready__item--blocker { box-shadow: inset 3px 0 0 var(--danger); }
+.orch-ready__item--blocker .orch-ready__mark { color: var(--danger); }
+.orch-ready__item--confirm, .orch-ready__item--warning { box-shadow: inset 3px 0 0 var(--yellow); }
+.orch-ready__item--confirm .orch-ready__mark, .orch-ready__item--warning .orch-ready__mark { color: var(--yellow); }
+/* stage 13: the board on top of the panel, forms, plan, project settings, environment */
+.orch-board { margin: 2px 0 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; }
+.orch-board div { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
+.orch-board dt { opacity: .62; }
+.orch-board dd { margin: 0; font-weight: 800; overflow-wrap: anywhere; }
+.orch-board[data-action="yes"] dd[data-board="action"] { color: var(--yellow); }
+.orch-board__failed { font-weight: 400; opacity: .8; }
+.orch-summary:has(.orch-permission) { max-height: 64vh; } /* a waiting request needs its buttons in view */
+.orch-permission--plan .orch-permission__plan { max-height: 160px; }
+/* the decision buttons stay in view while a long request scrolls in the summary (1280×800 and smaller) */
+.orch-permission > .orch-panel__actions { position: sticky; bottom: 0; z-index: 1; margin: 0 -10px; padding: 8px 10px; background: color-mix(in srgb, var(--yellow) 22%, var(--surface-soft)); }
+.orch-summary--compact:not(:has(.orch-permission)) { max-height: 30vh; }
+.orch-summary__plan { max-height: 160px; overflow: auto; margin: 0; padding: 6px 6px 6px 26px; display: flex; flex-direction: column; gap: 4px; border-radius: 8px; background: var(--surface); }
+.orch-summary__plan li span { display: block; opacity: .72; }
+.orch-board__full dd { color: var(--danger); font-weight: 800; }
+.orch-rights { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.orch-permission textarea, .orch-form-fields input, .orch-form-fields select { width: 100%; box-sizing: border-box; }
+.orch-form-fields { display: flex; flex-direction: column; gap: 6px; }
+.orch-form-fields .orch-field { gap: 2px; }
+.orch-form-fields small { opacity: .7; }
+.orch-env { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.orch-env dd { margin: 0; display: flex; flex-wrap: wrap; gap: 3px 10px; }
+.orch-env__item { overflow-wrap: anywhere; }
+.orch-env ul { margin: 2px 0 0; padding-left: 18px; }
+.orch-advanced { display: flex; flex-direction: column; gap: 8px; }
+.orch-advanced > summary { cursor: pointer; font-weight: 700; opacity: .8; }
+.orch-advanced[open] > summary { margin-bottom: 6px; }
+.orch-profile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; opacity: .85; }
+.orch-settings .dialog-error { display: block; }
+.orch-ready__fix { opacity: .8; }
+
+/* Activity widget: terminals and orchestration runs, one row per run (runStatus.ts). */
+.usage-list[data-activity-load] { grid-auto-rows: auto; grid-template-columns: minmax(0, 1fr); }
+.activity-list__error { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; color: white; background: color-mix(in srgb, var(--danger) 70%, var(--surface-soft)); font-size: 12px; font-weight: 700; }
+.activity-list__error span { min-width: 0; flex: 1; }
+.activity-list__error button, .activity-recent button { padding: .35em .75em; border-radius: 8px; color: var(--text-dark); background: var(--secondary); font-weight: 800; cursor: pointer; }
+.activity-list__hint { padding: 2px 6px; color: var(--text-muted-on-dark); font-size: 11px; }
+.activity-kind { margin-right: .3em; padding: .05em .45em; border-radius: 99px; background: rgba(255,255,255,.12); font-style: normal; font-weight: 800; }
+.usage-list[data-session-row-colors="status"] .activity-kind { background: rgba(0,0,0,.1); }
+.activity-run .usage-row { align-items: start; padding-top: 10px; padding-bottom: 10px; }
+.activity-run .usage-row__copy strong { font-size: 15px; line-height: 1.15; }
+.activity-run__extra, .activity-run__time { font-weight: 700 !important; }
+.activity-run__people { margin: 2px 6px 0 66px; font-size: 11px; color: var(--text-muted-on-dark); }
+.activity-run__people > summary { cursor: pointer; font-weight: 800; }
+.activity-run__people ul { margin: 4px 0 0; padding-left: 14px; display: flex; flex-direction: column; gap: 3px; }
+.activity-run__people li { overflow-wrap: anywhere; }
+.activity-recent { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+.activity-recent h3 { margin: 0; font-size: 10px; letter-spacing: .11em; text-transform: uppercase; color: var(--text-muted-on-dark); }
+.activity-recent__row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: var(--surface-soft); }
+.activity-recent button.activity-recent__open { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; color: var(--text); background: none; text-align: left; }
+.activity-recent__open strong, .activity-recent__open span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-recent__open span { color: var(--text-muted-on-dark); font-size: 11px; font-weight: 700; }
+.activity-recent button.activity-recent__summary { flex: 0 0 auto; color: white; background: var(--primary); }
+
+/* Agent cards: the concrete action under the state; long texts end in an ellipsis and never cover the buttons or the port. */
+.agent-card__status { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .3em; }
+.agent-card__status > span { max-width: 100%; }
+.agent-card__status .agent-card__state { flex: 0 0 auto; }
+.agent-card__doing, .agent-card__line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-card__doing { font-weight: 700; }
+.agent-card__line { color: var(--text-muted-on-dark); font-size: .86em; }
+.agent-card__line--time { font-family: var(--font-mono); font-size: .78em; }
+.agent-card__body { overflow: hidden; }
+.agent-card__actions { flex-wrap: nowrap; }
+.agent-card__actions button { white-space: nowrap; }
+.agent-card__body button.agent-card__summary { color: white; background: var(--primary); }
+
+/* The run panel: wider for the summary, expandable to the window. */
+.orch-panel--wide { width: min(760px, calc(100% - 32px)); }
+.orch-panel--full { left: 16px; width: auto; }
+.orch-panel__expand { margin-left: auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0 !important; }
+.orch-panel__expand + .orch-panel__close { margin-left: 0; }
+.orch-ended { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--primary) 26%, var(--surface)); font-weight: 700; }
+.orch-src { margin-left: .6em; padding: .1em .5em; border-radius: 99px; font-size: 10px; font-weight: 800; letter-spacing: 0; text-transform: none; }
+.orch-src--journal { color: var(--text-dark); background: var(--success); }
+.orch-src--agent { color: var(--text-dark); background: var(--yellow); }
+.orch-summary-view { display: flex; flex-direction: column; gap: 16px; }
+.orch-sum { width: 100%; overflow-wrap: anywhere; }
+.orch-sum ul, .orch-sum ol { width: 100%; margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; }
+.orch-sum p { margin: 0; }
+.orch-sum__outcome { padding: 8px 10px; border-radius: 10px; background: var(--surface-soft); }
+.orch-sum__outcome--completed { box-shadow: inset 4px 0 0 var(--success); }
+.orch-sum__outcome--completed_unconfirmed, .orch-sum__outcome--paused, .orch-sum__outcome--active { box-shadow: inset 4px 0 0 var(--yellow); }
+.orch-sum__outcome--stopped, .orch-sum__outcome--failed { box-shadow: inset 4px 0 0 var(--danger); }
+.orch-sum__stages [data-stage-state="done"] span { color: var(--success); }
+.orch-sum__stages [data-stage-state="not_done"] span { color: var(--danger); }
+.orch-sum__report { width: 100%; }
+.orch-sum__report > summary { cursor: pointer; font-weight: 700; }
+.orch-report { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; overflow-wrap: anywhere; }
+.orch-report p { margin: 0; white-space: pre-wrap; }
+.orch-report ul { margin: 0; padding-left: 18px; }
+.orch-report__other { margin: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; opacity: .8; }
+.orch-report__other div { display: flex; gap: 6px; }
+.orch-report__other dt { font-weight: 700; }
+.orch-report__other dd { margin: 0; }
+.orch-feed__service { margin: 0; font-size: 11px; opacity: .8; }
+.orch-feed__service button { padding: .15em .6em !important; font-size: 11px; }
+.orch-feed__item--service { opacity: .6; }
+
+/* Project workspaces (docs/agent-orchestration/implementation/workspaces-spec.md §5): the switcher over the canvas. */
