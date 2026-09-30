@@ -5,11 +5,14 @@
   "description": "A spatial desktop for local AI agents and real terminal sessions.",
   "desktopName": "CanvasTTY",
   "author": "howdeploy",
+  "contributors": [
+    "dmitriy86it"
+  ],
   "license": "MIT",
-  "homepage": "https://github.com/howdeploy/CanvasTTY",
+  "homepage": "https://github.com/dmitriy86it/CanvasTTYnextGen",
   "repository": {
     "type": "git",
-    "url": "https://github.com/howdeploy/CanvasTTY.git"
+    "url": "https://github.com/dmitriy86it/CanvasTTYnextGen.git"
   },
   "main": "./out/main/index.js",
   "type": "module",

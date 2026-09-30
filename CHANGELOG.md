@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Documentation and CI: the README, package metadata and install guide point to this fork (releases, homepage, repository), the README gains a platform matrix and credits to the upstream CanvasTTY, the Simplified Chinese note is removed, and LICENSE adds the fork's copyright line. CI checks out the full history so the workspaces rollback test runs, and Linux jobs are pinned to `ubuntu-24.04`. Technical identifiers (`canvastty`, `appId`, data folder) are unchanged.
+
 ## 1.5.6
 
 - Fixed a false "protocol error" after a correct answer: when the CLI finished and exited but left a process behind (for example an MCP server or a hook) that did not hold its output, the turn failed about 2 s later. The per-turn supervisor now relays the CLI output itself and decides whether a stream closed before or only after its cleanup; a process that really holds the output (stdout, and now also stderr) still fails the turn. The run panel and the Log name the step where a turn ended, and application-side failures are no longer blamed on the CLI. No retry is promised as safe.

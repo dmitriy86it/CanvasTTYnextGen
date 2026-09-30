@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/444612f7-cda1-4fd6-8514-2f4fac9cc520
 |:--|:--|:--|:--|
 | **Electron**<br>electron-vite | **React**<br>TypeScript | **xterm.js**<br>node-pty | **Codex**<br>Claude · Kimi · OpenCode · Hermes · Grok Build |
 
-The application interface currently supports English and Russian. This documentation is also available in Simplified Chinese.
+The application interface currently supports English and Russian.
 
 ## One canvas, real sessions
 
@@ -34,7 +34,16 @@ Raoden Loom does not install provider CLIs. If a provider is missing, the launch
 
 ## Install
 
-Download the latest release from [GitHub Releases](https://github.com/howdeploy/CanvasTTY/releases): AppImage/deb for Linux x86_64, installer/portable app for Windows x64, and dmg/zip for Apple Silicon macOS. macOS bundles are ad-hoc signed and verified but do not have a Developer ID signature or Apple notarization; Windows packages remain unsigned. Intel Mac builds are not included yet. Read [installing and local-data security](docs/installing-and-security.md).
+Download the latest release from [GitHub Releases](https://github.com/dmitriy86it/CanvasTTYnextGen/releases): AppImage/deb for Linux x86_64, installer/portable app for Windows x64, and dmg/zip for Apple Silicon macOS. macOS bundles are ad-hoc signed and verified but do not have a Developer ID signature or Apple notarization; Windows packages remain unsigned. Intel Mac builds are not included yet. Read [installing and local-data security](docs/installing-and-security.md).
+
+| Platform | Canvas, terminals, browser, plugins | Agent orchestration |
+|:--|:--|:--|
+| macOS arm64 | Yes | Yes, project checks run in the Seatbelt sandbox |
+| Linux x86_64 | Yes | Turns start; the first project check pauses the run with `sandbox_unavailable` (Stop only) |
+| Windows x64 | Yes | Not available: refused as `unsupported_platform`, the menu items are still shown |
+| macOS Intel | No builds | — |
+
+Details: [orchestration requirements and limits](docs/ARCHITECTURE.md#requirements-and-limits).
 
 Or run from source:
 
@@ -85,6 +94,10 @@ npm run test:even
 npm run typecheck
 npm run build
 ```
+
+## Credits
+
+Raoden Loom is a fork of [CanvasTTY](https://github.com/howdeploy/CanvasTTY) by [howdeploy](https://github.com/howdeploy).
 
 ## License
 
