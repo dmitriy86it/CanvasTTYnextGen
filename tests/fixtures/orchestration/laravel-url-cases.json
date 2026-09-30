@@ -1,0 +1,259 @@
+{
+  "laravel": "v13.33.0",
+  "config": {
+    "driver": "sqlite",
+    "database": ":memory:"
+  },
+  "cases": [
+    {
+      "url": "mysql://test:test@production.invalid/working",
+      "laravel": {
+        "driver": "mysql",
+        "host": "production.invalid",
+        "port": null,
+        "database": "working"
+      }
+    },
+    {
+      "url": "mysql://user:s3cr%40t@production.invalid:3307/shop?charset=utf8mb4",
+      "laravel": {
+        "driver": "mysql",
+        "host": "production.invalid",
+        "port": 3307,
+        "database": "shop"
+      }
+    },
+    {
+      "url": "mysql://root@127.0.0.1/app_testing",
+      "laravel": {
+        "driver": "mysql",
+        "host": "127.0.0.1",
+        "port": null,
+        "database": "app_testing"
+      }
+    },
+    {
+      "url": "mysql://127.0.0.1:3306/app",
+      "laravel": {
+        "driver": "mysql",
+        "host": "127.0.0.1",
+        "port": 3306,
+        "database": "app"
+      }
+    },
+    {
+      "url": "mariadb://u:p@db.internal.invalid/app",
+      "laravel": {
+        "driver": "mariadb",
+        "host": "db.internal.invalid",
+        "port": null,
+        "database": "app"
+      }
+    },
+    {
+      "url": "mysql2://u:p@rds.invalid/app",
+      "laravel": {
+        "driver": "mysql",
+        "host": "rds.invalid",
+        "port": null,
+        "database": "app"
+      }
+    },
+    {
+      "url": "pgsql://u:p@pg.invalid:5433/app",
+      "laravel": {
+        "driver": "pgsql",
+        "host": "pg.invalid",
+        "port": 5433,
+        "database": "app"
+      }
+    },
+    {
+      "url": "postgres://u:p@pg.invalid/app",
+      "laravel": {
+        "driver": "pgsql",
+        "host": "pg.invalid",
+        "port": null,
+        "database": "app"
+      }
+    },
+    {
+      "url": "postgresql://u:p@localhost/app_test",
+      "laravel": {
+        "driver": "pgsql",
+        "host": "localhost",
+        "port": null,
+        "database": "app_test"
+      }
+    },
+    {
+      "url": "postgresql://u:p@[::1]:5432/app",
+      "laravel": {
+        "driver": "pgsql",
+        "host": "[::1]",
+        "port": 5432,
+        "database": "app"
+      }
+    },
+    {
+      "url": "sqlite:///:memory:",
+      "laravel": {
+        "driver": "sqlite",
+        "host": null,
+        "port": null,
+        "database": ":memory:"
+      }
+    },
+    {
+      "url": "sqlite::memory:",
+      "laravel": {
+        "driver": "sqlite",
+        "host": null,
+        "port": null,
+        "database": "memory:"
+      }
+    },
+    {
+      "url": "sqlite:///var/data/app.sqlite",
+      "laravel": {
+        "driver": "sqlite",
+        "host": null,
+        "port": null,
+        "database": "var/data/app.sqlite"
+      }
+    },
+    {
+      "url": "sqlite3:///database/database.sqlite",
+      "laravel": {
+        "driver": "sqlite",
+        "host": null,
+        "port": null,
+        "database": "database/database.sqlite"
+      }
+    },
+    {
+      "url": "sqlite://null/:memory:",
+      "laravel": {
+        "driver": "sqlite",
+        "host": null,
+        "port": null,
+        "database": ":memory:"
+      }
+    },
+    {
+      "url": "mysql://u:p@production.invalid/db?database=other&host=other.invalid",
+      "laravel": {
+        "driver": "mysql",
+        "host": "other.invalid",
+        "port": null,
+        "database": "other"
+      }
+    },
+    {
+      "url": "mysql://u:p@production.invalid/?port=4406",
+      "laravel": {
+        "driver": "mysql",
+        "host": "production.invalid",
+        "port": 4406,
+        "database": ":memory:"
+      }
+    },
+    {
+      "url": "mysql://u:p@production.invalid",
+      "laravel": {
+        "driver": "mysql",
+        "host": "production.invalid",
+        "port": null,
+        "database": ":memory:"
+      }
+    },
+    {
+      "url": "mysql://u:p@null/app",
+      "laravel": {
+        "driver": "mysql",
+        "host": null,
+        "port": null,
+        "database": "app"
+      }
+    },
+    {
+      "url": "mysql://u:p@production.invalid/123",
+      "laravel": {
+        "driver": "mysql",
+        "host": "production.invalid",
+        "port": null,
+        "database": "123"
+      }
+    },
+    {
+      "url": "mssql://u:p@sql.invalid/app",
+      "laravel": {
+        "driver": "sqlsrv",
+        "host": "sql.invalid",
+        "port": null,
+        "database": "app"
+      }
+    },
+    {
+      "url": "sqlsrv:server=sql.invalid,1433;database=app",
+      "laravel": {
+        "driver": "sqlsrv",
+        "host": "sql.invalid",
+        "port": 1433,
+        "database": "app"
+      }
+    },
+    {
+      "url": "production.invalid/working",
+      "laravel": {
+        "driver": "sqlite",
+        "host": null,
+        "port": null,
+        "database": "roduction.invalid/working"
+      }
+    },
+    {
+      "url": "//production.invalid/working",
+      "laravel": {
+        "driver": "sqlite",
+        "host": "production.invalid",
+        "port": null,
+        "database": "working"
+      }
+    },
+    {
+      "url": "mysql://u:p@production.invalid:99999/app",
+      "laravel": null
+    },
+    {
+      "url": "mysql://u:p@production.invalid:abc/app",
+      "laravel": null
+    },
+    {
+      "url": "mysql://",
+      "laravel": null
+    },
+    {
+      "url": "mysql:///app",
+      "laravel": null
+    },
+    {
+      "url": "http://[::1/app",
+      "laravel": {
+        "driver": "http",
+        "host": "[:",
+        "port": 1,
+        "database": "app"
+      }
+    },
+    {
+      "url": "mysql://u:p@production.invalid/app#frag",
+      "laravel": {
+        "driver": "mysql",
+        "host": "production.invalid",
+        "port": null,
+        "database": "app"
+      }
+    }
+  ]
+}

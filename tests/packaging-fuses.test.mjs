@@ -21,3 +21,11 @@ test("packaged builds flip the fuses that the helper contract does not need", as
   assert.equal("enableCookieEncryption" in fuses, false);
   assert.notEqual(config.asar?.disableIntegrity, true);
 });
+
+test("the orchestration turn supervisor ships outside the asar as a helper .mjs", async () => {
+  const config = yaml.load(await readFile(builderPath, "utf8"));
+  const entry = config.extraResources.find((resource) => resource.from === "src/orchestration");
+
+  // Launched by absolute path with ELECTRON_RUN_AS_NODE (ADR orchestration amendment); a missing entry is a shipping bug.
+  assert.deepEqual(entry, { from: "src/orchestration", to: "orchestration", filter: ["*.mjs"] });
+});

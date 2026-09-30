@@ -1,0 +1,1006 @@
+// Run journal v1 (docs/agent-orchestration/implementation/stage-2-contract.md): canonical JSON, record hash,
+// strict event schemas, byte-level parsing with ok/torn_tail/corrupt classification and a pure replay.
+// Nothing here touches the file system; store.ts owns files, locks and the writer.
+import { createHash } from "node:crypto";
+import type { ReportStatus, TurnOutcome } from "./types.ts";
+
+export const JOURNAL_VERSION = 1;
+export const ZERO_HASH = "0".repeat(64);
+export const MAX_LINE_BYTES = 64 * 1024; // one record, without '\n'
+export const MAX_JOURNAL_BYTES = 64 * 1024 * 1024;
+export const MAX_TEXT_BYTES = 65_536;
+
+export const RUN_STATUSES = ["preparing", "running", "pausing", "paused", "stopping", "stopped", "completed", "failed"] as const;
+export const TERMINAL_STATUSES: readonly string[] = ["stopped", "completed", "failed"];
+// ARCHITECTURE-PROPOSAL §7. Parameters (awaiting_answer{questionId}, protocol_error{kind}, limit_reached{kind})
+// are not part of run.status v1: the reason is the bare name.
+export const PAUSED_REASONS = [
+  "user_request", "step_done", "plan_review", "awaiting_answer", "recovered", "outcome_unknown", "invalid_report",
+  "protocol_error", "limit_reached", "permission_denied", "loop_suspected", "lead_modified_tree", "environment_error",
+  "shared_git_tampered", "journal_corrupt", "sandbox_unavailable",
+  // stage 13
+  "stage_done", "external_failure", "needs_user_action", "finish_unconfirmed",
+  "app_closed" // the application closed while the run worked (older journals say user_request)
+] as const;
+const TURN_OUTCOMES: readonly string[] = ["completed", "invalid_report", "delivery_failed", "failed", "stopped", "timeout",
+  "protocol_error", "cleanup_unverified", "harness_error"];
+const REPORT_STATUSES: readonly string[] = ["valid", "invalid_json", "schema_mismatch", "missing", "too_large", "not_checked"];
+
+export type RunStatus = (typeof RUN_STATUSES)[number];
+export type PausedReason = (typeof PAUSED_REASONS)[number];
+export type TextRef = { sha256: string; bytes: number };
+export type ProviderOutcome = TurnOutcome | "contract_violation";
+
+export type EventType =
+  | "run.created"
+  | "run.status"
+  | "command.received"
+  | "command.completed"
+  | "turn.intent"
+  | "turn.finished"
+  | "run.recovered"
+  | "journal.tail_repaired"
+  | "workspace.created"
+  | "snapshot.created"
+  | "checkpoint.created"
+  | "workspace.restore_started"
+  | "workspace.restore_failed"
+  | "workspace.restored"
+  | "check.started"
+  | "check.finished"
+  | "orch.turn"
+  | "plan.recorded"
+  | "review.recorded"
+  | "question.asked"
+  | "question.answered"
+  | "check.assessed"
+  | "stage.accepted"
+  | "clarification.added"
+  | "limits.changed"
+  | "recovery.decided"
+  // stage 13
+  | "prepare.started"
+  | "prepare.finished"
+  | "check.classified"
+  | "permission.granted"
+  | "permission.applied"
+  | "finish.intent"
+  | "finish.result";
+
+export const STAGE13_EVENTS = ["prepare.started", "prepare.finished", "check.classified", "permission.granted",
+  "permission.applied", "finish.intent", "finish.result"] as const;
+export type Stage13Event = (typeof STAGE13_EVENTS)[number];
+
+export type CommandResult = { status: "accepted" | "rejected"; code: string | null };
+
+export interface JournalRecord {
+  v: 1;
+  seq: number;
+  ts: string;
+  runId: string;
+  type: EventType;
+  prevHash: string;
+  hash: string;
+  data: Record<string, unknown>;
+}
+
+export interface TurnState {
+  status: "in_flight" | "outcome_unknown" | ProviderOutcome;
+  commandId: string | null;
+  role: "lead" | "executor";
+  provider: "codex" | "claude";
+  mode: string;
+  sessionId: string | null; // from turn.intent, replaced by turn.finished
+  task: TextRef;
+  nextTurnAllowed: boolean;
+  report: { status: ReportStatus; ref: TextRef | null; storeError: ReportStoreError | null } | null;
+}
+
+// Why a report the provider produced was not stored (stage-2-contract.md, review fixes): never truncated or emptied.
+export type ReportStoreError = "too_large" | "write_failed";
+
+export interface CommandState {
+  status: "received" | "completed" | "unfinished";
+  kind: string;
+  payloadHash: string;
+  result: CommandResult | null;
+}
+
+// Workspace facts (stage-3-contract.md): only Git object ids and numbers; the source path lives in workspace.json.
+export interface WorkspaceSnapshot { kind: "recovery" | "intermediate"; ref: string; commit: string; tree: string }
+export interface WorkspaceRestore { target: string; targetCommit: string; recoveryCommit: string }
+// A restore that started writing and was not confirmed: the copy is partially restored or its state is unknown.
+export interface WorkspaceFailedRestore extends WorkspaceRestore { result: "partial" | "unknown" }
+export interface WorkspaceState {
+  sourcePathSha256: string;
+  baseline: { commit: string; tree: string };
+  head: string | null;
+  checkpoints: Record<string, { commit: string; tree: string; parent: string }>; // key: stage number as a string
+  snapshots: WorkspaceSnapshot[];
+  current: { commit: string; tree: string }; // the applicable base of the copy: baseline, then confirmed checkpoints and restores
+  pendingRestore: WorkspaceRestore | null; // restore_started without restored: the copy's state is unknown
+  failedRestore: WorkspaceFailedRestore | null; // the last attempt left the copy partial or unknown; pendingRestore stays
+  lastRestore: WorkspaceRestore | null;
+}
+
+// Project checks run in the managed copy (stage-4-contract.md). A check that started and was never finished stays
+// not_verified(interrupted) after reopening: nothing is re-run automatically.
+export type CheckStatus = "passed" | "failed" | "not_verified";
+export type NotVerifiedReason =
+  | "sandbox_unavailable" | "spawn_failed" | "timeout" | "stopped" | "output_limit"
+  | "cleanup_unverified" | "deps_changed" | "tree_changed" | "workspace_unverified"
+  | "restore_incomplete" | "interrupted" | "store_failed";
+
+export interface CheckState {
+  checkId: string;
+  status: CheckStatus | "in_flight";
+  reason: NotVerifiedReason | null;
+  base: { commit: string; tree: string };
+  treeBefore: string;
+  treeAfter: string | null;
+  profileSha256: string;
+  commandSha256: string;
+  exitCode: number | null;
+  signal: string | null;
+  groupCleared: boolean | null;
+  output: TextRef | null;
+  outputDropped: number;
+  evidenceFingerprint: string | null;
+  durationMs: number | null;
+}
+
+export interface RunState {
+  runId: string;
+  status: RunStatus;
+  pausedReason: PausedReason | null;
+  lastSeq: number;
+  lastHash: string;
+  goal: TextRef;
+  turns: Record<string, TurnState>;
+  commands: Record<string, CommandState>;
+  workspace: WorkspaceState | null;
+  checks: Record<string, CheckState>; // key: checkRunId
+  orch: OrchState;
+}
+
+// Orchestration events (stage-5-contract.md §8): the data of each event exactly as written to the journal.
+export type TurnPurpose = "plan" | "execute" | "review" | "final_review";
+export type LimitKind = "turns" | "roundsPerStage" | "replans" | "runMs";
+export type ReviewVerdict = "accept" | "fix" | "replan" | "question" | "complete";
+export type RecoveryAction = "accept" | "retry_turn" | "reset_to_checkpoint";
+export interface OrchTurnData {
+  turnId: string; purpose: TurnPurpose; stage: number | null; round: number | null;
+  planVersion: number | null; clarificationVersion: number;
+}
+export interface PlanRecordedData { turnId: string; version: number; plan: TextRef; firstStage: number; stageCount: number }
+export interface ReviewRecordedData {
+  turnId: string; stage: number | null; verdict: ReviewVerdict; findings: TextRef | null; findingsKey: string;
+  findingsCount: number; clarificationVersion: number; runKey: string;
+}
+export interface QuestionAskedData { questionId: string; turnId: string; text: TextRef }
+export interface QuestionAnsweredData { questionId: string; commandId: string; text: TextRef }
+export interface CheckAssessedData { checkRunId: string; stage: number | null; round: number | null; checkKey: string; runKey: string }
+export interface StageAcceptedData { stage: number; reviewTurnId: string; tree: string }
+export interface ClarificationAddedData { version: number; commandId: string; text: TextRef }
+export interface LimitsChangedData { commandId: string; kind: LimitKind; value: number }
+export interface RecoveryDecidedData { commandId: string; action: RecoveryAction; turnId: string }
+
+// Stage 13 facts.
+export type FailureClass = "code" | "environment" | "external";
+export type FinishStep = "commit" | "push" | "qa";
+export type FinishStatus = "done" | "failed" | "not_done" | "unknown";
+export type QaVersion = "confirmed" | "mismatch" | "not_reported" | "invalid" | "not_checked";
+export interface PrepareState {
+  prepareId: string; reason: "start" | "check"; steps: TextRef; seq: number;
+  status: "in_flight" | "interrupted" | "done" | "not_needed" | "failed" | "stopped";
+  failed: number | null; class: FailureClass | null; output: TextRef | null; finishedSeq: number | null;
+  locks?: Record<string, string>; before?: string; after?: string;
+}
+export interface FinishState {
+  intentId: string; step: FinishStep; params: TextRef; seq: number;
+  // in_flight: the action may be running now; outcome_unknown: it was started and the application ended before its
+  // result was recorded — never repeated before its real outcome is established
+  status: "in_flight" | "outcome_unknown" | FinishStatus;
+  established: boolean; evidence: TextRef | null; commit: string | null; resultSeq: number | null;
+  tree?: string | null; // absent in older journals
+  // QA: what the verification established about the deployed version, and the commit id it reported (validated)
+  version?: QaVersion; observed?: string | null;
+}
+
+export interface OrchState {
+  // run.status records plus command.completed(accepted). The status change implied by run.recovered is NOT counted:
+  // it is not a run.status record, and counting it would make revision depend on how often the run was reopened.
+  revision: number;
+  turns: Record<string, Omit<OrchTurnData, "turnId"> & { seq: number }>; // from orch.turn
+  plan: { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; seq: number } | null;
+  planReviewPaused: boolean; // a run.status paused(plan_review) was applied while the plan was version 1; never reset
+  reviews: (ReviewRecordedData & { seq: number })[]; // in journal order; findings kept so a fix task can quote them
+  accepted: Record<string, { reviewTurnId: string; tree: string; seq: number }>; // key: stage number as a string
+  pendingCheckpoint: number | null; // the accepted stage whose checkpoint.created is not in the journal yet
+  clarifications: number; // version of the clarifications
+  clarificationRefs: TextRef[]; // texts of clarification.added, in version order
+  clarificationSeqs: number[];
+  question: { // the last one
+    questionId: string; turnId: string; ref: TextRef; answered: boolean; seq: number;
+    answerRef: TextRef | null; answeredSeq: number | null;
+  } | null;
+  answers: number;
+  answerSeqs: number[]; // seq of every question.answered
+  lastPausedSeq: Partial<Record<PausedReason, number>>; // seq of the last run.status paused(<reason>)
+  assessed: Record<string, { stage: number | null; round: number | null; checkKey: string; runKey: string; seq: number }>;
+  limitOverrides: Partial<Record<LimitKind, number>>;
+  recoveryDecisions: Record<string, RecoveryAction>; // turnId -> action
+  // stage 13
+  prepares: PrepareState[];
+  classified: Record<string, FailureClass>; // checkRunId -> class of its failure
+  grants: Record<string, { grantId: string; scope: "run" | "project"; seq: number }>; // fingerprint -> the grant
+  applied: number;
+  finish: FinishState[];
+}
+
+export type CorruptCode =
+  | "invalid_json"
+  | "invalid_utf8"
+  | "non_canonical"
+  | "unsupported_version"
+  | "invalid_event"
+  | "bad_seq"
+  | "bad_prev_hash"
+  | "bad_hash"
+  | "wrong_run"
+  | "line_too_large"
+  | "journal_too_large"
+  | "invalid_transition"
+  | "replay_conflict";
+
+export type ChainIntegrity =
+  | { status: "ok" }
+  | { status: "torn_tail"; detail: { offset: number; bytes: number } }
+  | { status: "corrupt"; detail: { line: number; offset: number; code: CorruptCode } }; // line is 1-based
+// newer_version: written by a newer version (acceptance-review-spec.md §2.2): only its hash chain is checked (chain), no
+// record is replayed, and nothing may write to it.
+export type JournalIntegrity = ChainIntegrity | { status: "newer_version"; detail: { version: number; chain: ChainIntegrity } };
+
+export class JournalError extends Error {
+  readonly code: CorruptCode;
+
+  constructor(code: CorruptCode, message: string) {
+    super(message);
+    this.name = "JournalError";
+    this.code = code;
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
+const ISO_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+const RECORD_KEYS = ["data", "hash", "prevHash", "runId", "seq", "ts", "type", "v"];
+
+export const isUuid = (v: unknown): v is string => typeof v === "string" && UUID.test(v);
+export const isSha256 = (v: unknown): v is string => typeof v === "string" && SHA256.test(v);
+// A Git object id: SHA-1 (40 hex) or SHA-256 (64 hex) repositories.
+export const isGitOid = (v: unknown): v is string => typeof v === "string" && /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(v);
+const SNAPSHOT_REF = /^refs\/canvastty\/(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/recovery-[1-9]\d{0,8}|snapshot\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const RESTORE_TARGET = /^(?:baseline|stage-[1-9]\d{0,8})$/;
+const isRestore = (v: unknown) => exactKeys(v, ["target", "targetCommit", "recoveryCommit"]) && typeof v.target === "string"
+  && RESTORE_TARGET.test(v.target) && isGitOid(v.targetCommit) && isGitOid(v.recoveryCommit);
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isInt = (v: unknown): v is number => Number.isSafeInteger(v);
+const isPos = (v: unknown): v is number => isInt(v) && v >= 1;
+const isNonNeg = (v: unknown): v is number => isInt(v) && v >= 0;
+const TURN_PURPOSES: readonly string[] = ["plan", "execute", "review", "final_review"];
+const STAGE_VERDICTS: readonly string[] = ["accept", "fix", "replan", "question"];
+const FINAL_VERDICTS: readonly string[] = ["complete", "replan", "question"];
+const LIMIT_KINDS: readonly string[] = ["turns", "roundsPerStage", "replans", "runMs"];
+const RECOVERY_ACTIONS: readonly string[] = ["accept", "retry_turn", "reset_to_checkpoint"];
+const FAILURE_CLASSES: readonly string[] = ["code", "environment", "external"];
+const FINISH_STEPS: readonly string[] = ["commit", "push", "qa"];
+const FINISH_STATUSES: readonly string[] = ["done", "failed", "not_done", "unknown"];
+const QA_VERSIONS: readonly QaVersion[] = ["confirmed", "mismatch", "not_reported", "invalid", "not_checked"];
+const PREPARE_STATUSES: readonly string[] = ["done", "not_needed", "failed", "stopped"];
+const str = (v: unknown, max: number) => typeof v === "string" && v.length <= max;
+const strOrNull = (v: unknown, max: number) => v === null || str(v, max);
+const oneOf = (v: unknown, list: readonly string[]) => typeof v === "string" && list.includes(v);
+const exactKeys = (o: unknown, keys: readonly string[]): o is Record<string, unknown> =>
+  isRecord(o) && Object.keys(o).length === keys.length && keys.every((k) => Object.hasOwn(o, k));
+// All of `keys` and nothing but them and `optional` (fields added later: older journals stay valid).
+const keysWithin = (o: unknown, keys: readonly string[], optional: readonly string[]): o is Record<string, unknown> =>
+  isRecord(o) && keys.every((k) => Object.hasOwn(o, k)) && Object.keys(o).every((k) => keys.includes(k) || optional.includes(k));
+const isLocks = (v: unknown) => isRecord(v) && Object.keys(v).length <= 16
+  && Object.entries(v).every(([k, x]) => k.length > 0 && k.length <= 100 && isSha256(x));
+
+export const isTextRef = (v: unknown): v is TextRef =>
+  exactKeys(v, ["sha256", "bytes"]) && isSha256(v.sha256) && isInt(v.bytes) && v.bytes >= 0 && v.bytes <= MAX_TEXT_BYTES;
+
+// Keys sorted by UTF-16 code units, no whitespace, strings and numbers as JSON.stringify.
+// Throws TypeError for anything that is not string/boolean/null/finite number/array/plain object.
+export function canonical(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("canonical JSON: non-finite number");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    let out = "[";
+    for (let i = 0; i < value.length; i++) out += (i ? "," : "") + canonical(value[i]); // a hole is undefined: throws
+    return out + "]";
+  }
+  if (typeof value === "object") {
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) throw new TypeError("canonical JSON: not a plain object");
+    const o = value as Record<string, unknown>;
+    return "{" + Object.keys(o).sort().map((k) => JSON.stringify(k) + ":" + canonical(o[k])).join(",") + "}";
+  }
+  throw new TypeError(`canonical JSON: unsupported ${typeof value}`);
+}
+
+export const sha256Hex = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
+
+const DATA_SCHEMAS: Record<EventType, (d: Record<string, unknown>) => boolean> = {
+  "run.created": (d) => exactKeys(d, ["goal"]) && isTextRef(d.goal),
+  "run.status": (d) => exactKeys(d, ["status", "reason"]) && oneOf(d.status, RUN_STATUSES)
+    && (d.status === "paused" ? oneOf(d.reason, PAUSED_REASONS) : d.reason === null),
+  "command.received": (d) => exactKeys(d, ["commandId", "kind", "payloadHash"]) && isUuid(d.commandId)
+    && str(d.kind, 64) && (d.kind as string).length > 0 && isSha256(d.payloadHash),
+  "command.completed": (d) => exactKeys(d, ["commandId", "result"]) && isUuid(d.commandId)
+    && exactKeys(d.result, ["status", "code"]) && oneOf(d.result.status, ["accepted", "rejected"]) && strOrNull(d.result.code, 64),
+  "turn.intent": (d) => exactKeys(d, ["turnId", "commandId", "role", "provider", "mode", "sessionId", "task"])
+    && isUuid(d.turnId) && (d.commandId === null || isUuid(d.commandId)) && oneOf(d.role, ["lead", "executor"])
+    && oneOf(d.provider, ["codex", "claude"]) && str(d.mode, 64) && strOrNull(d.sessionId, 128) && isTextRef(d.task),
+  "turn.finished": (d) => exactKeys(d, ["turnId", "outcome", "nextTurnAllowed", "sessionId", "contract", "report", "transport"])
+    && isUuid(d.turnId) && (oneOf(d.outcome, TURN_OUTCOMES) || d.outcome === "contract_violation")
+    && typeof d.nextTurnAllowed === "boolean" && (!d.nextTurnAllowed || d.outcome === "completed")
+    && strOrNull(d.sessionId, 128)
+    && exactKeys(d.contract, ["status", "errors"]) && oneOf(d.contract.status, ["verified", "violated"])
+    && Array.isArray(d.contract.errors) && d.contract.errors.length <= 16 && d.contract.errors.every((e) => str(e, 256))
+    && exactKeys(d.report, ["status", "ref", "storeError"]) && oneOf(d.report.status, REPORT_STATUSES)
+    && (d.report.ref === null || isTextRef(d.report.ref))
+    && (d.report.storeError === null || oneOf(d.report.storeError, ["too_large", "write_failed"]))
+    // a report that was not stored has no ref and never allows a next turn; a valid stored report has a ref
+    && (d.report.storeError === null || (d.report.ref === null && d.nextTurnAllowed === false))
+    && (d.report.status !== "valid" || d.report.storeError !== null || d.report.ref !== null)
+    && exactKeys(d.transport, ["outcome", "exitCode", "signal", "groupCleared"]) && oneOf(d.transport.outcome, TURN_OUTCOMES)
+    && (d.transport.exitCode === null || isInt(d.transport.exitCode)) && strOrNull(d.transport.signal, 64)
+    && typeof d.transport.groupCleared === "boolean",
+  "run.recovered": (d) => exactKeys(d, ["unfinishedTurns", "unfinishedCommands", "previousStatus"])
+    && Array.isArray(d.unfinishedTurns) && d.unfinishedTurns.every(isUuid)
+    && Array.isArray(d.unfinishedCommands) && d.unfinishedCommands.every(isUuid) && oneOf(d.previousStatus, RUN_STATUSES),
+  "workspace.created": (d) => exactKeys(d, ["sourcePathSha256", "baseline", "head"]) && isSha256(d.sourcePathSha256)
+    && exactKeys(d.baseline, ["commit", "tree"]) && isGitOid(d.baseline.commit) && isGitOid(d.baseline.tree)
+    && (d.head === null || isGitOid(d.head)),
+  "snapshot.created": (d) => exactKeys(d, ["kind", "ref", "commit", "tree"]) && oneOf(d.kind, ["recovery", "intermediate"])
+    && typeof d.ref === "string" && SNAPSHOT_REF.test(d.ref)
+    && (d.kind === "recovery") === d.ref.includes("/recovery-") && isGitOid(d.commit) && isGitOid(d.tree),
+  "checkpoint.created": (d) => exactKeys(d, ["stage", "commit", "tree", "parent"]) && isInt(d.stage) && d.stage >= 1
+    && isGitOid(d.commit) && isGitOid(d.tree) && isGitOid(d.parent),
+  "workspace.restore_started": (d) => isRestore(d),
+  "workspace.restore_failed": (d) => exactKeys(d, ["target", "targetCommit", "recoveryCommit", "result"])
+    && isRestore({ target: d.target, targetCommit: d.targetCommit, recoveryCommit: d.recoveryCommit })
+    && oneOf(d.result, ["partial", "unknown"]),
+  "workspace.restored": (d) => isRestore(d),
+  "check.started": (d) => exactKeys(d, ["checkRunId", "checkId", "commandSha256", "base", "treeBefore", "profileSha256"])
+    && isUuid(d.checkRunId) && isCheckId(d.checkId) && isSha256(d.commandSha256) && isSha256(d.profileSha256)
+    && exactKeys(d.base, ["commit", "tree"]) && isGitOid(d.base.commit) && isGitOid(d.base.tree) && isGitOid(d.treeBefore),
+  "check.finished": (d) => exactKeys(d, ["checkRunId", "status", "reason", "exitCode", "signal", "groupCleared",
+    "treeAfter", "output", "outputDropped", "evidenceFingerprint", "durationMs"])
+    && isUuid(d.checkRunId) && oneOf(d.status, CHECK_STATUSES)
+    && (d.reason === null ? d.status !== "not_verified" : d.status === "not_verified" && oneOf(d.reason, NOT_VERIFIED_REASONS))
+    && (d.exitCode === null || isInt(d.exitCode)) && strOrNull(d.signal, 64) && typeof d.groupCleared === "boolean"
+    && (d.treeAfter === null || isGitOid(d.treeAfter)) && (d.output === null || isTextRef(d.output))
+    && isInt(d.outputDropped) && d.outputDropped >= 0 && isSha256(d.evidenceFingerprint)
+    && isInt(d.durationMs) && d.durationMs >= 0
+    // a verdict of the tool itself: it ran to its own end with the process group cleared
+    && (d.status !== "passed" || (d.exitCode === 0 && d.groupCleared === true))
+    && (d.status !== "failed" || (d.exitCode !== null && d.exitCode !== 0 && d.groupCleared === true)),
+  "journal.tail_repaired": (d) => exactKeys(d, ["offset", "bytes", "sha256", "quarantine"]) && isInt(d.offset) && d.offset >= 0
+    && isInt(d.bytes) && d.bytes > 0 && isSha256(d.sha256) && typeof d.quarantine === "string"
+    && /^torn-\d+-[0-9a-f]{64}\.bin$/.test(d.quarantine),
+  // plan and final_review have no stage/round; execute and review have both
+  "orch.turn": (d) => exactKeys(d, ["turnId", "purpose", "stage", "round", "planVersion", "clarificationVersion"])
+    && isUuid(d.turnId) && oneOf(d.purpose, TURN_PURPOSES)
+    && (d.purpose === "plan" || d.purpose === "final_review" ? d.stage === null && d.round === null : isPos(d.stage) && isPos(d.round))
+    && (d.planVersion === null || isPos(d.planVersion)) && isNonNeg(d.clarificationVersion),
+  "plan.recorded": (d) => exactKeys(d, ["turnId", "version", "plan", "firstStage", "stageCount"]) && isUuid(d.turnId)
+    && isPos(d.version) && isTextRef(d.plan) && isPos(d.firstStage) && isInt(d.stageCount) && d.stageCount >= 1 && d.stageCount <= 50,
+  "review.recorded": (d) => exactKeys(d, ["turnId", "stage", "verdict", "findings", "findingsKey", "findingsCount",
+    "clarificationVersion", "runKey"]) && isUuid(d.turnId)
+    && (d.stage === null ? oneOf(d.verdict, FINAL_VERDICTS) : isPos(d.stage) && oneOf(d.verdict, STAGE_VERDICTS))
+    && (d.findings === null || isTextRef(d.findings)) && isSha256(d.findingsKey)
+    && isInt(d.findingsCount) && d.findingsCount >= 0 && d.findingsCount <= 50 && isNonNeg(d.clarificationVersion) && isSha256(d.runKey),
+  "question.asked": (d) => exactKeys(d, ["questionId", "turnId", "text"]) && isUuid(d.questionId) && isUuid(d.turnId) && isTextRef(d.text),
+  "question.answered": (d) => exactKeys(d, ["questionId", "commandId", "text"]) && isUuid(d.questionId) && isUuid(d.commandId)
+    && isTextRef(d.text),
+  // a final check (all stages accepted) has neither stage nor round
+  "check.assessed": (d) => exactKeys(d, ["checkRunId", "stage", "round", "checkKey", "runKey"]) && isUuid(d.checkRunId)
+    && (d.stage === null ? d.round === null : isPos(d.stage) && isPos(d.round)) && isSha256(d.checkKey) && isSha256(d.runKey),
+  "stage.accepted": (d) => exactKeys(d, ["stage", "reviewTurnId", "tree"]) && isPos(d.stage) && isUuid(d.reviewTurnId) && isGitOid(d.tree),
+  "clarification.added": (d) => exactKeys(d, ["version", "commandId", "text"]) && isPos(d.version) && isUuid(d.commandId)
+    && isTextRef(d.text),
+  "limits.changed": (d) => exactKeys(d, ["commandId", "kind", "value"]) && isUuid(d.commandId) && oneOf(d.kind, LIMIT_KINDS)
+    && isPos(d.value),
+  "recovery.decided": (d) => exactKeys(d, ["commandId", "action", "turnId"]) && isUuid(d.commandId)
+    && oneOf(d.action, RECOVERY_ACTIONS) && isUuid(d.turnId),
+  "prepare.started": (d) => exactKeys(d, ["prepareId", "reason", "steps"]) && isUuid(d.prepareId)
+    && oneOf(d.reason, ["start", "check"]) && isTextRef(d.steps),
+  // locks: sha256 of the lock files after it; before/after: the work folder's trees around it (what it changed)
+  "prepare.finished": (d) => keysWithin(d, ["prepareId", "status", "failed", "class", "output"], ["locks", "before", "after"]) && isUuid(d.prepareId)
+    && (d.locks === undefined || isLocks(d.locks)) && (d.before === undefined || isGitOid(d.before)) && (d.after === undefined || isGitOid(d.after))
+    && oneOf(d.status, PREPARE_STATUSES) && (d.failed === null || isNonNeg(d.failed))
+    && (d.class === null || oneOf(d.class, FAILURE_CLASSES)) && (d.status === "failed") === (d.failed !== null)
+    && (d.output === null || isTextRef(d.output)),
+  "check.classified": (d) => exactKeys(d, ["checkRunId", "class"]) && isUuid(d.checkRunId) && oneOf(d.class, FAILURE_CLASSES),
+  "permission.granted": (d) => exactKeys(d, ["grantId", "scope", "provider", "kind", "tool", "fingerprint", "summary"])
+    && isUuid(d.grantId) && oneOf(d.scope, ["run", "project"]) && oneOf(d.provider, ["codex", "claude"])
+    && str(d.kind, 40) && str(d.tool, 120) && isSha256(d.fingerprint) && isTextRef(d.summary),
+  "permission.applied": (d) => exactKeys(d, ["grantId", "fingerprint", "scope"]) && typeof d.grantId === "string" && d.grantId.length <= 64
+    && isSha256(d.fingerprint) && oneOf(d.scope, ["run", "project"]),
+  "finish.intent": (d) => exactKeys(d, ["intentId", "step", "params"]) && isUuid(d.intentId) && oneOf(d.step, FINISH_STEPS) && isTextRef(d.params),
+  // tree: the checked tree the action was for; version/observed (QA): the version contract's outcome and the validated
+  // id reported; bound: older journals only (whether the verification mentioned the commit — never a confirmation)
+  "finish.result": (d) => keysWithin(d, ["intentId", "status", "established", "evidence", "commit"], ["tree", "bound", "version", "observed"]) && isUuid(d.intentId)
+    && (d.tree === undefined || d.tree === null || isGitOid(d.tree)) && (d.bound === undefined || d.bound === null || typeof d.bound === "boolean")
+    && (d.version === undefined || oneOf(d.version, QA_VERSIONS)) && (d.observed === undefined || d.observed === null || isGitOid(d.observed))
+    && oneOf(d.status, FINISH_STATUSES) && typeof d.established === "boolean" && (d.evidence === null || isTextRef(d.evidence))
+    && (d.commit === null || isGitOid(d.commit))
+};
+
+export function isValidEventData(type: string, data: unknown): boolean {
+  return Object.hasOwn(DATA_SCHEMAS, type) && isRecord(data) && DATA_SCHEMAS[type as EventType](data);
+}
+
+// Record without "hash" -> hash -> line. The caller checks MAX_LINE_BYTES.
+export function buildRecord(prev: { seq: number; hash: string } | null, runId: string, ts: string, type: EventType,
+  data: Record<string, unknown>): { record: JournalRecord; line: Buffer } {
+  const body = { v: 1 as const, seq: prev ? prev.seq + 1 : 0, ts, runId, type, prevHash: prev ? prev.hash : ZERO_HASH, data };
+  const record: JournalRecord = { ...body, hash: sha256Hex(canonical(body)) };
+  return { record, line: Buffer.from(canonical(record) + "\n", "utf8") };
+}
+
+const conflict = (message: string): never => { throw new JournalError("replay_conflict", message); };
+
+// Applies one schema-valid record to `state` IN PLACE (null only for seq 0) and returns it.
+// Every check runs before any mutation: on a throw `state` is unchanged. Throws JournalError(replay_conflict | invalid_transition). Transitions are the service's job, except leaving a terminal status.
+export function applyRecord(state: RunState | null, rec: JournalRecord): RunState {
+  const d = rec.data;
+  if (state === null) {
+    if (rec.type !== "run.created") conflict("the first record must be run.created");
+    return {
+      runId: rec.runId, status: "preparing", pausedReason: null, lastSeq: rec.seq, lastHash: rec.hash,
+      goal: d.goal as TextRef, turns: {}, commands: {}, workspace: null, checks: {},
+      orch: {
+        revision: 0, turns: {}, plan: null, planReviewPaused: false, reviews: [], accepted: {}, pendingCheckpoint: null,
+        clarifications: 0, clarificationRefs: [], clarificationSeqs: [], question: null, answers: 0, answerSeqs: [],
+        lastPausedSeq: {}, assessed: {}, limitOverrides: {}, recoveryDecisions: {},
+        prepares: [], classified: {}, grants: {}, applied: 0, finish: []
+      }
+    };
+  }
+  switch (rec.type) {
+    case "run.created":
+      conflict("run.created is allowed only at seq 0");
+      break;
+    case "run.status":
+      if (TERMINAL_STATUSES.includes(state.status)) throw new JournalError("invalid_transition", `run is ${state.status}`);
+      state.status = d.status as RunStatus;
+      state.pausedReason = d.reason as PausedReason | null;
+      state.orch.revision++;
+      if (d.status === "paused") state.orch.lastPausedSeq[d.reason as PausedReason] = rec.seq;
+      if (d.reason === "plan_review" && state.orch.plan?.version === 1) state.orch.planReviewPaused = true;
+      break;
+    case "command.received": {
+      const id = d.commandId as string;
+      if (Object.hasOwn(state.commands, id)) conflict(`command ${id} received twice`);
+      state.commands[id] = { status: "received", kind: d.kind as string, payloadHash: d.payloadHash as string, result: null };
+      break;
+    }
+    case "command.completed": {
+      const cmd = state.commands[d.commandId as string];
+      if (!cmd || cmd.status === "completed") conflict(`command ${String(d.commandId)} cannot be completed`);
+      cmd.status = "completed";
+      cmd.result = { ...(d.result as CommandResult) };
+      if (cmd.result.status === "accepted") state.orch.revision++;
+      break;
+    }
+    case "turn.intent": {
+      const id = d.turnId as string;
+      if (Object.hasOwn(state.turns, id)) conflict(`turn ${id} started twice`);
+      state.turns[id] = {
+        status: "in_flight", commandId: d.commandId as string | null, role: d.role as TurnState["role"],
+        provider: d.provider as TurnState["provider"], mode: d.mode as string, sessionId: d.sessionId as string | null,
+        task: d.task as TextRef, nextTurnAllowed: false, report: null
+      };
+      break;
+    }
+    case "turn.finished": {
+      const turn = state.turns[d.turnId as string];
+      if (!turn || turn.status !== "in_flight") conflict(`turn ${String(d.turnId)} is not in flight`);
+      const report = d.report as { status: ReportStatus; ref: TextRef | null; storeError: ReportStoreError | null };
+      turn.status = d.outcome as ProviderOutcome;
+      turn.nextTurnAllowed = d.nextTurnAllowed as boolean;
+      turn.sessionId = d.sessionId as string | null;
+      turn.report = { status: report.status, ref: report.ref, storeError: report.storeError };
+      break;
+    }
+    case "run.recovered": {
+      const pending = unfinishedWork(state);
+      if (d.previousStatus !== state.status || !sameSet(d.unfinishedTurns as string[], pending.turns)
+        || !sameSet(d.unfinishedCommands as string[], pending.commands)) {
+        conflict("run.recovered does not match the unfinished work");
+      }
+      for (const id of pending.turns) state.turns[id].status = "outcome_unknown";
+      for (const id of pending.commands) state.commands[id].status = "unfinished";
+      if (!TERMINAL_STATUSES.includes(state.status)) {
+        state.status = "paused";
+        state.pausedReason = pending.turns.length > 0 ? "outcome_unknown" : "recovered";
+      }
+      break;
+    }
+    case "journal.tail_repaired":
+      break;
+    case "workspace.created": {
+      if (state.workspace) conflict("workspace created twice");
+      const b = d.baseline as { commit: string; tree: string };
+      state.workspace = {
+        sourcePathSha256: d.sourcePathSha256 as string, baseline: { commit: b.commit, tree: b.tree }, head: d.head as string | null,
+        checkpoints: {}, snapshots: [], current: { commit: b.commit, tree: b.tree },
+        pendingRestore: null, failedRestore: null, lastRestore: null
+      };
+      break;
+    }
+    case "snapshot.created": {
+      const ws = state.workspace ?? conflict("snapshot without a workspace");
+      if (ws.snapshots.some((x) => x.ref === d.ref)) conflict(`snapshot ${String(d.ref)} recorded twice`);
+      if ((d.ref as string).includes("/recovery-") && !(d.ref as string).startsWith(`refs/canvastty/${state.runId}/`)) {
+        conflict("recovery snapshot of another run");
+      }
+      ws.snapshots.push({ kind: d.kind as WorkspaceSnapshot["kind"], ref: d.ref as string, commit: d.commit as string, tree: d.tree as string });
+      break;
+    }
+    case "checkpoint.created": {
+      const ws = state.workspace ?? conflict("checkpoint without a workspace");
+      // the copy's content is not confirmed while a restore is unfinished, so no stage can be accepted from it
+      if (ws.pendingRestore) conflict("checkpoint while a restore is unfinished");
+      const stage = d.stage as number;
+      const count = Object.keys(ws.checkpoints).length;
+      // stages are sequential; each checkpoint's parent is the previous checkpoint, the first one's is the baseline
+      if (stage !== count + 1) conflict(`checkpoint stage ${stage} out of order (next is ${count + 1})`);
+      const expectedParent = stage === 1 ? ws.baseline.commit : ws.checkpoints[String(stage - 1)].commit;
+      if (d.parent !== expectedParent) conflict(`checkpoint ${stage} parent is not the previous checkpoint`);
+      ws.checkpoints[String(stage)] = { commit: d.commit as string, tree: d.tree as string, parent: d.parent as string };
+      ws.current = { commit: d.commit as string, tree: d.tree as string };
+      if (state.orch.pendingCheckpoint === stage) state.orch.pendingCheckpoint = null;
+      break;
+    }
+    case "workspace.restore_started": {
+      const ws = state.workspace ?? conflict("restore without a workspace");
+      // a new attempt is allowed only after the previous one was recorded as failed
+      if (ws.pendingRestore && !ws.failedRestore) conflict("a restore is already in progress");
+      const r = d as unknown as WorkspaceRestore;
+      const target = r.target === "baseline" ? ws.baseline.commit : ws.checkpoints[r.target.slice("stage-".length)]?.commit;
+      if (target !== r.targetCommit) conflict(`restore target ${r.target} does not match the journal`);
+      if (!ws.snapshots.some((x) => x.kind === "recovery" && x.commit === r.recoveryCommit)) conflict("restore without its recovery snapshot");
+      ws.pendingRestore = { target: r.target, targetCommit: r.targetCommit, recoveryCommit: r.recoveryCommit };
+      ws.failedRestore = null;
+      break;
+    }
+    case "workspace.restored": {
+      const ws = state.workspace ?? conflict("restore without a workspace");
+      // a failed attempt is not a restore: only a new, explicitly started attempt can be confirmed
+      if (ws.failedRestore) conflict("workspace.restored after a failed attempt; start a new restore");
+      const p = ws.pendingRestore ?? conflict("workspace.restored without the matching restore_started");
+      if (p.target !== d.target || p.targetCommit !== d.targetCommit || p.recoveryCommit !== d.recoveryCommit) {
+        conflict("workspace.restored does not match the restore in progress");
+      }
+      const targetTree = p.target === "baseline" ? ws.baseline.tree : ws.checkpoints[p.target.slice("stage-".length)].tree;
+      ws.lastRestore = p;
+      ws.pendingRestore = null;
+      ws.failedRestore = null;
+      ws.current = { commit: p.targetCommit, tree: targetTree };
+      break;
+    }
+    case "check.started": {
+      const ws = state.workspace ?? conflict("check without a workspace");
+      if (ws.pendingRestore) conflict("check while a restore is unfinished");
+      if (state.checks[d.checkRunId as string]) conflict(`check ${String(d.checkRunId)} started twice`);
+      const base = d.base as { commit: string; tree: string };
+      // the check runs on the applicable base of the copy, the one confirmed events left in place
+      if (base.commit !== ws.current.commit || base.tree !== ws.current.tree) conflict("check base is not the current base of the copy");
+      state.checks[d.checkRunId as string] = {
+        checkId: d.checkId as string, status: "in_flight", reason: null, base: { commit: base.commit, tree: base.tree },
+        treeBefore: d.treeBefore as string, treeAfter: null, profileSha256: d.profileSha256 as string,
+        commandSha256: d.commandSha256 as string, exitCode: null, signal: null, groupCleared: null,
+        output: null, outputDropped: 0, evidenceFingerprint: null, durationMs: null
+      };
+      break;
+    }
+    case "check.finished": {
+      const check = state.checks[d.checkRunId as string];
+      if (!check || check.status !== "in_flight") conflict(`check ${String(d.checkRunId)} is not in flight`);
+      check.status = d.status as CheckStatus;
+      check.reason = d.reason as NotVerifiedReason | null;
+      check.exitCode = d.exitCode as number | null;
+      check.signal = d.signal as string | null;
+      check.groupCleared = d.groupCleared as boolean;
+      check.treeAfter = d.treeAfter as string | null;
+      check.output = d.output as TextRef | null;
+      check.outputDropped = d.outputDropped as number;
+      check.evidenceFingerprint = d.evidenceFingerprint as string;
+      check.durationMs = d.durationMs as number;
+      break;
+    }
+    case "workspace.restore_failed": {
+      const ws = state.workspace ?? conflict("restore without a workspace");
+      const p = ws.pendingRestore ?? conflict("workspace.restore_failed without the matching restore_started");
+      if (p.target !== d.target || p.targetCommit !== d.targetCommit || p.recoveryCommit !== d.recoveryCommit) {
+        conflict("workspace.restore_failed does not match the restore in progress");
+      }
+      // the copy is partial or unknown: pendingRestore stays, current does not move, no stage can be accepted
+      ws.failedRestore = { ...p, result: d.result as WorkspaceFailedRestore["result"] };
+      break;
+    }
+    default:
+      applyOrchRecord(state, rec);
+  }
+  state.lastSeq = rec.seq;
+  state.lastHash = rec.hash;
+  return state;
+}
+
+// Orchestration events (stage-5-contract.md §8), same rule: every check before any mutation.
+function applyOrchRecord(state: RunState, rec: JournalRecord): void {
+  const d = rec.data;
+  const o = state.orch;
+  // A command decision is written before its command.completed (stage-5-contract.md §6).
+  const openCommand = () => {
+    if (state.commands[d.commandId as string]?.status !== "received") conflict(`command ${String(d.commandId)} is not in progress`);
+  };
+  const completedTurn = (id: string, purposes: readonly string[]) => {
+    const t = o.turns[id];
+    if (!t || !purposes.includes(t.purpose)) conflict(`turn ${id} is not a ${purposes.join("/")} turn`);
+    if (state.turns[id]?.status !== "completed") conflict(`turn ${id} did not complete`);
+    return t;
+  };
+  switch (rec.type) {
+    case "orch.turn": {
+      const id = d.turnId as string;
+      // written before turn.intent; a bare turn.intent (without orch.turn) stays valid
+      if (Object.hasOwn(o.turns, id) || Object.hasOwn(state.turns, id)) conflict(`orch.turn ${id} is not before its intent`);
+      o.turns[id] = {
+        purpose: d.purpose as TurnPurpose, stage: d.stage as number | null, round: d.round as number | null,
+        planVersion: d.planVersion as number | null, clarificationVersion: d.clarificationVersion as number, seq: rec.seq
+      };
+      break;
+    }
+    case "plan.recorded": {
+      completedTurn(d.turnId as string, ["plan"]);
+      if (o.plan?.turnId === d.turnId) conflict(`turn ${String(d.turnId)} already recorded a plan`);
+      if (d.version !== (o.plan?.version ?? 0) + 1) conflict(`plan version ${String(d.version)} out of order`);
+      if (d.firstStage !== Object.keys(o.accepted).length + 1) conflict("plan firstStage is not the next stage");
+      o.plan = {
+        version: d.version as number, turnId: d.turnId as string, ref: d.plan as TextRef,
+        firstStage: d.firstStage as number, stageCount: d.stageCount as number, seq: rec.seq
+      };
+      break;
+    }
+    case "review.recorded": {
+      const t = completedTurn(d.turnId as string, d.stage === null ? ["final_review"] : ["review"]);
+      if (t.stage !== d.stage) conflict(`review stage ${String(d.stage)} is not the turn's stage`);
+      if (o.reviews.some((r) => r.turnId === d.turnId)) conflict(`turn ${String(d.turnId)} already recorded a review`);
+      o.reviews.push({ ...(d as unknown as ReviewRecordedData), seq: rec.seq });
+      break;
+    }
+    case "question.asked": {
+      const id = d.turnId as string;
+      const status = state.turns[id]?.status;
+      if (!o.turns[id] || status === undefined || status === "in_flight" || status === "outcome_unknown") {
+        conflict(`turn ${id} is not a finished orchestration turn`);
+      }
+      if (o.question && !o.question.answered) conflict("another question is open");
+      if (o.question?.questionId === d.questionId) conflict(`question ${String(d.questionId)} asked twice`);
+      o.question = { questionId: d.questionId as string, turnId: id, ref: d.text as TextRef, answered: false, seq: rec.seq,
+        answerRef: null, answeredSeq: null };
+      break;
+    }
+    case "question.answered": {
+      const q = o.question ?? conflict("no question is open");
+      if (q.answered || q.questionId !== d.questionId) conflict(`question ${String(d.questionId)} is not open`);
+      openCommand();
+      q.answered = true;
+      q.answerRef = d.text as TextRef;
+      q.answeredSeq = rec.seq;
+      o.answers++;
+      o.answerSeqs.push(rec.seq);
+      break;
+    }
+    case "check.assessed": {
+      const id = d.checkRunId as string;
+      // evidenceFingerprint is set only by check.finished: an interrupted check (never finished) cannot be assessed,
+      // even though the reopened writer shows it as not_verified(interrupted)
+      if (!state.checks[id] || state.checks[id].evidenceFingerprint === null) conflict(`check ${id} is not finished`);
+      if (Object.hasOwn(o.assessed, id)) conflict(`check ${id} assessed twice`);
+      o.assessed[id] = {
+        stage: d.stage as number | null, round: d.round as number | null, checkKey: d.checkKey as string,
+        runKey: d.runKey as string, seq: rec.seq
+      };
+      break;
+    }
+    case "stage.accepted": {
+      const stage = d.stage as number;
+      const plan = o.plan ?? conflict("stage accepted without a plan");
+      if (stage !== Object.keys(o.accepted).length + 1) conflict(`stage ${stage} is not the next stage`);
+      if (stage > plan.firstStage - 1 + plan.stageCount) conflict(`stage ${stage} is beyond the plan`);
+      // rule 3 of the cycle checkpoints an accepted stage before anything else
+      if (o.pendingCheckpoint !== null) conflict(`stage ${o.pendingCheckpoint} has no checkpoint yet`);
+      if (!o.reviews.some((r) => r.turnId === d.reviewTurnId && r.verdict === "accept" && r.stage === stage)) {
+        conflict(`no accept review of stage ${stage} by turn ${String(d.reviewTurnId)}`);
+      }
+      o.accepted[String(stage)] = { reviewTurnId: d.reviewTurnId as string, tree: d.tree as string, seq: rec.seq };
+      o.pendingCheckpoint = state.workspace?.checkpoints[String(stage)] ? null : stage;
+      break;
+    }
+    case "clarification.added":
+      if (d.version !== o.clarifications + 1) conflict(`clarification version ${String(d.version)} out of order`);
+      openCommand();
+      o.clarifications++;
+      o.clarificationRefs.push(d.text as TextRef);
+      o.clarificationSeqs.push(rec.seq);
+      break;
+    case "limits.changed":
+      openCommand();
+      o.limitOverrides[d.kind as LimitKind] = d.value as number;
+      break;
+    case "recovery.decided": {
+      const id = d.turnId as string;
+      if (state.turns[id]?.status !== "outcome_unknown") conflict(`turn ${id} is not outcome_unknown`);
+      if (Object.hasOwn(o.recoveryDecisions, id)) conflict(`turn ${id} already has a recovery decision`);
+      openCommand();
+      o.recoveryDecisions[id] = d.action as RecoveryAction;
+      break;
+    }
+    case "prepare.started": {
+      if (o.prepares.some((p) => p.prepareId === d.prepareId)) conflict(`prepare ${String(d.prepareId)} started twice`);
+      // One left in flight by an earlier process (reopening marks it interrupted in memory; the journal has no record
+      // of the reopening): a writer starts a new one only then, so replay marks it the same way.
+      for (const p of o.prepares) if (p.status === "in_flight") p.status = "interrupted";
+      o.prepares.push({
+        prepareId: d.prepareId as string, reason: d.reason as PrepareState["reason"], steps: d.steps as TextRef, seq: rec.seq,
+        status: "in_flight", failed: null, class: null, output: null, finishedSeq: null
+      });
+      break;
+    }
+    case "prepare.finished": {
+      const p = o.prepares.find((x) => x.prepareId === d.prepareId);
+      if (!p || p.status !== "in_flight") conflict(`prepare ${String(d.prepareId)} is not in flight`);
+      p!.status = d.status as PrepareState["status"];
+      p!.failed = d.failed as number | null;
+      p!.class = d.class as FailureClass | null;
+      p!.output = d.output as TextRef | null;
+      p!.finishedSeq = rec.seq;
+      if (d.locks !== undefined) p!.locks = d.locks as Record<string, string>;
+      if (d.before !== undefined) p!.before = d.before as string;
+      if (d.after !== undefined) p!.after = d.after as string;
+      break;
+    }
+    case "check.classified": {
+      const id = d.checkRunId as string;
+      const c = state.checks[id];
+      if (!c || c.status !== "failed") conflict(`check ${id} is not a finished failed check`);
+      if (Object.hasOwn(o.classified, id)) conflict(`check ${id} classified twice`);
+      o.classified[id] = d.class as FailureClass;
+      break;
+    }
+    case "permission.granted": {
+      const fp = d.fingerprint as string;
+      if (o.grants[fp]) conflict("the same action is granted twice");
+      o.grants[fp] = { grantId: d.grantId as string, scope: d.scope as "run" | "project", seq: rec.seq };
+      break;
+    }
+    case "permission.applied":
+      o.applied++;
+      break;
+    case "finish.intent": {
+      if (o.finish.some((f) => f.intentId === d.intentId)) conflict(`finish intent ${String(d.intentId)} recorded twice`);
+      if (o.finish.some((f) => f.status === "in_flight" || f.status === "outcome_unknown")) conflict("an earlier action after success has no result");
+      o.finish.push({
+        intentId: d.intentId as string, step: d.step as FinishStep, params: d.params as TextRef, seq: rec.seq,
+        status: "in_flight", established: false, evidence: null, commit: null, resultSeq: null
+      });
+      break;
+    }
+    case "finish.result": {
+      const f = o.finish.find((x) => x.intentId === d.intentId);
+      if (!f || (f.status !== "in_flight" && f.status !== "outcome_unknown" && f.status !== "unknown")) conflict(`finish intent ${String(d.intentId)} has a result`);
+      // a result established after the application ended is marked so; a live one never is. An intent the earlier
+      // process left in flight is outcome_unknown only in the reopened writer's memory, so replay sees it in_flight.
+      if (f!.status !== "in_flight" && !d.established) conflict("finish.result established does not match the intent's state");
+      f!.status = d.status as FinishStatus;
+      f!.established = d.established as boolean;
+      f!.evidence = d.evidence as TextRef | null;
+      f!.commit = d.commit as string | null;
+      f!.resultSeq = rec.seq;
+      if (d.tree !== undefined) f!.tree = d.tree as string | null;
+      if (d.version !== undefined) f!.version = d.version as QaVersion;
+      if (d.observed !== undefined) f!.observed = d.observed as string | null;
+      break;
+    }
+  }
+}
+
+// In-flight turns and received-but-not-completed commands, in journal order.
+export const CHECK_STATUSES: readonly string[] = ["passed", "failed", "not_verified"];
+export const NOT_VERIFIED_REASONS: readonly string[] = [
+  "sandbox_unavailable", "spawn_failed", "timeout", "stopped", "output_limit",
+  "cleanup_unverified", "deps_changed", "tree_changed", "workspace_unverified",
+  "restore_incomplete", "interrupted", "store_failed"
+];
+const isCheckId = (v: unknown): v is string => typeof v === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(v);
+
+// A check whose start is in the journal without its result: after reopening it is not_verified(interrupted), decided
+// here rather than by a new event, so no journal schema changes and nothing is re-run. Not applied to a live writer.
+export function markInterruptedChecks(state: RunState): string[] {
+  const interrupted = Object.keys(state.checks).filter((id) => state.checks[id].status === "in_flight");
+  for (const id of interrupted) {
+    state.checks[id].status = "not_verified";
+    state.checks[id].reason = "interrupted";
+  }
+  return interrupted;
+}
+
+// Stage 13, the same rule for the application's own operations on reopening: a preparation without its end is
+// interrupted (it can simply run again), an action after success without its result is outcome_unknown — its real
+// outcome is established before anything else, and it is never repeated on its own.
+export function markInterruptedOperations(state: RunState): void {
+  for (const p of state.orch.prepares) if (p.status === "in_flight") p.status = "interrupted";
+  for (const f of state.orch.finish) if (f.status === "in_flight") f.status = "outcome_unknown";
+}
+
+export function unfinishedWork(state: RunState): { turns: string[]; commands: string[] } {
+  return {
+    turns: Object.keys(state.turns).filter((id) => state.turns[id].status === "in_flight"),
+    commands: Object.keys(state.commands).filter((id) => state.commands[id].status === "received")
+  };
+}
+
+// Whether opening the run records run.recovered (store.openRun): work left unfinished, or the run left neither paused
+// nor finished — its process ended without shutdown.
+export function needsRecovery(state: RunState): boolean {
+  const pending = unfinishedWork(state);
+  return pending.turns.length > 0 || pending.commands.length > 0 || (!TERMINAL_STATUSES.includes(state.status) && state.status !== "paused");
+}
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && new Set(a).size === a.length && b.every((x) => a.includes(x));
+
+// Pure and deterministic (ts is ignored). Records must already be chain-checked (parseJournal does that).
+export function replay(records: readonly JournalRecord[]): RunState {
+  let state: RunState | null = null;
+  for (const rec of records) state = applyRecord(state, rec);
+  if (state === null) return conflict("empty journal");
+  return state;
+}
+
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }) // a BOM must fail JSON.parse, not vanish;
+
+// One complete line (without '\n') -> record, checked against the previous record. Throws JournalError.
+// version > JOURNAL_VERSION: a newer journal's line; only the envelope and the chain are checked, not its event schema.
+export function parseLine(bytes: Uint8Array, runId: string, prev: { seq: number; hash: string } | null, version = JOURNAL_VERSION): JournalRecord {
+  if (bytes.length > MAX_LINE_BYTES) throw new JournalError("line_too_large", `line of ${bytes.length} bytes`);
+  let text: string;
+  try {
+    text = utf8.decode(bytes);
+  } catch {
+    throw new JournalError("invalid_utf8", "line is not valid UTF-8");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new JournalError("invalid_json", "line is not JSON");
+  }
+  if (!isRecord(value)) throw new JournalError("invalid_event", "record is not an object");
+  if (value.v !== version) throw new JournalError("unsupported_version", `version ${String(value.v)}`);
+  let canon: string | null = null;
+  try {
+    canon = canonical(value);
+  } catch { /* e.g. 1e999 parsed as Infinity */ }
+  if (canon !== text) throw new JournalError("non_canonical", "line is not canonical JSON");
+  const envelope = version === JOURNAL_VERSION ? exactKeys(value, RECORD_KEYS) && isValidEventData(String(value.type), value.data)
+    : RECORD_KEYS.every((k) => Object.hasOwn(value, k)) && isRecord(value.data);
+  if (!envelope || !isInt(value.seq) || typeof value.ts !== "string" || !ISO_TS.test(value.ts)
+    || typeof value.runId !== "string" || !isSha256(value.prevHash) || !isSha256(value.hash)
+    || typeof value.type !== "string") {
+    throw new JournalError("invalid_event", "record does not match the v1 schema");
+  }
+  const rec = value as unknown as JournalRecord;
+  if (rec.runId !== runId) throw new JournalError("wrong_run", "record belongs to another run");
+  if (rec.seq !== (prev ? prev.seq + 1 : 0)) throw new JournalError("bad_seq", `seq ${rec.seq}`);
+  if (rec.prevHash !== (prev ? prev.hash : ZERO_HASH)) throw new JournalError("bad_prev_hash", "prevHash breaks the chain");
+  const { hash, ...body } = rec;
+  if (sha256Hex(canonical(body)) !== hash) throw new JournalError("bad_hash", "hash does not match the record");
+  return rec;
+}
+
+export interface ParsedJournal {
+  records: JournalRecord[]; // valid prefix
+  state: RunState | null; // replay of the valid prefix
+  integrity: JournalIntegrity;
+  validBytes: number; // end of the last valid line, including its '\n'
+}
+
+// ok: every line valid and nothing after the last '\n'. torn_tail: only the final fragment lacks '\n'.
+// corrupt: a '\n'-terminated line fails, or there is no valid run.created at all (empty file, lone fragment).
+export function parseJournal(buf: Uint8Array, runId: string): ParsedJournal {
+  const records: JournalRecord[] = [];
+  let state: RunState | null = null;
+  let offset = 0;
+  let line = 1;
+  const corrupt = (code: CorruptCode): ParsedJournal =>
+    ({ records, state, integrity: { status: "corrupt", detail: { line, offset, code } }, validBytes: offset });
+  const newer = newerVersion(buf);
+  if (newer !== null) return parseNewerJournal(buf, runId, newer);
+  if (buf.length > MAX_JOURNAL_BYTES) return corrupt("journal_too_large");
+  while (offset < buf.length) {
+    const nl = buf.indexOf(0x0a, offset);
+    if (nl < 0) {
+      if (state === null) return corrupt("replay_conflict");
+      return { records, state, integrity: { status: "torn_tail", detail: { offset, bytes: buf.length - offset } }, validBytes: offset };
+    }
+    try {
+      const prev = records.length ? records[records.length - 1] : null;
+      const rec = parseLine(buf.subarray(offset, nl), runId, prev);
+      state = applyRecord(state, rec); // throws before mutating, so a conflict leaves the previous state
+      records.push(rec);
+    } catch (error) {
+      if (error instanceof JournalError) return corrupt(error.code);
+      throw error;
+    }
+    offset = nl + 1;
+    line++;
+  }
+  if (state === null) return corrupt("replay_conflict");
+  return { records, state, integrity: { status: "ok" }, validBytes: offset };
+}
+
+// The version of a journal written by a newer version: an integer v above JOURNAL_VERSION in its first line (also one
+// without its '\n'; only that line is looked at, the rest is never parsed as events). null: any other journal — also a
+// first line torn inside its JSON, whose version cannot be read: such a journal stays corrupt.
+export function newerVersion(buf: Uint8Array): number | null {
+  const nl = buf.indexOf(0x0a);
+  const end = nl < 0 ? buf.length : nl;
+  if (end > MAX_LINE_BYTES) return null;
+  try {
+    const v = (JSON.parse(utf8.decode(buf.subarray(0, end))) as { v?: unknown } | null)?.v;
+    return isInt(v) && v > JOURNAL_VERSION ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+// A0 bridge (acceptance-review-spec.md §2.2): the valid prefix of the chain (seq, prevHash, hash, runId, one version),
+// with state null. Records keep their own types and data; nothing is replayed (no applyRecord).
+function parseNewerJournal(buf: Uint8Array, runId: string, version: number): ParsedJournal {
+  const records: JournalRecord[] = [];
+  let offset = 0;
+  let line = 1;
+  const done = (chain: ChainIntegrity): ParsedJournal =>
+    ({ records, state: null, integrity: { status: "newer_version", detail: { version, chain } }, validBytes: offset });
+  if (buf.length > MAX_JOURNAL_BYTES) return done({ status: "corrupt", detail: { line, offset, code: "journal_too_large" } });
+  while (offset < buf.length) {
+    const nl = buf.indexOf(0x0a, offset);
+    if (nl < 0) return done({ status: "torn_tail", detail: { offset, bytes: buf.length - offset } });
+    try {
+      records.push(parseLine(buf.subarray(offset, nl), runId, records.at(-1) ?? null, version));
+    } catch (error) {
+      if (error instanceof JournalError) return done({ status: "corrupt", detail: { line, offset, code: error.code } });
+      throw error;
+    }
+    offset = nl + 1;
+    line++;
+  }
+  return done({ status: "ok" });
+}
+
+// The goal of a newer journal: its run.created keeps the v1 schema (acceptance-review-spec.md §2.1). null otherwise.
+export function newerGoal(records: readonly JournalRecord[]): TextRef | null {
+  const first = records[0];
+  return first?.type === "run.created" && isValidEventData("run.created", first.data) ? (first.data as { goal: TextRef }).goal : null;
+}

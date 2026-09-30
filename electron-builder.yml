@@ -40,6 +40,10 @@ extraResources:
     to: agent-runtime
     filter:
       - "*.mjs"
+  - from: src/orchestration
+    to: orchestration
+    filter:
+      - "*.mjs"
   - from: agent/browser
     to: agent/browser
     filter:
