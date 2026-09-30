@@ -344,7 +344,7 @@ export function createRunManager(deps: RunManagerDeps) {
   };
   // A newer journal that declares minReaderVersion this build reads: its whole state by v1 rules, as journaled (no
   // recovery is shown or recorded), and still nothing but reading: it is never opened, stopped or continued here.
-  async function compatibleSnapshot(runId: string, st: RunState, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" } }): Promise<OrchestrationRunSnapshot> {
+  async function compatibleSnapshot(runId: string, st: RunState, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" }; skipped: number }): Promise<OrchestrationRunSnapshot> {
     const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
     const goalJson = await readText(deps.root, runId, st.goal).then((b) => JSON.parse(b.toString("utf8")) as Goal, () => null);
     const view = runView(st, false, null, {
@@ -354,7 +354,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const goal = typeof (goalJson as { text?: unknown } | null)?.text === "string" ? (goalJson as { text: string }).text : null;
     return {
       seq: st.lastSeq, tick: 0, integrity: "newer_version_compatible", open: false,
-      view: { ...view, active: null, permission: null, pendingPermissions: 0, newer: { version: detail.version, chain: detail.chain.status, goal, compatible: true } }
+      view: { ...view, active: null, permission: null, pendingPermissions: 0, newer: { version: detail.version, chain: detail.chain.status, goal, compatible: true, skipped: detail.skipped } }
     };
   }
   // The state of a run this version can open and change; a newer version's run is refused without touching it.

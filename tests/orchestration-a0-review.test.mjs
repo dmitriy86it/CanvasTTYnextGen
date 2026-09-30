@@ -179,7 +179,7 @@ test("minReaderVersion 1: replayed by v1 rules (unknown fields ignored), shown w
   const r = writeRun(root, { first: { minReaderVersion: 1 } });
   const buf = fs.readFileSync(path.join(r.dir, "journal.jsonl"));
   const p = parseJournal(buf, r.runId);
-  assert.deepEqual(p.integrity, { status: "newer_version_compatible", detail: { version: 2, minReaderVersion: 1, chain: { status: "ok" } } });
+  assert.deepEqual(p.integrity, { status: "newer_version_compatible", detail: { version: 2, minReaderVersion: 1, chain: { status: "ok" }, skipped: 0 } });
   assert.equal(p.state.status, "completed");
   assert.equal(p.records.length, 3);
   const before = footprint(r.dir);
@@ -294,4 +294,70 @@ test("review R5: a chain failure on the first record of a compatible journal is 
   assert.equal(p.integrity.status, "newer_version");
   assert.deepEqual([p.integrity.detail.chain.status, p.integrity.detail.chain.detail.line, p.integrity.detail.chain.detail.code], ["corrupt", 1, "bad_hash"]);
   assert.equal(p.integrity.detail.fallback, undefined);
+});
+
+// ---------- owner's decisions before the merge: skippable records, the version is the first record's ----------
+
+const SKIP = (extra) => (ref) => [
+  ["run.created", { goal: ref, planVersion: 2 }],
+  ["run.v2.note", { text: "a v2 note" }, extra],
+  ["run.status", { status: "running", reason: null }],
+  ["run.v2.note", { text: "another" }, extra],
+  ["run.status", { status: "completed", reason: null }]
+];
+const compat = (root, events) => {
+  const r = writeRun(root, { first: { minReaderVersion: 1 }, events });
+  return { ...r, p: parseJournal(fs.readFileSync(path.join(r.dir, "journal.jsonl")), r.runId) };
+};
+
+test("skippable: an unknown record marked skippable: true is left out of the state and counted", async () => {
+  const root = path.join(TMP, "skip");
+  const { runId, dir, p } = compat(root, SKIP({ skippable: true }));
+  assert.equal(p.integrity.status, "newer_version_compatible");
+  assert.deepEqual([p.integrity.detail.skipped, p.integrity.detail.chain.status, p.records.length, p.state.status], [2, "ok", 5, "completed"]);
+  const before = footprint(dir);
+  const m = managerOf(root);
+  const s = (await m.get(runId)).value;
+  assert.deepEqual([s.integrity, s.view.newer.compatible, s.view.newer.skipped, s.view.status], ["newer_version_compatible", true, 2, "completed"]);
+  await m.shutdown();
+  assert.deepEqual(footprint(dir), before);
+});
+
+test("skippable: an unknown record without the mark, or with any value but the boolean true, falls back", () => {
+  const root = path.join(TMP, "skip-no");
+  for (const extra of [undefined, { skippable: "true" }, { skippable: 1 }, { skippable: false }]) {
+    const { p } = compat(root, SKIP(extra));
+    assert.equal(p.integrity.status, "newer_version", JSON.stringify(extra));
+    assert.deepEqual(p.integrity.detail.fallback, { line: 2, code: "unknown_record" }, JSON.stringify(extra));
+  }
+});
+
+test("skippable: on a known record the mark is ignored and the record is applied", () => {
+  const { p } = compat(path.join(TMP, "skip-known"), (ref) => [
+    ["run.created", { goal: ref, planVersion: 2 }],
+    ["run.status", { status: "running", reason: null }, { skippable: true }],
+    ["run.status", { status: "completed", reason: null }, { skippable: true }]
+  ]);
+  assert.deepEqual([p.integrity.status, p.integrity.detail.skipped, p.state.status], ["newer_version_compatible", 0, "completed"]);
+});
+
+test("skippable: the chain covers skipped records; a broken hash on one is a chain error", () => {
+  const root = path.join(TMP, "skip-hash");
+  const r = writeRun(root, { first: { minReaderVersion: 1 }, events: SKIP({ skippable: true }) });
+  const jp = path.join(r.dir, "journal.jsonl");
+  fs.writeFileSync(jp, fs.readFileSync(jp, "utf8").replace('"text":"a v2 note"', '"text":"a v2 notE"'));
+  const p = parseJournal(fs.readFileSync(jp), r.runId);
+  assert.equal(p.integrity.status, "newer_version_compatible");
+  assert.deepEqual([p.integrity.detail.chain.status, p.integrity.detail.chain.detail.line, p.integrity.detail.chain.detail.code], ["corrupt", 2, "bad_hash"]);
+  assert.deepEqual([p.records.length, p.integrity.detail.skipped], [1, 0], "nothing after the break is shown or counted");
+});
+
+test("the version is the first record's: a record of another v falls back to the A0 view", () => {
+  const { p } = compat(path.join(TMP, "v-change"), (ref) => [
+    ["run.created", { goal: ref, planVersion: 2 }],
+    ["run.status", { status: "running", reason: null }],
+    ["run.status", { status: "completed", reason: null }, { v: 3 }]
+  ]);
+  assert.equal(p.integrity.status, "newer_version");
+  assert.deepEqual(p.integrity.detail.fallback, { line: 3, code: "version_changed" });
 });

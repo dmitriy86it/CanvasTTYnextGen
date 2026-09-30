@@ -752,7 +752,7 @@ export function RunPanel(props: RunPanelProps): React.JSX.Element {
     : <CurrentRunPanel {...props} />;
 }
 
-// "Release link" for a link held by a newer version's run (proposed amendment to acceptance-review-spec.md §2.2):
+// "Release link" for a link held by a newer version's run (acceptance-review-spec.md §2.2.1):
 // asked to confirm first, then one command whose commandId is kept, so a repeat after a lost answer is the same release.
 export function ReleaseNewerLink({ orch, linkId, runId, locale }: { orch: Orchestration; linkId: string; runId: string; locale: LocaleId }): React.JSX.Element {
   const [confirming, setConfirming] = useState(false);
@@ -1018,6 +1018,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               <div className="orch-hint orch-hint--warn" role="status" data-orch-read-only={view.newer.version}>
                 <strong>{t(locale, "orchReadOnly")}</strong>
                 <span>{t(locale, "orchReadOnlyHint")}</span>
+                {(view.newer.skipped ?? 0) > 0 && <span data-orch-newer-skipped={view.newer.skipped}>{t(locale, "orchNewerSkipped").replace("{n}", String(view.newer.skipped))}</span>}
                 {runId && linkOfRun(orch, runId) && <ReleaseNewerLink orch={orch} linkId={linkOfRun(orch, runId)!} runId={runId} locale={locale} />}
               </div>
             )}
