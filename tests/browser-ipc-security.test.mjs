@@ -3,13 +3,16 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const ipcPath = new URL("../src/main/ipc/registerIpc.ts", import.meta.url);
+const guardPath = new URL("../src/main/ipc/mainRenderer.ts", import.meta.url);
 
 test("privileged browser IPC validates the trusted main renderer", async () => {
   const source = await readFile(ipcPath, "utf8");
+  const guard = await readFile(guardPath, "utf8");
 
-  assert.match(source, /function assertMainRenderer/);
-  assert.match(source, /event\.sender !== expected\.webContents/);
-  assert.match(source, /event\.senderFrame !== expected\.webContents\.mainFrame/);
+  assert.match(source, /import \{ assertMainRenderer \} from "\.\/mainRenderer"/);
+  assert.match(guard, /function assertMainRenderer/);
+  assert.match(guard, /event\.sender !== expected\.webContents/);
+  assert.match(guard, /event\.senderFrame !== expected\.webContents\.mainFrame/);
 
   for (const channel of [
     "browserGetState",

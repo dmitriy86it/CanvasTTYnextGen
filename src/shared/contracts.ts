@@ -904,6 +904,7 @@ export interface LimitsSnapshot {
 
 export interface CanvasTTYApi {
   evenG2: import('./evenG2.ts').EvenG2Api;
+  orchestration: import('./orchestration.ts').OrchestrationApi;
   appVersion(): Promise<string>;
   clipboard: {
     readText(): Promise<string>;
@@ -1078,6 +1079,31 @@ export const IPC = {
   pluginsBrowserOpenRequested: "plugins:browser-open-requested",
   pluginsBrowserOpenResponded: "plugins:browser-open-responded",
   pluginsStorageChanged: "plugins:storage-changed",
+  orchestrationCatalog: "orchestration:catalog",
+  orchestrationList: "orchestration:list",
+  orchestrationGet: "orchestration:get",
+  orchestrationCreate: "orchestration:create",
+  orchestrationCommand: "orchestration:command",
+  orchestrationHistory: "orchestration:history",
+  orchestrationText: "orchestration:text",
+  orchestrationWatch: "orchestration:watch",
+  orchestrationUnwatch: "orchestration:unwatch",
+  orchestrationEvent: "orchestration:event",
+  orchestrationCanvas: "orchestration:canvas",
+  orchestrationAgentCreate: "orchestration:agent-create",
+  orchestrationAgentMove: "orchestration:agent-move",
+  orchestrationAgentDelete: "orchestration:agent-delete",
+  orchestrationLinkCreate: "orchestration:link-create",
+  orchestrationLinkDelete: "orchestration:link-delete",
+  orchestrationLinkStart: "orchestration:link-start",
+  orchestrationAgentGroupMove: "orchestration:agent-group-move",
+  orchestrationActivity: "orchestration:activity",
+  orchestrationChanges: "orchestration:changes",
+  orchestrationDiff: "orchestration:diff",
+  orchestrationReadiness: "orchestration:readiness",
+  orchestrationProfileGet: "orchestration:profile-get",
+  orchestrationProfileSave: "orchestration:profile-save",
+  orchestrationProbe: "orchestration:probe",
   evenG2State: "even-g2:state",
   evenG2Command: "even-g2:command",
   evenG2BrowserRequest: "even-g2:browser-request",

@@ -7,7 +7,7 @@ import { app, BrowserWindow, dialog, net, protocol, safeStorage } from "electron
 import { IPC, type PluginCanvasRequest } from "../shared/contracts";
 import { registerIpc } from "./ipc/registerIpc";
 import { SettingsStore } from "./services/SettingsStore";
-import { TerminalManager } from "./services/TerminalManager";
+import { TerminalManager, terminalEnvironment } from "./services/TerminalManager";
 import { TerminalSessionStore } from "./services/TerminalSessionStore";
 import { LimitsService } from "./services/LimitsService";
 import {
@@ -48,6 +48,11 @@ import {
   recoverHermesConfigurationOnStartup,
   resolveHermesHomeDirectory
 } from "./services/hermesConfig";
+import { resolveSupervisorLaunch } from "./services/orchestration/supervisorLaunch";
+import { runOrchestrationSmoke } from "./services/orchestration/smoke";
+import { createRunManager, dropCommandReplies, findProgram, nativeRuntime, providerAgents, testNativeRuntime, testProviderAgents } from "./services/orchestration/manager";
+import type { RunManager } from "./services/orchestration/manager";
+import { runOrchestrationIpcSmoke } from "./services/orchestration/ipcSmoke";
 import { startupPageUrl } from "./startupPage";
 import { mainWindowChromeOptions } from "./windowChrome";
 
@@ -117,6 +122,7 @@ let runtimeGateway: RuntimeGateway | null = null;
 let agentRuntimeBridge: AgentRuntimeBridge | null = null;
 let agentRuntimeHelper: RuntimeHookHelperLaunch | null = null;
 let providerClis: ProviderCliRegistry | null = null;
+let orchestration: RunManager | null = null;
 const pluginWindows = new Map<BrowserWindow, string>();
 let servicesReady = false;
 let startupRunning = false;
@@ -369,6 +375,8 @@ async function initializeServices(): Promise<void> {
   await pluginSecretsService.load();
   protocol.handle("canvastty-plugin", (request) => pluginManager!.protocolResponse(request.url));
   protocol.handle("canvastty-media", (request) => pluginMediaService!.protocolResponse(request));
+  orchestration = buildRunManager();
+  const droppedReplies = developmentEnv("CANVASTTY_ORCHESTRATION_TEST_DROP_REPLIES");
   registerIpc({
     settings,
     terminals: terminalManager,
@@ -379,6 +387,7 @@ async function initializeServices(): Promise<void> {
     browser: browserService,
     githubAuth: githubAuth!,
     hermesHud: hermesHudService,
+    orchestration: droppedReplies && isAbsolute(droppedReplies) ? dropCommandReplies(orchestration, droppedReplies) : orchestration,
     getMainWindow: () => mainWindow,
     applyBrowserSettings: async (next) => {
       agentRuntimeBridge?.setCoreHooksEnabled(next.agentLifecycleHooksEnabled);
@@ -438,6 +447,12 @@ async function loadApplication(window: BrowserWindow): Promise<void> {
     console.log("CANVASTTY_BROWSER_SMOKE_READY");
     app.quit();
   }
+  const orchestrationIpcSmoke = developmentEnv("CANVASTTY_ORCHESTRATION_IPC_SMOKE");
+  if (orchestrationIpcSmoke) {
+    const report = await runOrchestrationIpcSmoke(window, join(__dirname, "../preload/index.cjs"), orchestrationIpcSmoke, orchestration!);
+    console.log(`CANVASTTY_ORCHESTRATION_IPC_SMOKE_READY ${JSON.stringify(report)}`);
+    app.quit();
+  }
   const providerSmoke = developmentEnv("CANVASTTY_PROVIDER_SMOKE");
   if (providerSmoke) {
     if (!agentBrowserBridge || !agentBrowserHelper) {
@@ -462,6 +477,38 @@ function developmentEnv(name: string): string | undefined {
   return app.isPackaged ? undefined : process.env[name];
 }
 
+// Runs are created and opened only by explicit IPC commands; building the manager starts nothing. Test providers
+// (fake CLIs) come from a development-only variable, never from an IPC argument.
+function buildRunManager(): RunManager {
+  const launch = () => {
+    const r = resolveSupervisorLaunch({
+      platform: process.platform, isPackaged: app.isPackaged, resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath(), execPath: process.execPath
+    });
+    if (!r.ok) throw Object.assign(new Error(r.detail), { code: r.reason });
+    return r.launch;
+  };
+  const found = (name: string) => findProgram(name) ?? (() => {
+    throw Object.assign(new Error(`${name} was not found`), { code: `${name}_unavailable` });
+  })();
+  const testProviders = developmentEnv("CANVASTTY_ORCHESTRATION_TEST_PROVIDERS");
+  return createRunManager({
+    root: join(app.getPath("userData"), "orchestration"),
+    workspaceOpen: (id) => workspaceStore?.isOpen(id) ?? false,
+    workspaceKnown: (id) => workspaceStore?.get().workspaces.some((w) => w.id === id) ?? false,
+    gitPath: () => found("git"),
+    nodePath: () => found("node"),
+    launch,
+    agents: testProviders && isAbsolute(testProviders)
+      ? testProviderAgents(testProviders, launch)
+      : providerAgents({ clis: providerClis!, launch, home: app.getPath("home") }),
+    // Stage 12: the CLIs as the user runs them in a CanvasTTY terminal of the project.
+    native: testProviders && isAbsolute(testProviders)
+      ? testNativeRuntime(testProviders, launch)
+      : nativeRuntime({ clis: providerClis!, launch, baseEnv: () => terminalEnvironment(), clientVersion: app.getVersion() })
+  });
+}
+
 function parseProviderSmokeTargets(value: string): ProviderSmokeTarget[] {
   const allowed = new Set<ProviderSmokeTarget>(["direct", "claude", "codex", "qwen", "kimi", "opencode", "hermes"]);
   const targets = value.split(",").map((target) => target.trim()).filter(Boolean);
@@ -479,6 +526,19 @@ async function startApplication(): Promise<void> {
   let window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 
   try {
+    // Honoured in packaged builds too (ADR-20260913-packaged-fuses-keep-run-as-node, orchestration amendment):
+    // a fixed built-in mock, no window and no services; the process exits with the smoke result.
+    if (process.env.CANVASTTY_ORCHESTRATION_SMOKE === "1") {
+      const report = await runOrchestrationSmoke(resolveSupervisorLaunch({
+        platform: process.platform,
+        isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath,
+        appPath: app.getAppPath(),
+        execPath: process.execPath
+      }));
+      process.stdout.write(`CANVASTTY_ORCHESTRATION_SMOKE_READY ${JSON.stringify(report)}\n`, () => app.exit(report.ok ? 0 : 1));
+      return;
+    }
     if (!window) window = await createWindow();
     if (process.env.CANVASTTY_CLI_RESOLUTION_SMOKE === "1") {
       const registry = buildProviderCliRegistry();
@@ -627,6 +687,8 @@ void IPC.terminalData;
 async function shutdownServices(): Promise<void> {
   for (const request of browserRequests.values()) { clearTimeout(request.timer); request.reject(new Error("App closing")); }
   browserRequests.clear();
+  // Orchestration first: its operations are stopped through their own stop(); terminal sessions are not touched.
+  await orchestration?.shutdown();
   await evenG2?.close();
   if (terminalManager) await terminalManager.shutdown();
   limitsService?.dispose();

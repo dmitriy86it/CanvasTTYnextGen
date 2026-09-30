@@ -26,6 +26,7 @@ import type {
 } from "../shared/contracts";
 import { IPC } from "../shared/contracts";
 import { terminalFileDropText } from "../shared/terminalFileDrop";
+import { createOrchestrationClient } from "./orchestrationClient";
 
 function subscribe<T>(channel: string, listener: (event: T) => void): () => void {
   const wrapped = (_event: Electron.IpcRendererEvent, payload: T): void => listener(payload);
@@ -33,7 +34,13 @@ function subscribe<T>(channel: string, listener: (event: T) => void): () => void
   return () => ipcRenderer.removeListener(channel, wrapped);
 }
 
+const orchestration = createOrchestrationClient({
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
+  on: (channel, listener) => { ipcRenderer.on(channel, (_event, payload) => listener(payload)); }
+});
+
 const api: CanvasTTYApi = {
+  orchestration,
   evenG2: {
     state: () => ipcRenderer.invoke(IPC.evenG2State),
     command: (command) => ipcRenderer.invoke(IPC.evenG2Command, command),

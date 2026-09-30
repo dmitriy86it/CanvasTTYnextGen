@@ -27,6 +27,9 @@ import { PluginBrowserOpenBroker } from "./PluginBrowserOpenBroker";
 import type { GithubAuthService } from "../services/GithubAuthService";
 import type { HermesHudService } from "../services/HermesHudService";
 import { normalizeExternalUrl } from "../../shared/externalUrl";
+import { assertMainRenderer } from "./mainRenderer";
+import { registerOrchestrationIpc } from "./orchestrationIpc";
+import type { RunManager } from "../services/orchestration/manager";
 
 const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
 const MEDIA_MIME: Record<string, string> = {
@@ -47,6 +50,7 @@ interface Dependencies {
   browser: BrowserService;
   githubAuth: GithubAuthService;
   hermesHud: HermesHudService;
+  orchestration: RunManager;
   getMainWindow(): BrowserWindow | null;
   applyBrowserSettings(settings: AppSettings): Promise<void> | void;
   setCanvasNavigationShortcutCapture(active: boolean): void;
@@ -68,6 +72,7 @@ export function registerIpc({
   browser,
   githubAuth,
   hermesHud,
+  orchestration,
   getMainWindow,
   applyBrowserSettings,
   setCanvasNavigationShortcutCapture,
@@ -95,6 +100,7 @@ export function registerIpc({
       listener(event, ...args);
     });
   };
+  registerOrchestrationIpc(handleMain, orchestration);
   const pluginBrowserOpenBroker = new PluginBrowserOpenBroker(getMainWindow);
   const requestPluginBrowserOpen = async (pluginId: string, value: unknown): Promise<void> => {
     plugins.assertPermission(pluginId, "browser:open");
@@ -639,21 +645,6 @@ function isCanvasNavigationPointerBindingInput(
     && typeof input.ctrlKey === "boolean"
     && typeof input.metaKey === "boolean"
     && typeof input.shiftKey === "boolean";
-}
-
-function assertMainRenderer(
-  event: IpcMainEvent | IpcMainInvokeEvent,
-  getMainWindow: () => BrowserWindow | null
-): void {
-  const expected = getMainWindow();
-  if (
-    !expected
-    || expected.isDestroyed()
-    || event.sender !== expected.webContents
-    || event.senderFrame !== expected.webContents.mainFrame
-  ) {
-    throw new Error("Browser IPC is available only to the trusted CanvasTTY renderer.");
-  }
 }
 
 function safeGithubUrl(value: unknown): string {
