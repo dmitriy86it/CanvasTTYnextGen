@@ -430,8 +430,8 @@ export function createRunManager(deps: RunManagerDeps) {
       await activityLog.open(runId);
       const workMode = req.goal.workMode ?? (req.goal.mode ? (await profiles.get(source))?.workMode ?? "project" : undefined);
       const { svc, rt } = await serviceWith(source, native, workMode === "worktree" ? "pending" : null);
-      const goal = await resolveGoal(source, runId, req.goal, rt);
-      own(await svc.createRun({ source, goal, runId, requestKey: key }));
+      const { prepareAuto, ...goal } = await resolveGoal(source, runId, req.goal, rt);
+      own(await svc.createRun({ source, goal, runId, requestKey: key, prepareAuto }));
       if (rt) runRuntimes.set(runId, rt);
       return { runId, created: true };
     })();
@@ -451,7 +451,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const item = testDbItem(await laravelTestDb(dir, undefined, { env: rt.env, worktree: fresh }));
     if (item.level === "blocker") refuse("test_database_unsafe", item.detail);
   }
-  async function resolveGoal(source: string, runId: string, g: OrchestrationGoalInput, rt: NativeRuntime | null): Promise<GoalInput> {
+  async function resolveGoal(source: string, runId: string, g: OrchestrationGoalInput, rt: NativeRuntime | null): Promise<GoalInput & { prepareAuto?: boolean }> {
     const { mode, finish, ...rest } = g;
     if (!mode) {
       if (finish) refuse("invalid_goal", "actions after success need a run mode");
@@ -490,6 +490,7 @@ export function createRunManager(deps: RunManagerDeps) {
       commands: rest.commands?.length ? rest.commands : profile.checks,
       workMode,
       ...(steps.length ? { prepare: { steps } } : {}),
+      prepareAuto: profile.prepare.auto,
       access,
       ...(any ? {
         finish: {

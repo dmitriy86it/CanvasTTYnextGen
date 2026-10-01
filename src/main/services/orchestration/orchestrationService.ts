@@ -316,7 +316,8 @@ function registryFor(deps: OrchestrationDeps, commands: readonly string[] | null
 export function createOrchestrationService(deps: OrchestrationDeps) {
   const clock = deps.clock ?? (() => Date.now());
   return {
-    async createRun(input: { source: string; goal: GoalInput; runId?: string; requestKey?: string }): Promise<RunHandle> {
+    // prepareAuto: the profile's automatic preparation (only what the dependency line says; not part of the goal)
+    async createRun(input: { source: string; goal: GoalInput; runId?: string; requestKey?: string; prepareAuto?: boolean }): Promise<RunHandle> {
       const goal = checkGoal(input.goal, (commands) => registryFor(deps, commands), clock());
       if (input.requestKey !== undefined) goal.requestKey = input.requestKey;
       const runId = input.runId ?? randomUUID();
@@ -333,7 +334,7 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
         await writer.close().catch(() => {});
         throw error;
       }
-      const run = controller(deps, clock, writer, ws, goal);
+      const run = controller(deps, clock, writer, ws, goal, input.prepareAuto);
       await run.start();
       return run.handle;
     },
@@ -359,7 +360,7 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
 type Active = { kind: "turn"; purpose: TurnPurpose; stop(): void } | { kind: "check"; checkId: string; stop(): void }
   | { kind: "prepare"; stop(): void } | { kind: "finish"; step: FinishStep; stop(): void };
 
-function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWriter, ws: Workspace, goal: Goal) {
+function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWriter, ws: Workspace, goal: Goal, prepareAuto?: boolean) {
   const { root } = deps;
   const runId = writer.runId;
   const stopGraceMs = deps.stopGraceMs ?? DEFAULT_STOP_GRACE_MS;
@@ -910,7 +911,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       const output = r.output.bytes > 0 ? await j(() => writer.putText(r.output.text)).catch(() => null) : null;
       const ok = r.exitCode === 0 && r.signal === null && !r.spawnError;
       observe((a) => a.prepare("prepare_finished", `${step.command}: ${ok ? "done" : r.stopCause ? "stopped" : `exit ${r.exitCode ?? r.signal ?? "?"}`}`,
-        { step: index, exitCode: r.exitCode, ok, durationMs: r.durationMs }));
+        { step: index, exitCode: r.exitCode, ok, durationMs: r.durationMs, ...(r.stopCause ? { stopped: true } : {}) }));
       if (r.stopCause === "user" || state().status === "stopping" || abort !== null) { await finish("stopped", null, null, output); return; }
       if (!ok) { await finish("failed", index, r.spawnError ? "environment" : classifyFailure(r.output.text, r.exitCode) === "external" ? "external" : "environment", output); return; }
     }
@@ -1608,10 +1609,19 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       // A copy or a worktree of a native run: the project's dependency folders, before any preparation (stages 4–11
       // link node_modules themselves).
       if (!deps.checks.deps && ws.mode !== "project") {
-        const dirs = (await cloneDependencies(ws, deps.cloneDir).catch(() => [])).filter((d) => d.result !== "skipped");
+        // What becomes of each folder: cloned; installed by a step of the preparation (its result is a later
+        // prepare_finished of that step); or nothing installs it, and why.
+        const steps = goal.prepare?.steps ?? [];
+        const said: Record<string, string> = { cloned: "cloned from the project", install: "installed in the copy", auto_off: "not installed: automatic preparation is off",
+          no_step: "not installed: no install step", not_needed: "not needed" };
+        const dirs = (await cloneDependencies(ws, deps.cloneDir).catch(() => [])).filter((d) => d.reason !== "already in the copy").map((d) => {
+          const step = steps.findIndex((s) => s.unless === d.dir || !!s.unless?.startsWith(`${d.dir}/`));
+          const plan = d.result === "cloned" ? "cloned" : step >= 0 ? "install" : d.result === "skipped" ? "not_needed" : prepareAuto === false ? "auto_off" : "no_step";
+          return { ...d, plan, step };
+        });
         if (dirs.length) {
-          observe((a) => a.prepare("prepare_finished", dirs.map((d) => `${d.dir}: ${d.result === "cloned" ? "cloned from the project" : `installed in the copy (${d.reason})`}`).join("; "),
-            { dependencies: true, ...Object.fromEntries(dirs.map((d) => [d.dir, d.result])) }));
+          observe((a) => a.prepare("prepare_finished", dirs.map((d) => `${d.dir}: ${said[d.plan]}${d.result === "installed" ? ` (${d.reason})` : ""}`).join("; "),
+            { dependencies: true, ...Object.fromEntries(dirs.flatMap((d) => [[d.dir, d.plan], ...(d.plan === "install" ? [[`step:${d.dir}`, d.step]] : [])])) }));
         }
       }
       schedule();

@@ -638,6 +638,12 @@ async function cloneDependency(ws: Workspace, dir: string, locks: readonly strin
   if (!lock) return installed("the project has no lock file for it");
   const sha = await sha256Of(join(ws.sourcePath, lock));
   if (!sha || sha !== (await sha256Of(join(ws.repo, lock)))) return installed(`${lock} in the copy differs from the project's`);
+  // npm's own rule for a current tree: its hidden lock file is there and not older than package-lock.json (yarn and
+  // pnpm keep no such file: not judged)
+  if (lock === "package-lock.json") {
+    const [l, h] = await Promise.all([stat(join(ws.sourcePath, lock)).catch(() => null), stat(join(from, ".package-lock.json")).catch(() => null)]);
+    if (!l || !h || h.mtimeMs < l.mtimeMs) return installed("project node_modules is stale");
+  }
   const started = Date.now();
   try {
     await linksStayInside(from);
