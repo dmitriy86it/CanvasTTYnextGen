@@ -19,6 +19,7 @@ import { runProjectCheck } from "../src/main/services/orchestration/checkService
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { createRun, readRun } from "../src/main/services/orchestration/store.ts";
 import { createWorkspace } from "../src/main/services/orchestration/workspace.ts";
+import { step } from "./smoke-watchdog.mjs";
 
 const PROJECT_ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const FIXTURE = path.join(PROJECT_ROOT, "tests", "fixtures", "orchestration", "check-project");
@@ -41,6 +42,7 @@ try {
   const launch = { command, args: [path.join(helpers, "supervisor.mjs")], env: { ELECTRON_RUN_AS_NODE: "1" } };
   process.stdout.write(`Check sandbox smoke: mode=${packaged ? "packaged" : "development"} electron=${command} helpers=${helpers} os=${os.release()}\n`);
 
+  step("check sandbox: setup");
   const c = await setup();
   const escapeeScript = `
     const { spawn } = require("node:child_process");

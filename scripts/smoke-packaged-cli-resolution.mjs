@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { access, chmod, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 if (process.platform !== "darwin") {
   throw new Error("The packaged CLI-resolution smoke requires macOS.");
@@ -84,6 +85,7 @@ async function packagedApplication() {
 async function runSmoke(executable, platformRoot, home, label) {
   const userData = join(root, `user-data-${label}`);
   await mkdir(userData, { recursive: true, mode: 0o700 });
+  step(`launch: ${label}`);
   const child = spawn(executable, [`--user-data-dir=${userData}`, "--disable-gpu"], {
     env: {
       PATH: "/usr/bin:/bin",
@@ -99,6 +101,7 @@ async function runSmoke(executable, platformRoot, home, label) {
     output = `${output}${chunk.toString("utf8")}`;
     if (Buffer.byteLength(output) > MAX_OUTPUT_BYTES) child.kill("SIGKILL");
   };
+  watch(child, label);
   child.stdout.on("data", consume);
   child.stderr.on("data", consume);
   const result = await new Promise((resolveExit, reject) => {

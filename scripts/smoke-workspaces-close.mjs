@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
 import { build } from "esbuild";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const outArg = process.argv.indexOf("--out");
@@ -23,8 +24,10 @@ await build({ entryPoints: [path.join(H, "page.tsx")], outfile: path.join(DIR, "
 fs.writeFileSync(path.join(DIR, "preload.js"), `const { ipcRenderer } = require("electron");
 window.hipc = { invoke: (...a) => ipcRenderer.invoke(...a), on: (ch, fn) => ipcRenderer.on(ch, (_e, p) => fn(p)) };\n`);
 fs.writeFileSync(path.join(DIR, "index.html"), `<!doctype html><meta charset="utf-8"><title>close harness</title><div id="root"></div><script src="page.js"></script>\n`);
+step("launch the close harness");
 const child = spawn(electronPath, [path.join(DIR, "main.cjs"), `--user-data-dir=${path.join(DIR, "user-data")}`],
   { env: { ...process.env, HARNESS_DIR: DIR }, stdio: ["ignore", "pipe", "pipe"] });
+watch(child);
 let out = "", err = "";
 child.stdout.on("data", (c) => { out += c; });
 child.stderr.on("data", (c) => { err += c; });

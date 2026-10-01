@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 const appArg = process.argv.indexOf("--app");
 if (appArg < 0) throw new Error("usage: --app <path/Raoden Loom.app>");
@@ -81,7 +82,8 @@ try {
   const env = { PATH: "/usr/bin:/bin", HOME: path.join(tmp, "home"), TMPDIR: process.env.TMPDIR ?? "/tmp", LANG: process.env.LANG ?? "en_US.UTF-8",
     CANVASTTY_ORCHESTRATION_TEST_PROVIDERS: providers, CANVASTTY_ORCHESTRATION_IPC_SMOKE: path.join(tmp, "ipc-smoke-script.mjs"),
     CANVASTTY_ORCHESTRATION_TEST_DROP_REPLIES: path.join(tmp, "drop") };
-  const child = spawn(BIN, [`--user-data-dir=${path.join(tmp, "user-data")}`], { env, stdio: ["ignore", "pipe", "pipe"] });
+  step("launch the packaged app");
+  const child = watch(spawn(BIN, [`--user-data-dir=${path.join(tmp, "user-data")}`], { env, stdio: ["ignore", "pipe", "pipe"] }));
   let out = "";
   child.stdout.on("data", (c) => { out = (out + c).slice(-64 * 1024); });
   child.stderr.on("data", (c) => { out = (out + c).slice(-64 * 1024); });
