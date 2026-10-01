@@ -359,7 +359,9 @@ async function initializeServices(): Promise<void> {
   terminalManager.configureWorkspaces({ active: () => workspaceStore!.activeId(), isOpen: (id) => workspaceStore!.isOpen(id) });
   terminalManager.configureSessionPersistence(terminalSessionStore, settings.get().restoreTerminalSessions);
   await terminalManager.restorePersistedSessions();
-  limitsService = new LimitsService(providerClis, app.getVersion());
+  // every load of LimitsService is gated by its CLI being available: none is, so nothing is spawned or fetched
+  if (hermeticSmoke()) console.log("[smoke] limits: no provider is polled (CANVASTTY_SMOKE_HERMETIC)");
+  limitsService = new LimitsService(hermeticSmoke() ? createProviderCliRegistry({ pathOnly: true, environment: {} }) : providerClis, app.getVersion());
   evenG2 = new EvenG2Controller({
     userDataPath, terminals: terminalManager,
     localDiscovery: process.platform === "darwin",
@@ -501,6 +503,10 @@ function developmentEnv(name: string): string | undefined {
   return app.isPackaged ? undefined : process.env[name];
 }
 
+// A smoke run of the development build (scripts/smoke-watchdog.mjs sets it; a packaged build ignores it): provider
+// CLIs are looked up in PATH only, and no provider is polled for its limits, so no CLI installed on the machine runs.
+const hermeticSmoke = (): boolean => developmentEnv("CANVASTTY_SMOKE_HERMETIC") === "1";
+
 // Runs are created and opened only by explicit IPC commands; building the manager starts nothing. Test providers
 // (fake CLIs) come from a development-only variable, never from an IPC argument.
 function buildRunManager(): RunManager {
@@ -523,7 +529,8 @@ function buildRunManager(): RunManager {
     workspaceKnown: (id) => workspaceStore?.get().workspaces.some((w) => w.id === id) ?? false,
     appVersion: () => app.getVersion(),
     gitPath: () => found("git"),
-    nodePath: () => found("node"),
+    // a hermetic smoke names its node explicitly: the lookup would fall back to Homebrew's
+    nodePath: () => (hermeticSmoke() && developmentEnv("CANVASTTY_SMOKE_NODE")) || found("node"),
     launch,
     agents: testProviders && isAbsolute(testProviders)
       ? testProviderAgents(testProviders, launch)
@@ -621,7 +628,9 @@ function buildProviderCliRegistry(): ProviderCliRegistry {
       : {})
   } : undefined;
   const resolutionSmoke = process.env.CANVASTTY_CLI_RESOLUTION_SMOKE === "1";
+  if (hermeticSmoke()) console.log("[smoke] provider CLIs: PATH only, no standard folders (CANVASTTY_SMOKE_HERMETIC)");
   return createProviderCliRegistry({
+    ...(hermeticSmoke() ? { pathOnly: true } : {}),
     ...(smokeOverrides ? { overrides: smokeOverrides } : {}),
     ...(resolutionSmoke && process.env.CANVASTTY_CLI_RESOLUTION_SMOKE_ROOT
       ? { platformRoot: process.env.CANVASTTY_CLI_RESOLUTION_SMOKE_ROOT }

@@ -42,6 +42,22 @@ test("Finder-like macOS PATH resolves OpenCode from its official per-user direct
   assert.equal(resolution.environment.PATH, "/usr/bin:/bin:/test-home/.opencode/bin");
 });
 
+test("pathOnly (hermetic smoke): Homebrew and the user's CLI folders are not looked at, PATH still is", () => {
+  const found = new Map([["/opt/homebrew/bin/codex", null], ["/test-home/.local/bin/claude", null], ["/test-home/.opencode/bin/opencode", null], ["/fakes/kimi", null]]);
+  const registry = createProviderCliRegistry({
+    platform: "darwin",
+    environment: { PATH: "/fakes:/usr/bin:/bin" },
+    homeDirectory: "/test-home",
+    pathOnly: true,
+    inspectCandidate: inspection(found),
+    directoryExists: () => true
+  });
+  for (const provider of ["codex", "claude", "opencode"]) assert.equal(registry.get(provider).state, "unavailable", provider);
+  assert.equal(registry.get("kimi").executable, "/fakes/kimi");
+  assert.equal(registry.get("kimi").environment.PATH, "/fakes:/usr/bin:/bin");
+  assert.equal(createProviderCliRegistry({ pathOnly: true, environment: {}, inspectCandidate: inspection(found), directoryExists: () => true }).get("codex").state, "unavailable");
+});
+
 test("override wins over PATH and fallback candidates", () => {
   const override = "/fixtures/codex";
   const fromPath = "/tools/codex";
