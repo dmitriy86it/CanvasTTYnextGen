@@ -73,7 +73,9 @@ function journal(name, min, skippable = false) {
   // one check run on `tree`, from the current base of the copy (the baseline or the last checkpoint), passed and assessed
   const check = (checkId, command, stage, round, runKey, checkKey, tree) => {
     const checkRunId = uuid(`${name}:check:${++n}`);
-    rec("check.started", { checkRunId, checkId, commandSha256: sha256Hex(command), base: { ...ws }, treeBefore: tree, profileSha256: h("profile") });
+    // checks.ts commandSha256(CheckCommand) of a command line run by the login shell (shellRegistry)
+    const commandSha256 = sha256Hex(canonical({ id: checkId, executable: "/bin/zsh", argv: ["-ilc", command], timeoutMs: 30 * 60_000, maxOutputBytes: 65_536 }));
+    rec("check.started", { checkRunId, checkId, commandSha256, base: { ...ws }, treeBefore: tree, profileSha256: h("profile") });
     rec("check.finished", { checkRunId, status: "passed", reason: null, exitCode: 0, signal: null, groupCleared: true, treeAfter: tree,
       output: null, outputDropped: 0, evidenceFingerprint: h(`${checkRunId}:evidence`), durationMs: 1200 });
     rec("check.assessed", { checkRunId, stage, round, checkKey, runKey });
@@ -87,8 +89,14 @@ function journal(name, min, skippable = false) {
   return { runId, rec, text, turn, command, start, checkpoint, check, review, complete, ws, done: () => ({ runId, lines, texts }) };
 }
 
-const goal = (extra) => ({ text: "Добавить экспорт отчёта в CSV", criteria: ["Отчёт выгружается в CSV", "Заголовки колонок как в таблице"],
-  checks: [], commands: [], mode: "autopilot", workMode: "project", ...extra });
+// checkGoal's shape (orchestrationService.ts), with commands: [] (v2 only) and then checks: []
+const goal = (extra) => {
+  const g = { v: 1, text: "Добавить экспорт отчёта в CSV", criteria: ["Отчёт выгружается в CSV", "Заголовки колонок как в таблице"], checks: [],
+    reviewPlan: false, limits: { turns: 40, roundsPerStage: 8, replans: 3, noProgressRounds: 3, runMs: 4 * 3600_000, leadTurnMs: 20 * 60_000, executorTurnMs: 45 * 60_000 },
+    createdAt: Date.UTC(2026, 9, 1, 9, 0, 0), commands: [], workMode: "project", mode: "autopilot", ...extra };
+  if (g.mode === "steps") g.reviewPlan = true; // step by step always shows the plan first
+  return g;
+};
 const finalReport = (rs) => ({ conditions: [], requirements: rs.map((id) => ({ id, status: "met", note: "проверено по коду" })), findings: [], request: "none", question: null });
 const planOf = (conditions, checks) => ({ stages: [{ title: "Экспорт CSV", task: "Добавить выгрузку отчёта в CSV", conditions }],
   dropped: [], dropRequirements: [], question: null, checks });
@@ -113,7 +121,7 @@ const FIXTURES = {
     const f = j.turn({ purpose: "final_review", planVersion: 1, role: "reviewer", provider: "codex", tree, report: finalReport(["R1", "R2"]) });
     j.review(f, null, finalReport(["R1", "R2"]), {}, h("01:runKey"));
     j.complete("no_checks", { checks: [], requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
-      finalReviewTurnId: f, runKey: h("01:runKey"), checkKey: null, finish: {} });
+      finalReviewTurnId: f, runKey: h("01:runKey"), checkKeys: {}, finish: {} });
   },
   // The lead proposes two commands, the autopilot accepts, both pass: completed and confirmed.
   "02-proposed-accepted-autopilot": (j) => {
@@ -130,9 +138,9 @@ const FIXTURES = {
     j.turn({ purpose: "execute", stage: 1, round: 1, planVersion: 1, role: "executor", provider: "claude", report: { summary: "Разбор дат исправлен" } });
     const tree = oid("02:after");
     const runKey = h("02:runKey");
-    const checkKey = h("02:checkKey");
-    j.check("cmd-1", "npm test", 1, 1, runKey, checkKey, tree);
-    j.check("cmd-2", "npm run typecheck", 1, 1, runKey, checkKey, tree);
+    const checkKeys = { "cmd-1": h("02:checkKey:cmd-1"), "cmd-2": h("02:checkKey:cmd-2") };
+    j.check("cmd-1", "npm test", 1, 1, runKey, checkKeys["cmd-1"], tree);
+    j.check("cmd-2", "npm run typecheck", 1, 1, runKey, checkKeys["cmd-2"], tree);
     const rep = { conditions: [{ id: "C2", status: "met", paths: ["src/import/date.ts"], note: "учтён часовой пояс" }], findings: [], request: "none", question: null };
     const r = j.turn({ purpose: "review", stage: 1, round: 1, planVersion: 1, role: "reviewer", provider: "codex", tree, report: rep });
     j.review(r, 1, rep, { conditionsMet: ["C2"] }, runKey);
@@ -141,7 +149,7 @@ const FIXTURES = {
     const f = j.turn({ purpose: "final_review", planVersion: 1, role: "reviewer", provider: "codex", tree, report: finalReport(["R1", "R2"]) });
     j.review(f, null, finalReport(["R1", "R2"]), {}, runKey);
     j.complete("confirmed", { checks: ["cmd-1", "cmd-2"], requirements: [{ id: "R1", conditions: ["C2"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
-      finalReviewTurnId: f, runKey, checkKey, finish: {} });
+      finalReviewTurnId: f, runKey, checkKeys, finish: {} });
   },
   // Steps: the run waits for the person on the proposal, «Принять», the plan is recorded and shown for review.
   "03-steps-accept": (j) => {
@@ -154,6 +162,7 @@ const FIXTURES = {
     const decided = { checks: [{ id: "cmd-1", command: "make test", origin: "lead" }] };
     j.command("checks.decide", { decision: "accept" }, (commandId) =>
       j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "person", commandId, checks: j.text(decided), count: 1 }));
+    j.rec("run.status", { status: "running", reason: null, completion: null }); // the decision resumes the run (§2.4)
     j.rec("plan.recorded", { turnId: p, version: 1, plan: j.text(planOf([{ id: "C1", ...conditions[0] }], null)), firstStage: 1, stageCount: 1, conditionsAssigned: 1 });
     j.rec("run.status", { status: "paused", reason: "plan_review", completion: null });
   },
@@ -186,7 +195,7 @@ const FIXTURES = {
     j.turn({ purpose: "execute", stage: 1, round: 1, planVersion: 1, role: "executor", provider: "claude", report: { summary: "Добавлен экспорт" } });
     const tree = oid("05:after");
     const runKey = h("05:runKey");
-    j.check("cmd-1", "npm test", 1, 1, runKey, h("05:checkKey"), tree);
+    j.check("cmd-1", "npm test", 1, 1, runKey, h("05:checkKey:cmd-1"), tree);
     const rep = { conditions: [{ id: "C1", status: "not_met", paths: [], note: "заголовки не экранируются" }],
       findings: [{ id: null, severity: "blocking", condition: "C1", problem: "Запятая в заголовке ломает CSV", evidence: "src/report.ts: join(',') без кавычек",
         closeWhen: "заголовки и значения экранируются по RFC 4180", status: "open", paths: ["src/report.ts"], relation: null }], request: "none", question: null };
@@ -199,14 +208,14 @@ const FIXTURES = {
   // The same, then push confirmed and QA declined: completed without checks, QA declined by the person.
   "07-no-checks-push-confirmed": (j) => {
     const { tree, commit, finalTurn, runKey } = noChecksToFinish(j, "07");
-    j.command("finish.confirm", { push: "confirm", qa: "decline" }, (commandId) =>
+    j.command("finish.confirm", { tree, commit, push: "confirm", qa: "decline" }, (commandId) =>
       j.rec("finish.confirmed", { commandId, tree, commit, push: "confirm", qa: "decline" }));
     j.rec("run.status", { status: "running", reason: null, completion: null });
     const push = uuid("07:push");
     j.rec("finish.intent", { intentId: push, step: "push", params: j.text({ step: "push", push: { remote: "origin", branch: "feature/csv", commit } }) });
     j.rec("finish.result", { intentId: push, status: "done", established: false, evidence: null, commit, tree });
     j.complete("no_checks", { checks: [], requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
-      finalReviewTurnId: finalTurn, runKey, checkKey: null, finish: { commit: "done", push: "done", qa: "declined" } });
+      finalReviewTurnId: finalTurn, runKey, checkKeys: {}, finish: { commit: "done", push: "done", qa: "declined" } });
   },
   // A replan proposes dropping C2: plan.proposed, coverage_lost; the current plan stays.
   "08-coverage-lost": (j) => {
@@ -232,7 +241,8 @@ const FIXTURES = {
 
 // 06 and 07: a run without checks up to its pause for push and QA.
 function noChecksToFinish(j, tag) {
-  j.start(goal({ finish: { commit: { message: "Экспорт отчёта в CSV" }, push: { remote: "origin", branch: "feature/csv" }, qa: { command: "./deploy-qa.sh" } } }));
+  j.start(goal({ finish: { commit: { message: "Экспорт отчёта в CSV" }, push: { remote: "origin", branch: "feature/csv", remoteUrl: null },
+    qa: { environment: "qa", command: "./deploy-qa.sh", verify: "curl -fsS https://qa.example.test/version", reportsVersion: false } } }));
   const proposal = { checks: [], none: "Тестов в проекте нет" };
   const conditions = [{ text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }];
   const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, proposal) });

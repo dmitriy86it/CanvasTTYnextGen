@@ -27,7 +27,7 @@ node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   # �
 |---|---|---|---|---|
 | 01-no-checks-autopilot | 23 | `newer_version`, цепочка ok, цель видна | откат на строке 7 (`checks.proposed`): `unknown_record` | откат на строке 14 (`turn.intent`, `reviewer`): `invalid_event` |
 | 02-proposed-accepted-autopilot | 29 | то же | строка 7: `unknown_record` | строка 20 (`turn.intent`): `invalid_event` |
-| 03-steps-accept | 13 | то же | строка 7: `unknown_record` | строка 8 (`run.status`, `awaiting_checks_decision`): `invalid_event` |
+| 03-steps-accept | 14 | то же | строка 7: `unknown_record` | строка 8 (`run.status`, `awaiting_checks_decision`): `invalid_event` |
 | 04-steps-edit | 17 | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
 | 05-open-blocking | 19 | то же | строка 15 (`turn.intent`): `invalid_event` | то же |
 | 06-no-checks-push-pause | 25 | то же | строка 7: `unknown_record` | строка 14 (`turn.intent`): `invalid_event` |
@@ -55,9 +55,9 @@ node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   # �
 |---|---|---|---|
 | 01 | Добавить экспорт отчёта в CSV | **Завершено без проверок** | «Команды проверки не запускались»; предложение лида «команд нет» с обоснованием, принято автопилотом; R1, R2 → C1 (`change`, `src/report.ts`, ревью) → выполнено; замечаний нет |
 | 02 | Исправить разбор дат в импорте | **Завершено** (`confirmed`) | команды `npm test`, `npm run typecheck` — «предложены лидом, приняты автопилотом», обе `passed`; R2 → C1 (`check cmd-1`), R1 → C2 (`change`) |
-| 03 | Добавить экспорт отчёта в CSV | На паузе: проверка плана (`plan_review`) | команда `make test` — «предложена лидом, принята пользователем»; план v1 с C1 (`check cmd-1`) |
+| 03 | Добавить экспорт отчёта в CSV | На паузе: проверка плана (`plan_review`, пошаговый режим) | команда `make test` — «предложена лидом, принята пользователем»; решение продолжило запуск, цикл записал план v1 с C1 (`check cmd-1`) |
 | 04 | Добавить экспорт отчёта в CSV | На паузе: проверка плана | команды: `npm test` (лид), `npm run lint` (изменено пользователем); план предложения отброшен, действующий план v1 из второго хода плана: C1 (`check cmd-1`), C2 (`change`) |
 | 05 | Добавить экспорт отчёта в CSV | Идёт: этап 1, раунд 2 (исполнитель) | команда цели `npm test` `passed`; открыто **F1** `blocking` к C1, `src/report.ts`, «Запятая в заголовке ломает CSV», условие закрытия; C1 не выполнено |
-| 06 | Добавить экспорт отчёта в CSV | На паузе: **нужно подтверждение push и QA** | проверок не было (повторено в диалоге); commit сделан; кнопки для push и QA по отдельности и Stop |
+| 06 | Добавить экспорт отчёта в CSV | На паузе: **нужно подтверждение push и QA** | проверок не было (повторено в диалоге); commit сделан; один диалог с решением по каждому запрошенному шагу («Отправить» / «Не отправлять», «Выполнить QA» / «Без QA») и Stop |
 | 07 | Добавить экспорт отчёта в CSV | **Завершено без проверок** | commit и push выполнены, QA «отказано пользователем»; цепочка R → C как в 01 |
 | 08 | Добавить экспорт отчёта в CSV | На паузе: **предложение снять требование** (`coverage_lost`) | действующий план v1 (C1, C2); предложение: снять C2 и R2 с причинами; R2 останется без покрытия; кнопки «Принять» / «Вернуть лиду» |

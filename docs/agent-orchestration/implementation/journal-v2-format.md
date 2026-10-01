@@ -33,12 +33,14 @@
 | `seq`, `ts`, `runId`, `type`, `prevHash`, `hash`, `data` | как есть | без изменений; хеш считается по каноническому JSON всех ключей, кроме `hash` |
 | `minReaderVersion` | нет | **только в первой записи** (`run.created`), целое `2`; в остальных записях — `invalid_event` |
 | `skippable` | нет | не пишется (§3.3) |
+| `formatPreview` | нет | **только в первой записи** журналов dev-сборок A1–A3 (`true`); в формате A4 не пишется (§3.4) |
 
 `run.created.data` остаётся ровно `{goal}`, где `goal` — TextRef. Сборка 1.5.7 (A0) берёт цель журнала новой версии
 из `run.created` строгой схемой v1 (`newerGoal`): лишний ключ в `data` скрыл бы цель. Новые ключи цели живут только
 внутри текста цели:
-- `commands` может быть `[]`;
-- `mode`, `finish` и остальное — как в stage 13.
+- `commands` может быть `[]`, тогда `checks: []`;
+- `mode`, `finish` и остальное — как в stage 13 (форма `checkGoal`). Цель без `mode` — автопилот, как сейчас
+  (`progressOf`: `mode ?? "autopilot"`).
 
 ## 2. Записи
 
@@ -53,8 +55,8 @@
 | Запись | Поля (тип, обязательность) | Пишет | Идемпотентность | Влияние на состояние |
 |---|---|---|---|---|
 | `checks.proposed` | `turnId` uuid; `proposal` TextRef; `count` int 0–16 — все обязательны | main по отчёту первого хода плана лида | одна на запуск; вторая — `replay_conflict` | Есть предложение без решения: ходов исполнителя, проверок и записи плана нет. Автопилот → main сразу пишет `checks.decided`; пошаговый режим → пауза `awaiting_checks_decision` |
-| `checks.decided` | `proposalTurnId` uuid; `decision` `accept`\|`edit`; `by` `autopilot`\|`person`; `commandId` uuid\|null; `checks` TextRef; `count` int 0–16 — все обязательны | main (автопилот, `commandId: null`) или пользователь (команда «Принять» / «Изменить») | одна на предложение; `commandId` по протоколу команд; автопилотная — без команды, вторая — `replay_conflict` | Фиксирует **действующие команды проверки** запуска (`cmd-1…cmd-n`). `accept`: дальше пишется `plan.recorded` того же хода (§2.4). `edit`: план этого хода отбрасывается, следующий шаг — новый ход плана с этими командами. `count = 0` → запуск без проверок |
-| `finish.confirmed` | `commandId` uuid; `tree` oid; `commit` oid\|null; `push` `confirm`\|`decline`\|null; `qa` `confirm`\|`decline`\|null — все обязательны, хотя бы один из `push`/`qa` не null | пользователь (команда) | по `commandId`; вторая команда на те же `tree`+`commit` — `rejected(invalid_state)` | Снимает паузу `awaiting_finish_confirmation`. `confirm` разрешает шаг только для этих `tree` и `commit`. `decline` — шаг не делается, в итоге «отказано пользователем». Изменилось дерево или commit → решение не действует, нужна новая пауза |
+| `checks.decided` | `proposalTurnId` uuid; `decision` `accept`\|`edit`; `by` `autopilot`\|`person`; `commandId` uuid\|null; `checks` TextRef; `count` int 0–16 — все обязательны | main (автопилот, `commandId: null`) или пользователь (команда «Принять» / «Изменить») | одна на предложение; `commandId` по протоколу команд; автопилотная — без команды, вторая — `replay_conflict` | Фиксирует **действующие команды проверки** запуска (`cmd-1…cmd-n`). Решение по команде **само продолжает запуск**: сразу после `command.completed` main пишет `run.status(running)` (§2.4). `accept`: дальше цикл пишет `plan.recorded` того же хода. `edit`: план этого хода отбрасывается, следующий шаг — новый ход плана с этими командами. `count = 0` → запуск без проверок |
+| `finish.confirmed` | `commandId` uuid; `tree` oid; `commit` oid\|null; `push` `confirm`\|`decline`\|null; `qa` `confirm`\|`decline`\|null — все обязательны. **Каждый шаг, запрошенный целью, решается в этой же записи**; `null` — только у шага, которого цель не запрашивала | пользователь (команда; `tree` и `commit` — из payload, то есть то, что человек видел в диалоге) | по `commandId`; `tree`/`commit` payload не равны текущим → `rejected(invalid_state)`; вторая команда на те же `tree`+`commit` → `rejected(invalid_state)` | Снимает паузу `awaiting_finish_confirmation`: сразу после `command.completed` main пишет `run.status(running)`. `confirm` разрешает шаг только для этих `tree` и `commit`. `decline` — шаг не делается, в итоге «отказано пользователем». Изменилось дерево или commit → решение не действует, новая пауза и новое решение по всем запрошенным шагам |
 | `review.assessed` | 5h §2.4 | main по отчёту проверяющего | одна на ход; только для последнего `orch.turn` | 5h §3.3, §3.4, §3.10: условия `change`, замечания (`applied`) |
 | `review.discarded` | 5h §2.4 | main | одна на ход | 5h §3.1, §3.1.1: счёт отброшенных ревью |
 | `plan.proposed` | 5h §2.4 | main по отчёту лида | одна на ход плана | 5h §3.6: пауза `coverage_lost`, действующий план не меняется |
@@ -64,10 +66,13 @@
 Тексты:
 
 ```json
-// checks.proposed.proposal
-{"checks": [{"id": "cmd-1", "command": "npm test", "why": "1–500 символов", "source": ["package.json"]}],
- "none": null}
-// count = 0: "checks": [], "none": "почему команд нет, 1–500 символов"
+// отчёт хода плана v2 (5h §2.3) — новое поле checks
+{"stages": [...], "dropped": [], "dropRequirements": [], "question": null,
+ "checks": null | {"checks": [{"command": "npm test", "why": "1–500 символов", "source": ["package.json"]}],
+                   "none": null | "почему команд нет, 1–500 символов"}}
+
+// checks.proposed.proposal — предложение с номерами, присвоенными приложением по порядку
+{"checks": [{"id": "cmd-1", "command": "npm test", "why": "…", "source": ["package.json"]}], "none": null}
 
 // checks.decided.checks
 {"checks": [{"id": "cmd-1", "command": "npm test", "origin": "lead" | "person"}]}
@@ -75,21 +80,38 @@
 // run.status(completed).completion.basis — §2.3
 ```
 
-Правила `checks.*` (проверяются при воспроизведении):
-1. `checks.proposed` — только если в цели `commands: []`, `turnId` — завершённый ход `plan` и последний `orch.turn`,
-   решения о командах ещё нет. Для цели с командами отчёт плана с непустым `checks` — `invalid_report`, записи нет.
-2. Отчёт плана с предложением проверяется **целиком до записи** (5h §2.3), против предложенных команд: условие
-   `check` может ссылаться только на `cmd-<n>` предложения. Нарушение → `invalid_report`, `checks.proposed` не пишется,
-   следующий ход плана предлагает заново.
-3. `by: "autopilot"` ⇔ `commandId: null` ⇔ `decision: "accept"` ⇔ `goal.mode = "autopilot"`. Пошаговый режим без
-   команды — `replay_conflict`.
-4. `accept`: команды в `checks` совпадают с предложенными (те же `id`, тот же текст, `origin: "lead"`).
-5. `edit`: 0–16 строк по правилам `checkGoal` (1–1000 символов, без `\0`), `id` — `cmd-1…cmd-n` по порядку нового
-   списка; `origin: "lead"` только у строки, совпадающей с предложенной.
-6. До `checks.decided` нет `turn.intent` исполнителя и проверяющего, `check.*` и `plan.recorded`. Допустимы
-   `prepare.*`, Stop, ответ на вопрос.
-7. Действующий набор команд меняется только этой одной записью. Цель с командами задаёт его сразу (как сейчас), и
-   `checks.*` в таком журнале нет.
+**Поле `checks` отчёта плана** (проверка отчёта, нарушение → `invalid_report`, записей нет):
+1. Первый ход плана запуска с `commands: []`, пока нет `checks.decided`, обязан дать непустое `checks` и `question:
+   null`. Предложение вместе с вопросом — `invalid_report`: сначала ответ, затем ход плана с предложением.
+2. Любой другой ход плана — `checks: null`. Это относится и к ходу после «Изменить», и к цели с командами: там даже
+   `{checks: [], none: "…"}` — `invalid_report`.
+3. Строки `command` — как в `checkGoal`: 1–1000 символов после обрезки пробелов, без `\0`, `\r`, `\n`, без повторов,
+   0–16 строк. `none` непуст ровно тогда, когда строк 0. `source` — 0–16 относительных путей.
+4. План этого отчёта проверяется целиком (5h §2.3) против предложенных команд: условие `check` ссылается только на
+   `cmd-<n>` предложения.
+
+**Проверки при воспроизведении**, по двум этапам разбора 5h §3.10:
+- первый этап, по данным записей, нарушение → `replay_conflict`:
+  - `checks.proposed`: `turnId` — завершённый ход `plan`, последний `orch.turn`; в журнале нет другой
+    `checks.proposed`;
+  - `checks.decided`: `proposalTurnId` — ход единственной `checks.proposed`, решения ещё нет;
+    `by: "autopilot"` ⇔ `commandId: null` ⇔ `decision: "accept"`; при `commandId` — открытая команда;
+  - до `checks.decided` в журнале нет `turn.intent` с ролью `executor`/`reviewer`, `check.*`, `plan.recorded`;
+  - `plan.recorded` хода предложения — только после `checks.decided(accept)` и без другого `orch.turn` между ними;
+- второй этап, по текстам, нарушение → `integrity: "corrupt"`, `detail.phase: "texts"`:
+  - `checks.proposed` — только при `commands: []` в цели; `count` = числу строк; `id` — `cmd-1…cmd-n` по порядку;
+  - автопилотное решение — только при `goal.mode` = `autopilot` или без `mode`; решение по команде — при любом режиме;
+  - `accept`: `checks` совпадает с предложением (`id`, `command`, `origin: "lead"`);
+  - `edit`: строки по правилу п. 3 выше; `id` — `cmd-1…cmd-n` по порядку нового списка; `origin: "lead"` — у
+    строки, текст которой совпадает с какой-либо строкой предложения, иначе `person`.
+
+**Пауза `awaiting_checks_decision`.** Допустимы только команда `checks.decide` («Принять», «Изменить») и Stop.
+Resume, step, `clarification.added`, `limits.changed` → `rejected(invalid_state)`, как на `coverage_lost` (5h §3.6
+п. 2). Подготовка идёт до первого хода (`cycle.ts`), вопроса на этой паузе быть не может. Набор команд меняется только
+этим решением, один раз; цель с командами задаёт набор сразу, и `checks.*` в её журнале нет.
+
+**Пауза `awaiting_finish_confirmation`.** Допустимы только команда `finish.confirm` и Stop. Остальное, в том числе
+resume и step, → `rejected(invalid_state)`.
 
 ### 2.2. Изменения существующих записей (только v2)
 
@@ -98,12 +120,12 @@
 | `run.created` | конверт несёт `minReaderVersion: 2`; `data` прежняя; текст цели допускает `commands: []` | main | версия журнала и правила чтения (§3) |
 | `run.status` | `data`: `{status, reason, completion}`. `completion` = `null`, кроме `status: "completed"`; тогда `{kind: "confirmed"\|"no_checks", basis: TextRef}`. Новые `reason` паузы: `coverage_lost`, `tree_changed_during_review`, `awaiting_person_decision` (5h), `awaiting_checks_decision`, `awaiting_finish_confirmation` | main | `completed` пишется **только** вместе с результатом функции завершения (§2.3); `kind` выводится из действующих команд |
 | `turn.intent` | `role` допускает `reviewer` (5h) | main | роль хода |
-| `orch.turn` | ключ `tree` обязателен: oid дерева до хода у проверяющего, `null` у остальных (5h §3.1) | main | сравнение дерева во время ревью |
+| `orch.turn` | ключ `tree` обязателен: oid дерева до хода у проверяющего, `null` у остальных (5h §3.1); в журналах `formatPreview` может отсутствовать | main | сравнение дерева во время ревью |
 | `plan.recorded` | `conditionsAssigned` int ≥ 0 обязателен (5h §2.3); план — текст v2 с условиями | main | номера `C` |
 | `stage.accepted` | `reviewTurnId` — ход проверяющего с `review.assessed` этого этапа и `request: "none"` | main | этап принят по 5h §3.3 |
-| `check.started` | `checkId` — из действующего набора команд; `commandSha256` — хеш строки этого набора | main | проверка своего набора |
+| `check.started` | `checkId` — из действующего набора команд; `commandSha256` — `commandSha256(CheckCommand)` (`checks.ts`) этой строки набора, как для команд цели | main | проверка своего набора |
 | `finish.intent` | шаг `push`/`qa` в запуске **без проверок** — только при `finish.confirmed` с `confirm` для того же `tree` и текущего commit | main | §0 п. 4 |
-| `review.recorded` | в v2 не пишется (заменена `review.assessed`); встретилась — `invalid_event` | — | — |
+| `review.recorded` | в формате A4 не пишется (заменена `review.assessed`); встретилась — `invalid_event`. Допустима только в журналах `formatPreview` (ревью лидом в A1–A2, §3.4) | — | — |
 
 Остальные записи v1 переходят в v2 без изменений схемы.
 
@@ -143,7 +165,7 @@ blockers (все, в этом порядке; пусто ⇔ allowed):
                                         clarificationVersion, или request ≠ "none"
   finish_pending(step)                  шаг, запрошенный целью, не done для текущего дерева/commit
                                         и не отклонён finish.confirmed(decline)
-  finish_unconfirmed(step)              push/qa запуска без проверок без finish.confirmed для
+  finish_awaiting_person(step)          push/qa запуска без проверок без finish.confirmed для
                                         текущего дерева и commit
 
 kind = действующий набор команд пуст ? "no_checks" : "confirmed"
@@ -153,11 +175,25 @@ kind = действующий набор команд пуст ? "no_checks" : "
 вернула `allowed: true`. В запись идут `kind` и `basis` — текст с входами решения:
 - действующие команды и `checkRunId` их последних `passed`;
 - `R → C → доказательство`;
-- финальный ход проверяющего, `runKey`, `checkKey`;
+- финальный ход проверяющего, `runKey`, `checkKeys` (по команде);
 - исход шагов commit/push/QA.
 
-При воспроизведении `kind` сверяется с набором команд (второй этап разбора, 5h §3.10). Расхождение → запуск только
-для чтения с `detail.phase: "texts"`.
+**Проверки `completed` и `finish.intent` при воспроизведении**, так что «Завершено» нельзя записать мимо функции:
+- первый этап (по записям), нарушение → `replay_conflict`:
+  - нет `checks.proposed` без `checks.decided` и `plan.proposed` без `plan.decided`;
+  - все этапы действующего плана приняты (`stage.accepted`);
+  - есть финальный `review.assessed` (`stage: null`) с `request: "none"`, и после него нет `orch.turn`;
+  - нет шага finish в состоянии `in_flight`/`outcome_unknown`/`unknown`;
+  - `finish.intent(push|qa)`: в запуске без проверок (`checks.decided.count = 0`) ему предшествует `finish.confirmed`
+    с `confirm` для этого шага, и после этой записи нет нового `finish.result(commit)`;
+- второй этап (по текстам и `applied`), нарушение → `corrupt`, `detail.phase: "texts"`:
+  - `kind` = `no_checks` ⇔ набор команд пуст;
+  - для `confirmed` у каждой команды набора `basis` называет `checkRunId` с `passed`, `check.assessed` на
+    `basis.runKey` и `checkKeys`;
+  - нет открытого `blocking` и неразрешённого спорного пункта по `applied` и решениям;
+  - каждое `R` из `basis` не снято или снято `plan.decided`, и `met` в `requirements` финального отчёта;
+  - `finish.intent(push|qa)` без проверок: `tree` и `commit` в `params` равны `tree`/`commit` подтверждения;
+  - каждый шаг, запрошенный целью, — `done` для `basis`-дерева или `decline` в подтверждении.
 
 **«Завершено без проверок» не выглядит подтверждённым:**
 - `kind: "no_checks"` показывается своей строкой «Завершено без проверок». Значок и цвет не те, что у «Завершено»:
@@ -175,11 +211,15 @@ orch.turn(plan) → turn.intent(lead) → turn.finished(report: план + пр�
       автопилот:  checks.decided(accept, by autopilot) → plan.recorded(тот же turnId) → этап 1
       пошагово:   run.status(paused, awaiting_checks_decision)
                     «Принять»:   command.received → checks.decided(accept, person) → command.completed
-                                 → plan.recorded(тот же turnId) → (по режиму) этап 1
+                                 → run.status(running) → plan.recorded(тот же turnId)
+                                 → (reviewPlan) run.status(paused, plan_review) | этап 1
                     «Изменить»:  command.received → checks.decided(edit, person) → command.completed
-                                 → orch.turn(plan) нового хода с этими командами → plan.recorded
+                                 → run.status(running) → orch.turn(plan) нового хода → plan.recorded
                     Stop:        как сейчас
 ```
+
+`run.status(running)` после решения пишет сам обработчик команды: resume и step на этой паузе отклоняются (§2.1), а
+цикл на паузе ничего не делает. То же для `finish.confirmed`.
 
 `plan.recorded` после `checks.decided(accept)` — единственный случай, когда запись плана идёт не сразу за
 `turn.finished`. Разрешено, только если между ними нет другого `orch.turn`.
@@ -193,12 +233,13 @@ orch.turn(plan) → turn.intent(lead) → turn.finished(report: план + пр�
 | Что в журнале | Действие при открытии / решении цикла |
 |---|---|
 | `turn.finished` хода плана с предложением, нет `checks.proposed` | как «ход без записи результата»: новый ход плана (5h `stage-5-contract` §7) |
-| `checks.proposed`, нет `checks.decided`, автопилот | main пишет `checks.decided(accept, autopilot)` |
+| `checks.proposed`, нет `checks.decided`, автопилот, запуск не терминальный | main пишет `checks.decided(accept, autopilot)` |
 | `checks.proposed`, нет `checks.decided`, пошагово | пауза `awaiting_checks_decision` с тем же предложением |
 | `checks.decided(accept)`, нет `plan.recorded` этого хода | main пишет `plan.recorded` по отчёту хода (тот же результат проверки: входы не менялись) |
 | `checks.decided(edit)`, нет нового хода плана | новый ход плана |
 | `command.received(checks.decide)` без `command.completed` | 5h §3.5: есть `checks.decided` с этим `commandId` → `accepted`, нет → `interrupted` |
 | то же для `finish.confirm` | то же по `finish.confirmed` |
+| решение записано (`checks.decided` или `finish.confirmed` после последней паузы этой причины), запуск всё ещё на паузе `awaiting_checks_decision`/`awaiting_finish_confirmation` | сбой между `command.completed` и `run.status(running)`: при открытии main пишет `run.status(running)` (то же действие, что пропущено). Решение не повторяется |
 | `finish.confirmed`, дерево или commit с тех пор другие | решение не действует → снова `awaiting_finish_confirmation` |
 
 ## 3. Совместимость
@@ -223,6 +264,9 @@ orch.turn(plan) → turn.intent(lead) → turn.finished(report: план + пр�
 | `run.status(completed)` с `completion` | поле отброшено → «Завершено» | **нет, главное**: «Завершено без проверок» выглядит как подтверждённое |
 | `run.status(paused)` с новыми `reason` | значение вне `PAUSED_REASONS` → `invalid_event` → откат показа | откат (показ «мигает» между полным и сырым) |
 | `turn.intent(role: reviewer)` | вне `["lead","executor"]` → `invalid_event` → откат | откат |
+| `stage.accepted` | `reviewTurnId` — ход проверяющего без `review.recorded(accept)` → `replay_conflict` → откат | откат; без этой проверки — «этап принят» без ревью |
+| `check.started` (`checkId` из решённого набора) | примет; `progressOf` такие проверки не покажет (их нет в `goal.checks`) | **нет**: проверки невидимы |
+| `finish.intent(push\|qa)` после подтверждения | примет без проверки подтверждения | **нет**: push выглядит обычным шагом, решение человека не видно |
 | `orch.turn.tree`, `plan.recorded.conditionsAssigned` | поле отброшено | да |
 | `run.created` (цель с `commands: []`) | цель показана; `progressOf` — без проверок | да |
 
@@ -262,8 +306,12 @@ orch.turn(plan) → turn.intent(lead) → turn.finished(report: план + пр�
   прогон владельца на dev-сборке. Пользовательские запуски пишутся в v1.
 - **A4:** каждый новый нативный запуск (цель с `commands`, в том числе пустым) пишется в v2 без признака.
   Structured-режимы остаются v1 (5h §2.1).
-- До A4 формат v2 может меняться только добавлением. Журналы, созданные dev-сборками A1–A3, сборка A4 читать не
-  обязана.
+- Журналы dev-сборок A1–A3 несут в первой записи `formatPreview: true`. Их форма ещё не окончательна: в A1–A2 ревью
+  делает лид (`review.recorded`), `orch.turn.tree` появляется в A3. Сборка A4 и дальше показывает такой журнал
+  только для чтения, как журнал более новой версии (§2.2: цель, сырые записи, «Отпустить связь»), с подписью
+  «создан пробной сборкой этапа A». Она не пытается его воспроизвести и не называет повреждённым. Сборка 1.5.7 видит
+  его как любой журнал v2 (`minReaderVersion: 2`).
+- Формат A4 окончателен для v2: дальше — только новая версия журнала.
 
 Пустые команды проверки доступны только запуску v2. Пока запись v2 выключена, поле «Команды проверки» обязательно,
 как сейчас.
@@ -302,10 +350,10 @@ A2–A4 обязаны продолжать журналы A1, в которых
 
 | Шаг | Содержание | Критерии приёмки (новые номера; критерии 5h §7 сохраняются) | Тесты |
 |---|---|---|---|
-| **A1** (минимальный, уже пишет v2) | <ul><li>конверт v2, `minReaderVersion: 2`;</li><li>парсер `v ∈ {1,2}`, версия по первой записи, смешение → `invalid_event`;</li><li>признак `CANVASTTY_JOURNAL_V2`;</li><li>`commands: []` в цели v2;</li><li>`checks.proposed` / `checks.decided`, пауза `awaiting_checks_decision`, «Принять» / «Изменить»;</li><li>функция завершения с блокерами v1 и `checks_undecided` / `finish_*`;</li><li>`run.status.completion`, «Завершено без проверок» во всех местах;</li><li>`finish.confirmed` и пауза `awaiting_finish_confirmation` для запуска без проверок.</li></ul> Ревью — лидом, как в v1: в журналах A1–A3 допускается `review.recorded` (§3.4) | <ul><li>**A1-1** пустые команды → лид предлагает с обоснованием; автопилот принимает без паузы; пошагово — пауза.</li><li>**A1-2** «Изменить» → новый ход плана с новыми командами, `replans` не тронут; предложить второй раз нельзя.</li><li>**A1-3** нет команд → `completion.kind = no_checks`; есть → `confirmed`.</li><li>**A1-4** «Завершено без проверок» в панели, на карточке, в виджете, истории пространства и диалоге push/QA; нигде нет значка подтверждения.</li><li>**A1-5** без проверок push/QA не выполняются без подтверждения даже в автопилоте; commit — выполняется; подтверждение на другом дереве не действует.</li><li>**A1-6** сборка A0 (1.5.7) показывает журнал A1 как `newer_version` с целью (фикстуры §4).</li><li>**A1-7** v1 продолжается по v1; v1 без команд не создаётся.</li><li>**A1-8** восстановление на каждой границе §2.5.</li></ul> | <ul><li>`tests/orchestration-journal-v2.test.mjs` (схемы, конверт, смешение, `minReaderVersion`, идемпотентность команд);</li><li>`tests/orchestration-checks-proposal.test.mjs` (цикл, режимы, восстановление инъекцией сбоя);</li><li>фикстуры §4 через A0-читатель;</li><li>UI-smoke пустых команд на поддельном лиде;</li><li>`rename-identity`.</li></ul> Каждый новый тест падает при временном откате своей правки |
+| **A1** (минимальный, уже пишет v2) | <ul><li>конверт v2, `minReaderVersion: 2`;</li><li>парсер `v ∈ {1,2}`, версия по первой записи, смешение → `invalid_event`;</li><li>признак `CANVASTTY_JOURNAL_V2`;</li><li>`commands: []` в цели v2;</li><li>`checks.proposed` / `checks.decided`, пауза `awaiting_checks_decision`, «Принять» / «Изменить»;</li><li>функция завершения с блокерами v1 и `checks_undecided` / `finish_*`;</li><li>`run.status.completion`, «Завершено без проверок» во всех местах;</li><li>`finish.confirmed` и пауза `awaiting_finish_confirmation` для запуска без проверок.</li></ul> Ревью — лидом, как в v1: журналы A1–A3 помечены `formatPreview` и допускают `review.recorded` (§3.4) | <ul><li>**A1-1** пустые команды → лид предлагает с обоснованием; автопилот принимает без паузы; пошагово — пауза.</li><li>**A1-2** «Изменить» → новый ход плана с новыми командами, `replans` не тронут; предложить второй раз нельзя.</li><li>**A1-3** нет команд → `completion.kind = no_checks`; есть → `confirmed`.</li><li>**A1-4** «Завершено без проверок» в панели, на карточке, в виджете, истории пространства и диалоге push/QA; нигде нет значка подтверждения.</li><li>**A1-5** без проверок push/QA не выполняются без подтверждения даже в автопилоте; commit — выполняется; подтверждение на другом дереве не действует.</li><li>**A1-6** сборка A0 (1.5.7) показывает журнал A1 как `newer_version` с целью (фикстуры §4).</li><li>**A1-7** v1 продолжается по v1; v1 без команд не создаётся.</li><li>**A1-8** восстановление на каждой границе §2.5.</li></ul> | <ul><li>`tests/orchestration-journal-v2.test.mjs` (схемы, конверт, смешение, `minReaderVersion`, идемпотентность команд);</li><li>`tests/orchestration-checks-proposal.test.mjs` (цикл, режимы, восстановление инъекцией сбоя);</li><li>фикстуры §4 через A0-читатель;</li><li>UI-smoke пустых команд на поддельном лиде;</li><li>`rename-identity`.</li></ul> Каждый новый тест падает при временном откате своей правки |
 | **A2** | 5h A1: план v2, id условий, `keep`/`dropped` (снятие → `invalid_report` до A4), покрытие, `check`-условия, §3.3 п. 1–2; блокеры `condition_unmet`, `requirement_unmet` (без финального отчёта проверяющего — по ревью лида) | 5h §7: 1, 9, 13a–b, 16 | `orchestration-conditions.test.mjs` |
 | **A3** | 5h A2 + A3: роль `reviewer`, новая сессия на ревью, пакет §3.2, `review.assessed`/`review.discarded`, замечания с id и историей, §3.1.1, §3.4, §3.10, прогресс по id; `review.recorded` в новых журналах больше не пишется | 5h §7: 2–8, 11–11g, 15 | существующие планы тестов 5h |
-| **A4** | 5h A4: `person.decided`, `plan.proposed`/`plan.decided`, §3.5–§3.8, интерфейс §4; **включение записи v2 по умолчанию** | 5h §7: 10, 12, 13c–i, 14, 17, 18; S-A3 на 1.5.7 и ≤ 1.5.6 | полный `npm test`, UI-smoke, проба S-A3 |
+| **A4** | 5h A4: `person.decided`, `plan.proposed`/`plan.decided`, §3.5–§3.8, интерфейс §4; **включение записи v2 по умолчанию** | 5h §7: 10, 12, 13c–i, 14, 17, 18; S-A3 на 1.5.7 и ≤ 1.5.6; журнал `formatPreview` — только чтение с подписью, без воспроизведения | полный `npm test`, UI-smoke, проба S-A3 |
 
 Порядок внутри A1: парсер и конверт → `checks.*` и цикл → функция завершения и `completion` → `finish.confirmed` →
 renderer → фикстуры через A0.

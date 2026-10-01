@@ -1,0 +1,1 @@
+{"checks":[],"commands":[],"createdAt":1790845200000,"criteria":["Отчёт выгружается в CSV","Заголовки колонок как в таблице"],"limits":{"executorTurnMs":2700000,"leadTurnMs":1200000,"noProgressRounds":3,"replans":3,"roundsPerStage":8,"runMs":14400000,"turns":40},"mode":"steps","reviewPlan":true,"text":"Добавить экспорт отчёта в CSV","v":1,"workMode":"project"}
