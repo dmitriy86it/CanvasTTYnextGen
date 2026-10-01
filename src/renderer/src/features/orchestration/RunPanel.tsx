@@ -83,6 +83,16 @@ function reasonText(locale: LocaleId, view: OrchestrationRunView, entries: reado
   return cause ? causeText(locale, cause) : "";
 }
 
+// A copy or a worktree: where its dependency folders came from (cloneDependencies), one word when all agree.
+function dependenciesText(locale: LocaleId, entries: readonly OrchestrationActivityEntry[]): string | null {
+  const d = entries.find((e) => e.kind === "prepare_finished" && e.detail?.dependencies === true)?.detail;
+  if (!d) return null;
+  const dirs = Object.entries(d).filter((x): x is [string, string] => x[0] !== "dependencies" && (x[1] === "cloned" || x[1] === "installed"));
+  if (!dirs.length) return null;
+  const word = (r: string) => t(locale, r === "cloned" ? "orchDeps_cloned" : "orchDeps_installed");
+  return dirs.every(([, r]) => r === dirs[0][1]) ? word(dirs[0][1]) : dirs.map(([dir, r]) => `${dir} — ${word(r)}`).join(" · ");
+}
+
 function headlineText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
   return tr(locale, `orchHeadline_${headlineKey(view, entries)}`);
 }
@@ -988,6 +998,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
           : `${roleName(locale, workingRole!)} — ${tr(locale, `orchPurpose_${active.purpose}`)}${stageText ? ` · ${stageText}` : ""} · ${workingState ? phaseText(locale, workingState, now) : ""}`;
   const top = view ? board(view) : null;
   const pending = view ? finishPending(view) : null;
+  const depsText = dependenciesText(locale, activity.entries);
   const accessMismatch = activity.entries.some((e) => e.kind === "error" && e.detail?.accessMismatch === true);
   const progress = view?.progress ?? null;
   const silenceFor = (p: ParticipantState): string | null => {
@@ -1050,6 +1061,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               <dl className="orch-board" data-orch-board data-action={top.action ? "yes" : "no"}>
                 <div><dt>{t(locale, "orchRunMode")}:</dt><dd data-board="mode">{tr(locale, `orchRunMode_${progress.mode}`)}</dd></div>
                 <div><dt>{t(locale, "orchBoardStage")}:</dt><dd data-board="stage">{stageText ?? "—"}</dd></div>
+                {depsText && <div><dt>{t(locale, "orchBoardDeps")}:</dt><dd data-board="deps">{depsText}</dd></div>}
                 {top.prepare && <div><dt>{t(locale, "orchBoardPrepare")}:</dt><dd data-board="prepare">{tr(locale, `orchPrepare_${top.prepare}`)}</dd></div>}
                 <div><dt>{t(locale, "orchBoardChecked")}:</dt><dd data-board="checked">{top.checked.total ? t(locale, "orchBoardCheckedValue").replace("{passed}", String(top.checked.passed)).replace("{total}", String(top.checked.total)) : "—"}
                   {top.checked.failed.map((f, i) => <small key={i} className="orch-board__failed"> · {f.title}{f.class ? ` (${tr(locale, `orchClass_${f.class}`)})` : ""}</small>)}</dd></div>
