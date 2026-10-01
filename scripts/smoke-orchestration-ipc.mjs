@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { step, watch } from "./smoke-watchdog.mjs";
+import { hermeticEnv, step, watch } from "./smoke-watchdog.mjs";
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const FIXTURES = path.join(ROOT, "tests", "fixtures", "orchestration");
@@ -73,10 +73,10 @@ async function launch(phase) {
   fs.writeFileSync(config, JSON.stringify({ ...cfg, phase }));
   step(`launch: ${phase}`);
   const child = spawn(electronPath, [ROOT, `--user-data-dir=${userData}`, "--disable-gpu"], {
-    env: { ...process.env, CANVASTTY_ORCHESTRATION_TEST_PROVIDERS: providers, CANVASTTY_ORCHESTRATION_IPC_SMOKE: config },
+    env: hermeticEnv({ CANVASTTY_ORCHESTRATION_TEST_PROVIDERS: providers, CANVASTTY_ORCHESTRATION_IPC_SMOKE: config }),
     stdio: ["ignore", "pipe", "pipe"]
   });
-  watch(child, phase);
+  watch(child, phase, { check: true });
   let out = "";
   child.stdout.on("data", (c) => { out = (out + c).slice(-256 * 1024); });
   child.stderr.on("data", (c) => { out = (out + c).slice(-256 * 1024); });

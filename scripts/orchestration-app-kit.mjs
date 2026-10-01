@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { step, watch } from "./smoke-watchdog.mjs";
+import { hermeticEnv, HERMETIC_PATH, step, watch } from "./smoke-watchdog.mjs";
 
 export const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const FIXTURES = path.join(ROOT, "tests", "fixtures", "orchestration");
@@ -72,18 +72,32 @@ function argsOf(pid) {
 // Any failure after the spawn stops this launch's own child (SIGTERM, SIGKILL after `killAfterMs`), waits for its exit,
 // closes the WebSocket and rethrows the original error (a cleanup failure is attached as `cleanupError`). Callers end
 // with `app.stop()` in finally: idempotent, touches only the own child. The second argument is for tests only.
-// `switches`: extra Chromium switches for the test window, such as keeping it painted while other windows cover it.
-export async function launch({ userData, providers, port, shots, env = {}, executable, switches = [] },
+// `switches`: extra Chromium switches for the test window.
+// `hermetic` (default): the app runs with hermeticEnv() (scripts/smoke-watchdog.mjs) and every program it starts is
+// checked at exit; a packaged `executable` ignores the switch, so its programs are only reported. false: a run that
+// means the real CLIs (the real-* series, --real-cli).
+// The window stays painted and its timers run while other windows cover it: a covered window is "hidden" to Chromium,
+// which stops frames (a screenshot then never returns) and slows timers. This hides the open product case "the app
+// minimised or covered" (docs/agent-orchestration/TROUBLESHOOTING.md T135): smokes do not cover it.
+export const PAINTED = ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling"];
+const SHOT_TIMEOUT_MS = 15_000;
+export async function launch({ userData, providers, port, shots, env = {}, executable, switches = [], hermetic = true },
   { spawnFn = spawn, fetchFn = fetch, WebSocketImpl = WebSocket, listenerOf: ownerOf = listenerOf, argsOf: argsFor = argsOf, pause = sleep, killAfterMs = 20_000 } = {}) {
   // A port already served by another window (a parallel run, a leftover app) would be driven instead of this one:
   // the new app cannot bind it and the page list below comes from the other.
   if (await fetchFn(`http://127.0.0.1:${port}/json/version`).then(() => true, () => false)) throw new Error(`port ${port} is taken by another DevTools server`);
   step(`launch ${userData}`);
-  const child = spawnFn(executable ?? electronPath, [...(executable ? [] : [ROOT]), `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`, ...switches], {
-    env: { ...process.env, ...(providers ? { CANVASTTY_ORCHESTRATION_TEST_PROVIDERS: providers } : {}), ...env }, stdio: ["ignore", "pipe", "pipe"]
+  const extra = { ...(providers ? { CANVASTTY_ORCHESTRATION_TEST_PROVIDERS: providers } : {}), ...env };
+  const flags = [...new Set([...PAINTED, ...switches])];
+  console.log("occluded-window throttling disabled for smoke");
+  if (hermetic) console.log(`[smoke] hermetic: PATH=${HERMETIC_PATH}${executable ? " (a packaged app ignores CANVASTTY_SMOKE_HERMETIC: its programs are reported, not checked)" : ""}`);
+  const child = spawnFn(executable ?? electronPath, [...(executable ? [] : [ROOT]), `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`, ...flags], {
+    env: hermetic ? hermeticEnv(extra) : { ...process.env, ...extra }, stdio: ["ignore", "pipe", "pipe"]
   });
-  watch(child);
+  watch(child, "app", { check: hermetic, report: !!executable, allow: executable ? [executable.replace(/(\.app)\/.*$/, "$1")] : [] });
   let out = "";
+  // the app's own smoke lines ("[smoke] …") belong to the smoke's log
+  child.stdout.on("data", (c) => { for (const l of String(c).split("\n")) if (l.startsWith("[smoke]")) console.log(l); });
   child.stdout.on("data", (c) => { out = (out + c).slice(-64 * 1024); });
   child.stderr.on("data", (c) => { out = (out + c).slice(-64 * 1024); });
   const exited = new Promise((resolve) => {
@@ -252,10 +266,25 @@ export async function launch({ userData, providers, port, shots, env = {}, execu
           Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event("input", { bubbles: true })); })()`);
         await sleep(60);
       },
+      // A screenshot answers within SHOT_TIMEOUT_MS or is asked once more; then the step fails by name, it never
+      // waits for the run's time limit.
       async shot(name) {
         step(`shot ${name}`);
-        const r = await call("Page.captureScreenshot", { format: "png" });
-        fs.writeFileSync(path.join(shots, `${name}.png`), Buffer.from(r.data, "base64"));
+        let failure;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let timer;
+          try {
+            const r = await Promise.race([call("Page.captureScreenshot", { format: "png" }),
+              new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`no answer in ${SHOT_TIMEOUT_MS / 1000} s`)), SHOT_TIMEOUT_MS); })]);
+            fs.writeFileSync(path.join(shots, `${name}.png`), Buffer.from(r.data, "base64"));
+            return;
+          } catch (e) {
+            failure = e;
+          } finally {
+            clearTimeout(timer);
+          }
+        }
+        throw new Error(`screenshot "${name}" failed twice: ${failure?.message ?? failure}`);
       },
       // Soft quit (SIGTERM, Electron's before-quit path), SIGKILL after the timeout; resolves with the exit.
       quit: stop,

@@ -658,7 +658,7 @@ async function quitAndRestart(tag, runId) {
   const out = { exit, ms: Date.now() - quitAt, cliAtQuit: clis.length, statusAfterQuit: lastStatus(runId),
     finishRecords: journal(runId).filter((r) => r.type.startsWith("finish.")).map((r) => `${r.type}(${r.data.step ?? r.data.status}${r.data.established ? ",established" : ""})`) };
   const len = journal(runId).length;
-  app = await launchApp({ userData, port: PORT, shots: SHOTS, providers: providersFile });
+  app = await launchApp({ userData, port: PORT, shots: SHOTS, providers: providersFile, hermetic: false }); // the real CLIs
   await laptop(app);
   await app.waitFor(`document.querySelectorAll("[data-agent-id]").length >= 2`, "cards after restart", 30_000);
   const t = Date.now();
@@ -896,7 +896,7 @@ async function runProbe(name) {
 let app;
 try {
   if (!REAL) writeRehearsal();
-  app = await launchApp({ userData, port: PORT, shots: SHOTS, providers: providersFile });
+  app = await launchApp({ userData, port: PORT, shots: SHOTS, providers: providersFile, hermetic: false }); // the real CLIs
   await laptop(app);
   report.notes.executable = "development build (electron-vite out/), not the installed application";
   for (const name of ORDER) await runScenario(name);

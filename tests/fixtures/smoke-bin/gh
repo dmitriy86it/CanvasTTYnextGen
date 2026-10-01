@@ -1,0 +1,4 @@
+#!/bin/sh
+# A hermetic smoke run (scripts/smoke-watchdog.mjs) finds this instead of the CLI installed on the machine.
+echo "smoke: gh is a refusing fake in a hermetic smoke run (args: $*)" >&2
+exit 127

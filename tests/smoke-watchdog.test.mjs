@@ -35,3 +35,32 @@ test("a script that finishes is not held by the limit", () => {
   assert.equal(r.status, 0);
   assert.equal(r.stdout, "done\n");
 });
+
+// Hermetic smoke runs: a program the app starts outside the fakes and the allowed folders is named (the real check
+// runs at the end of every kit smoke; here the folders are given so the temporary folder is not allowed).
+test("checkProcesses names a program outside the allowed folders, and a script an interpreter runs from there", { skip: process.platform === "win32" }, async () => {
+  const { checkProcesses } = await import(HELPER);
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const { spawn } = await import("node:child_process");
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "smoke-foreign-")));
+  // a CLI installed as a shell script (a copy of a system binary would be killed by macOS code signing); a native
+  // program found by its file is what the manual check of the real codex showed (docs TROUBLESHOOTING T134)
+  fs.writeFileSync(path.join(dir, "codex"), "/bin/sleep 30\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, "agent.mjs"), "setTimeout(() => {}, 30_000);\n");
+  const native = spawn("/bin/sh", [path.join(dir, "codex")], { stdio: "ignore" });
+  const script = spawn(process.execPath, [path.join(dir, "agent.mjs")], { stdio: "ignore" });
+  const system = spawn("/bin/sleep", ["30"], { stdio: "ignore" }); // allowed
+  try {
+    await new Promise((r) => setTimeout(r, 500));
+    const roots = ["/bin/", "/usr/bin/", "/System/", "/usr/lib/", "/lib/", fs.realpathSync(process.execPath)];
+    const found = checkProcesses(process.pid, roots);
+    assert.deepEqual(found.map((f) => f.pid).sort(), [native.pid, script.pid].sort(), JSON.stringify(found));
+    assert.equal(found.find((f) => f.pid === native.pid).program, path.join(dir, "codex"));
+    assert.equal(found.find((f) => f.pid === script.pid).program, path.join(dir, "agent.mjs"));
+    assert.deepEqual(checkProcesses(process.pid), [], "the default list allows the temporary folders and this node");
+  } finally {
+    for (const c of [native, script, system]) c.kill("SIGKILL");
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
