@@ -110,7 +110,7 @@ const FIXTURES = {
     const proposal = { checks: [], none: "В проекте нет тестов и линтера: package.json без scripts, конфигураций нет" };
     const p = j.turn({ purpose: "plan", role: "lead", provider: "codex",
       report: planOf([{ text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }], reported(proposal)) });
-    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 0 });
+    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 0, sandboxNetwork: "denied" });
     j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "autopilot", commandId: null, checks: j.text({ checks: [] }), count: 0 });
     j.rec("plan.recorded", { turnId: p, version: 1, plan: j.text({ ...planOf([{ id: "C1", text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }], null) }), firstStage: 1, stageCount: 1, conditionsAssigned: 1 });
     j.turn({ purpose: "execute", stage: 1, round: 1, planVersion: 1, role: "executor", provider: "claude", report: { summary: "Добавлен экспорт" } });
@@ -133,7 +133,7 @@ const FIXTURES = {
     const conditions = [{ text: "Тесты проекта проходят", covers: ["R2"], evidence: { kind: "check", check: "cmd-1" } },
       { text: "Разбор ISO 8601 с часовым поясом", covers: ["R1"], evidence: { kind: "change" } }];
     const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, reported(proposal)) });
-    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 2 });
+    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 2, sandboxNetwork: "denied" });
     j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "autopilot", commandId: null, count: 2,
       checks: j.text({ checks: proposal.checks.map(({ id, command }) => ({ id, command, origin: "lead" })) }) });
     j.rec("plan.recorded", { turnId: p, version: 1, plan: j.text(planOf(conditions.map((c, i) => ({ id: `C${i + 1}`, ...c })), null)), firstStage: 1, stageCount: 1, conditionsAssigned: 2 });
@@ -159,7 +159,7 @@ const FIXTURES = {
     const proposal = { checks: [{ id: "cmd-1", command: "make test", why: "Makefile: цель test", source: ["Makefile"] }], none: null };
     const conditions = [{ text: "make test проходит", covers: ["R1", "R2"], evidence: { kind: "check", check: "cmd-1" } }];
     const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, reported(proposal)) });
-    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 1 });
+    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 1, sandboxNetwork: "open" });
     j.rec("run.status", { status: "paused", reason: "awaiting_checks_decision", completion: null });
     const decided = { checks: [{ id: "cmd-1", command: "make test", origin: "lead" }] };
     j.command("checks.decide", { decision: "accept" }, (commandId) =>
@@ -175,7 +175,7 @@ const FIXTURES = {
       { id: "cmd-2", command: "npm run e2e", why: "scripts.e2e", source: ["package.json"] }], none: null };
     const p = j.turn({ purpose: "plan", role: "lead", provider: "codex",
       report: planOf([{ text: "Тесты и e2e проходят", covers: ["R1", "R2"], evidence: { kind: "check", check: "cmd-2" } }], reported(proposal)) });
-    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 2 });
+    j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 2, sandboxNetwork: "open" });
     j.rec("run.status", { status: "paused", reason: "awaiting_checks_decision", completion: null });
     const decided = { checks: [{ id: "cmd-1", command: "npm test", origin: "lead" }, { id: "cmd-2", command: "npm run lint", origin: "person" }] };
     j.command("checks.decide", { decision: "edit", checks: decided.checks.map((c) => c.command) }, (commandId) =>
@@ -248,7 +248,7 @@ function noChecksToFinish(j, tag) {
   const proposal = { checks: [], none: "Тестов в проекте нет" };
   const conditions = [{ text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }];
   const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, reported(proposal)) });
-  j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 0 });
+  j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 0, sandboxNetwork: "denied" });
   j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "autopilot", commandId: null, checks: j.text({ checks: [] }), count: 0 });
   j.rec("plan.recorded", { turnId: p, version: 1, plan: j.text(planOf([{ id: "C1", ...conditions[0] }], null)), firstStage: 1, stageCount: 1, conditionsAssigned: 1 });
   j.turn({ purpose: "execute", stage: 1, round: 1, planVersion: 1, role: "executor", provider: "claude", report: { summary: "Добавлен экспорт" } });
