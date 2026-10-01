@@ -83,14 +83,29 @@ function reasonText(locale: LocaleId, view: OrchestrationRunView, entries: reado
   return cause ? causeText(locale, cause) : "";
 }
 
-// A copy or a worktree: where its dependency folders came from (cloneDependencies), one word when all agree.
-function dependenciesText(locale: LocaleId, entries: readonly OrchestrationActivityEntry[]): string | null {
+// A copy or a worktree: what became of its dependency folders (main's plan per folder, cloneDependencies), one phrase
+// when all agree. A folder a preparation step installs is said by that step's last result, nothing until there is one.
+// failed: a step failed, its output is in the activity of the checks.
+function dependenciesText(locale: LocaleId, entries: readonly OrchestrationActivityEntry[]): { text: string; failed: boolean } | null {
   const d = entries.find((e) => e.kind === "prepare_finished" && e.detail?.dependencies === true)?.detail;
   if (!d) return null;
-  const dirs = Object.entries(d).filter((x): x is [string, string] => x[0] !== "dependencies" && (x[1] === "cloned" || x[1] === "installed"));
+  // null: the step that installs it has no result yet (or was stopped)
+  const all = Object.entries(d).flatMap(([dir, v]): [string, string | null][] => {
+    if (dir === "dependencies" || dir.startsWith("step:") || typeof v !== "string") return [];
+    if (v !== "install") return known(locale, `orchDeps_${v}`) ? [[dir, v]] : [];
+    const step = d[`step:${dir}`];
+    const last = entries.filter((e) => e.kind === "prepare_finished" && e.detail?.step === step && typeof e.detail.ok === "boolean").at(-1);
+    return [[dir, !last || last.detail!.stopped === true ? null : last.detail!.ok ? "installed" : "failed"]];
+  });
+  // a folder the project does not need is named only when no folder is needed at all
+  const needed = all.filter(([, r]) => r !== "not_needed");
+  const dirs = (needed.length ? needed : all).filter((x): x is [string, string] => x[1] !== null);
   if (!dirs.length) return null;
-  const word = (r: string) => t(locale, r === "cloned" ? "orchDeps_cloned" : "orchDeps_installed");
-  return dirs.every(([, r]) => r === dirs[0][1]) ? word(dirs[0][1]) : dirs.map(([dir, r]) => `${dir} — ${word(r)}`).join(" · ");
+  const word = (r: string) => tr(locale, `orchDeps_${r}`);
+  return {
+    text: dirs.every(([, r]) => r === dirs[0][1]) ? word(dirs[0][1]) : dirs.map(([dir, r]) => `${dir} — ${word(r)}`).join(" · "),
+    failed: dirs.some(([, r]) => r === "failed")
+  };
 }
 
 function headlineText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
@@ -1061,7 +1076,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               <dl className="orch-board" data-orch-board data-action={top.action ? "yes" : "no"}>
                 <div><dt>{t(locale, "orchRunMode")}:</dt><dd data-board="mode">{tr(locale, `orchRunMode_${progress.mode}`)}</dd></div>
                 <div><dt>{t(locale, "orchBoardStage")}:</dt><dd data-board="stage">{stageText ?? "—"}</dd></div>
-                {depsText && <div><dt>{t(locale, "orchBoardDeps")}:</dt><dd data-board="deps">{depsText}</dd></div>}
+                {depsText && <div><dt>{t(locale, "orchBoardDeps")}:</dt><dd data-board="deps">{depsText.text}{depsText.failed && <> <button type="button" data-deps-step onClick={() => onView({ tab: "activity", role: "check" })}>{t(locale, "orchDepsStep")}</button></>}</dd></div>}
                 {top.prepare && <div><dt>{t(locale, "orchBoardPrepare")}:</dt><dd data-board="prepare">{tr(locale, `orchPrepare_${top.prepare}`)}</dd></div>}
                 <div><dt>{t(locale, "orchBoardChecked")}:</dt><dd data-board="checked">{top.checked.total ? t(locale, "orchBoardCheckedValue").replace("{passed}", String(top.checked.passed)).replace("{total}", String(top.checked.total)) : "—"}
                   {top.checked.failed.map((f, i) => <small key={i} className="orch-board__failed"> · {f.title}{f.class ? ` (${tr(locale, `orchClass_${f.class}`)})` : ""}</small>)}</dd></div>

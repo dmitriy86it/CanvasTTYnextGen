@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const READY_MARKER = "CANVASTTY_BROWSER_SMOKE_READY";
@@ -26,6 +27,7 @@ try {
   // root ownership and mode 4755. Product WebContents security is asserted by
   // unit tests; only this isolated CI process disables the outer Chromium sandbox.
   if (process.platform === "linux" && process.env.CI === "true") electronArgs.push("--no-sandbox");
+  step("launch the browser smoke window");
   child = spawn(electronPath, electronArgs, {
     env: {
       ...process.env,
@@ -58,6 +60,7 @@ try {
         resolveReady();
       }
     };
+    watch(child);
     child.stdout.on("data", consume);
     child.stderr.on("data", consume);
     child.once("error", (error) => {

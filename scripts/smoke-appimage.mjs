@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const READY_MARKER = "CANVASTTY_SMOKE_READY";
@@ -26,6 +27,7 @@ export async function smokeAppImage(appImagePath, options = {}) {
   let child;
 
   try {
+    step("launch the AppImage");
     child = spawn(appImagePath, [
       "--disable-gpu",
       `--user-data-dir=${userData}`
@@ -53,6 +55,7 @@ export async function smokeAppImage(appImagePath, options = {}) {
           resolveElapsed(Math.round(performance.now() - startedAt));
         }
       };
+      watch(child);
       child.stdout.on("data", consume);
       child.stderr.on("data", consume);
       child.once("error", (error) => {

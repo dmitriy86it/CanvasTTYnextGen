@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 export const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const FIXTURES = path.join(ROOT, "tests", "fixtures", "orchestration");
@@ -46,6 +47,7 @@ export function workspace(prefix) {
 // Polls `evaluate()` until it returns a truthy value. An exception is never success: it is kept and named in the
 // timeout, next to the last value (a false condition stays false).
 export async function waitForValue(evaluate, what, ms = 20_000, pause = (t) => sleep(t)) {
+  step(`wait: ${what}`);
   const end = Date.now() + ms;
   let last, error = null;
   while (Date.now() < end) {
@@ -76,9 +78,11 @@ export async function launch({ userData, providers, port, shots, env = {}, execu
   // A port already served by another window (a parallel run, a leftover app) would be driven instead of this one:
   // the new app cannot bind it and the page list below comes from the other.
   if (await fetchFn(`http://127.0.0.1:${port}/json/version`).then(() => true, () => false)) throw new Error(`port ${port} is taken by another DevTools server`);
+  step(`launch ${userData}`);
   const child = spawnFn(executable ?? electronPath, [...(executable ? [] : [ROOT]), `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`, ...switches], {
     env: { ...process.env, ...(providers ? { CANVASTTY_ORCHESTRATION_TEST_PROVIDERS: providers } : {}), ...env }, stdio: ["ignore", "pipe", "pipe"]
   });
+  watch(child);
   let out = "";
   child.stdout.on("data", (c) => { out = (out + c).slice(-64 * 1024); });
   child.stderr.on("data", (c) => { out = (out + c).slice(-64 * 1024); });
@@ -169,6 +173,7 @@ export async function launch({ userData, providers, port, shots, env = {}, execu
       // A click is made only where the element is really hit: first it is brought into view (the canvas is panned by a
       // drag on empty canvas, the run panel is scrolled with the wheel), then elementFromPoint must land inside it.
       async clickEl(selector) {
+        step(`click ${selector.slice(0, 200)}`);
         await app.reveal(selector);
         const c = await app.center(selector);
         const hit = await app.ev(`(() => { const el = ${selector}; const h = document.elementFromPoint(${c.x}, ${c.y}); return !!el && !!h && (el === h || el.contains(h)); })()`);
@@ -248,6 +253,7 @@ export async function launch({ userData, providers, port, shots, env = {}, execu
         await sleep(60);
       },
       async shot(name) {
+        step(`shot ${name}`);
         const r = await call("Page.captureScreenshot", { format: "png" });
         fs.writeFileSync(path.join(shots, `${name}.png`), Buffer.from(r.data, "base64"));
       },

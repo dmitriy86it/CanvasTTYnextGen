@@ -10,6 +10,7 @@ import { release, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
+import { step, watch } from "./smoke-watchdog.mjs";
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const READY_MARKER = "CANVASTTY_ORCHESTRATION_SMOKE_READY ";
@@ -131,7 +132,8 @@ async function asarPaths(file) {
 }
 
 async function runSmoke(command, args, env) {
-  const child = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+  step(`run ${command}`);
+  const child = watch(spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] }));
   let output = "";
   const consume = (chunk) => { output = `${output}${chunk.toString("utf8")}`.slice(-MAX_OUTPUT_BYTES); };
   child.stdout.on("data", consume);

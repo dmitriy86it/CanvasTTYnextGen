@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
+import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GIT = findGit(process.env);
@@ -133,8 +134,10 @@ function phpProject() {
 }
 const PHP_CHECK = "grep -q x/stub vendor/autoload.php";
 
-async function runIn(src, workMode, commands, extra = {}) {
+// profile: a change of the project's suggested profile, saved before the run
+async function runIn(src, workMode, commands, { profile, ...extra } = {}) {
   const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]) }, extra);
+  if (profile) { const p = await suggestProfile(src); await createProfileStore(m.root).save(src, { ...p, ...profile(p) }); }
   const runId = randomUUID();
   const created = await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], commands, workMode, mode: "autopilot" } });
   assert.ok(created.ok, JSON.stringify(created));
@@ -280,4 +283,87 @@ test("the run panel: «Зависимости: склонированы из п�
   assert.match(render("ru", installed.done, installed.entries), /data-board="deps">установлены в копии</);
   const project = await runIn(nodeProject(), "project", ["true"]);
   assert.doesNotMatch(render("ru", project.done, project.entries), /data-board="deps"/);
+});
+
+// A clone by a plain copy: the cloned path on any file system (the clone itself is tested above).
+const copyDir = async (from, to) => fs.cpSync(from, to, { recursive: true });
+const noCloneDir = async () => { throw new Error("x"); };
+
+let panel = null;
+async function line(r, locale = "ru") {
+  if (!panel) panel = loadRunPanel();
+  return /data-board="deps">(.*?)<\/dd>/.exec((await panel)(locale, r.done, r.entries))?.[1] ?? null;
+}
+
+test("dependency line: cloned from the project", OPTS, async () => {
+  const r = await runIn(nodeProject(), "copy", ["true"], { cloneDir: copyDir });
+  assert.equal(await line(r), "склонированы из проекта");
+  assert.equal(await line(r, "en"), "cloned from the project");
+});
+
+test("dependency line: installed in the copy, once the install step succeeded", OPTS, async () => {
+  const r = await runIn(nodeProject(), "copy", ["true"], { cloneDir: noCloneDir });
+  assert.equal(await line(r), "установлены в копии");
+  assert.equal(await line(r, "en"), "installed in the copy");
+  // before the step's result: nothing claimed
+  const upToPlan = r.entries.slice(0, r.entries.findIndex((e) => e.detail?.dependencies === true) + 1);
+  assert.equal(await line({ ...r, entries: upToPlan }), null);
+});
+
+test("dependency line: not installed, automatic preparation is off", OPTS, async () => {
+  const r = await runIn(nodeProject(), "copy", ["true"], { cloneDir: noCloneDir, profile: (p) => ({ prepare: { ...p.prepare, auto: false } }) });
+  assert.equal(r.done.status, "completed");
+  assert.equal(fs.existsSync(path.join(r.done.workDir, "node_modules")), false, "nothing installed");
+  assert.equal(await line(r), "не установлены: автоподготовка выключена");
+  assert.equal(await line(r, "en"), "not installed: automatic preparation is off");
+});
+
+test("dependency line: not installed, the install step failed, with the way to the step", OPTS, async () => {
+  const r = await runIn(nodeProject(), "copy", ["true"], { cloneDir: noCloneDir,
+    profile: () => ({ prepare: { steps: [{ command: "exit 3", unless: "node_modules/.package-lock.json" }], auto: true } }) });
+  assert.equal(r.done.status, "paused");
+  assert.equal(await line(r), 'не установлены: шаг установки завершился ошибкой <button type="button" data-deps-step="true">Открыть шаг</button>');
+  assert.match(await line(r, "en"), /^not installed: the install step failed <button type="button" data-deps-step="true">Open the step<\/button>$/);
+});
+
+test("dependency line: not needed, no folder in the project and no step", OPTS, async () => {
+  const r = await runIn(project({ "README.md": "x\n" }), "copy", ["true"]);
+  assert.equal(await line(r), "не нужны");
+  assert.equal(await line(r, "en"), "not needed");
+});
+
+test("dependency line: a folder with no install step, and folders that differ each named", OPTS, async () => {
+  const noStep = await runIn(nodeProject(), "copy", ["true"], { cloneDir: noCloneDir, profile: (p) => ({ prepare: { ...p.prepare, steps: [] } }) });
+  assert.equal(await line(noStep), "не установлены: шага установки нет");
+  const src = project({ ...Object.fromEntries(["package.json", "package-lock.json"].map((f) => [f, fs.readFileSync(path.join(nodeProject(), f), "utf8")])),
+    "node_modules/stub/index.js": "export const ok = 1;\n", "node_modules/.package-lock.json": "{}", "composer.lock": "{}", "vendor/autoload.php": "<?php\n" });
+  const mixed = await runIn(src, "copy", ["true"], { cloneDir: async (f, t) => { if (f.endsWith("vendor")) throw new Error("x"); return copyDir(f, t); } });
+  assert.equal(await line(mixed), "node_modules — склонированы из проекта · vendor — не установлены: шага установки нет");
+});
+
+// npm's rule for a current node_modules: its hidden lock file, not older than package-lock.json.
+test("node_modules current by npm's rule: cloned", OPTS, async () => {
+  assert.equal(result(await runIn(nodeProject(), "copy", ["true"], { cloneDir: copyDir }), "node_modules").result, "cloned");
+});
+
+test("node_modules older than package-lock.json: installed in the copy", OPTS, async () => {
+  const src = nodeProject();
+  const later = new Date(Date.now() + 60_000);
+  fs.utimesSync(path.join(src, "package-lock.json"), later, later);
+  const npm = runs("npm");
+  const r = await runIn(src, "copy", ["true"], { cloneDir: copyDir });
+  assert.deepEqual(result(r, "node_modules"), { dir: "node_modules", result: "installed", reason: "project node_modules is stale" });
+  assert.equal(runs("npm") - npm, 1, "npm ci in the copy");
+  assert.equal(fs.existsSync(path.join(r.done.workDir, "node_modules", "stub")), false, "not cloned");
+});
+
+test("node_modules without npm's hidden lock file: installed in the copy; yarn keeps none and is cloned as before", OPTS, async () => {
+  const src = nodeProject();
+  fs.rmSync(path.join(src, "node_modules", ".package-lock.json"));
+  const npm = runs("npm");
+  const r = await runIn(src, "copy", ["true"], { cloneDir: copyDir });
+  assert.deepEqual(result(r, "node_modules"), { dir: "node_modules", result: "installed", reason: "project node_modules is stale" });
+  assert.equal(runs("npm") - npm, 1, "npm ci in the copy");
+  const yarn = project({ "package.json": "{}", "yarn.lock": "# yarn\n", "node_modules/stub/index.js": "export const ok = 1;\n" });
+  assert.equal(result(await runIn(yarn, "copy", ["true"], { cloneDir: copyDir }), "node_modules").result, "cloned");
 });
