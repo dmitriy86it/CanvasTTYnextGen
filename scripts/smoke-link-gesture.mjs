@@ -75,7 +75,7 @@ let portN = 9500 + Math.floor(Math.random() * 300);
 
 async function withApp(name, { width = 1280, height = 800 } = {}, fn) {
   const userData = D(`u${portN}`); // fresh per run, repeats included; short: the agent runtime socket lives inside
-  const app = await launch({ userData, providers: REAL_CLI ? undefined : providers, port: portN++, shots: SHOTS });
+  const app = await launch({ userData, providers: REAL_CLI ? undefined : providers, port: portN++, shots: SHOTS, hermetic: !REAL_CLI });
   const res = { name, window: { width, height } };
   try {
     await app.call("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });

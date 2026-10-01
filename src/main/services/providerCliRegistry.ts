@@ -57,6 +57,9 @@ interface ProviderCliRegistryOptions {
   platformRoot?: string;
   inspectCandidate?: (path: string, platform: NodeJS.Platform) => ProviderCliRejectionReason | null;
   directoryExists?: (path: string) => boolean;
+  // Only the PATH of `environment`: no platform folders (Homebrew, /usr/local), no user CLI folders. Smoke runs of
+  // the development build (CANVASTTY_SMOKE_HERMETIC), so a CLI installed on the machine is never found.
+  pathOnly?: boolean;
 }
 
 const WINDOWS_NATIVE_EXTENSIONS = [".exe", ".com"] as const;
@@ -71,8 +74,8 @@ export function createProviderCliRegistry(options: ProviderCliRegistryOptions = 
   const directoryExists = options.directoryExists ?? isDirectory;
   const pathKey = environmentPathKey(environment);
   const inputDirectories = pathEntries(environment[pathKey], platform, startupDirectory);
-  const platformDirectories = defaultPlatformDirectories(platform, options.platformRoot);
-  const sharedDirectories = sharedUserDirectories(platform, environment, homeDirectory);
+  const platformDirectories = options.pathOnly ? [] : defaultPlatformDirectories(platform, options.platformRoot);
+  const sharedDirectories = options.pathOnly ? [] : sharedUserDirectories(platform, environment, homeDirectory);
   const childDirectories = uniquePaths(
     [...inputDirectories, ...platformDirectories, ...sharedDirectories].filter(directoryExists),
     platform
@@ -82,7 +85,7 @@ export function createProviderCliRegistry(options: ProviderCliRegistryOptions = 
     const providerDirectories = uniquePaths([
       ...inputDirectories,
       ...platformDirectories,
-      ...knownProviderDirectories(provider, platform, environment, homeDirectory),
+      ...(options.pathOnly ? [] : knownProviderDirectories(provider, platform, environment, homeDirectory)),
       ...sharedDirectories
     ], platform);
     return [provider, resolveProviderCli({

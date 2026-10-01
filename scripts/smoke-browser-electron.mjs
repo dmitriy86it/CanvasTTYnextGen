@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { step, watch } from "./smoke-watchdog.mjs";
+import { hermeticEnv, step, watch } from "./smoke-watchdog.mjs";
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const READY_MARKER = "CANVASTTY_BROWSER_SMOKE_READY";
@@ -29,10 +29,7 @@ try {
   if (process.platform === "linux" && process.env.CI === "true") electronArgs.push("--no-sandbox");
   step("launch the browser smoke window");
   child = spawn(electronPath, electronArgs, {
-    env: {
-      ...process.env,
-      CANVASTTY_BROWSER_SMOKE_URL: fixture.origin
-    },
+    env: hermeticEnv({ CANVASTTY_BROWSER_SMOKE_URL: fixture.origin }),
     stdio: ["ignore", "pipe", "pipe"]
   });
   await new Promise((resolveReady, reject) => {
@@ -60,7 +57,7 @@ try {
         resolveReady();
       }
     };
-    watch(child);
+    watch(child, "app", { check: true });
     child.stdout.on("data", consume);
     child.stderr.on("data", consume);
     child.once("error", (error) => {

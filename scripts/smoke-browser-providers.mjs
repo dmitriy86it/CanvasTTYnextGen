@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import electronPath from "electron";
-import { step, watch } from "./smoke-watchdog.mjs";
+import { hermeticEnv, step, watch } from "./smoke-watchdog.mjs";
 
 const PROJECT_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const READY_MARKER = "CANVASTTY_PROVIDER_SMOKE_READY";
@@ -51,9 +51,10 @@ try {
   // unit tests; only this isolated CI process disables the outer Chromium sandbox.
   if (process.platform === "linux" && process.env.CI === "true") electronArgs.push("--no-sandbox");
   step(`launch the provider smoke for ${targets.join(",")}`);
+  // --direct needs no provider CLI: a hermetic run, checked. A provider target means its real CLI (live smoke).
+  const direct = targets.every((t) => t === "direct");
   child = spawn(electronPath, electronArgs, {
-    env: {
-      ...process.env,
+    env: (direct ? hermeticEnv : (e) => ({ ...process.env, ...e }))({
       KIMI_CODE_HOME: kimiHome,
       KIMI_DISABLE_TELEMETRY: "1",
       KIMI_CODE_NO_AUTO_UPDATE: "1",
@@ -63,10 +64,10 @@ try {
       ...(directPreflightCommand
         ? { CANVASTTY_PROVIDER_SMOKE_CODEX_COMMAND: directPreflightCommand }
         : {})
-    },
+    }),
     stdio: ["ignore", "pipe", "pipe"]
   });
-  watch(child);
+  watch(child, "app", { check: direct });
 
   step("wait for the provider smoke to finish");
   await waitForReady(child);

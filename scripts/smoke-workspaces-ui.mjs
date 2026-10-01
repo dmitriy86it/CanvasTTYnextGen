@@ -89,10 +89,8 @@ const text = (selector) => app.ev(`${selector}?.textContent ?? null`);
 const tab = (id) => q(`[data-workspace-tab="${id}"]`);
 const state = () => api("w.get()");
 const cameraNow = () => app.ev(`(() => { const m = ${q(".workspace__scene")}.style.transform.match(/translate\\(([-\\d.]+)px, ([-\\d.]+)px\\) scale\\(([\\d.]+)\\)/); return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) }; })()`);
-// The window stays painted and its timers run while the person works in other windows over it: a covered window is
-// "hidden" to Chromium, which stops frames (xterm draws nothing) and slows timers (the camera is saved late). Found in
-// the run ws-final2: visibilityState "hidden", the rows empty until a screenshot forced a frame.
-const PAINTED = ["--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding", "--disable-background-timer-throttling"];
+// The window stays painted while other windows cover it (the kit's PAINTED, for every smoke): found here in the run
+// ws-final2, visibilityState "hidden", the rows empty until a screenshot forced a frame.
 const near = (a, b) => Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && Math.abs(a.zoom - b.zoom) < 1e-6;
 const switchTo = async (id) => {
   await app.clickEl(tab(id));
@@ -122,7 +120,7 @@ const pidOf = async (id, mark) => {
 };
 
 try {
-  app = await launch({ userData: USER_DATA, providers, port: PORT, shots: SHOTS, env: { HOME: D("home"), SHELL: "/bin/sh" }, switches: PAINTED });
+  app = await launch({ userData: USER_DATA, providers, port: PORT, shots: SHOTS, env: { HOME: D("home"), SHELL: "/bin/sh" } });
   await size(1280, 800);
   await pageReady();
 
@@ -393,7 +391,7 @@ try {
   await reload();
   expect((await state()).activeId === B && near(await cameraNow(), camB2), "after a reload: the same workspace and camera", { now: await cameraNow(), camB2 });
   await app.quit();
-  app = await launch({ userData: USER_DATA, providers, port: PORT + 1, shots: SHOTS, env: { HOME: D("home"), SHELL: "/bin/sh" }, switches: PAINTED });
+  app = await launch({ userData: USER_DATA, providers, port: PORT + 1, shots: SHOTS, env: { HOME: D("home"), SHELL: "/bin/sh" } });
   await size(1280, 800);
   await pageReady();
   s1 = await state();

@@ -129,7 +129,7 @@ const runProcesses = (mainPid) => tree(mainPid).filter((p) => p.command.includes
 const anonCmd = (c) => c.slice(0, 240);
 
 // ---------- UI ----------
-const launch = () => launchApp({ userData, port: PORT, shots: SHOTS, executable: EXECUTABLE ?? undefined, providers: providersFile });
+const launch = () => launchApp({ userData, port: PORT, shots: SHOTS, executable: EXECUTABLE ?? undefined, providers: providersFile, hermetic: false }); // the real CLIs
 const panelStatus = (app) => app.ev(`(() => { const s = ${q(".orch-panel__status")}; return s ? { status: [...s.classList].find((c) => c.startsWith("orch-panel__status--"))?.slice(20), reason: s.querySelector("span")?.textContent ?? null } : null; })()`);
 const clickAction = (app, label) => app.clickEl(byText(".orch-panel__actions button, .orch-panel__section button, .orch-summary > button", label));
 const setLimits = (app, l) => async () => {
