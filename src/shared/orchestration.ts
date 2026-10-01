@@ -51,6 +51,8 @@ export interface OrchestrationAccessOption { mode: string; mapping: string }
 export interface OrchestrationProfileInfo {
   profile: OrchestrationProjectProfile;
   saved: boolean;
+  // journal v2 (development flag until A4): the check commands of a goal may be left empty, the lead proposes them
+  optionalChecks?: boolean;
   capabilities: { claude: OrchestrationAccessOption[]; codex: OrchestrationAccessOption[] };
   facts: { stack: string; laravel: boolean; remotes: { name: string; url: string }[]; branch: string | null; needed: string[] };
 }
@@ -118,6 +120,10 @@ export type OrchestrationRunCommand =
   | { kind: "recover"; action: "accept" | "retry_turn" | "reset_to_checkpoint"; confirm?: boolean }
   | { kind: "raise_limit"; limit: OrchestrationLimitKind; value: number }
   | { kind: "dismiss" }
+  // journal v2 (journal-v2-format.md §2.1): «Принять» / «Изменить» of the lead's proposed check commands, and the
+  // person's push/QA decision of a run completed without checks, for the tree and commit shown in the dialog
+  | { kind: "checks_decide"; decision: "accept" | "edit"; checks?: string[] }
+  | { kind: "finish_confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   | {
     kind: "permission"; requestId: string; decision: OrchestrationPermissionOption; answers?: Record<string, string[]>;
     content?: Record<string, unknown>; // an MCP form's values (accept)
@@ -191,6 +197,11 @@ export interface OrchestrationRunView {
   workMode?: OrchestrationWorkMode;
   workDir?: string; // where the agents work: the project folder (project mode) or the copy
   progress?: OrchestrationRunProgress;
+  // journal v2, on the pause awaiting_checks_decision: the lead's proposal (numbered by the application)
+  proposal?: { checks: { id: string; command: string; why: string; source: string[] }[]; none: string | null } | null;
+  // journal v2, on the pause awaiting_finish_confirmation: the tree and commit the decision is about (finish_confirm's
+  // payload) and the steps the goal asked for
+  confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only
   // (status paused, reason newer_version), never opened or changed here. chain: the hash chain of what was read.
   // compatible: its journal declares minReaderVersion this build reads, so the view is its whole state (status and
@@ -219,8 +230,13 @@ export interface OrchestrationRunProgress {
   prepare: { status: string; failed: string | null; class: "code" | "environment" | "external" | null; command: string | null; output: { sha256: string; bytes: number } | null } | null;
   // version (QA): what the verification established about the deployed version (see OrchestrationQaVersion);
   // observed: the commit id the verification reported (only a validated id, never other output)
-  finish: { step: "commit" | "push" | "qa"; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null }[];
+  // declined (journal v2): the person declined this step of a run completed without checks
+  finish: { step: "commit" | "push" | "qa"; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null; declined?: boolean }[];
   grantsApplied: number;
+  // journal v2 (journal-v2-format.md §2.3): a completed run's kind; no_checks is never shown as confirmed
+  completion?: "confirmed" | "no_checks" | null;
+  // journal v2: where the check commands came from — the goal, the lead's proposal as accepted, or edited by the person
+  checksFrom?: "goal" | "proposal" | "edited" | null;
 }
 
 // seq: the journal position the view belongs to (not the revision); tick: changes of the view since that record that

@@ -248,7 +248,9 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       return [[kind, kind === "runMs" ? n * 60_000 : n]];
     }))
   };
-  const complete = goal.text !== "" && goal.criteria.length > 0 && commands.length > 0;
+  // journal v2 (development flag until A4): the commands may be left empty — the lead proposes them
+  const optionalChecks = info?.optionalChecks === true;
+  const complete = goal.text !== "" && goal.criteria.length > 0 && (commands.length > 0 || optionalChecks);
   const submit = async (): Promise<void> => {
     const fingerprint = JSON.stringify([link.linkId, goal]);
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
@@ -338,6 +340,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           <textarea rows={2} value={commandsText} spellCheck={false} data-orch-commands placeholder="php artisan test"
             onChange={(e) => { edited.current = true; setCommandsText(e.target.value); }} />
           <small className="orch-hint">{t(locale, "orchGoalCommandsHint")}</small>
+          {optionalChecks && <small className="orch-hint" data-orch-commands-optional>{t(locale, "orchCommandsOptional")}</small>}
         </label>
         <details className="orch-advanced">
           <summary>{t(locale, "orchAdvanced")}</summary>

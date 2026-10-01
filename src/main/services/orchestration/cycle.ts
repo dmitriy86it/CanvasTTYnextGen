@@ -1,7 +1,8 @@
 // The next step of the orchestration cycle (stage-5-contract.md §5): a pure function of the replayed journal, the goal
 // and a snapshot of the copy. Everything it looks at is in the journal, so the decision is the same before and after a
 // restart; the service only carries it out.
-import type { FailureClass, FinishStep, PausedReason, RunState } from "./journal.ts";
+import { checksPassed } from "./journal.ts";
+import type { CompletionKind, FailureClass, FinishStep, PausedReason, RunState } from "./journal.ts";
 import type { AgentAccess } from "./access.ts";
 import type { PrepareStep } from "./prepare.ts";
 import { detectLoop, normalizeFinding } from "./progress.ts";
@@ -25,7 +26,8 @@ export interface Goal {
   limits: RunLimits;
   createdAt: number;
   requestKey?: string; // the application's create-request identity (stage-7-contract.md §1.1); not used by the cycle
-  commands?: string[]; // stage 12: the user's check command lines; checks[i] is `cmd-${i + 1}`
+  commands?: string[]; // stage 12: the user's check command lines; checks[i] is `cmd-${i + 1}`. Journal v2: may be
+  // empty, and then the lead proposes them (journal-v2-format.md §2.4); the service passes the decided set here
   workMode?: "project" | "copy" | "worktree"; // stage 12; absent: the managed copy of stages 3–11
   // stage 13, copied from the project profile when the goal is created (the run keeps what it started with)
   mode?: "autopilot" | "steps";
@@ -56,7 +58,11 @@ export type Action =
   // stage 13
   | { kind: "prepare"; reason: "start" | "check" }
   | { kind: "finish"; step: FinishStep }
-  | { kind: "establish"; step: FinishStep; intentId: string };
+  | { kind: "establish"; step: FinishStep; intentId: string }
+  // journal v2 (journal-v2-format.md §2.4): the autopilot accepts the proposed check commands; the plan of the turn
+  // that proposed them is recorded after they are accepted
+  | { kind: "accept_checks" }
+  | { kind: "record_plan"; turnId: string };
 
 export interface CycleInput {
   state: RunState;
@@ -135,6 +141,11 @@ function decide(input: CycleInput): Action {
     if (planVersion > limits.replans) return pause("limit_reached", "replans");
     return turn("plan", null, null);
   };
+  // Journal v2, a goal without check commands (journal-v2-format.md §2.4): the first plan turn proposes them and nothing
+  // else runs until they are decided. After «Изменить» that turn's plan is dropped and a new plan turn follows.
+  const p = orch.checksProposal;
+  if (p && !orch.checksDecision) return autoAccepts(goal, p.sandboxNetwork) ? { kind: "accept_checks" } : pause("awaiting_checks_decision", p.turnId);
+  if (p && orch.checksDecision?.decision === "accept" && !orch.plan) return { kind: "record_plan", turnId: p.turnId };
   if (!orch.plan || leadReviews.at(-1)?.verdict === "replan") return replan();
   if (goal.reviewPlan && planVersion === 1 && !orch.planReviewPaused) return pause("plan_review", "plan version 1");
 
@@ -212,6 +223,55 @@ function decide(input: CycleInput): Action {
 
 const pauseFor = (cls: FailureClass): PausedReason => (cls === "external" ? "external_failure" : "needs_user_action");
 
+// Owner's decision 5i §7 p. 5: the autopilot accepts proposed check commands by itself only when the sandbox the checks
+// run in denies the network. Otherwise — and always step by step — the person decides.
+export function autoAccepts(goal: Pick<Goal, "mode">, sandboxNetwork: "denied" | "open"): boolean {
+  return (goal.mode ?? "autopilot") === "autopilot" && sandboxNetwork === "denied";
+}
+
+// Journal v2: the plan turn proposes check commands — the first one of a goal without commands, before any proposal.
+export function proposesChecks(state: RunState, goal: Pick<Goal, "commands">): boolean {
+  return state.version === 2 && goal.commands?.length === 0 && state.orch.checksProposal === null;
+}
+
+// A run of journal v2 whose decided set of check commands is empty: completed without checks (§2.3).
+export const withoutChecks = (state: RunState): boolean => state.version === 2 && state.orch.checksDecision?.count === 0;
+
+// The person's push/QA decision of a run without checks for this tree and commit (journal-v2-format.md §2.1): the last
+// one recorded after the commit; another tree or commit is not covered by it.
+export function confirmationFor(state: RunState, tree: string, commit: string | null) {
+  const commitSeq = Math.max(-1, ...state.orch.finish.filter((f) => f.step === "commit" && f.status === "done").map((f) => f.resultSeq ?? -1));
+  return state.orch.confirmations.filter((c) => c.seq > commitSeq && c.tree === tree && c.commit === commit).at(-1) ?? null;
+}
+
+export type CompletionBlocker = "checks_undecided" | "stage_not_accepted" | "check_not_passed" | "final_report_stale" | "finish_pending" | "finish_awaiting_person";
+// The completion function, its A1 part (journal-v2-format.md §2.3): the run may be completed only when its checks
+// passed — or it has none by decision (no_checks) — every stage is accepted, the final review completes it, and every
+// action after success the goal asked for is done for the current commit or declined by the person.
+export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot, "tree" | "runKey">):
+  { allowed: true; kind: CompletionKind } | { allowed: false; blockers: CompletionBlocker[] } {
+  const o = state.orch;
+  const blockers: CompletionBlocker[] = [];
+  if (o.checksProposal && !o.checksDecision) blockers.push("checks_undecided");
+  if (!o.plan || Object.keys(o.accepted).length < o.plan.firstStage - 1 + o.plan.stageCount) blockers.push("stage_not_accepted");
+  if (!checksPassed(state, goal.checks)) blockers.push("check_not_passed");
+  const final = o.reviews.filter((r) => r.stage === null && o.turns[r.turnId]?.planVersion === o.plan?.version).at(-1);
+  if (final?.verdict !== "complete" || final.runKey !== snapshot.runKey || final.clarificationVersion !== o.clarifications) blockers.push("final_report_stale");
+  const commit = currentCommit(state, snapshot.tree);
+  const confirmed = withoutChecks(state) ? confirmationFor(state, snapshot.tree, commit?.commit ?? null) : null;
+  for (const step of FINISH_ORDER) {
+    if (!goal.finish?.[step]) continue;
+    if (step !== "commit" && withoutChecks(state)) {
+      if (!confirmed?.[step]) { blockers.push("finish_awaiting_person"); continue; }
+      if (confirmed[step] === "decline") continue;
+    }
+    const last = o.finish.filter((f) => f.step === step).at(-1);
+    const done = last?.status === "done" && (step === "commit" ? last === commit : commit !== null && last.commit === commit.commit);
+    if (!done) blockers.push("finish_pending");
+  }
+  return blockers.length ? { allowed: false, blockers } : { allowed: true, kind: goal.checks.length === 0 ? "no_checks" : "confirmed" };
+}
+
 // Stage 13: the actions after success the goal asked for, in order (commit, push, QA), then completed. Each is about
 // the checked tree now: a commit made for another tree, and a push or QA of another commit, are done again. An action
 // with an unknown outcome is established first and never repeated on its own; a QA deploy's is established (its
@@ -233,8 +293,14 @@ function finishOrComplete(input: CycleInput): Action {
   const commit = currentCommit(state, snapshot.tree);
   const current = (f: FinishRecord) => f.step === "commit" ? commit === f : commit !== null && f.commit === commit.commit;
   const pausedAfter = (seq: number) => (orch.lastPausedSeq.finish_unconfirmed ?? -1) >= seq;
+  // v2 without checks: push and QA only as the person decided for this tree and commit, even in the autopilot
+  const person = withoutChecks(state) ? confirmationFor(state, snapshot.tree, commit?.commit ?? null) : null;
   for (const step of FINISH_ORDER) {
     if (!goal.finish?.[step]) continue;
+    if (step !== "commit" && withoutChecks(state)) {
+      if (!person) return { kind: "pause", reason: "awaiting_finish_confirmation", detail: step };
+      if (person[step] === "decline") continue;
+    }
     const last = orch.finish.filter((f) => f.step === step).at(-1);
     if (!last) return { kind: "finish", step };
     if (last.status === "done") {

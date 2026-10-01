@@ -8,7 +8,7 @@ import { t, type TranslationKey } from "../../lib/i18n";
 import { agentLayerId, pastCanvasDragThreshold } from "../workspace/canvasSelectionGesture";
 import { AgentCard } from "./AgentCard";
 import { linkTrace } from "./linkTrace";
-import { ACTIVE_STATUSES, activeRole, agentState, orchestrationAvailableHere, orchestrationEntry, participantState, TERMINAL_STATUSES, type AgentState } from "./runModel";
+import { ACTIVE_STATUSES, activeRole, agentState, orchestrationAvailableHere, orchestrationEntry, participantState, runStatusKey, TERMINAL_STATUSES, type AgentState } from "./runModel";
 import { ReleaseNewerLink } from "./RunPanel";
 import { duration, roleStatus, type StatusLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
@@ -190,7 +190,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             style={{ left: (a.x + b.x) / 2, top: (a.y + b.y) / 2,
               zIndex: Math.max(props.zIndexOf(agentLayerId(link.fromAgentId)), props.zIndexOf(agentLayerId(link.toAgentId))) }}>
             <span className="agent-link__state">
-              {view?.permission ? t(locale, "orchLinkNeedsYou") : view?.newer ? t(locale, "orchReadOnly") : view ? t(locale, `orchStatus_${view.status}` as TranslationKey) : t(locale, "orchNoRun")}
+              {view?.permission ? t(locale, "orchLinkNeedsYou") : view?.newer ? t(locale, "orchReadOnly") : view ? t(locale, `orchStatus_${runStatusKey(view)}` as TranslationKey) : t(locale, "orchNoRun")}
             </span>
             {!busy && <button type="button" disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
               onClick={() => ui.openGoal(link.linkId)}>{t(locale, "orchNewGoal")}</button>}

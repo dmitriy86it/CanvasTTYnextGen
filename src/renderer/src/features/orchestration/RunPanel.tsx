@@ -685,10 +685,12 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
         }}</Stored>
       </Section>
 
-      <Section id="outcome" title={t(locale, "orchSum_outcome")} src="journal" locale={locale}>
+      {/* without checks nothing confirmed the result: its outcome and checks carry no "confirmed by the journal" mark */}
+      <Section id="outcome" title={t(locale, "orchSum_outcome")} src={outcome === "completed_no_checks" ? undefined : "journal"} locale={locale}>
         <p className={`orch-sum__outcome orch-sum__outcome--${outcome}`} data-sum-outcome={outcome}>
           <b>{headlineText(locale, view, orch.activity[runId]?.entries ?? [])}</b> — {tr(locale, `orchSumOutcome_${outcome}`)}
         </p>
+        {outcome === "completed_no_checks" && <p className="dialog-error" data-sum-no-checks>{t(locale, "orchNoChecksRan")}</p>}
         {view.reason && <p><b>{t(locale, "orchSum_reason")}:</b> {reasonText(locale, view, orch.activity[runId]?.entries ?? [])}</p>}
         {outcome === "completed" && <p className="orch-hint" data-sum-scope>{t(locale, "orchSumScope")}</p>}
         {m.endedAt && <p className="orch-hint">{t(locale, "orchSumEnded").replace("{time}", new Date(m.endedAt).toLocaleString(locale))}</p>}
@@ -740,7 +742,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
             ) : missing}
       </Section>
 
-      <Section id="checks" title={t(locale, "orchSum_checks")} src="journal" locale={locale}>
+      <Section id="checks" title={t(locale, "orchSum_checks")} src={outcome === "completed_no_checks" ? undefined : "journal"} locale={locale}>
         {m.checks.length === 0 ? (m.checksKnown ? <p>{t(locale, "orchSumChecks_noneConfigured")}</p> : missing) : <>
           <p data-sum-check-count data-checks-known={m.checksKnown ? "yes" : "no"}><b>{fill(t(locale, m.checksKnown ? "orchSumChecks_count" : "orchSumChecks_seen"), { passed: m.checkCounts.passed, total: m.checkCounts.total })}</b></p>
           <ul className="orch-sum__checks">{m.checks.map((c) => (
@@ -1110,8 +1112,9 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 {depsText && <div><dt>{t(locale, "orchBoardDeps")}:</dt><dd data-board="deps">{depsText.text}{depsText.failed && <> <button type="button" data-deps-step onClick={() => onView({ tab: "activity", role: "check" })}>{t(locale, "orchDepsStep")}</button></>}</dd></div>}
                 {top.prepare && <div><dt>{t(locale, "orchBoardPrepare")}:</dt><dd data-board="prepare">{tr(locale, `orchPrepare_${top.prepare}`)}
                   {progress.prepare?.status === "failed" && runId && <PrepareFailure orch={orch} runId={runId} locale={locale} prepare={progress.prepare} entries={activity.entries} />}</dd></div>}
-                <div><dt>{t(locale, "orchBoardChecked")}:</dt><dd data-board="checked">{top.checked.total ? t(locale, "orchBoardCheckedValue").replace("{passed}", String(top.checked.passed)).replace("{total}", String(top.checked.total)) : "—"}
+                <div><dt>{t(locale, "orchBoardChecked")}:</dt><dd data-board="checked">{top.checked.total ? t(locale, "orchBoardCheckedValue").replace("{passed}", String(top.checked.passed)).replace("{total}", String(top.checked.total)) : progress.completion === "no_checks" ? t(locale, "orchNoChecksRan") : "—"}
                   {top.checked.failed.map((f, i) => <small key={i} className="orch-board__failed"> · {f.title}{f.class ? ` (${tr(locale, `orchClass_${f.class}`)})` : ""}</small>)}</dd></div>
+                {progress.checksFrom && <div><dt>{t(locale, "orchBoardChecksFrom")}:</dt><dd data-board="checks-from">{tr(locale, `orchChecksFrom_${progress.checksFrom}`)}</dd></div>}
                 <div><dt>{t(locale, "orchBoardAction")}:</dt><dd data-board="action">{t(locale, top.action ? "orchBoardActionYes" : "orchBoardActionNone")}</dd></div>
                 {progress.access && (
                   <div className={progress.access.claude === "full" || progress.access.codex === "full" ? "orch-board__full" : undefined}>
@@ -1147,6 +1150,14 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <button type="button" className="orch-primary" disabled={sending || !answer.trim() || off("answer")}
                   onClick={() => void send("answer", { questionId: d.question!.questionId, text: answer.trim() }, () => setAnswer(""))}>{t(locale, "orchAnswer")}</button>
               </div>
+            )}
+            {has("checks_decide") && view.proposal && (
+              <ChecksDecision key={view.revision} locale={locale} proposal={view.proposal} sending={sending || off("checks_decide")}
+                onDecide={(checks) => void send("checks_decide", checks ? { checks } : {})} />
+            )}
+            {has("finish_confirm") && view.confirm && (
+              <FinishConfirm key={view.revision} locale={locale} confirm={view.confirm} sending={sending || off("finish_confirm")}
+                onConfirm={(push, qa) => void send("finish_confirm", { tree: view.confirm!.tree ?? "", commit: view.confirm!.commit, push, qa })} />
             )}
             {actions.length > 0 && (
               <div className="orch-panel__actions">
@@ -1351,5 +1362,71 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
         </>
       )}
     </aside>
+  );
+}
+// Journal v2 (journal-v2-format.md §2.4): the lead's proposed check commands — «Принять» as they are, or «Изменить»
+// to the person's own lines. Nothing runs before the decision; it is made once.
+function ChecksDecision({ locale, proposal, sending, onDecide }: {
+  locale: LocaleId; proposal: NonNullable<OrchestrationRunView["proposal"]>; sending: boolean; onDecide(checks: string[] | null): void;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(proposal.checks.map((c) => c.command).join("\n"));
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  return (
+    <div className="orch-question" data-orch-checks-proposal>
+      <h4>{t(locale, "orchChecksProposalTitle")}</h4>
+      {proposal.checks.length === 0
+        ? <>
+          <p className="orch-panel__text" data-orch-checks-none>{t(locale, "orchChecksProposalNone")}: {proposal.none}</p>
+          <p className="orch-hint">{t(locale, "orchChecksProposalNoneHint")}</p>
+        </>
+        : <ol data-orch-checks-list>{proposal.checks.map((c) => (
+          <li key={c.id}><code>{c.command}</code> — {c.why}{c.source.length > 0 && <small> ({t(locale, "orchChecksSource")}: {c.source.join(", ")})</small>}</li>
+        ))}</ol>}
+      {editing && (
+        <label className="orch-field">
+          <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} data-orch-checks-edit />
+          <small className="orch-hint">{t(locale, "orchChecksEditHint")}</small>
+        </label>
+      )}
+      <div className="orch-panel__row">
+        {!editing && <button type="button" className="orch-primary" disabled={sending} data-orch-checks-accept onClick={() => onDecide(null)}>{t(locale, "orchChecksAccept")}</button>}
+        {!editing && <button type="button" disabled={sending} data-orch-checks-edit-open onClick={() => setEditing(true)}>{t(locale, "orchChecksEdit")}</button>}
+        {editing && <button type="button" className="orch-primary" disabled={sending || lines.length > 16} data-orch-checks-save onClick={() => onDecide(lines)}>{t(locale, "orchChecksSave")}</button>}
+      </div>
+    </div>
+  );
+}
+
+// Journal v2 (§2.1): push and QA of a run without checks — every step the goal asked for decided at once, for the tree
+// and commit shown; each is decided on its own (owner's decision 5i §7 p. 3), with a warning for QA of an unpushed commit.
+function FinishConfirm({ locale, confirm, sending, onConfirm }: {
+  locale: LocaleId; confirm: NonNullable<OrchestrationRunView["confirm"]>; sending: boolean;
+  onConfirm(push: "confirm" | "decline" | null, qa: "confirm" | "decline" | null): void;
+}): React.JSX.Element {
+  const [push, setPush] = useState<"confirm" | "decline" | null>(null);
+  const [qa, setQa] = useState<"confirm" | "decline" | null>(null);
+  const ready = !!confirm.tree && (!confirm.push || push !== null) && (!confirm.qa || qa !== null);
+  const choice = (step: "push" | "qa", value: "confirm" | "decline" | null, set: (v: "confirm" | "decline") => void) => (
+    <fieldset className="orch-field" data-orch-finish-step={step}>
+      {(["confirm", "decline"] as const).map((v) => (
+        <label key={v} className="orch-check">
+          <input type="radio" name={`orch-finish-${step}`} checked={value === v} onChange={() => set(v)} data-orch-finish-choice={`${step}:${v}`} />
+          <span>{t(locale, step === "push" ? (v === "confirm" ? "orchFinishConfirmPush" : "orchFinishDeclinePush") : v === "confirm" ? "orchFinishConfirmQa" : "orchFinishDeclineQa")}</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+  return (
+    <div className="orch-question" data-orch-finish-confirm>
+      <h4>{t(locale, "orchFinishConfirmTitle")}</h4>
+      <p className="dialog-error" data-orch-finish-no-checks>{t(locale, "orchFinishConfirmNoChecks")}</p>
+      {confirm.commit && <p className="orch-hint">commit <code>{confirm.commit.slice(0, 12)}</code></p>}
+      {confirm.push && choice("push", push, setPush)}
+      {confirm.qa && choice("qa", qa, setQa)}
+      {qa === "confirm" && push === "decline" && <p className="dialog-error" data-orch-qa-unpushed>{t(locale, "orchFinishConfirmQaUnpushed")}</p>}
+      <button type="button" className="orch-primary" disabled={sending || !ready} data-orch-finish-submit
+        onClick={() => onConfirm(confirm.push ? push : null, confirm.qa ? qa : null)}>{t(locale, "orchFinishConfirmSubmit")}</button>
+    </div>
   );
 }

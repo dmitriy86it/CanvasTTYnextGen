@@ -24,6 +24,10 @@ import {
   needsRecovery,
   newerVersion,
   parseJournal,
+  V2_MIN_READER_VERSION,
+  V2_EVENTS,
+  type V2Event,
+  type CompletionKind,
   sha256Hex,
   unfinishedWork
 } from "./journal.ts";
@@ -107,7 +111,8 @@ export interface RunWriter {
   completeCommand(commandId: string, result: CommandResult): Promise<void>;
   recordTurnIntent(input: TurnIntentInput): Promise<void>;
   recordTurnResult(turnId: string, result: ProviderTurnResult): Promise<void>;
-  setRunStatus(status: RunStatus, reason: PausedReason | null): Promise<void>;
+  // completion: v2 only, the completion function's result of a completed run (journal-v2-format.md §2.2)
+  setRunStatus(status: RunStatus, reason: PausedReason | null, completion?: { kind: CompletionKind; basis: TextRef } | null): Promise<void>;
   // Workspace facts (stage-3-contract.md). Called only after the Git result (ref) is confirmed.
   recordWorkspaceCreated(data: { sourcePathSha256: string; baseline: { commit: string; tree: string }; head: string | null }): Promise<void>;
   recordSnapshot(data: WorkspaceSnapshot): Promise<void>;
@@ -128,8 +133,9 @@ export interface RunWriter {
   recordClarification(data: ClarificationAddedData): Promise<void>;
   recordLimitsChanged(data: LimitsChangedData): Promise<void>;
   recordRecoveryDecision(data: RecoveryDecidedData): Promise<void>;
-  // Stage 13 events (journal.ts schemas): preparation, failure classes, grants, actions after success.
-  recordEvent(type: Stage13Event, data: Record<string, unknown>): Promise<void>;
+  // Stage 13 events (journal.ts schemas): preparation, failure classes, grants, actions after success; v2 journals
+  // also the checks decision and the push/QA confirmation (journal-v2-format.md §2.1).
+  recordEvent(type: Stage13Event | V2Event, data: Record<string, unknown>): Promise<void>;
   // Called with the new lastSeq after each record is durable (stage-7-contract.md: the position subscribers follow).
   onAppend(listener: (seq: number) => void): () => void;
   close(): Promise<void>;
@@ -147,7 +153,9 @@ export interface CheckFinishedInput {
   evidenceFingerprint: string; durationMs: number;
 }
 
-export interface CreateRunOptions { goal: string; clock?: () => Date; io?: StoreIo }
+// version 2: a journal of format v2 (journal-v2-format.md), written in A1–A3 only behind the development flag and
+// marked formatPreview in its first record (§3.4).
+export interface CreateRunOptions { goal: string; version?: 1 | 2; clock?: () => Date; io?: StoreIo }
 export interface OpenRunOptions { acceptTornTail?: boolean; clock?: () => Date; io?: StoreIo; hooks?: LockHooks }
 
 const JOURNAL = "journal.jsonl";
@@ -378,6 +386,7 @@ interface WriterInit {
   staleLock: LockInfo | null;
   state: RunState | null;
   size: number;
+  version?: 1 | 2; // the journal's, for its first record; afterwards the replayed state's
   clock?: () => Date;
   io?: StoreIo;
 }
@@ -396,6 +405,7 @@ class Writer implements RunWriter {
   private readonly listeners = new Set<(seq: number) => void>();
   private poisoned = false;
   private closing: Promise<void> | null = null;
+  private readonly version: 1 | 2;
 
   constructor(init: WriterInit) {
     this.runId = init.runId;
@@ -404,6 +414,7 @@ class Writer implements RunWriter {
     this.lock = init.lock;
     this.staleLock = init.staleLock;
     this.current = init.state;
+    this.version = init.state?.version ?? init.version ?? 1;
     this.size = init.size;
     this.clock = init.clock ?? (() => new Date());
     this.io = init.io ?? {};
@@ -438,10 +449,10 @@ class Writer implements RunWriter {
   // Inside the queue only. The record is replayed on a copy first, so the writer never writes what replay rejects;
   // state advances only after the full line is written and fsynced.
   private async appendNow(type: EventType, data: Record<string, unknown>): Promise<void> {
-    if (!isValidEventData(type, data)) fail("invalid_input", `${type} data does not match the schema`);
+    if (!isValidEventData(type, data, this.version)) fail("invalid_input", `${type} data does not match the schema`);
     const cur = this.current;
     const { record, line } = buildRecord(cur ? { seq: cur.lastSeq, hash: cur.lastHash } : null, this.runId,
-      this.clock().toISOString(), type, data);
+      this.clock().toISOString(), type, data, this.version, this.version === 2 ? { minReaderVersion: V2_MIN_READER_VERSION, formatPreview: true } : null);
     if (line.length - 1 > MAX_LINE_BYTES) fail("invalid_input", `${type} record is over ${MAX_LINE_BYTES} bytes`);
     if (this.size + line.length > MAX_JOURNAL_BYTES) fail("invalid_input", "the journal is full");
     let next: RunState;
@@ -587,8 +598,8 @@ class Writer implements RunWriter {
     }
   }
 
-  setRunStatus(status: RunStatus, reason: PausedReason | null): Promise<void> {
-    return this.append("run.status", { status, reason: reason ?? null });
+  setRunStatus(status: RunStatus, reason: PausedReason | null, completion: { kind: CompletionKind; basis: TextRef } | null = null): Promise<void> {
+    return this.append("run.status", { status, reason: reason ?? null, ...(this.version === 2 ? { completion } : {}) });
   }
 
   // Copies only the contract fields, so extra properties are dropped here and the schema checks the rest.
@@ -680,8 +691,8 @@ class Writer implements RunWriter {
     return this.append("recovery.decided", pick(data, ["commandId", "action", "turnId"]));
   }
 
-  recordEvent(type: Stage13Event, data: Record<string, unknown>): Promise<void> {
-    if (!STAGE13_EVENTS.includes(type)) return Promise.reject(new StoreError("invalid_input", `${String(type)} is not a stage 13 event`));
+  recordEvent(type: Stage13Event | V2Event, data: Record<string, unknown>): Promise<void> {
+    if (!STAGE13_EVENTS.includes(type as Stage13Event) && !V2_EVENTS.includes(type as V2Event)) return Promise.reject(new StoreError("invalid_input", `${String(type)} is not a stage 13 event`));
     return this.append(type, data);
   }
 
@@ -720,7 +731,7 @@ export async function createRun(root: string, runId: string, options: CreateRunO
     await fsyncDir(runs);
     lock = await acquireLock(dir);
     const fh = await open(join(dir, JOURNAL), fsc.O_WRONLY | fsc.O_APPEND | fsc.O_CREAT | fsc.O_EXCL, 0o600);
-    writer = new Writer({ runId, dir, fh, lock, staleLock: null, state: null, size: 0, clock: options.clock, io: options.io });
+    writer = new Writer({ runId, dir, fh, lock, staleLock: null, state: null, size: 0, version: options.version === 2 ? 2 : 1, clock: options.clock, io: options.io });
     await fsyncDir(dir);
     const goal = await writer.putText(options.goal);
     await writer.append("run.created", { goal });

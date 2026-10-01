@@ -169,7 +169,9 @@ try {
   await app.waitFor(`${q("[data-orch-resume]")} && true`, "resume of the v1 run");
   await app.clickEl(q("[data-orch-resume]"));
   await app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(v1)}).then((r) => r.value.view.status === "completed")`, "v1 completed", 120_000);
-  expect(v1Lines().every((l) => l.v === 1), "second: the v1 run is written only as v1", v1Lines().map((l) => l.v));
+  // with the development flag CANVASTTY_JOURNAL_V2=1 a new native run is written in v2 (journal-v2-format.md §3.4)
+  const own = process.env.CANVASTTY_JOURNAL_V2 === "1" ? 2 : 1;
+  expect(v1Lines().every((l) => l.v === own), `second: this build's run is written only as v${own}`, v1Lines().map((l) => l.v));
   expect(ledgerCount() > cliBefore, "second: CLIs ran for the v1 run", [cliBefore, ledgerCount()]);
   await app.shot("a0-03-v1-completed");
   await app.stop();

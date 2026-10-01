@@ -55,7 +55,8 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
   // Stage 13: a goal with a mode may leave its commands to the project profile.
   const checks = (g.commands !== undefined || g.mode !== undefined) && Array.isArray(g.checks) && g.checks.length === 0 ? [] : strings(g.checks, "goal.checks", 16, 64);
   if (checks.some((c) => !CHECK_ID.test(c))) bad("goal.checks must be check ids");
-  const commands = g.commands === undefined ? undefined : commandLines(g.commands, "goal.commands");
+  // [] — journal v2 under its development flag: the lead proposes the commands (main decides whether that is allowed)
+  const commands = g.commands === undefined ? undefined : Array.isArray(g.commands) && g.commands.length === 0 ? [] : commandLines(g.commands, "goal.commands");
   if (g.workMode !== undefined && g.workMode !== "project" && g.workMode !== "copy" && g.workMode !== "worktree") bad("goal.workMode must be project, worktree or copy");
   if (g.mode !== undefined && g.mode !== "autopilot" && g.mode !== "steps") bad("goal.mode must be autopilot or steps");
   let finish: OrchestrationGoalInput["finish"];
@@ -73,7 +74,7 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
   return {
     text: str(g.text, "goal.text", 8000), criteria: strings(g.criteria, "goal.criteria", 32, 500), checks,
     ...(g.reviewPlan !== undefined ? { reviewPlan: g.reviewPlan as boolean } : {}), ...(limits ? { limits } : {}),
-    ...(commands ? { commands } : {}), ...(g.workMode !== undefined ? { workMode: g.workMode as "project" | "copy" } : {}),
+    ...(commands !== undefined ? { commands } : {}), ...(g.workMode !== undefined ? { workMode: g.workMode as "project" | "copy" } : {}),
     ...(g.mode !== undefined ? { mode: g.mode as "autopilot" | "steps" } : {}), ...(finish ? { finish } : {})
   };
 }
@@ -142,6 +143,19 @@ export function parseCommand(v: unknown): { runId: string; commandId: string; ex
         kind: c.kind, requestId: uuid(c.requestId, "command.requestId"), decision: c.decision as "deny",
         ...(answers ? { answers } : {}), ...(content ? { content } : {}), ...(feedback !== undefined ? { feedback } : {})
       };
+      break;
+    }
+    case "checks_decide":
+      obj(c, "command", ["kind", "decision"], ["checks"]);
+      if (c.decision !== "accept" && c.decision !== "edit") bad("command.decision is unknown");
+      if ((c.decision === "edit") !== (c.checks !== undefined)) bad("command.checks: exactly with edit");
+      command = { kind: c.kind, decision: c.decision as "accept" | "edit", ...(c.checks !== undefined ? { checks: Array.isArray(c.checks) && c.checks.length === 0 ? [] : strings(c.checks, "command.checks", 16, 1000) } : {}) };
+      break;
+    case "finish_confirm": {
+      obj(c, "command", ["kind", "tree", "commit", "push", "qa"]);
+      const oid = (x: unknown, what: string) => (typeof x === "string" && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(x) ? x : bad(`${what} must be a Git object id`));
+      const step = (x: unknown, what: string) => (x === null || x === "confirm" || x === "decline" ? x : bad(`${what} must be confirm, decline or null`));
+      command = { kind: c.kind, tree: oid(c.tree, "command.tree"), commit: c.commit === null ? null : oid(c.commit, "command.commit"), push: step(c.push, "command.push"), qa: step(c.qa, "command.qa") };
       break;
     }
     default:

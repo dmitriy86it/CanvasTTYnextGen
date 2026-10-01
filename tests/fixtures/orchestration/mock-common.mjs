@@ -78,6 +78,24 @@ export const hold = () => setInterval(() => {}, 1e3);
 export const readSchema = (s) => { try { return JSON.parse(s); } catch { return null; } };
 
 
+// MOCK_CHECKS (journal v2, journal-v2-format.md §2.1): the lead's check-command proposal added to a scripted plan
+// answer (stages, no question) of the turn whose schema asks for it (properties.checks):
+//   proposed — one command (MOCK_CHECK_COMMAND, default "true") with why and source;
+//   none     — no command, with why there is none;
+//   invalid  — a command without a reason (an empty why: the report is invalid);
+//   forced   — the proposal of "proposed" also where the schema does not ask for it (a goal with its own commands).
+// Unset: the answer as scripted.
+export function withProposal(answer, schema) {
+  const mode = process.env.MOCK_CHECKS;
+  if (!mode || !answer || typeof answer !== "object" || !Array.isArray(answer.stages) || answer.question !== null || "checks" in answer) return answer;
+  if (!schema?.properties?.checks && mode !== "forced") return answer;
+  const command = process.env.MOCK_CHECK_COMMAND ?? "true";
+  const checks = mode === "none" ? { checks: [], none: "the project has no test, build or lint command for this goal" }
+    : mode === "invalid" ? { checks: [{ command, why: "", source: [] }], none: null }
+      : { checks: [{ command, why: "runs the project's tests", source: ["package.json"] }], none: null };
+  return { ...answer, checks };
+}
+
 // MOCK_SCRIPT=<dir>: the n-th call of any mock (n from <dir>/counter, starting at 1) answers <dir>/<n>.json instead of
 // reportFor; <dir>/<n>.writes.json (optional, [{rel, base64}]) adds file writes
 // and <dir>/<n>.reads.json (optional, [path]) file reads for mock-claude structured-edit.

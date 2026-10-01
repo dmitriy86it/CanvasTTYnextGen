@@ -37,7 +37,7 @@ import { DEFAULT_LIMITS } from "./cycle.ts";
 import type { Goal } from "./cycle.ts";
 import { MAX_JOURNAL_BYTES, MAX_LINE_BYTES, MAX_TEXT_BYTES, TERMINAL_STATUSES, canonical, isSha256, isTextRef, isUuid, needsRecovery, newerGoal, newerVersion, parseJournal, unfinishedWork } from "./journal.ts";
 import type { JournalRecord, RunState, TextRef } from "./journal.ts";
-import { createOrchestrationService, progressOf, runView } from "./orchestrationService.ts";
+import { createOrchestrationService, decidedGoal, progressOf, runView } from "./orchestrationService.ts";
 import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchestrationService.ts";
 import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
@@ -76,6 +76,9 @@ export interface RunManagerDeps {
   // Stage 13: direnv — apply the project's allowed .envrc (the project profile's choice).
   // direnvCwd: a worktree run's folder (direnv applies there); worktreePending: a worktree run not created yet.
   native?(project: string, opts?: NativeOpts): Promise<NativeRuntime>;
+  // Journal v2 for new native runs and optional check commands (journal-v2-format.md §3.4): until A4 only the
+  // development flag CANVASTTY_JOURNAL_V2, which a packaged build ignores.
+  journalV2?: boolean;
   stopGraceMs?: number;
   // Project workspaces: may a card be placed in (or moved to) this workspace? Absent: only the common canvas.
   workspaceOpen?(workspaceId: string): boolean;
@@ -225,7 +228,7 @@ export function createRunManager(deps: RunManagerDeps) {
       if (!deps.native) refuse("provider_unavailable", "this application has no native agent runtime");
       const rt = await deps.native!(source, { ...(await direnvOf(source)), ...(worktree === "pending" ? { worktreePending: true } : worktree ? { direnvCwd: worktree } : {}) });
       return { rt, svc: createOrchestrationService({
-        root, gitPath: deps.gitPath(), agents: rt.agents, stopGraceMs: deps.stopGraceMs,
+        root, gitPath: deps.gitPath(), agents: rt.agents, stopGraceMs: deps.stopGraceMs, journalV2: deps.journalV2 === true,
         activity: (runId) => createRunActivity(activityLog, runId),
         // Saved "for this project" decisions: this project's profile only.
         grants: {
@@ -316,7 +319,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const st = read.state!;
     // Where it works and what is done, as the open run would show it (UX-5): from the marker, the goal and the journal.
     const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
-    const goal = await readText(deps.root, runId, st.goal).then((b) => JSON.parse(b.toString("utf8")) as Goal, () => null);
+    const goal = await readText(deps.root, runId, st.goal).then((b) => decidedGoal(deps.root, runId, st, JSON.parse(b.toString("utf8")) as Goal), () => null);
     const view = runView(st, false, null, {
       ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
       ...(goal ? { progress: progressOf(st, goal, place?.branch ?? null) } : {})
@@ -487,7 +490,8 @@ export function createRunManager(deps: RunManagerDeps) {
       : workMode === "project" ? profile.prepare.steps : await worktreeSteps(source, profile.prepare.steps);
     return {
       ...rest, mode,
-      commands: rest.commands?.length ? rest.commands : profile.checks,
+      // journal v2: commands left empty on purpose — the lead proposes them
+      commands: rest.commands?.length || (deps.journalV2 && rest.commands) ? rest.commands : profile.checks,
       workMode,
       ...(steps.length ? { prepare: { steps } } : {}),
       prepareAuto: profile.prepare.auto,
@@ -664,7 +668,7 @@ export function createRunManager(deps: RunManagerDeps) {
       let gitPath: string | null = null;
       try { gitPath = deps.gitPath(); } catch { gitPath = null; }
       const r = await assessReadiness({
-        project: lead.project, commands: input.commands, workMode: input.workMode, platform, gitPath,
+        project: lead.project, commands: input.commands, workMode: input.workMode, platform, gitPath, optionalChecks: deps.journalV2 === true,
         prepare: profile.prepare,
         runtime: measured, checkedVersions: NATIVE_PROTOCOL_CHECKED, busy: holder !== null
       });
@@ -686,7 +690,7 @@ export function createRunManager(deps: RunManagerDeps) {
       try { gitPath = deps.gitPath(); } catch { gitPath = null; }
       const s = await suggestCommands(project);
       return {
-        profile, saved: saved !== null,
+        profile, saved: saved !== null, ...(deps.journalV2 ? { optionalChecks: true } : {}),
         capabilities: {
           claude: claudeModesFromHelp(help).map((mode) => ({ mode, mapping: accessMapping("claude", mode) })),
           codex: codexModesFor(codexChecked).map((mode) => ({ mode, mapping: accessMapping("codex", mode) }))
