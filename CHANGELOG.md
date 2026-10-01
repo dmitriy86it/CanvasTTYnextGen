@@ -2,7 +2,7 @@
 
 [English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md)
 
-## Unreleased
+## 1.5.7 — 2026-10-01
 
 - Electron smoke runs are hermetic: the development app gets a PATH of refusing fake CLIs and system folders, looks for provider CLIs in PATH only and polls no provider for limits (CANVASTTY_SMOKE_HERMETIC, ignored by a packaged build); a smoke fails when the app starts a program outside the fakes and the allowed list. Every smoke window stays painted while covered (logged, the covered-window case stays open), and a screenshot that gets no answer in 15 s is retried once and then fails by name instead of hanging.
 - Preparation: an install step with nothing to install (package.json without dependencies, devDependencies, optionalDependencies or workspaces; composer.json without require or require-dev) succeeds without its folder and is no longer suggested; such runs no longer pause with "environment preparation failed" on every Continue. A failed preparation now shows its step and one line of why on the run panel (with the last 40 lines of its output), a summary in the feed, its start and end in the history, and the next step names the step; the login shell's own noise is left out of the reason.
@@ -14,6 +14,8 @@
 - Orchestration is offered only where a run can finish (macOS): on Linux and Windows its items are shown inactive with a hint, and new links, goals and Resume are refused before any CLI or model call, so no tokens are spent on a run that would pause at its first check. Existing runs there can still be read, stopped and unlinked. The deb package's Maintainer is now the fork's packager, and a failed browser tab-restore setting is logged instead of left unhandled.
 - Added the Biome linter in lint-only mode (`npm run lint`, CI step Lint); the formatter stays off.
 - Documentation and CI: the README, package metadata and install guide point to this fork (releases, homepage, repository), the README gains a platform matrix and credits to the upstream CanvasTTY, the Simplified Chinese note is removed, and LICENSE adds the fork's copyright line. CI checks out the full history so the workspaces rollback test runs, and Linux jobs are pinned to `ubuntu-24.04`. Technical identifiers (`canvastty`, `appId`, data folder) are unchanged.
+- A run journal written by a newer version is shown read only (agent cards, link chip, activity widget, workspace history: "created by a newer version", never "paused", no actions). Such a run can be released from its link ("Release link", with confirmation; all newer runs of the link together; its files are kept), and deleting it is refused. A newer journal that declares `minReaderVersion: 1` is replayed by v1 rules: unknown fields are ignored, unknown records marked `skippable: true` are skipped and counted, `v` and `minReaderVersion` come from the first record, and anything else falls back to the read-only view. v1 journals and how they are written are unchanged (contract §2.2.1).
+- CI: the `verify` job passes on Linux; the fixes are in tests only (temporary folders, the check shell, a stop grace).
 
 ## 1.5.6
 
