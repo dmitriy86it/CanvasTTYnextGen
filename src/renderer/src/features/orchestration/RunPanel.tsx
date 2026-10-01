@@ -35,6 +35,9 @@ import {
   headlineKey,
   pauseCause,
   pausedTurn,
+  lastLines,
+  prepareReason,
+  prepareReasonText,
   viewCause,
   orchestrationAvailableHere,
   orchestrationEntry,
@@ -132,8 +135,27 @@ function lineText(locale: LocaleId, line: HistoryLine, entries: readonly Orchest
       + `${p.reason ? ` — ${tr(locale, `orchCheckReason_${p.reason}`)}` : ""}${p.exitCode !== null && p.status === "failed" ? ` (${t(locale, "orchExitCode")} ${p.exitCode})` : ""}`;
     case "limit": return `${head}: ${tr(locale, `orchLimit_${p.kind}`)} = ${p.value}`;
     case "plan": return `${head} (v${p.version})`;
+    case "prepare_finished": return `${head}: ${tr(locale, `orchPrepare_${p.status}`)}${p.failed !== null ? ` · ${t(locale, "orchPrepareStepN")} ${p.failed}` : ""}`;
     default: return head;
   }
+}
+
+// A failed preparation on the board: the step that failed and one line of why, its output's last 40 lines on demand.
+// Only what is recorded: the journal's output text, the exit code from the step's activity entry.
+function PrepareFailure({ orch, runId, locale, prepare, entries }: { orch: Orchestration; runId: string; locale: LocaleId;
+  prepare: NonNullable<OrchestrationRunView["progress"]>["prepare"] & object; entries: readonly OrchestrationActivityEntry[] }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const stored = useStored(orch, runId, prepare.output?.sha256);
+  const step = prepare.failed === null ? null : Number(prepare.failed);
+  const exit = entries.filter((e) => e.kind === "prepare_finished" && e.detail?.step === step && e.detail?.ok === false && typeof e.detail.exitCode === "number").at(-1)?.detail?.exitCode;
+  const why = prepareReasonText(locale, prepareReason(stored.text, typeof exit === "number" ? exit : null));
+  return (
+    <span data-prepare-failure>
+      {prepare.command && <> — {t(locale, "orchPrepareStep").replace("{command}", prepare.command)}</>}{why && <span data-prepare-why>: {why}</span>}
+      {prepare.output && <> <button type="button" data-prepare-output-toggle onClick={() => setOpen((v) => !v)}>{t(locale, open ? "orchPrepareHideOutput" : "orchPrepareShowOutput")}</button></>}
+      {open && <pre className="orch-panel__text" data-prepare-output>{stored.text !== null ? lastLines(stored.text) : t(locale, stored.status === "error" ? "orchError_generic" : "orchLoading")}</pre>}
+    </span>
+  );
 }
 
 // A stored text of the run through the one cache of useOrchestration (read once, shared with the cards and the widget).
@@ -235,6 +257,15 @@ function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: re
       const phaseKey = known(locale, `orchFinishStatus_${phase}`) ? `orchFinishStatus_${phase}` : `orchFinishPhase_${phase}`;
       return typeof d.step === "string" ? `${tr(locale, "orchAct_external_action")}: ${tr(locale, `orchFinishStep_${d.step}`)}: ${known(locale, phaseKey) ? tr(locale, phaseKey) : phase}${rest}`
         : `${tr(locale, "orchAct_external_action")}: ${e.text}`;
+    }
+    case "prepare_finished": {
+      // the preparation's outcome (with why it failed), or a step with nothing to install; a step's own result as it ran
+      if (d.summary === true) {
+        const why = d.status === "failed" ? prepareReasonText(locale, prepareReason(typeof d.output === "string" ? d.output : null, typeof d.exitCode === "number" ? d.exitCode : null)) : "";
+        return `${tr(locale, "orchAct_prepare_summary")}: ${tr(locale, `orchPrepare_${d.status}`)}${typeof d.command === "string" ? ` — ${t(locale, "orchPrepareStep").replace("{command}", d.command)}` : ""}${why ? `: ${why}` : ""}`;
+      }
+      if (d.nothing === true) return `${tr(locale, "orchAct_prepare_finished")}: ${e.text.replace(/: nothing to install$/, "")}: ${t(locale, "orchPrepareNothing")}`;
+      return `${tr(locale, "orchAct_prepare_finished")}: ${e.text}`;
     }
     case "usage": return `${tr(locale, "orchAct_usage")}${typeof d.costUsd === "number" ? ` · $${d.costUsd.toFixed(4)}` : ""}${typeof d.outputTokens === "number" ? ` · ${d.inputTokens ?? "?"}/${d.outputTokens} tok` : ""}`;
     default: {
@@ -1077,7 +1108,8 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <div><dt>{t(locale, "orchRunMode")}:</dt><dd data-board="mode">{tr(locale, `orchRunMode_${progress.mode}`)}</dd></div>
                 <div><dt>{t(locale, "orchBoardStage")}:</dt><dd data-board="stage">{stageText ?? "—"}</dd></div>
                 {depsText && <div><dt>{t(locale, "orchBoardDeps")}:</dt><dd data-board="deps">{depsText.text}{depsText.failed && <> <button type="button" data-deps-step onClick={() => onView({ tab: "activity", role: "check" })}>{t(locale, "orchDepsStep")}</button></>}</dd></div>}
-                {top.prepare && <div><dt>{t(locale, "orchBoardPrepare")}:</dt><dd data-board="prepare">{tr(locale, `orchPrepare_${top.prepare}`)}</dd></div>}
+                {top.prepare && <div><dt>{t(locale, "orchBoardPrepare")}:</dt><dd data-board="prepare">{tr(locale, `orchPrepare_${top.prepare}`)}
+                  {progress.prepare?.status === "failed" && runId && <PrepareFailure orch={orch} runId={runId} locale={locale} prepare={progress.prepare} entries={activity.entries} />}</dd></div>}
                 <div><dt>{t(locale, "orchBoardChecked")}:</dt><dd data-board="checked">{top.checked.total ? t(locale, "orchBoardCheckedValue").replace("{passed}", String(top.checked.passed)).replace("{total}", String(top.checked.total)) : "—"}
                   {top.checked.failed.map((f, i) => <small key={i} className="orch-board__failed"> · {f.title}{f.class ? ` (${tr(locale, `orchClass_${f.class}`)})` : ""}</small>)}</dd></div>
                 <div><dt>{t(locale, "orchBoardAction")}:</dt><dd data-board="action">{t(locale, top.action ? "orchBoardActionYes" : "orchBoardActionNone")}</dd></div>

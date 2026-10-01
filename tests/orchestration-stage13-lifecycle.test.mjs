@@ -37,6 +37,9 @@ async function until(fn, what, ms = 60_000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 let n = 0;
+// manifests that ask for something to install (an empty one has nothing to prepare: prepare.ts hasSomethingToInstall)
+const DEPS_PKG = JSON.stringify({ dependencies: { "left-pad": "^1.3.0" } });
+const DEPS_COMPOSER = JSON.stringify({ name: "a/b", require: { php: ">=8.2" } });
 function project(files, { ignore = "node_modules/\nvendor/\n.env\n" } = {}) {
   const dir = path.join(TMP, `project-${++n}`);
   fs.mkdirSync(dir);
@@ -123,7 +126,7 @@ const resume = (m, v) => m.command(v.runId, { commandId: randomUUID(), expectedR
 const READY = { commands: ["php artisan test"], workMode: "project", platform: "darwin", gitPath: GIT, busy: false,
   runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: "2.1.281 (Claude Code)" }, env: { PATH: "/usr/bin" }, shell: "/bin/sh" },
   checkedVersions: { codex: ["0.155.1"], claude: ["2.1.281"] }, dbProbe: async () => true };
-const laravel = (files) => project({ artisan: "", "composer.json": "{}", ...files });
+const laravel = (files) => project({ artisan: "", "composer.json": DEPS_COMPOSER, ...files });
 
 // ---------------- the test database (LC-1, LC-2, LC-3) ----------------
 
@@ -188,7 +191,7 @@ test("test database: a run is refused in main too, not only by the dialog", OPTS
 // ---------------- preparation (LC-5, LC-6) ----------------
 
 test("preparation: a changed lock file makes the install needed again; the .env step never overwrites .env", async () => {
-  const dir = project({ "composer.json": "{}", "composer.lock": '{"v":1}', "package.json": "{}", "package-lock.json": '{"v":1}' });
+  const dir = project({ "composer.json": DEPS_COMPOSER, "composer.lock": '{"v":1}', "package.json": DEPS_PKG, "package-lock.json": '{"v":1}' });
   const steps = await suggestPrepare(dir);
   fs.mkdirSync(path.join(dir, "vendor")); fs.writeFileSync(path.join(dir, "vendor/autoload.php"), "<?php");
   fs.mkdirSync(path.join(dir, "node_modules")); fs.writeFileSync(path.join(dir, "node_modules/.package-lock.json"), "{}");
@@ -236,10 +239,11 @@ test("preparation in a worktree: the .env step is added although the project fol
 test("the separate copy is prepared as a fresh worktree; an npm lock without dependencies needs no npm ci (LC-12)", OPTS, async () => {
   const lock = JSON.stringify({ name: "p", version: "1.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "p", version: "1.0.0" } } });
   const empty = project({ "package.json": '{"name":"p","version":"1.0.0"}', "package-lock.json": lock });
-  const steps = await suggestPrepare(empty);
-  assert.deepEqual(steps.map((s) => s.command), ["npm ci"]);
+  // nothing to install: no step is suggested (hasSomethingToInstall), and a saved npm ci is not needed either
+  assert.deepEqual(await suggestPrepare(empty), []);
+  const steps = [{ command: "npm ci", unless: "node_modules/.package-lock.json" }];
   assert.deepEqual(await neededSteps(empty, steps), [], "npm ci would succeed and write no node_modules");
-  const withDeps = project({ "package.json": "{}", "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
+  const withDeps = project({ "package.json": DEPS_PKG, "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
   assert.equal((await neededSteps(withDeps, steps)).length, 1);
   // the copy starts without the ignored files, as a worktree: every step is listed (folders cloned from the project
   // are skipped once they are, tests/orchestration-copy-deps.test.mjs); a project without them prepares nothing
@@ -363,7 +367,7 @@ test("closed during preparation, B: the step outlives shutdown(), reopening sees
   closedDuringPreparation(({ pidFile, latch }) => `trap '' INT TERM; echo $$ > ${pidFile}; while [ ! -f ${latch} ]; do sleep 0.1; done; exit 0`, { late: true }));
 
 test("a check that breaks its own environment again is prepared for once per executor turn, then the person decides", OPTS, async () => {
-  const src = project({ "package.json": "{}", "package-lock.json": "{}" });
+  const src = project({ "package.json": DEPS_PKG, "package-lock.json": "{}" });
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]) });
   const runId = randomUUID();
   const cmd = `rm -rf node_modules; echo "Error: Cannot find module 'left-pad'"; exit 1`;
@@ -542,7 +546,7 @@ test("push: a push URL or a rewrite the person did not allow stops the push befo
 });
 
 test("files the environment preparation made are left out of the commit (LC-10)", OPTS, async () => {
-  const src = project({ "a.txt": "1\n", "package.json": "{}" });
+  const src = project({ "a.txt": "1\n", "package.json": DEPS_PKG });
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
   // what `npm install` does without a lock file: node_modules (ignored) and a new package-lock.json (not ignored)
   await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["grep -qx 2 a.txt"],

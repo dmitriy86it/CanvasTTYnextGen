@@ -134,6 +134,11 @@ export function historyLines(records: readonly OrchestrationHistoryRecord[]): Hi
         line("check", { ...pick(d, "status", "reason", "exitCode", "outputDropped"), checkId: checkIds.get(d.checkRunId) ?? null },
           { kind: "output", ref: isRef(d.output) ? d.output : null, missing: null });
         break;
+      case "prepare.started": line("prepare_started", pick(d, "reason")); break;
+      case "prepare.finished":
+        line("prepare_finished", { ...pick(d, "status", "class"), failed: typeof d.failed === "number" ? d.failed + 1 : null },
+          isRef(d.output) ? { kind: "output", ref: d.output, missing: null } : undefined);
+        break;
       case "run.recovered": line("recovered", {}); break;
     }
   }
@@ -417,6 +422,7 @@ export const APP_FAILURE_STEPS: readonly string[] = ["relay_failed", "relay_inco
 // - reason: main's reason as it is.
 export type PauseCause =
   | { kind: "provider_limit"; reason: string; provider: string; resetsAt: string | null }
+  | { kind: "prepare"; reason: string; command: string | null } // the environment preparation failed (its last record)
   | { kind: "ending"; reason: string; step: string }
   | { kind: "reason"; reason: string };
 const USAGE_LIMIT = /\bhit your usage limit\b/i;
@@ -452,6 +458,9 @@ export function pausedTurn(entries: readonly OrchestrationActivityEntry[], end: 
 export function viewCause(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): PauseCause | null {
   if (!view.reason) return null;
   if (view.status !== "paused") return { kind: "reason", reason: view.reason };
+  // a failed preparation pauses the run before anything else (cycle.ts): the pause is that preparation's
+  const prep = view.progress?.prepare;
+  if (prep?.status === "failed" && (view.reason === "needs_user_action" || view.reason === "external_failure")) return { kind: "prepare", reason: view.reason, command: prep.command };
   return pauseCause(view.reason, pausedTurn(entries, entries.length, view.reason), entries);
 }
 
@@ -461,6 +470,7 @@ export const providerName = (provider: string): string => PROVIDER_NAMES[provide
 // The reason in words, the same everywhere: the run panel, the activity rows, the agent cards, the feed and the history.
 export function causeText(locale: LocaleId, cause: PauseCause): string {
   if (cause.kind === "provider_limit") return t(locale, "orchReason_provider_limit").replace("{provider}", providerName(cause.provider));
+  if (cause.kind === "prepare") return t(locale, "orchReason_prepare_failed").replace("{command}", cause.command ?? "?");
   const ending = cause.kind === "ending" ? t(locale, `orchEnding_${cause.step}` as TranslationKey) : undefined;
   return ending ?? t(locale, `orchReason_${cause.reason}` as TranslationKey) ?? cause.reason;
 }
@@ -489,9 +499,43 @@ export function nextStepText(locale: LocaleId, view: OrchestrationRunView, entri
     return t(locale, limit.resetsAt ? "orchNext_provider_limit_at" : "orchNext_provider_limit")
       .replaceAll("{provider}", providerName(limit.provider)).replace("{at}", limit.resetsAt ?? "");
   }
+  const cause = viewCause(view, entries);
+  if (cause?.kind === "prepare") return t(locale, "orchNext_prepare_failed").replace("{command}", cause.command ?? "?");
   const key = nextStepKey(view, entries);
   return t(locale, `orchNext_${key}` as TranslationKey) ?? key;
 }
+
+// ---------- why a preparation failed ----------
+
+// Lines an interactive login shell prints before the command's own output (steps run in `zsh -ilc`, stdout and stderr
+// in one stream): never the reason. Extend the list as new ones are seen.
+export const SHELL_NOISE: readonly RegExp[] = [
+  /can't change option: monitor/, /no job control in this shell/i, /gitstatus failed to initialize/i, /GITSTATUS_LOG_LEVEL/,
+  /^Add the following parameter to .*zshrc/i, /^Restart Zsh to retry gitstatus/i, /^exec zsh$/
+];
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "g");
+export type PrepareReason = { kind: "missing"; what: string } | { kind: "exit"; code: number; line: string | null } | { kind: "line"; line: string };
+
+// One line of why: what is still missing after the steps, else the exit code with the first meaningful line of the
+// output (an error-like line first, the shell's own noise skipped).
+export function prepareReason(output: string | null, exitCode: number | null): PrepareReason | null {
+  const missing = output ? /^still missing after preparation: (.+)$/m.exec(output) : null;
+  if (missing) return { kind: "missing", what: missing[1].trim() };
+  const lines = (output ?? "").replace(ANSI, "").split("\n").map((l) => l.trim()).filter((l) => l && !SHELL_NOISE.some((r) => r.test(l)));
+  const line = lines.find((l) => /\b(error|err!|fatal|failed|not found|denied|cannot|could not)\b/i.test(l)) ?? lines[0] ?? null;
+  if (exitCode !== null) return { kind: "exit", code: exitCode, line };
+  return line ? { kind: "line", line } : null;
+}
+
+export function prepareReasonText(locale: LocaleId, r: PrepareReason | null): string {
+  if (!r) return "";
+  if (r.kind === "missing") return t(locale, "orchPrepareWhy_missing").replace("{what}", r.what);
+  if (r.kind === "line") return r.line;
+  return `${t(locale, "orchExitCode")} ${r.code}${r.line ? `: ${r.line}` : ""}`;
+}
+
+// The last `n` lines of a step's output, the shell's noise left out.
+export const lastLines = (text: string, n = 40): string => text.replace(ANSI, "").split("\n").filter((l) => !SHELL_NOISE.some((r) => r.test(l.trim()))).slice(-n).join("\n");
 
 export function participantState(role: "lead" | "executor", view: OrchestrationRunView | null, entries: readonly OrchestrationActivityEntry[],
   open = true): ParticipantState {

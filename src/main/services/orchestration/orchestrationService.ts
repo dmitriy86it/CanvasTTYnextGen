@@ -41,7 +41,7 @@ import { commitLine, findCommitLine, pushLine, qaEnv, qaVersion, remoteHead, rem
 import type { CommitParams, PushParams, QaParams } from "./finish.ts";
 import { validateForm } from "./forms.ts";
 import type { FailureClass, FinishStep } from "./journal.ts";
-import { classifyFailure, lockFingerprints, neededSteps } from "./prepare.ts";
+import { classifyFailure, installsNothing, lockFingerprints, neededSteps } from "./prepare.ts";
 import type { PrepareStep } from "./prepare.ts";
 import { grantFingerprint } from "./profile.ts";
 import { runShell } from "./shellRun.ts";
@@ -127,7 +127,7 @@ export interface RunProgress {
   branch: string | null; // worktree mode: the run's branch
   access: AgentAccess | null;
   checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: FailureClass | null }[]; // the latest result of each
-  prepare: { status: string; failed: string | null; class: FailureClass | null } | null;
+  prepare: { status: string; failed: string | null; class: FailureClass | null; command: string | null; output: TextRef | null } | null;
   finish: { step: FinishStep; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null }[];
   grantsApplied: number;
 }
@@ -884,16 +884,26 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     await j(() => writer.recordEvent("prepare.started", { prepareId, reason, steps: plan }));
     const treeNow = () => snapshotCopyTree(ws, state().workspace!.current.tree).catch(() => undefined);
     const before = needed.length ? await treeNow() : undefined;
-    const finish = async (status: string, failed: number | null, cls: FailureClass | null, output: TextRef | null) => {
+    // Steps with nothing to install (installsNothing: the project's manifest asks for nothing) succeed without running.
+    const nothing: number[] = [];
+    for (const [i, step] of all.entries()) if (!needed.some((n) => n.index === i) && await installsNothing(ws.repo, step).catch(() => false)) nothing.push(i);
+    for (const i of nothing) observe((a) => a.prepare("prepare_finished", `${all[i].command}: nothing to install`, { step: i, nothing: true }));
+    // The preparation's outcome in the feed: status, the failed step's command and exit code, the last 40 lines of what
+    // it said (the same text as the journal's output).
+    const finish = async (status: string, failed: number | null, cls: FailureClass | null, output: TextRef | null, said: { text?: string; exitCode?: number | null } = {}) => {
       const after = before !== undefined ? await treeNow() : undefined;
       const locks = status === "done" || status === "not_needed" ? await lockFingerprints(ws.repo, all).catch(() => ({})) : {};
       await j(() => writer.recordEvent("prepare.finished", {
         prepareId, status, failed, class: cls, output,
         ...(Object.keys(locks).length ? { locks } : {}), ...(before && after ? { before, after } : {})
       }));
+      const command = failed !== null ? all[failed]?.command ?? null : null;
+      observe((a) => a.prepare("prepare_finished", `preparation ${status}${command ? `: ${command}${typeof said.exitCode === "number" ? ` (exit ${said.exitCode})` : ""}` : ""}`, {
+        summary: true, status, ...(failed !== null ? { failed, command, class: cls } : {}), ...(typeof said.exitCode === "number" ? { exitCode: said.exitCode } : {}),
+        ...(said.text ? { output: said.text.split("\n").slice(-40).join("\n").slice(-8000) } : {})
+      }));
     };
     if (needed.length === 0) {
-      observe((a) => a.prepare("prepare_finished", "environment already prepared", { status: "not_needed" }));
       await finish("not_needed", null, null, null);
       return;
     }
@@ -913,14 +923,19 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       observe((a) => a.prepare("prepare_finished", `${step.command}: ${ok ? "done" : r.stopCause ? "stopped" : `exit ${r.exitCode ?? r.signal ?? "?"}`}`,
         { step: index, exitCode: r.exitCode, ok, durationMs: r.durationMs, ...(r.stopCause ? { stopped: true } : {}) }));
       if (r.stopCause === "user" || state().status === "stopping" || abort !== null) { await finish("stopped", null, null, output); return; }
-      if (!ok) { await finish("failed", index, r.spawnError ? "environment" : classifyFailure(r.output.text, r.exitCode) === "external" ? "external" : "environment", output); return; }
+      if (!ok) {
+        await finish("failed", index, r.spawnError ? "environment" : classifyFailure(r.output.text, r.exitCode) === "external" ? "external" : "environment", output,
+          { text: r.spawnError ?? r.output.text, exitCode: r.exitCode });
+        return;
+      }
     }
     // Done only when what the steps were for is there now (the lock files as they are after the install).
     const steps = needed.map((n) => n.step);
     const still = await neededSteps(ws.repo, steps, await lockFingerprints(ws.repo, steps));
     if (still.length) {
-      const missing = await j(() => writer.putText(`still missing after preparation: ${still.map((x) => x.step.unless).join(", ")}`));
-      await finish("failed", needed[still[0].index]?.index ?? still[0].index, "environment", missing);
+      const text = `still missing after preparation: ${still.map((x) => x.step.unless).join(", ")}`;
+      const missing = await j(() => writer.putText(text));
+      await finish("failed", needed[still[0].index]?.index ?? still[0].index, "environment", missing, { text });
       return;
     }
     await finish("done", null, null, null);
@@ -1614,11 +1629,14 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         const steps = goal.prepare?.steps ?? [];
         const said: Record<string, string> = { cloned: "cloned from the project", install: "installed in the copy", auto_off: "not installed: automatic preparation is off",
           no_step: "not installed: no install step", not_needed: "not needed" };
-        const dirs = (await cloneDependencies(ws, deps.cloneDir).catch(() => [])).filter((d) => d.reason !== "already in the copy").map((d) => {
+        const dirs: (Awaited<ReturnType<typeof cloneDependencies>>[number] & { plan: string; step: number })[] = [];
+        for (const d of (await cloneDependencies(ws, deps.cloneDir).catch(() => [])).filter((x) => x.reason !== "already in the copy")) {
           const step = steps.findIndex((s) => s.unless === d.dir || !!s.unless?.startsWith(`${d.dir}/`));
-          const plan = d.result === "cloned" ? "cloned" : step >= 0 ? "install" : d.result === "skipped" ? "not_needed" : prepareAuto === false ? "auto_off" : "no_step";
-          return { ...d, plan, step };
-        });
+          // a step with nothing to install leaves no folder: not needed, nothing is waited for
+          const empty = step >= 0 && await installsNothing(ws.repo, steps[step]).catch(() => false);
+          const plan = d.result === "cloned" ? "cloned" : step >= 0 && !empty ? "install" : d.result === "skipped" || empty ? "not_needed" : prepareAuto === false ? "auto_off" : "no_step";
+          dirs.push({ ...d, plan, step });
+        }
         if (dirs.length) {
           observe((a) => a.prepare("prepare_finished", dirs.map((d) => `${d.dir}: ${said[d.plan]}${d.result === "installed" ? ` (${d.reason})` : ""}`).join("; "),
             { dependencies: true, ...Object.fromEntries(dirs.flatMap((d) => [[d.dir, d.plan], ...(d.plan === "install" ? [[`step:${d.dir}`, d.step]] : [])])) }));
@@ -1646,7 +1664,9 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
   const p = st.orch.prepares.at(-1);
   return {
     mode: goal.mode ?? "autopilot", branch, access: goal.access ?? null, checks,
-    prepare: p ? { status: p.status, failed: p.failed === null ? null : String(p.failed), class: p.class } : null,
+    // the failed step's command (the goal's steps) and the preparation's output, for the run panel to say why
+    prepare: p ? { status: p.status, failed: p.failed === null ? null : String(p.failed), class: p.class,
+      command: p.failed === null ? null : goal.prepare?.steps[p.failed]?.command ?? null, output: p.output } : null,
     finish: (["commit", "push", "qa"] as const).map((step) => {
       const last = st.orch.finish.filter((f) => f.step === step).at(-1);
       return {

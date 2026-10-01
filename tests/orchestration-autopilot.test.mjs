@@ -42,6 +42,9 @@ async function until(fn, what, ms = 60_000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 let n = 0;
+// manifests that ask for something to install (an empty one has nothing to prepare: prepare.ts hasSomethingToInstall)
+const DEPS_PKG = JSON.stringify({ dependencies: { "left-pad": "^1.3.0" } });
+const DEPS_COMPOSER = JSON.stringify({ name: "a/b", require: { php: ">=8.2" } });
 function project(files, { ignore = "node_modules/\nvendor/\n.env\n" } = {}) {
   const dir = path.join(TMP, `project-${++n}`);
   fs.mkdirSync(dir);
@@ -138,7 +141,7 @@ test("rights: each mode says what it turns into; the installed Claude's own --he
 });
 
 test("preparation: steps from lock files, only the missing ones; failures are told apart", async () => {
-  const dir = project({ "package.json": "{}", "package-lock.json": "{}", "composer.json": "{}", artisan: "", ".env.example": "APP_KEY=\n" });
+  const dir = project({ "package.json": DEPS_PKG, "package-lock.json": "{}", "composer.json": DEPS_COMPOSER, artisan: "", ".env.example": "APP_KEY=\n" });
   const steps = await suggestPrepare(dir);
   // the .env step never overwrites an existing .env and generates the key only when it is empty (review LC-5)
   assert.deepEqual(steps.map((s) => s.command), ["composer install --no-interaction --no-progress", LARAVEL_ENV_STEP.command, "npm ci"]);
@@ -158,7 +161,7 @@ test("preparation: steps from lock files, only the missing ones; failures are to
 });
 
 test("readiness: missing dependencies are prepared, not sent to the terminal; a production test database blocks", async () => {
-  const dir = project({ "composer.json": "{}", artisan: "", ".env": "DB_CONNECTION=mysql\nDB_HOST=10.1.2.3\n" }, { ignore: "vendor/\n" });
+  const dir = project({ "composer.json": DEPS_COMPOSER, artisan: "", ".env": "DB_CONNECTION=mysql\nDB_HOST=10.1.2.3\n" }, { ignore: "vendor/\n" });
   const base = { project: dir, commands: ["vendor/bin/phpunit"], workMode: "project", platform: "darwin", gitPath: GIT, busy: false,
     runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: "2.1.281" }, env: { PATH: "/usr/bin" }, shell: "/bin/sh", direnv: "not_allowed" },
     checkedVersions: { codex: ["0.155.1"], claude: ["2.1.281"] }, dbProbe: async () => true };
@@ -194,7 +197,7 @@ test("MCP forms: fields from the schema, the answer checked against them, nothin
 test("project profile: saved per project; a grant is found only for the same tool and parameters", async () => {
   const root = path.join(TMP, `profiles-${++n}`);
   const store = createProfileStore(root);
-  const a = project({ "package.json": "{}", "package-lock.json": "{}" });
+  const a = project({ "package.json": DEPS_PKG, "package-lock.json": "{}" });
   const b = project({});
   const s = await suggestProfile(a);
   assert.equal(s.savedAt, null);
@@ -318,7 +321,7 @@ test("IPC: mode, actions after success, the new decisions, form content and plan
 // ---------------- runs ----------------
 
 test("autopilot on a Node project: node_modules missing is prepared, a failing test is fixed, one saved permission is not asked again", OPTS, async () => {
-  const src = project({ "package.json": "{}", "package-lock.json": "{}", "value.txt": "1\n" });
+  const src = project({ "package.json": DEPS_PKG, "package-lock.json": "{}", "value.txt": "1\n" });
   const state = fs.mkdtempSync(path.join(TMP, "state-"));
   const lint = [{ tool: "Bash", command: "npm run lint" }];
   const dir = script([PLAN, EXEC({ asks: lint }), REVIEW, EXEC({ asks: lint, writes: [{ rel: "value.txt", base64: b64("2\n") }] }), REVIEW, FINAL]);
@@ -370,7 +373,7 @@ test("autopilot on a Node project: node_modules missing is prepared, a failing t
 });
 
 test("autopilot on a Laravel project from its profile: composer, .env and key are prepared, the test is fixed", OPTS, async () => {
-  const src = project({ "composer.json": JSON.stringify({ name: "a/b" }), artisan: "", ".env.example": "APP_KEY=\n", "app.php": "<?php // broken\n",
+  const src = project({ "composer.json": DEPS_COMPOSER, artisan: "", ".env.example": "APP_KEY=\n", "app.php": "<?php // broken\n",
     "phpunit.xml": '<phpunit><php><env name="DB_CONNECTION" value="sqlite"/></php></phpunit>', "tests/Feature/AppTest.php": "<?php\n" });
   const dir = script([PLAN, EXEC({ writes: [{ rel: "app.php", base64: b64("<?php // fixed\n") }] }), REVIEW, FINAL]);
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: dir });
@@ -391,7 +394,7 @@ test("autopilot on a Laravel project from its profile: composer, .env and key ar
 
 test("an environment failure of a check is prepared once, not sent to the agents as a code error", OPTS, async () => {
   // the executor deletes node_modules: the check fails with a missing module, the preparation runs again, the re-check passes
-  const src = project({ "package.json": "{}", "package-lock.json": "{}" });
+  const src = project({ "package.json": DEPS_PKG, "package-lock.json": "{}" });
   fs.mkdirSync(path.join(src, "node_modules"));
   fs.writeFileSync(path.join(src, "node_modules", ".package-lock.json"), "{}");
   const dir = script([PLAN, EXEC(), REVIEW, FINAL]);
