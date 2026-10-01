@@ -98,6 +98,8 @@ const goal = (extra) => {
   return g;
 };
 const finalReport = (rs) => ({ conditions: [], requirements: rs.map((id) => ({ id, status: "met", note: "проверено по коду" })), findings: [], request: "none", question: null });
+// the lead's report carries proposed commands without ids; checks.proposed numbers them (journal-v2-format.md §2.1)
+const reported = (proposal) => proposal && { ...proposal, checks: proposal.checks.map(({ id, ...c }) => c) };
 const planOf = (conditions, checks) => ({ stages: [{ title: "Экспорт CSV", task: "Добавить выгрузку отчёта в CSV", conditions }],
   dropped: [], dropRequirements: [], question: null, checks });
 
@@ -107,7 +109,7 @@ const FIXTURES = {
     j.start(goal());
     const proposal = { checks: [], none: "В проекте нет тестов и линтера: package.json без scripts, конфигураций нет" };
     const p = j.turn({ purpose: "plan", role: "lead", provider: "codex",
-      report: planOf([{ text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }], proposal) });
+      report: planOf([{ text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }], reported(proposal)) });
     j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 0 });
     j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "autopilot", commandId: null, checks: j.text({ checks: [] }), count: 0 });
     j.rec("plan.recorded", { turnId: p, version: 1, plan: j.text({ ...planOf([{ id: "C1", text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }], null) }), firstStage: 1, stageCount: 1, conditionsAssigned: 1 });
@@ -130,7 +132,7 @@ const FIXTURES = {
       { id: "cmd-2", command: "npm run typecheck", why: "tsconfig.json и scripts.typecheck есть", source: ["package.json", "tsconfig.json"] }], none: null };
     const conditions = [{ text: "Тесты проекта проходят", covers: ["R2"], evidence: { kind: "check", check: "cmd-1" } },
       { text: "Разбор ISO 8601 с часовым поясом", covers: ["R1"], evidence: { kind: "change" } }];
-    const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, proposal) });
+    const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, reported(proposal)) });
     j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 2 });
     j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "autopilot", commandId: null, count: 2,
       checks: j.text({ checks: proposal.checks.map(({ id, command }) => ({ id, command, origin: "lead" })) }) });
@@ -156,7 +158,7 @@ const FIXTURES = {
     j.start(goal({ mode: "steps" }));
     const proposal = { checks: [{ id: "cmd-1", command: "make test", why: "Makefile: цель test", source: ["Makefile"] }], none: null };
     const conditions = [{ text: "make test проходит", covers: ["R1", "R2"], evidence: { kind: "check", check: "cmd-1" } }];
-    const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, proposal) });
+    const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, reported(proposal)) });
     j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 1 });
     j.rec("run.status", { status: "paused", reason: "awaiting_checks_decision", completion: null });
     const decided = { checks: [{ id: "cmd-1", command: "make test", origin: "lead" }] };
@@ -172,7 +174,7 @@ const FIXTURES = {
     const proposal = { checks: [{ id: "cmd-1", command: "npm test", why: "scripts.test", source: ["package.json"] },
       { id: "cmd-2", command: "npm run e2e", why: "scripts.e2e", source: ["package.json"] }], none: null };
     const p = j.turn({ purpose: "plan", role: "lead", provider: "codex",
-      report: planOf([{ text: "Тесты и e2e проходят", covers: ["R1", "R2"], evidence: { kind: "check", check: "cmd-2" } }], proposal) });
+      report: planOf([{ text: "Тесты и e2e проходят", covers: ["R1", "R2"], evidence: { kind: "check", check: "cmd-2" } }], reported(proposal)) });
     j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 2 });
     j.rec("run.status", { status: "paused", reason: "awaiting_checks_decision", completion: null });
     const decided = { checks: [{ id: "cmd-1", command: "npm test", origin: "lead" }, { id: "cmd-2", command: "npm run lint", origin: "person" }] };
@@ -212,7 +214,7 @@ const FIXTURES = {
       j.rec("finish.confirmed", { commandId, tree, commit, push: "confirm", qa: "decline" }));
     j.rec("run.status", { status: "running", reason: null, completion: null });
     const push = uuid("07:push");
-    j.rec("finish.intent", { intentId: push, step: "push", params: j.text({ step: "push", push: { remote: "origin", branch: "feature/csv", commit } }) });
+    j.rec("finish.intent", { intentId: push, step: "push", params: j.text({ step: "push", push: { remote: "origin", branch: "feature/csv", commit, tree } }) });
     j.rec("finish.result", { intentId: push, status: "done", established: false, evidence: null, commit, tree });
     j.complete("no_checks", { checks: [], requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
       finalReviewTurnId: finalTurn, runKey, checkKeys: {}, finish: { commit: "done", push: "done", qa: "declined" } });
@@ -245,7 +247,7 @@ function noChecksToFinish(j, tag) {
     qa: { environment: "qa", command: "./deploy-qa.sh", verify: "curl -fsS https://qa.example.test/version", reportsVersion: false } } }));
   const proposal = { checks: [], none: "Тестов в проекте нет" };
   const conditions = [{ text: "Кнопка «CSV» выгружает отчёт с заголовками", covers: ["R1", "R2"], evidence: { kind: "change" } }];
-  const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, proposal) });
+  const p = j.turn({ purpose: "plan", role: "lead", provider: "codex", report: planOf(conditions, reported(proposal)) });
   j.rec("checks.proposed", { turnId: p, proposal: j.text(proposal), count: 0 });
   j.rec("checks.decided", { proposalTurnId: p, decision: "accept", by: "autopilot", commandId: null, checks: j.text({ checks: [] }), count: 0 });
   j.rec("plan.recorded", { turnId: p, version: 1, plan: j.text(planOf([{ id: "C1", ...conditions[0] }], null)), firstStage: 1, stageCount: 1, conditionsAssigned: 1 });
@@ -261,7 +263,7 @@ function noChecksToFinish(j, tag) {
   j.review(finalTurn, null, finalReport(["R1", "R2"]), {}, runKey);
   const commit = oid(`${tag}:commit`);
   const intent = uuid(`${tag}:commit`);
-  j.rec("finish.intent", { intentId: intent, step: "commit", params: j.text({ step: "commit", commit: { message: "Экспорт отчёта в CSV", tree } }) });
+  j.rec("finish.intent", { intentId: intent, step: "commit", params: j.text({ step: "commit", commit: { message: "Экспорт отчёта в CSV", paths: null, runId: j.runId, tree } }) });
   j.rec("finish.result", { intentId: intent, status: "done", established: false, evidence: null, commit, tree });
   j.rec("run.status", { status: "paused", reason: "awaiting_finish_confirmation", completion: null });
   return { tree, commit, finalTurn, runKey };
