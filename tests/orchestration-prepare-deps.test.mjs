@@ -55,11 +55,14 @@ const BIN = path.join(TMP, "bin");
 fs.mkdirSync(BIN);
 const LOG = path.join(TMP, "programs.log");
 const prog = (name, body) => fs.writeFileSync(path.join(BIN, name), `#!/bin/sh\necho "${name} $*" >> "${LOG}"\n${body}\n`, { mode: 0o755 });
-// as the real npm: `ci` installs from the lock; `install` without a lock writes a new package-lock.json into the folder
+// as the real npm: `ci` installs from the lock; `install` without a lock writes a new package-lock.json into the folder,
+// unless --no-package-lock
 prog("npm", `case "$1" in
   ci) mkdir -p node_modules && echo '{}' > node_modules/.package-lock.json ;;
-  install) mkdir -p node_modules && [ -f package-lock.json ] || echo '{"lockfileVersion":3}' > package-lock.json ;;
+  install) mkdir -p node_modules
+    case " $* " in *" --no-package-lock "*) ;; *) [ -f package-lock.json ] || echo '{"lockfileVersion":3}' > package-lock.json ;; esac ;;
 esac`);
+const npmCalls = () => (fs.existsSync(LOG) ? fs.readFileSync(LOG, "utf8").split("\n").filter((l) => l.startsWith("npm ")) : []);
 prog("composer", `mkdir -p vendor && echo '<?php' > vendor/autoload.php`);
 prog("php", `case "$2" in
   key:generate) echo "APP_KEY=base64:x" >> .env ;;
@@ -144,7 +147,24 @@ test("regressions: a lock without node_modules is installed; a changed lock is i
   fs.writeFileSync(path.join(node, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.1" } } }));
   assert.deepEqual((await neededSteps(node, steps, known)).map((x) => x.step.command), ["npm ci"], "a changed lock: installed again");
   const bare = project({ "package.json": "{}" });
-  assert.deepEqual((await suggestPrepare(bare)).map((s) => s.command), ["npm install"], "the JS project itself: unchanged");
+  assert.deepEqual((await suggestPrepare(bare)).map((s) => s.command), ["npm install --no-package-lock"], "the JS project itself: installed, no lock written");
+});
+
+test("a JS project without a lock file is prepared with npm install --no-package-lock: no lock file appears, git status stays clean", OPTS, async () => {
+  const src = project({ "package.json": JSON.stringify({ name: "p", version: "1.0.0", dependencies: { "left-pad": "^1.3.0" } }) });
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]) });
+  const before = npmCalls().length;
+  const runId = randomUUID();
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["test -d node_modules"], mode: "autopilot" } })).ok);
+  const done = await settled(m, runId);
+  assert.equal(done.status, "completed", JSON.stringify(done));
+  assert.deepEqual(npmCalls().slice(before), ["npm install --no-package-lock"], "the flag reaches npm");
+  assert.equal(fs.existsSync(path.join(src, "package-lock.json")), false, "no lock file in the project");
+  assert.equal(g(src, "status", "--porcelain"), "", "the project's git status is clean");
+  // with a lock file the step stays npm ci
+  const locked = project({ "package.json": "{}", "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
+  assert.deepEqual((await suggestPrepare(locked)).map((s) => s.command), ["npm ci"]);
+  await m.shutdown();
 });
 
 test("the separate copy never writes into the project's node_modules nor its lock (sha256 and mtime before and after)", OPTS, async () => {

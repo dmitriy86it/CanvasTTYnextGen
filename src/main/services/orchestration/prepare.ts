@@ -37,10 +37,10 @@ export async function suggestPrepare(root: string, opts: { worktree?: boolean } 
         ? { command: "yarn install --immutable", unless: "node_modules/.yarn-state.yml" }
         : { command: "yarn install --frozen-lockfile", unless: "node_modules/.yarn-integrity" });
     } else if (await has("package-lock.json")) steps.push({ command: "npm ci", unless: "node_modules/.package-lock.json" });
-    // No JS lock file: `npm install` would resolve and write a new package-lock.json into the project. In a PHP project
-    // (composer.json) the package.json is its front end's, which the tests do not need (F-1: a Laravel skeleton spent
-    // 12 s and got a new lock file). A JS project without a lock still gets it.
-    else if (!(await has("composer.json"))) steps.push({ command: "npm install", unless: "node_modules" });
+    // No JS lock file: plain `npm install` would resolve and write a new package-lock.json into the project (F-1), so
+    // --no-package-lock. In a PHP project (composer.json) the package.json is its front end's, which the tests do not
+    // need (F-1: a Laravel skeleton spent 12 s on it): no step at all.
+    else if (!(await has("composer.json"))) steps.push({ command: "npm install --no-package-lock", unless: "node_modules" });
   }
   return steps;
 }

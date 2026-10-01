@@ -121,7 +121,7 @@ and a form never do.
 | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` | `node_modules/.modules.yaml` |
 | `yarn.lock` (+`.yarnrc.yml`) | `yarn install --immutable` / `--frozen-lockfile` | yarn state file |
 | `package-lock.json` (with packages besides the root) | `npm ci` | `node_modules/.package-lock.json` |
-| `package.json` only, no `composer.json` (F-1: a PHP project's front end is not prepared without a lock) | `npm install` | `node_modules` |
+| `package.json` only, no `composer.json` (F-1: a PHP project's front end is not prepared without a lock) | `npm install --no-package-lock` | `node_modules` |
 
 - **When it runs.** Before the first model turn (stage «Подготовка среды»: `prepare.started` / `prepare.finished`).
   The steps run in the user's login shell in the work folder. Afterwards readiness is checked again: a step whose
