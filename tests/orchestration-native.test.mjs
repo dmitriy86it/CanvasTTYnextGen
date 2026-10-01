@@ -84,6 +84,7 @@ function manager(env) {
   const root = path.join(TMP, `root-${++n}`);
   const file = providersFile(env);
   return createRunManager({
+    platform: "darwin", // the engine under test; the platform gate has its own tests
     root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("the restricted runtime is not used by a native goal"); },
     native: testNativeRuntime(file, () => LAUNCH)

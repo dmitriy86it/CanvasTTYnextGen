@@ -7,6 +7,7 @@ import type {
 } from "../../../../shared/contracts";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { t } from "../../lib/i18n";
+import { orchestrationAvailableHere, orchestrationEntry } from "../orchestration/runModel";
 import { PROVIDERS } from "../../lib/providers";
 import {
   CanvasMenuChevron,
@@ -172,12 +173,15 @@ export function CanvasContextMenu({
             {t(locale, "canvasMenuOpenBrowser")}
           </CanvasMenuRow>
           <CanvasMenuDivider />
-          <CanvasMenuRow icon="plus" role="menuitem" onClick={() => onCreateOrchestrationAgent("codex")}>
-            {t(locale, "orchAgentCodex")}
-          </CanvasMenuRow>
-          <CanvasMenuRow icon="plus" role="menuitem" onClick={() => onCreateOrchestrationAgent("claude")}>
-            {t(locale, "orchAgentClaude")}
-          </CanvasMenuRow>
+          {(["codex", "claude"] as const).map((provider) => {
+            const entry = orchestrationEntry(orchestrationAvailableHere());
+            return (
+              <CanvasMenuRow icon="plus" role="menuitem" key={provider} disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
+                onClick={() => onCreateOrchestrationAgent(provider)}>
+                {t(locale, provider === "codex" ? "orchAgentCodex" : "orchAgentClaude")}
+              </CanvasMenuRow>
+            );
+          })}
           <CanvasMenuDivider />
           <CanvasMenuRow
             icon="settings"

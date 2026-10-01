@@ -44,7 +44,7 @@ const testAgents = () => createTestAgents({
 });
 // agentsHook runs when a run asks for its agents: after the run exists, before anything else is written.
 function manager(root, { agentsHook = () => {}, calls = { n: 0 } } = {}) {
-  return createRunManager({ root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
+  return createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { calls.n++; agentsHook(); return testAgents(); } });
 }
 const box = (x = 0) => ({ position: { x, y: 0 }, size: { width: 320, height: 180 } });

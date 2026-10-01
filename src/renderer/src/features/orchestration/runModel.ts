@@ -23,6 +23,21 @@ export const TERMINAL_STATUSES = ["stopped", "completed", "failed"];
 
 export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission";
 
+// Where orchestration is unavailable (orchestrationAvailable() false, main refuses with unsupported_platform) its entry
+// points stay visible but inactive, with this hint: new agent cards, linking, a new goal (and so autopilot).
+export function orchestrationEntry(available: boolean): { disabled: boolean; hint: "orchUnavailablePlatform" | null } {
+  return available ? { disabled: false, hint: null } : { disabled: true, hint: "orchUnavailablePlatform" };
+}
+// This window's answer (preload). Without the API (a server render in tests, a harness) the items stay as before: main
+// refuses on its own anyway.
+export function orchestrationAvailableHere(): boolean {
+  return (globalThis as { window?: { canvasTTY?: { orchestration?: { available?: boolean } } } }).window?.canvasTTY?.orchestration?.available ?? true;
+}
+// A run's actions there: all shown, only Stop active (every other one continues the run with its CLIs).
+export function actionEnabled(action: RunAction, available: boolean): boolean {
+  return available || action === "stop";
+}
+
 export function availableActions(view: OrchestrationRunView): RunAction[] {
   if (view.halted || view.newer) return []; // a newer version's run: nothing is sent to it from here
   const clarify: RunAction[] = view.reason === "journal_corrupt" ? [] : ["clarify"];

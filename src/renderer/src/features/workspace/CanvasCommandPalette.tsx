@@ -8,6 +8,7 @@ import type {
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { UiIcon, type UiIconName } from "../../components/UiIcon";
 import { t } from "../../lib/i18n";
+import { orchestrationAvailableHere, orchestrationEntry } from "../orchestration/runModel";
 import { PROVIDERS } from "../../lib/providers";
 import {
   CanvasMenuDivider,
@@ -43,6 +44,7 @@ type CommandItem = {
   icon?: UiIconName;
   provider?: ProviderId;
   shortcut?: string;
+  disabledHint?: string; // shown, not run (orchestration where it is unavailable)
   run(): void;
 };
 
@@ -120,6 +122,7 @@ export function CanvasCommandPalette({
       label: t(locale, provider === "codex" ? "orchAgentCodex" : "orchAgentClaude"),
       searchDetail: `${t(locale, "canvasMenuActions")} agent ${provider}`,
       icon: "plus" as const,
+      disabledHint: (({ hint }) => (hint ? t(locale, hint) : undefined))(orchestrationEntry(orchestrationAvailableHere())),
       run: () => onCreateOrchestrationAgent(provider)
     })),
     {
@@ -157,7 +160,7 @@ export function CanvasCommandPalette({
   useEffect(() => setSelected(0), [query]);
 
   const run = (command: CommandItem | undefined): void => {
-    if (!command) return;
+    if (!command || command.disabledHint) return;
     command.run();
     onClose();
   };
@@ -213,6 +216,8 @@ export function CanvasCommandPalette({
         {...sharedProps}
         icon={command.icon}
         muted
+        disabled={command.disabledHint !== undefined}
+        title={command.disabledHint}
         right={command.shortcut ? <CanvasMenuKbd>{command.shortcut}</CanvasMenuKbd> : undefined}
         key={command.id}
       >{command.label}</CanvasMenuRow>

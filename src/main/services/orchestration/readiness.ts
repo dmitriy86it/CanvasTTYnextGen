@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { access, constants, lstat, readFile, readdir } from "node:fs/promises";
 import { delimiter, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
+import { orchestrationAvailable } from "../../../shared/orchestration.ts";
 import type { OrchestrationReadiness, OrchestrationReadinessItem } from "../../../shared/orchestration.ts";
 import { laravelTestDb, neededSteps, worktreeSteps } from "./prepare.ts";
 import { parseCliVersion } from "./providers.ts";
@@ -110,7 +111,7 @@ export interface ReadinessInput {
   // Stage 13: the profile's preparation (steps the autopilot runs itself when auto).
   prepare?: { steps: readonly PrepareStep[]; auto: boolean };
   dbProbe?: (host: string, port: number) => Promise<boolean>; // tests
-  platform: NodeJS.Platform;
+  platform: string; // process.platform
   gitPath: string | null;
   // The measured runtime, or why it could not be measured (the CLIs, the login shell).
   runtime: { ok: true; versions: Record<"codex" | "claude", string>; env: Readonly<Record<string, string>>; shell: string; direnv?: string } | { ok: false; code: string; detail: string };
@@ -118,14 +119,19 @@ export interface ReadinessInput {
   busy: boolean; // another run of this application works in this folder now
 }
 
+// The one platform item: a blocker wherever orchestrationAvailable() is false (project checks need macOS Seatbelt).
+export function platformItem(platform: string): OrchestrationReadinessItem {
+  return orchestrationAvailable(platform)
+    ? { id: "platform", level: "ok", detail: platform }
+    : { id: "platform", level: "blocker", detail: `project checks run only in the macOS Seatbelt sandbox, not on ${platform}`, facts: { code: "unsupported_platform" } };
+}
+
 export async function assessReadiness(input: ReadinessInput): Promise<OrchestrationReadiness> {
   const items: OrchestrationReadinessItem[] = [];
   const add = (item: OrchestrationReadinessItem) => items.push(item);
   const root = input.project;
 
-  add(input.platform === "win32"
-    ? { id: "platform", level: "blocker", detail: "the process supervisor needs POSIX process groups (macOS, Linux)" }
-    : { id: "platform", level: "ok", detail: input.platform });
+  add(platformItem(input.platform));
 
   const rt = input.runtime;
   if (!rt.ok) add({ id: rt.code === "environment_error" ? "env" : "clis", level: "blocker", detail: rt.detail.slice(0, 300), facts: { code: rt.code } });

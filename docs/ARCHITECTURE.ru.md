@@ -183,8 +183,8 @@ git cherry-pick refs/canvastty/<runId>/baseline..refs/canvastty/<runId>/stage-<n
 
 - **Платформы.**
   - Run может завершиться только на macOS: песочница проверок — Seatbelt (`sandbox-exec`).
-  - На Linux ходы идут, но каждая проверка ставит run на паузу `sandbox_unavailable`, где доступен только «Стоп».
-  - Windows получает отказ `unsupported_platform`, хотя пункты меню видны.
+  - На Linux и Windows оркестрация недоступна: новые карточки агентов, связи, цели (в том числе автопилот) и «Продолжить» получают отказ `unsupported_platform` до запуска CLI, login shell и модельных вызовов, а проверка готовности сообщает блокер `platform`, ничего не измеряя. Renderer показывает эти пункты неактивными с подсказкой «Оркестрация пока доступна только на macOS». Решает одна функция (`orchestrationAvailable` в `src/shared/orchestration.ts`); менеджер запусков получает платформу как зависимость.
+  - Запуски, уже лежащие на диске (созданные на macOS или поставленные прежней версией на паузу `sandbox_unavailable`), там видны и читаются, их можно остановить и удалить связь.
 - **CLI** зафиксированы:
   - Codex CLI 0.155.1: модель `gpt-6-astra`, reasoning high, песочница `read-only`, без пользовательского конфига и правил.
   - Claude Code 2.1.281: модель `claude-sonnet-5`, `structured-edit` (кандидатный режим: Read/Edit/Write/Glob/Grep, без shell, `--max-budget-usd 1` на ход).

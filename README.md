@@ -39,8 +39,8 @@ Download the latest release from [GitHub Releases](https://github.com/dmitriy86i
 | Platform | Canvas, terminals, browser, plugins | Agent orchestration |
 |:--|:--|:--|
 | macOS arm64 | Yes | Yes, project checks run in the Seatbelt sandbox |
-| Linux x86_64 | Yes | Turns start; the first project check pauses the run with `sandbox_unavailable` (Stop only) |
-| Windows x64 | Yes | Not available: refused as `unsupported_platform`, the menu items are still shown |
+| Linux x86_64 | Yes | Not available: the orchestration items are shown inactive |
+| Windows x64 | Yes | Not available: the orchestration items are shown inactive |
 | macOS Intel | No builds | — |
 
 Details: [orchestration requirements and limits](docs/ARCHITECTURE.md#requirements-and-limits).

@@ -1,6 +1,7 @@
 // window.canvasTTY.orchestration (stage-7-contract.md §3). No electron import: preload/index.ts passes its ipcRenderer
 // calls in, tests pass fakes.
 import { IPC } from "../shared/contracts.ts";
+import { orchestrationAvailable } from "../shared/orchestration.ts";
 import type {
   OrchestrationActivityEvent,
   OrchestrationApi,
@@ -17,7 +18,7 @@ export interface OrchestrationIpc {
 type Stamp = readonly [number, number];
 const newer = (a: Stamp, b: Stamp) => a[0] > b[0] || (a[0] === b[0] && a[1] > b[1]);
 
-export function createOrchestrationClient(ipc: OrchestrationIpc): OrchestrationApi {
+export function createOrchestrationClient(ipc: OrchestrationIpc, platform: string): OrchestrationApi {
   // Listeners per run on this page. The first one asks main for the page's one subscription (watch); the others only
   // read the current state (get); the last one to leave releases it (unwatch).
   const runs = new Map<string, Set<(e: OrchestrationRunEvent) => void>>();
@@ -32,6 +33,7 @@ export function createOrchestrationClient(ipc: OrchestrationIpc): OrchestrationA
   });
 
   return {
+    available: orchestrationAvailable(platform),
     catalog: () => ipc.invoke(IPC.orchestrationCatalog),
     list: () => ipc.invoke(IPC.orchestrationList),
     get: (runId) => ipc.invoke(IPC.orchestrationGet, runId),
