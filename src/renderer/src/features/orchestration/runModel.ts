@@ -11,7 +11,7 @@ import type {
   OrchestrationRunView
 } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
-import { t } from "../../lib/i18n.ts";
+import { t, type TranslationKey } from "../../lib/i18n.ts";
 
 // The same sets the service uses (orchestrationService.ts); the service still decides.
 const RESUMABLE = ["user_request", "step_done", "plan_review", "permission_denied", "loop_suspected", "environment_error", "recovered",
@@ -414,6 +414,39 @@ export const APP_FAILURE_STEPS: readonly string[] = ["relay_failed", "relay_inco
 export function nextStepKey(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
   const step = pauseEnding(view, entries);
   return step !== null && APP_FAILURE_STEPS.includes(step) ? "app_failure" : runHeadline(view).next;
+}
+
+// A provider's usage limit ended the turn the run is paused for. The journal keeps paused(environment_error) (format v1
+// has no other reason for a failed turn); the CLI's own message is in that turn's activity. The one recorded message is
+// Codex's (codex-cli 0.155.1, evidence/real-stage-13/series-S3-S5-S6-attempt2): "You’ve hit your usage limit. … try again
+// at Sep 28th, 2026 11:51 PM." No real Claude limit message has been recorded, so a Claude limit still reads as an
+// environment error. The reset is the CLI's own words, not parsed.
+const USAGE_LIMIT = /\bhit your usage limit\b/i;
+export function providerLimit(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): { provider: string; resetsAt: string | null } | null {
+  if (view.status !== "paused" || view.reason !== "environment_error") return null;
+  let at = entries.length - 1;
+  while (at >= 0 && entries[at].kind !== "turn_finished") at--;
+  const finished = at >= 0 ? entries[at] : undefined;
+  if (!finished?.turnId) return null;
+  // the pause must be that turn's own, as in pauseEnding
+  if (entries.slice(at + 1).some((x) => x.kind === "status" && x.detail?.status !== "paused" && x.detail?.status !== "pausing")) return null;
+  const error = entries.slice(0, at).find((e) => e.turnId === finished.turnId && e.kind === "error" && USAGE_LIMIT.test(e.text));
+  if (!error) return null;
+  return { provider: error.provider ?? finished.provider ?? "provider", resetsAt: /try again at (.+?)\.?\s*$/i.exec(error.text)?.[1] ?? null };
+}
+
+const PROVIDER_NAMES: Record<string, string> = { codex: "Codex", claude: "Claude" };
+export const providerName = (provider: string): string => PROVIDER_NAMES[provider] ?? provider;
+// The next step as said to the person: a provider's limit is waited out (or the account changed), not fixed in the
+// environment and not raised in the run's budget; everything else is orchNext_<nextStepKey>.
+export function nextStepText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
+  const limit = providerLimit(view, entries);
+  if (limit) {
+    return t(locale, limit.resetsAt ? "orchNext_provider_limit_at" : "orchNext_provider_limit")
+      .replaceAll("{provider}", providerName(limit.provider)).replace("{at}", limit.resetsAt ?? "");
+  }
+  const key = nextStepKey(view, entries);
+  return t(locale, `orchNext_${key}` as TranslationKey) ?? key;
 }
 
 export function participantState(role: "lead" | "executor", view: OrchestrationRunView | null, entries: readonly OrchestrationActivityEntry[],

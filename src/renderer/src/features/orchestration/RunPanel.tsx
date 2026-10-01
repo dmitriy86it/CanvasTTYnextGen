@@ -30,7 +30,9 @@ import {
   historyLines,
   outcomeOf,
   parsePlan,
-  nextStepKey,
+  nextStepText,
+  providerLimit,
+  providerName,
   orchestrationAvailableHere,
   orchestrationEntry,
   participantState,
@@ -75,8 +77,15 @@ function useNow(ms = 1000): number {
 
 // Why the run is paused: the step that ended the turn when main recorded it, else the reason's general words.
 function reasonText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
+  const limit = providerLimit(view, entries);
+  if (limit) return t(locale, "orchReason_provider_limit").replace("{provider}", providerName(limit.provider));
   const step = pauseEnding(view, entries);
   return step && known(locale, `orchEnding_${step}`) ? tr(locale, `orchEnding_${step}`) : tr(locale, `orchReason_${view.reason}`);
+}
+
+// The headline of a pause a provider's usage limit caused is not "the environment needs preparing".
+function headlineText(locale: LocaleId, headline: string, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
+  return providerLimit(view, entries) ? t(locale, "orchHeadline_provider_limit") : tr(locale, `orchHeadline_${headline}`);
 }
 
 function lineText(locale: LocaleId, line: HistoryLine): string {
@@ -614,7 +623,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
 
       <Section id="outcome" title={t(locale, "orchSum_outcome")} src="journal" locale={locale}>
         <p className={`orch-sum__outcome orch-sum__outcome--${outcome}`} data-sum-outcome={outcome}>
-          <b>{tr(locale, `orchHeadline_${head.headline}`)}</b> — {tr(locale, `orchSumOutcome_${outcome}`)}
+          <b>{headlineText(locale, head.headline, view, orch.activity[runId]?.entries ?? [])}</b> — {tr(locale, `orchSumOutcome_${outcome}`)}
         </p>
         {view.reason && <p><b>{t(locale, "orchSum_reason")}:</b> {reasonText(locale, view, orch.activity[runId]?.entries ?? [])}</p>}
         {outcome === "completed" && <p className="orch-hint" data-sum-scope>{t(locale, "orchSumScope")}</p>}
@@ -731,7 +740,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
         {next ? <p className="orch-panel__text" data-sum-next>{next} <Src locale={locale} kind="agent" /></p> : missing}
         {view.newer
           ? <p className="orch-hint" data-orch-read-only-next>{t(locale, "orchReadOnlyHint")}</p>
-          : <p className="orch-hint">{t(locale, "orchSumAppHint")}: {tr(locale, `orchNext_${nextStepKey(view, orch.activity[runId]?.entries ?? [])}`)}</p>}
+          : <p className="orch-hint">{t(locale, "orchSumAppHint")}: {nextStepText(locale, view, orch.activity[runId]?.entries ?? [])}</p>}
       </Section>
     </div>
   );
@@ -1011,7 +1020,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
           <section ref={summary} tabIndex={-1} className={`orch-summary orch-summary--${head.headline} orch-panel__status orch-panel__status--${view.status}${flash ? " orch-summary--flash" : ""}${panel.tab !== "overview" ? " orch-summary--compact" : ""}`}
             role="status" aria-live="polite" data-orch-summary data-headline={head.headline}>
             <div className="orch-summary__headline">
-              <strong>{tr(locale, `orchHeadline_${head.headline}`)}</strong>
+              <strong>{headlineText(locale, head.headline, view, activity.entries)}</strong>
               {view.reason && <span data-orch-reason>{reasonText(locale, view, activity.entries)}</span>}
             </div>
             {endedHere && panel.tab !== "summary" && (
@@ -1047,7 +1056,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
               </dl>
             )}
             {accessMismatch && <p className="dialog-error" data-orch-access-mismatch>{t(locale, "orchAccessMismatchWarn")}</p>}
-            {!view.newer && <p className="orch-summary__next" data-orch-next><b>{t(locale, "orchNextStep")}:</b> {tr(locale, `orchNext_${nextStepKey(view, activity.entries)}`)}</p>}
+            {!view.newer && <p className="orch-summary__next" data-orch-next><b>{t(locale, "orchNextStep")}:</b> {nextStepText(locale, view, activity.entries)}</p>}
             {head.headline === "awaiting_plan_review" && plan.length > 0 && (
               <ol className="orch-summary__plan" data-orch-summary-plan start={planFirst}>{plan.map((p, i) => <li key={i}><strong>{p.title}</strong><span>{p.task}</span></li>)}</ol>
             )}
