@@ -146,11 +146,17 @@ async function runIn(src, workMode, commands, extra = {}) {
     said: entries.filter((e) => e.detail?.dependencies === true).map((e) => e.text).join("; ") };
 }
 const result = (r, dir) => r.deps?.find((d) => d.dir === dir);
+// Clones need APFS (macOS). Elsewhere the same runs take the other path, asserted instead of skipped: installed in the
+// copy, the reason said, the project untouched.
+const APFS = process.platform === "darwin" && fs.statfsSync(TMP).type === 26;
+const noClone = (r, dir) => assert.deepEqual(result(r, dir), { dir, result: "installed", reason: "could not clone: clonefile needs APFS" });
 const MODES = ["copy", "worktree"];
 
 for (const mode of MODES) {
   test(`${mode} repro: a check that imports the project's node_modules passes`, OPTS, async () => {
-    const { done, entries } = await runIn(nodeProject(), mode, [NODE_CHECK]);
+    const r = await runIn(nodeProject(), mode, [NODE_CHECK]);
+    const { done, entries } = r;
+    if (!APFS) return noClone(r, "node_modules");
     assert.equal(done.status, "completed", JSON.stringify({ done, checks: entries.filter((e) => e.kind.startsWith("check")).map((e) => [e.kind, e.text]) }));
   });
 
@@ -160,6 +166,7 @@ for (const mode of MODES) {
     const lockBefore = fingerprints(src)["package-lock.json"];
     const npm = runs("npm");
     const r = await runIn(src, mode, [NODE_CHECK]);
+    if (!APFS) { noClone(r, "node_modules"); assert.deepEqual(fingerprints(path.join(src, "node_modules")), before); return; }
     assert.equal(r.done.status, "completed");
     assert.deepEqual(result(r, "node_modules"), { dir: "node_modules", result: "cloned", reason: "package-lock.json matches the project's", lock: "package-lock.json",
       sha256: createHash("sha256").update(fs.readFileSync(path.join(src, "package-lock.json"))).digest("hex"), ms: result(r, "node_modules").ms });
@@ -208,6 +215,7 @@ for (const mode of MODES) {
     const before = fingerprints(path.join(src, "vendor"));
     const composer = runs("composer");
     const r = await runIn(src, mode, [PHP_CHECK]);
+    if (!APFS) { noClone(r, "vendor"); assert.deepEqual(fingerprints(path.join(src, "vendor")), before); return; }
     assert.equal(r.done.status, "completed");
     assert.equal(result(r, "vendor").result, "cloned");
     assert.equal(result(r, "node_modules").result, "skipped");
@@ -265,8 +273,9 @@ async function loadRunPanel() {
 test("the run panel: «Зависимости: склонированы из проекта» / installed in the copy", OPTS, async () => {
   const render = await loadRunPanel();
   const cloned = await runIn(nodeProject(), "copy", [NODE_CHECK]);
-  assert.match(render("ru", cloned.done, cloned.entries), /Зависимости:<\/dt><dd data-board="deps">склонированы из проекта</);
-  assert.match(render("en", cloned.done, cloned.entries), /Dependencies:<\/dt><dd data-board="deps">cloned from the project</);
+  if (!APFS) assert.match(render("ru", cloned.done, cloned.entries), /data-board="deps">установлены в копии</);
+  else assert.match(render("ru", cloned.done, cloned.entries), /Зависимости:<\/dt><dd data-board="deps">склонированы из проекта</);
+  if (APFS) assert.match(render("en", cloned.done, cloned.entries), /Dependencies:<\/dt><dd data-board="deps">cloned from the project</);
   const installed = await runIn(nodeProject(), "worktree", ["true"], { cloneDir: async () => { throw new Error("x"); } });
   assert.match(render("ru", installed.done, installed.entries), /data-board="deps">установлены в копии</);
   const project = await runIn(nodeProject(), "project", ["true"]);
