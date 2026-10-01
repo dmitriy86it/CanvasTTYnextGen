@@ -216,7 +216,7 @@ export interface OrchestrationRunProgress {
   branch: string | null;
   access: { claude: string; codex: string } | null;
   checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: "code" | "environment" | "external" | null }[]; // the latest result of each
-  prepare: { status: string; failed: string | null; class: "code" | "environment" | "external" | null } | null;
+  prepare: { status: string; failed: string | null; class: "code" | "environment" | "external" | null; command: string | null; output: { sha256: string; bytes: number } | null } | null;
   // version (QA): what the verification established about the deployed version (see OrchestrationQaVersion);
   // observed: the commit id the verification reported (only a validated id, never other output)
   finish: { step: "commit" | "push" | "qa"; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null }[];

@@ -33,6 +33,9 @@ async function until(fn, what, ms = 60_000) {
   throw new Error(`timed out waiting for ${what}`);
 }
 let n = 0;
+// manifests that ask for something to install (an empty one has nothing to prepare: prepare.ts hasSomethingToInstall)
+const DEPS_PKG = JSON.stringify({ dependencies: { "left-pad": "^1.3.0" } });
+const DEPS_COMPOSER = JSON.stringify({ name: "a/b", require: { php: ">=8.2" } });
 function project(files) {
   const dir = path.join(TMP, `project-${++n}`);
   fs.mkdirSync(dir);
@@ -117,7 +120,7 @@ function fingerprints(dir) {
 }
 
 test("F-1: a Laravel project without a JS lock file is prepared without npm; no package-lock.json appears in it", OPTS, async () => {
-  const src = project({ "composer.json": JSON.stringify({ name: "a/b" }), artisan: "", ".env.example": "APP_KEY=\n", "app.php": "<?php // broken\n",
+  const src = project({ "composer.json": DEPS_COMPOSER, artisan: "", ".env.example": "APP_KEY=\n", "app.php": "<?php // broken\n",
     "package.json": JSON.stringify({ private: true, type: "module", scripts: { build: "vite build" }, devDependencies: { vite: "^7.0.0" } }),
     "phpunit.xml": '<phpunit><php><env name="DB_CONNECTION" value="sqlite"/></php></phpunit>', "tests/Feature/AppTest.php": "<?php\n" });
   assert.equal((await suggestPrepare(src)).some((s) => /\bnpm\b/.test(s.command)), false, "no npm step is suggested");
@@ -136,7 +139,7 @@ test("F-1: a Laravel project without a JS lock file is prepared without npm; no 
 });
 
 test("regressions: a lock without node_modules is installed; a changed lock is installed again; a Node project without a lock keeps npm install", async () => {
-  const node = project({ "package.json": "{}", "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
+  const node = project({ "package.json": DEPS_PKG, "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
   const steps = await suggestPrepare(node);
   assert.deepEqual(steps.map((s) => s.command), ["npm ci"]);
   assert.deepEqual((await neededSteps(node, steps)).map((x) => x.step.command), ["npm ci"], "no node_modules: installed");
@@ -146,7 +149,7 @@ test("regressions: a lock without node_modules is installed; a changed lock is i
   assert.deepEqual(await neededSteps(node, steps, known), [], "installed and unchanged");
   fs.writeFileSync(path.join(node, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.1" } } }));
   assert.deepEqual((await neededSteps(node, steps, known)).map((x) => x.step.command), ["npm ci"], "a changed lock: installed again");
-  const bare = project({ "package.json": "{}" });
+  const bare = project({ "package.json": DEPS_PKG });
   assert.deepEqual((await suggestPrepare(bare)).map((s) => s.command), ["npm install --no-package-lock"], "the JS project itself: installed, no lock written");
 });
 
@@ -162,14 +165,14 @@ test("a JS project without a lock file is prepared with npm install --no-package
   assert.equal(fs.existsSync(path.join(src, "package-lock.json")), false, "no lock file in the project");
   assert.equal(g(src, "status", "--porcelain"), "", "the project's git status is clean");
   // with a lock file the step stays npm ci
-  const locked = project({ "package.json": "{}", "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
+  const locked = project({ "package.json": DEPS_PKG, "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
   assert.deepEqual((await suggestPrepare(locked)).map((s) => s.command), ["npm ci"]);
   await m.shutdown();
 });
 
 test("the separate copy never writes into the project's node_modules nor its lock (sha256 and mtime before and after)", OPTS, async () => {
   const lock = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } });
-  const src = project({ "package.json": "{}", "package-lock.json": lock, "a.txt": "1\n" });
+  const src = project({ "package.json": DEPS_PKG, "package-lock.json": lock, "a.txt": "1\n" });
   fs.mkdirSync(path.join(src, "node_modules", "left-pad"), { recursive: true });
   fs.writeFileSync(path.join(src, "node_modules", ".package-lock.json"), lock);
   fs.writeFileSync(path.join(src, "node_modules", "left-pad", "index.js"), "module.exports = (s) => s;\n");

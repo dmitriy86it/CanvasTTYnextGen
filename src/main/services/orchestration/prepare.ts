@@ -24,13 +24,13 @@ export const LARAVEL_ENV_STEP: Readonly<PrepareStep> = Object.freeze({
 export async function suggestPrepare(root: string, opts: { worktree?: boolean } = {}): Promise<PrepareStep[]> {
   const steps: PrepareStep[] = [];
   const has = (f: string) => exists(join(root, f));
-  if (await has("composer.json")) {
+  if (await has("composer.json") && await hasSomethingToInstall(root, "composer.json")) {
     steps.push({ command: "composer install --no-interaction --no-progress", unless: "vendor/autoload.php" });
   }
   if (await has("artisan") && await has(".env.example") && (opts.worktree || (!(await has(".env")) && !(await has(".env.testing"))))) {
     steps.push({ ...LARAVEL_ENV_STEP });
   }
-  if (await has("package.json")) {
+  if (await has("package.json") && await hasSomethingToInstall(root, "package.json")) {
     if (await has("pnpm-lock.yaml")) steps.push({ command: "pnpm install --frozen-lockfile", unless: "node_modules/.modules.yaml" });
     else if (await has("yarn.lock")) {
       steps.push(await has(".yarnrc.yml")
@@ -43,6 +43,29 @@ export async function suggestPrepare(root: string, opts: { worktree?: boolean } 
     else if (!(await has("composer.json"))) steps.push({ command: "npm install --no-package-lock", unless: "node_modules" });
   }
   return steps;
+}
+
+// Whether a manifest asks for anything to install. npm, yarn and pnpm: a non-empty dependencies, devDependencies,
+// optionalDependencies or workspaces in package.json; composer: a non-empty require or require-dev in composer.json.
+// Without any, the install succeeds and makes no node_modules/vendor. A manifest that is missing or cannot be parsed is
+// not judged: something to install.
+const MANIFEST_KEYS = { "package.json": ["dependencies", "devDependencies", "optionalDependencies", "workspaces"], "composer.json": ["require", "require-dev"] };
+export type Manifest = keyof typeof MANIFEST_KEYS;
+export async function hasSomethingToInstall(root: string, manifest: Manifest): Promise<boolean> {
+  let m: unknown;
+  try { m = JSON.parse(await readFile(join(root, manifest), "utf8")); } catch { return true; }
+  if (!m || typeof m !== "object" || Array.isArray(m)) return true;
+  const full = (v: unknown): boolean => Array.isArray(v) ? v.length > 0
+    : !!v && typeof v === "object" && Object.values(v).some((x) => (Array.isArray(x) ? x.length > 0 : x !== null && x !== undefined)); // workspaces: { packages: [] }
+  return MANIFEST_KEYS[manifest].some((k) => full((m as Record<string, unknown>)[k]));
+}
+
+// The manifest an install step follows: its marker is under node_modules (npm, yarn, pnpm) or vendor (composer).
+function manifestOf(step: PrepareStep): Manifest | null {
+  const u = step.unless ?? "";
+  if (u === "node_modules" || u.startsWith("node_modules/")) return "package.json";
+  if (u.startsWith("vendor/") && /\bcomposer\b/.test(step.command)) return "composer.json";
+  return null;
 }
 
 // The profile's steps for a run in a fresh worktree: a profile suggested in a project folder that has its .env has no
@@ -91,9 +114,13 @@ export async function neededSteps(workDir: string, steps: readonly PrepareStep[]
   return out;
 }
 
-// `npm ci` of a package-lock.json without dependencies succeeds and writes no node_modules: nothing to prepare, and
-// its marker never appears. ponytail: npm only; pnpm/yarn locks without packages still wait for their marker.
-async function installsNothing(workDir: string, step: PrepareStep): Promise<boolean> {
+// An install step with nothing to install succeeds and writes no node_modules/vendor: nothing to prepare, and its
+// marker never appears. Judged by the project's files as they are now (hasSomethingToInstall), never by the run's
+// journal; also `npm ci` of a package-lock.json without packages. ponytail: pnpm/yarn locks without packages are judged
+// by package.json only.
+export async function installsNothing(workDir: string, step: PrepareStep): Promise<boolean> {
+  const manifest = manifestOf(step);
+  if (manifest && !(await hasSomethingToInstall(workDir, manifest))) return true;
   if (lockOf(step) !== "package-lock.json") return false;
   try {
     const lock = JSON.parse(await readFile(join(workDir, "package-lock.json"), "utf8")) as { lockfileVersion?: unknown; packages?: Record<string, unknown>; dependencies?: Record<string, unknown> };
