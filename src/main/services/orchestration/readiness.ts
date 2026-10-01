@@ -158,17 +158,17 @@ export async function assessReadiness(input: ReadinessInput): Promise<Orchestrat
   add(input.workMode === "project"
     ? { id: "workdir", level: "info", detail: "the agents work in the project folder and change its files directly", facts: { path: root } }
     : input.workMode === "worktree"
-      ? { id: "workdir", level: "info", detail: "a separate Git worktree on its own branch: ignored files (vendor/, node_modules/, .env) are prepared in it", facts: { path: root, mode: "worktree" } }
-      : { id: "workdir", level: "warning", detail: "a separate copy: ignored files (vendor/, node_modules/, .env) are not in it", facts: { path: root } });
+      ? { id: "workdir", level: "info", detail: "a separate Git worktree on its own branch: node_modules/ and vendor/ are cloned from the project when their lock files match, the rest is prepared in it", facts: { path: root, mode: "worktree" } }
+      : { id: "workdir", level: "warning", detail: "a separate copy: node_modules/ and vendor/ are cloned from the project when their lock files match, the rest is prepared in it; .env is not in it", facts: { path: root } });
   if (input.busy) add({ id: "busy", level: "blocker", detail: "another run works in this folder now" });
 
   const s = await suggestCommands(root);
   add({ id: "stack", level: s.stack === "unknown" ? "info" : "ok", detail: s.stack, facts: { stack: s.stack, suggest: s.commands.join("\n"), laravel: s.laravel } });
-  // Preparation: what the profile's steps would do now. In a worktree everything ignored is missing at the start.
-  // the separate copy prepares nothing (its checks link the dependencies themselves)
-  const prep = input.workMode === "copy" ? undefined
-    : input.prepare && input.workMode === "worktree" ? { ...input.prepare, steps: await worktreeSteps(root, input.prepare.steps) } : input.prepare;
-  const needed = prep ? (input.workMode === "worktree" ? prep.steps.map((step, index) => ({ step, index })) : await neededSteps(root, prep.steps)) : [];
+  // Preparation: what the profile's steps would do now. In a copy or a worktree everything ignored is missing at the
+  // start (the dependency folders cloned from the project then need no step; that is known only once they are).
+  const fresh = input.workMode !== "project";
+  const prep = input.prepare && fresh ? { ...input.prepare, steps: await worktreeSteps(root, input.prepare.steps) } : input.prepare;
+  const needed = prep ? (fresh ? prep.steps.map((step, index) => ({ step, index })) : await neededSteps(root, prep.steps)) : [];
   if (prep && needed.length) {
     add({
       id: "prepare", level: prep.auto ? "info" : "warning",

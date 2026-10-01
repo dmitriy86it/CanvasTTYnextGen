@@ -178,12 +178,14 @@ test("the separate copy never writes into the project's node_modules nor its loc
   const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
   const before = runs("npm");
   const runId = randomUUID();
-  // a native copy is a clone: the ignored node_modules is not in it, and nothing links or installs one there (LC-12)
+  // a native copy is a clone: the ignored node_modules is cloned from the project (APFS) or installed in the copy,
+  // never linked (tests/orchestration-copy-deps.test.mjs)
+  const apfs = process.platform === "darwin" && fs.statfsSync(TMP).type === 26;
   const cmd = "grep -qx 2 a.txt";
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["c"], checks: [], commands: [cmd], workMode: "copy", mode: "autopilot" } })).ok);
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
-  assert.equal(runs("npm") - before, 0, "the copy prepares nothing");
+  assert.equal(runs("npm") - before, apfs ? 0 : 1, apfs ? "cloned: nothing to install" : "no clone without APFS: npm ci in the copy");
   assert.deepEqual(fingerprints(path.join(src, "node_modules")), deps, "the project's node_modules is untouched");
   assert.deepEqual(fingerprints(src)["package-lock.json"], lockBefore);
   assert.equal(fs.readFileSync(path.join(src, "a.txt"), "utf8"), "1\n", "the project itself is not the copy");

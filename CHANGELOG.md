@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- Runs in a separate copy or a worktree get the project's dependencies: `node_modules/` and `vendor/` are cloned from the project (APFS clonefile, no bytes copied, nothing written into the project) when their lock files match, otherwise installed in the copy by the preparation. The run panel says which.
+- One classification of a pause for every place that says why a run paused: the activity rows, the agent cards, the run panel's feed and history now name a provider's usage limit as the panel does, not "environment error".
+- A JS project without a lock file is prepared with `npm install --no-package-lock`, so no package-lock.json is written into it.
 - A provider's usage limit (the recorded Codex message) is no longer shown as an environment error: the run panel names the provider and the reset time the CLI gave and offers waiting or another account, not fixing dependencies or raising the run's budget. A PHP project with a front-end package.json and no JS lock file is no longer prepared with `npm install`, which wrote a new package-lock.json into it. The Even G2 companion waits for its pairing log write when it closes.
 - Orchestration is offered only where a run can finish (macOS): on Linux and Windows its items are shown inactive with a hint, and new links, goals and Resume are refused before any CLI or model call, so no tokens are spent on a run that would pause at its first check. Existing runs there can still be read, stopped and unlinked. The deb package's Maintainer is now the fork's packager, and a failed browser tab-restore setting is logged instead of left unhandled.
 - Added the Biome linter in lint-only mode (`npm run lint`, CI step Lint); the formatter stays off.

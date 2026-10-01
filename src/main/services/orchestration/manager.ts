@@ -43,6 +43,7 @@ import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
 import type { SupervisorLaunch } from "./types.ts";
 import { diffTreeNames, diffTreePath, openWorkspace, readWorkspacePlace } from "./workspace.ts";
+import type { CloneDir } from "./workspace.ts";
 import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
 import { orchestrationAvailable } from "../../../shared/orchestration.ts";
@@ -70,6 +71,7 @@ export interface RunManagerDeps {
   launch(): SupervisorLaunch;
   nodePath(): string; // the node-test check's program (its own real path)
   agents(attemptRoot: string): Promise<AgentAdapter>; // runs of stages 4–11 (goals whose checks are catalog ids)
+  cloneDir?: CloneDir; // tests only: the clone of a dependency folder
   // Stage 12: the CLIs as the user runs them in a terminal of `project`. Absent: new goals with commands are refused.
   // Stage 13: direnv — apply the project's allowed .envrc (the project profile's choice).
   // direnvCwd: a worktree run's folder (direnv applies there); worktreePending: a worktree run not created yet.
@@ -230,7 +232,8 @@ export function createRunManager(deps: RunManagerDeps) {
           list: async () => (await profiles.get(source))?.grants ?? [],
           add: async (g) => { await profiles.addGrant(source, g); }
         },
-        checks: { registry: checkRegistry(deps.nodePath()), deps: null, launch: deps.launch(), shell: { shell: rt.shell, env: rt.env } }
+        checks: { registry: checkRegistry(deps.nodePath()), deps: null, launch: deps.launch(), shell: { shell: rt.shell, env: rt.env } },
+        ...(deps.cloneDir ? { cloneDir: deps.cloneDir } : {})
       }) };
     }
     const [checksDeps, agents] = [await preparedDeps(source), await deps.agents(attemptRoot)];
@@ -478,9 +481,10 @@ export function createRunManager(deps: RunManagerDeps) {
         refuse("access_unsupported", `Codex ${access.codex}: the protocol of Codex ${version ?? rt.versions.codex.slice(0, 60)} was not compared`);
       }
     }
-    // The separate copy (stages 3–11) prepares nothing: its checks run with the dependencies it links itself.
-    const steps = !profile.prepare.auto || workMode === "copy" ? []
-      : workMode === "worktree" ? await worktreeSteps(source, profile.prepare.steps) : profile.prepare.steps;
+    // A separate copy and a worktree start without the project's ignored files: the dependency folders are cloned from
+    // the project when their lock files match (cloneDependencies), the rest is prepared in them.
+    const steps = !profile.prepare.auto ? []
+      : workMode === "project" ? profile.prepare.steps : await worktreeSteps(source, profile.prepare.steps);
     return {
       ...rest, mode,
       commands: rest.commands?.length ? rest.commands : profile.checks,

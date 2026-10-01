@@ -32,7 +32,8 @@ import type { AskPerson, PermissionAsk, PermissionReply } from "./sessions.ts";
 import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
 import type { OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
-import { WorkspaceError, createWorkspace, diffPaths, inPlace, openWorkspace, readCommit, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
+import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
+import type { CloneDir } from "./workspace.ts";
 import type { AgentAccess } from "./access.ts";
 import { isClaudeAccess, isCodexAccess } from "./access.ts";
 import type { GoalFinish } from "./cycle.ts";
@@ -85,6 +86,7 @@ export interface OrchestrationDeps {
   // Stage 13: the permission decisions the person saved for the run's project (the project profile). Only the
   // project's own grants; absent: nothing is saved beyond the run.
   grants?: { list(): Promise<readonly OrchestrationGrant[]>; add(grant: Omit<OrchestrationGrant, "id" | "grantedAt">): Promise<void> };
+  cloneDir?: CloneDir; // tests only: the clone of a dependency folder (cloneDependencies)
 }
 
 export type RunCommand =
@@ -872,7 +874,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const shell = deps.checks.shell;
     if (!shell) { await setStatus("paused", "environment_error"); return; }
     const all = goal.prepare?.steps ?? [];
-    const known = Object.assign({}, ...state().orch.prepares.map((p) => p.locks ?? {})) as Record<string, string>;
+    // the lock files of the folders cloned from the project count as installed, as the preparation's own records do
+    const cloned = Object.fromEntries((await readDependencyRecord(ws)).filter((d) => d.result === "cloned" && d.lock && d.sha256).map((d) => [d.lock, d.sha256]));
+    const known = Object.assign(cloned, ...state().orch.prepares.map((p) => p.locks ?? {})) as Record<string, string>;
     const needed = await neededSteps(ws.repo, all, known);
     const prepareId = randomUUID();
     const plan = await j(() => writer.putText(canonical(needed.map(({ step, index }) => ({ index, command: step.command, unless: step.unless })))));
@@ -1601,6 +1605,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     handle,
     async start() {
       await setStatus("running");
+      // A copy or a worktree of a native run: the project's dependency folders, before any preparation (stages 4–11
+      // link node_modules themselves).
+      if (!deps.checks.deps && ws.mode !== "project") {
+        const dirs = (await cloneDependencies(ws, deps.cloneDir).catch(() => [])).filter((d) => d.result !== "skipped");
+        if (dirs.length) {
+          observe((a) => a.prepare("prepare_finished", dirs.map((d) => `${d.dir}: ${d.result === "cloned" ? "cloned from the project" : `installed in the copy (${d.reason})`}`).join("; "),
+            { dependencies: true, ...Object.fromEntries(dirs.map((d) => [d.dir, d.result])) }));
+        }
+      }
       schedule();
     }
   };

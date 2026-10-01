@@ -233,7 +233,7 @@ test("preparation in a worktree: the .env step is added although the project fol
   assert.equal(p.items.find((i) => i.id === "testdb").level, "ok");
 });
 
-test("the separate copy prepares nothing; an npm lock without dependencies needs no npm ci (LC-12)", OPTS, async () => {
+test("the separate copy is prepared as a fresh worktree; an npm lock without dependencies needs no npm ci (LC-12)", OPTS, async () => {
   const lock = JSON.stringify({ name: "p", version: "1.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "p", version: "1.0.0" } } });
   const empty = project({ "package.json": '{"name":"p","version":"1.0.0"}', "package-lock.json": lock });
   const steps = await suggestPrepare(empty);
@@ -241,10 +241,11 @@ test("the separate copy prepares nothing; an npm lock without dependencies needs
   assert.deepEqual(await neededSteps(empty, steps), [], "npm ci would succeed and write no node_modules");
   const withDeps = project({ "package.json": "{}", "package-lock.json": JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/left-pad": { version: "1.3.0" } } }) });
   assert.equal((await neededSteps(withDeps, steps)).length, 1);
-  // the copy: nothing prepared (a run as in stages 3–11), the dependencies of its checks are its own business
-  const src = project({ "package.json": "{}", "package-lock.json": "{}", "a.txt": "1\n" });
-  const r = await assessReadiness({ ...READY, project: src, commands: ["true"], workMode: "copy", prepare: { steps: await suggestPrepare(src), auto: true } });
-  assert.equal(r.items.find((i) => i.id === "prepare"), undefined);
+  // the copy starts without the ignored files, as a worktree: every step is listed (folders cloned from the project
+  // are skipped once they are, tests/orchestration-copy-deps.test.mjs); a project without them prepares nothing
+  const r = await assessReadiness({ ...READY, project: withDeps, commands: ["true"], workMode: "copy", prepare: { steps, auto: true } });
+  assert.equal(r.items.find((i) => i.id === "prepare").facts.steps, "npm ci");
+  const src = project({ "a.txt": "1\n" });
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["c"], checks: [], commands: ["grep -qx 2 a.txt"], workMode: "copy", mode: "autopilot" } })).ok);

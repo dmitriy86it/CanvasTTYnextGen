@@ -3,9 +3,11 @@
 // primitives snapshots.ts builds on. Every Git call goes through git.ts with an explicit GIT_DIR; the source repository
 // only gains objects and create-only refs/canvastty/<runId>/* refs, its index, tree, HEAD and branches never change.
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, lstat, mkdir, mkdtemp, open, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { copyFile, lstat, mkdir, mkdtemp, open, readdir, readFile, readlink, realpath, rename, rm, stat, statfs, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { GitError, git } from "./git.ts";
 import type { GitContext, GitRunOptions } from "./git.ts";
 import { isUuid } from "./journal.ts";
@@ -579,6 +581,82 @@ async function copyTree(ws: Workspace, baseTree: string): Promise<string> {
   });
   await assertNoGitlinks(controlCtx(ws), tree);
   return tree;
+}
+
+// ---------- the project's dependency folders in a copy or a worktree ----------
+
+// The copy is a clone and the worktree a checkout: neither has the project's ignored folders, so checks that need its
+// dependencies fail there. Before the preparation, each folder the project has and the copy ignores is cloned from the
+// project (APFS clonefile: no bytes copied, nothing shared that a write in the copy could reach) when its lock file in
+// the copy is the project's, byte for byte. Otherwise the preparation installs it in the copy, as in a new project.
+// Nothing is written into the project and no link leads into it. The outcome is a file of the run's folder (deps.json).
+export const DEPENDENCY_DIRS: readonly { dir: string; locks: readonly string[] }[] = [
+  { dir: "node_modules", locks: ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"] },
+  { dir: "vendor", locks: ["composer.lock"] }
+];
+const DEPS_RECORD = "deps.json";
+// cloned: in the copy now; installed: left to the preparation in the copy (reason says why); skipped: nothing to do.
+export interface DependencyResult { dir: string; result: "cloned" | "installed" | "skipped"; reason: string; lock?: string; sha256?: string; ms?: number }
+// Clones the folder `from` as `to` (which does not exist yet), or fails; never copies bytes.
+export type CloneDir = (from: string, to: string) => Promise<void>;
+const APFS = 26; // statfs f_type of APFS on macOS
+// `cp -c` falls back to a byte copy across volumes or on a file system without clones: both are ruled out first.
+const cloneDirApfs: CloneDir = async (from, to) => {
+  const [a, b] = await Promise.all([statfs(from), statfs(dirname(to))]);
+  if (a.type !== APFS || b.type !== APFS) throw new Error("clonefile needs APFS");
+  if ((await stat(from)).dev !== (await stat(dirname(to))).dev) throw new Error("the project and the copy are on different volumes");
+  await execFileAsync("/bin/cp", ["-cR", "--", from, to], { maxBuffer: 1024 * 1024 });
+};
+const execFileAsync = promisify(execFile);
+const sha256Of = (p: string) => readFile(p).then((b) => createHash("sha256").update(b).digest("hex"), () => null);
+const within = (child: string, parent: string) => child === parent || child.startsWith(parent + sep);
+
+export async function cloneDependencies(ws: Workspace, cloneDir: CloneDir = cloneDirApfs): Promise<DependencyResult[]> {
+  if (ws.mode === "project") return [];
+  const out: DependencyResult[] = [];
+  for (const { dir, locks } of DEPENDENCY_DIRS) out.push(await cloneDependency(ws, dir, locks, cloneDir));
+  await writeJson(ws.dir, DEPS_RECORD, { v: 1, dirs: out });
+  return out;
+}
+
+export async function readDependencyRecord(ws: Workspace): Promise<DependencyResult[]> {
+  const r = await readFile(join(ws.dir, DEPS_RECORD), "utf8").then((t) => JSON.parse(t) as { dirs?: DependencyResult[] }, () => null);
+  return Array.isArray(r?.dirs) ? r.dirs : [];
+}
+
+async function cloneDependency(ws: Workspace, dir: string, locks: readonly string[], cloneDir: CloneDir): Promise<DependencyResult> {
+  const from = join(ws.sourcePath, dir);
+  const to = join(ws.repo, dir);
+  const installed = (reason: string): DependencyResult => ({ dir, result: "installed", reason });
+  if (!(await lstat(from).then((st) => st.isDirectory(), () => false))) return { dir, result: "skipped", reason: "not in the project" };
+  if (await lstat(to).then(() => true, () => false)) return { dir, result: "skipped", reason: "already in the copy" };
+  // as the run's snapshots see it (copyTree): a folder the copy does not ignore would become part of the changes
+  const ignored = await run(controlCtx(ws, { workTree: ws.repo }), ["check-ignore", "-q", "--no-index", "--", `${dir}/`]).then(() => true, () => false);
+  if (!ignored) return installed(`${dir}/ is not ignored by git`);
+  let lock: string | undefined;
+  for (const l of locks) if (await lstat(join(ws.sourcePath, l)).then(() => true, () => false)) { lock = l; break; }
+  if (!lock) return installed("the project has no lock file for it");
+  const sha = await sha256Of(join(ws.sourcePath, lock));
+  if (!sha || sha !== (await sha256Of(join(ws.repo, lock)))) return installed(`${lock} in the copy differs from the project's`);
+  const started = Date.now();
+  try {
+    await linksStayInside(from);
+    await cloneDir(from, to);
+  } catch (error) {
+    await rm(to, { recursive: true, force: true }); // the copy's own, partly cloned folder
+    return installed(`could not clone: ${errCode(error) ?? (error instanceof Error ? error.message : String(error))}`);
+  }
+  return { dir, result: "cloned", reason: `${lock} matches the project's`, lock, sha256: sha, ms: Date.now() - started };
+}
+
+// A link that leads out of the folder refuses the clone: a write through it would reach the project.
+async function linksStayInside(top: string): Promise<void> {
+  for (const e of await readdir(top, { recursive: true, withFileTypes: true })) {
+    if (!e.isSymbolicLink()) continue;
+    const link = join(e.parentPath, e.name);
+    const target = await readlink(link);
+    if (isAbsolute(target) || !within(resolve(dirname(link), target), top)) throw new Error(`a link leads out of the folder: ${link.slice(top.length + 1)}`);
+  }
 }
 
 // ---------- the orchestrator's node_modules link ----------
