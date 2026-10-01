@@ -117,7 +117,7 @@ export function historyLines(records: readonly OrchestrationHistoryRecord[]): Hi
     switch (r.type) {
       case "run.status":
         // the turn whose end this status may be (pauseCause): kept only while the run does not go on
-        line("status", { ...pick(d, "status", "reason"), turnId: endedTurn });
+        line("status", { ...pick(d, "status", "reason"), ...((d.completion as { kind?: string } | null | undefined)?.kind === "no_checks" ? { status: "completed_no_checks" } : {}), turnId: endedTurn });
         if (d.status !== "paused" && d.status !== "pausing") endedTurn = null;
         break;
       case "orch.turn": purposes.set(d.turnId, d.purpose); line("turn", pick(d, "purpose", "stage", "round")); break;
@@ -320,8 +320,8 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
     case "clarify": return { kind: "clarify", text: input.text ?? "" };
     case "raise_limit": return { kind: "raise_limit", limit: (input.limit ?? "turns") as "turns", value: input.value ?? 0 };
     case "recover": return { kind: "recover", action: input.recover ?? "accept", ...(input.confirm ? { confirm: true } : {}) };
-    case "checks_decide": return { kind: "checks_decide", decision: input.checks ? "edit" : "accept", ...(input.checks ? { checks: input.checks } : {}) };
-    case "finish_confirm": return { kind: "finish_confirm", tree: input.tree ?? "", commit: input.commit ?? null, push: input.push ?? null, qa: input.qa ?? null };
+    case "checks_decide": return { kind: "checks.decide", decision: input.checks ? "edit" : "accept", ...(input.checks ? { checks: input.checks } : {}) };
+    case "finish_confirm": return { kind: "finish.confirm", tree: input.tree ?? "", commit: input.commit ?? null, push: input.push ?? null, qa: input.qa ?? null };
     case "permission": return {
       kind: "permission", requestId: input.requestId ?? "", decision: input.decision ?? "deny", ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}), ...(input.feedback !== undefined ? { feedback: input.feedback } : {})

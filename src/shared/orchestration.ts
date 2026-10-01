@@ -122,8 +122,8 @@ export type OrchestrationRunCommand =
   | { kind: "dismiss" }
   // journal v2 (journal-v2-format.md §2.1): «Принять» / «Изменить» of the lead's proposed check commands, and the
   // person's push/QA decision of a run completed without checks, for the tree and commit shown in the dialog
-  | { kind: "checks_decide"; decision: "accept" | "edit"; checks?: string[] }
-  | { kind: "finish_confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
+  | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
+  | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   | {
     kind: "permission"; requestId: string; decision: OrchestrationPermissionOption; answers?: Record<string, string[]>;
     content?: Record<string, unknown>; // an MCP form's values (accept)
@@ -199,7 +199,7 @@ export interface OrchestrationRunView {
   progress?: OrchestrationRunProgress;
   // journal v2, on the pause awaiting_checks_decision: the lead's proposal (numbered by the application)
   proposal?: { checks: { id: string; command: string; why: string; source: string[] }[]; none: string | null } | null;
-  // journal v2, on the pause awaiting_finish_confirmation: the tree and commit the decision is about (finish_confirm's
+  // journal v2, on the pause awaiting_finish_confirmation: the tree and commit the decision is about (finish.confirm's
   // payload) and the steps the goal asked for
   confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only

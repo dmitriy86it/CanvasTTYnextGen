@@ -29,6 +29,7 @@ import {
   type V2Event,
   type CompletionKind,
   sha256Hex,
+  textsConflict,
   unfinishedWork
 } from "./journal.ts";
 import type { Stage13Event } from "./journal.ts";
@@ -764,8 +765,8 @@ export async function openRun(root: string, runId: string, options: OpenRunOptio
     if (!Buffer.isBuffer(buf)) return fail("journal_corrupt", "the journal is over the size limit", TOO_LARGE_DETAIL);
     refuseNewer(buf);
     const parsed = parseJournal(buf, runId);
-    const integrity = parsed.integrity;
-    if (integrity.status === "corrupt") fail("journal_corrupt", `line ${integrity.detail.line}: ${integrity.detail.code}`, integrity.detail);
+    const integrity = await withTexts(dir, parsed);
+    if (integrity.status === "corrupt") fail("journal_corrupt", `line ${integrity.detail.line}: ${integrity.detail.code}${integrity.detail.phase ? ` (${integrity.detail.phase})` : ""}`, integrity.detail);
     if (integrity.status === "torn_tail" && !options.acceptTornTail) {
       fail("journal_torn_tail", "the journal ends with a torn record; reopen with acceptTornTail", integrity.detail);
     }
@@ -811,6 +812,25 @@ export async function openRun(root: string, runId: string, options: OpenRunOptio
   return writer;
 }
 
+// Journal v2, the second stage of reading (textsConflict): corrupt with phase "texts". A text that cannot be read is
+// left to whoever reads it next (openRun fails on the goal as before).
+async function withTexts(dir: string, parsed: ReturnType<typeof parseJournal>): Promise<ReturnType<typeof parseJournal>["integrity"]> {
+  const st: RunState | null = parsed.state;
+  if (st?.version !== 2 || (parsed.integrity.status !== "ok" && parsed.integrity.status !== "torn_tail")) return parsed.integrity;
+  const read = async <T>(ref: TextRef): Promise<T> => JSON.parse((await readTextFile(join(dir, TEXTS, ref.sha256), ref)).toString("utf8")) as T;
+  let why: string | null;
+  try {
+    why = textsConflict(st, {
+      goal: await read(st.goal),
+      proposal: st.orch.checksProposal ? await read(st.orch.checksProposal.ref) : null,
+      decision: st.orch.checksDecision ? await read(st.orch.checksDecision.ref) : null
+    });
+  } catch {
+    return parsed.integrity;
+  }
+  return why === null ? parsed.integrity : { status: "corrupt", detail: { line: st.lastSeq + 1, offset: parsed.validBytes, code: "replay_conflict", phase: "texts" } };
+}
+
 const refuseNewer = (buf: Buffer | { head: Buffer }): void => {
   const version = newerVersion(Buffer.isBuffer(buf) ? buf : buf.head);
   if (version !== null) fail("journal_newer_version", `the journal was written by version ${version}`, { version });
@@ -826,6 +846,8 @@ export async function readRun(root: string, runId: string): Promise<RunReadResul
       : { status: "newer_version", detail: { version, chain: { status: "corrupt", detail: TOO_LARGE_DETAIL } } } };
   }
   const parsed = parseJournal(buf, runId);
+  const integrity = await withTexts(dir, parsed);
+  if (integrity !== parsed.integrity) return { state: null, canContinue: false, integrity };
   // a newer version's state is shown as journaled: what it still runs is not called interrupted here
   if (parsed.state && parsed.integrity.status !== "newer_version_compatible") { markInterruptedChecks(parsed.state); markInterruptedOperations(parsed.state); }
   return { state: parsed.state, integrity: parsed.integrity, canContinue: parsed.integrity.status === "ok" };

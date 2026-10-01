@@ -179,3 +179,17 @@ test("the fixtures of the format (A4's final form, no formatPreview): read only 
     }
   }
 });
+
+// §2.1 «Поле checks отчёта плана»: in a v2 journal every plan turn but the proposing one answers checks: null; a v1
+// journal keeps its plan schema (I1-10).
+test("the plan report of v2: checks null in every plan turn but the proposing one; a proposal there is invalid", async () => {
+  const { PLAN_V2_SCHEMA, PLAN_PROPOSAL_SCHEMA, REPORT_SCHEMAS } = await import("../src/main/services/orchestration/orchestrationService.ts");
+  const { validateAnswer } = await import("../src/main/services/orchestration/schema.ts");
+  const plan = { stages: [{ title: "t", task: "x" }], question: null };
+  assert.deepEqual(validateAnswer(PLAN_V2_SCHEMA, { ...plan, checks: null }), []);
+  assert.notDeepEqual(validateAnswer(PLAN_V2_SCHEMA, plan), [], "checks is required");
+  assert.notDeepEqual(validateAnswer(PLAN_V2_SCHEMA, { ...plan, checks: { checks: [], none: "x" } }), [], "a proposal outside the proposing turn");
+  assert.deepEqual(validateAnswer(PLAN_PROPOSAL_SCHEMA, { ...plan, checks: { checks: [], none: "x" } }), []);
+  assert.deepEqual(validateAnswer(REPORT_SCHEMAS.plan, plan), [], "v1 unchanged");
+  assert.notDeepEqual(validateAnswer(REPORT_SCHEMAS.plan, { ...plan, checks: null }), []);
+});

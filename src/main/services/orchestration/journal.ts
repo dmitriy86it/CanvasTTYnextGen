@@ -289,7 +289,7 @@ export type CorruptCode =
 export type ChainIntegrity =
   | { status: "ok" }
   | { status: "torn_tail"; detail: { offset: number; bytes: number } }
-  | { status: "corrupt"; detail: { line: number; offset: number; code: CorruptCode } }; // line is 1-based
+  | { status: "corrupt"; detail: { line: number; offset: number; code: CorruptCode; phase?: "texts" } }; // line is 1-based; phase: v2 second stage
 // newer_version: written by a newer version (acceptance-review-spec.md §2.2): only its hash chain is checked (chain), no
 // record is replayed, and nothing may write to it. fallback: it declared minReaderVersion this build can read, but a
 // record did not replay by v1 rules (line, code), so it is shown like any other newer journal.
@@ -733,9 +733,13 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
   const d = rec.data;
   const o = state.orch;
   // A command decision is written before its command.completed (stage-5-contract.md §6).
-  const openCommand = () => {
-    if (state.commands[d.commandId as string]?.status !== "received") conflict(`command ${String(d.commandId)} is not in progress`);
+  const openCommand = (kind?: string) => {
+    const c = state.commands[d.commandId as string];
+    if (c?.status !== "received") conflict(`command ${String(d.commandId)} is not in progress`);
+    if (kind && c.kind !== kind) conflict(`command ${String(d.commandId)} is not ${kind}`);
   };
+  // v2: proposed check commands without a decision: only the commands' records and run.status until it (§2.1)
+  if (proposalWaits(state) && rec.type !== "checks.decided") conflict(`${rec.type} while the proposed check commands wait for a decision`);
   const completedTurn = (id: string, purposes: readonly string[]) => {
     const t = o.turns[id];
     if (!t || !purposes.includes(t.purpose)) conflict(`turn ${id} is not a ${purposes.join("/")} turn`);
@@ -747,7 +751,6 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       const id = d.turnId as string;
       // written before turn.intent; a bare turn.intent (without orch.turn) stays valid
       if (Object.hasOwn(o.turns, id) || Object.hasOwn(state.turns, id)) conflict(`orch.turn ${id} is not before its intent`);
-      if (proposalWaits(state)) conflict("a turn while the proposed check commands wait for a decision");
       o.lastOrchTurn = id;
       o.turns[id] = {
         purpose: d.purpose as TurnPurpose, stage: d.stage as number | null, round: d.round as number | null,
@@ -759,7 +762,6 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       completedTurn(d.turnId as string, ["plan"]);
       // v2: the plan of the turn that proposed check commands is recorded only after they are accepted, with no other
       // turn in between; after «Изменить» that turn's plan is dropped (journal-v2-format.md §2.4)
-      if (proposalWaits(state)) conflict("a plan while the proposed check commands wait for a decision");
       if (o.checksProposal?.turnId === d.turnId) {
         if (o.checksDecision?.decision !== "accept") conflict("the plan of a proposal that was not accepted");
         if (o.lastOrchTurn !== d.turnId) conflict("another turn between the accepted proposal and its plan");
@@ -936,13 +938,13 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (auto !== (d.commandId === null) || (auto && d.decision !== "accept")) conflict("an autopilot decision is an acceptance without a command");
       if (auto && p.sandboxNetwork !== "denied") conflict("the autopilot accepts proposed commands only when the checks' sandbox denies the network");
       if (d.decision === "accept" && d.count !== p.count) conflict("an acceptance changes the number of commands");
-      if (!auto) openCommand();
+      if (!auto) openCommand("checks.decide");
       o.checksDecision = { decision: d.decision as "accept" | "edit", by: d.by as "autopilot" | "person", commandId: d.commandId as string | null,
         ref: d.checks as TextRef, count: d.count as number, seq: rec.seq };
       break;
     }
     case "finish.confirmed":
-      openCommand();
+      openCommand("finish.confirm");
       o.confirmations.push({ commandId: d.commandId as string, tree: d.tree as string, commit: d.commit as string | null,
         push: d.push as FinishDecision | null, qa: d.qa as FinishDecision | null, seq: rec.seq });
       break;
@@ -976,11 +978,12 @@ export function checksPassed(state: RunState, ids: readonly string[]): boolean {
 }
 
 // v2: run.status(completed) only as the completion function allows it — the part decidable from the records (the
-// rest, from the goal text, is checked by completion.ts on reading). journal-v2-format.md §2.3, A1.
+// rest, from the texts, is textsConflict below). journal-v2-format.md §2.3, A1.
 function completedAllowed(state: RunState, completion: { kind: CompletionKind }): void {
   const o = state.orch;
   if (proposalWaits(state)) conflict("completed while the proposed check commands wait for a decision");
   if (o.finish.some((f) => f.status === "in_flight" || f.status === "outcome_unknown" || f.status === "unknown")) conflict("completed with an action after success without its result");
+  if (!o.plan || Object.keys(o.accepted).length < o.plan.firstStage - 1 + o.plan.stageCount) conflict("completed with a stage of the plan not accepted");
   const last = o.lastOrchTurn;
   if (!last || o.turns[last]?.purpose !== "final_review" || !o.reviews.some((r) => r.turnId === last && r.verdict === "complete")) {
     conflict("completed without a final review that completes the run");
@@ -989,6 +992,38 @@ function completedAllowed(state: RunState, completion: { kind: CompletionKind })
   const expected: CompletionKind = decided?.count === 0 ? "no_checks" : "confirmed";
   if (completion.kind !== expected) conflict(`completed ${completion.kind}, the checks say ${expected}`);
   if (decided && !checksPassed(state, Array.from({ length: decided.count }, (_, i) => `cmd-${i + 1}`))) conflict("completed confirmed with a check that did not pass");
+}
+
+// v2, the second stage of reading: the rules that need the texts (journal-v2-format.md §2.1 and §2.3, their A1 part —
+// the goal's commands, the proposal, the decision and the completion's kind and checks). A violation: corrupt with
+// phase "texts". ponytail: finish.intent params against the confirmation and the A2–A4 rules come with their records.
+export interface V2Texts {
+  goal: { commands?: unknown; mode?: unknown };
+  proposal: { checks: { id: string; command: string }[] } | null;
+  decision: { checks: { id: string; command: string; origin: string }[] } | null;
+}
+export function textsConflict(state: RunState, t: V2Texts): string | null {
+  const o = state.orch;
+  const own = Array.isArray(t.goal.commands) ? t.goal.commands as unknown[] : null;
+  const numbered = (xs: { id: string }[], n: number) => xs.length === n && xs.every((x, i) => x.id === `cmd-${i + 1}`);
+  if (o.checksProposal) {
+    if (own?.length !== 0) return "check commands proposed for a goal that has its own";
+    if (!t.proposal || !numbered(t.proposal.checks, o.checksProposal.count)) return "the proposal's lines do not match its record";
+  } else if (own?.length === 0 && (o.plan || Object.keys(state.checks).length)) return "a plan or a check of a goal without commands and without a decision";
+  const d = o.checksDecision;
+  if (d) {
+    if (!t.decision || !t.proposal || !numbered(t.decision.checks, d.count)) return "the decision's lines do not match its record";
+    if (d.by === "autopilot" && t.goal.mode !== undefined && t.goal.mode !== "autopilot") return "an autopilot decision in step mode";
+    const proposed = t.proposal.checks.map((c) => c.command);
+    if (d.decision === "accept" && t.decision.checks.some((c, i) => c.command !== proposed[i])) return "an acceptance that is not the proposal";
+    if (t.decision.checks.some((c) => c.origin !== (proposed.includes(c.command) ? "lead" : "person"))) return "an origin against the rule";
+  }
+  if (state.completion) {
+    const n = d ? d.count : own?.length ?? 0;
+    if ((state.completion.kind === "no_checks") !== (n === 0)) return `completed ${state.completion.kind} with ${n} check commands`;
+    if (state.completion.kind === "confirmed" && !checksPassed(state, Array.from({ length: n }, (_, i) => `cmd-${i + 1}`))) return "completed confirmed with a command that did not pass";
+  }
+  return null;
 }
 
 // In-flight turns and received-but-not-completed commands, in journal order.

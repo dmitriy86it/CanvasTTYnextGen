@@ -13,7 +13,8 @@ import type { SupervisorLaunch } from "./types.ts";
 import { snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
 import type { Workspace } from "./workspace.ts";
 
-export const NO_SANDBOX_SHA256 = createHash("sha256").update("canvastty:no-sandbox:user-shell").digest("hex");
+import { NO_SANDBOX_SHA256 } from "./journal.ts";
+export { NO_SANDBOX_SHA256 }; // one value: the journal's replay rules check it (journal-v2-format.md §2.1)
 
 export interface ShellCheckOptions {
   ws: Workspace;

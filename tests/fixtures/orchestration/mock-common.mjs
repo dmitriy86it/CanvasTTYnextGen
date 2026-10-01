@@ -87,11 +87,13 @@ export const readSchema = (s) => { try { return JSON.parse(s); } catch { return 
 // Unset: the answer as scripted.
 export function withProposal(answer, schema) {
   const mode = process.env.MOCK_CHECKS;
+  // journal v2: a plan turn that proposes nothing answers checks: null (journal-v2-format.md §2.1)
+  if (schema?.properties?.checks?.type === "null" && mode !== "forced" && answer && typeof answer === "object" && Array.isArray(answer.stages) && !("checks" in answer)) return { ...answer, checks: null };
   if (!mode || !answer || typeof answer !== "object" || !Array.isArray(answer.stages) || answer.question !== null || "checks" in answer) return answer;
   if (!schema?.properties?.checks && mode !== "forced") return answer;
   const command = process.env.MOCK_CHECK_COMMAND ?? "true";
   const checks = mode === "none" ? { checks: [], none: "the project has no test, build or lint command for this goal" }
-    : mode === "invalid" ? { checks: [{ command, why: "", source: [] }], none: null }
+    : mode === "invalid" ? { checks: [{ command, why: " ", source: [] }], none: null } // the schema takes it, the rule "says why" does not
       : { checks: [{ command, why: "runs the project's tests", source: ["package.json"] }], none: null };
   return { ...answer, checks };
 }

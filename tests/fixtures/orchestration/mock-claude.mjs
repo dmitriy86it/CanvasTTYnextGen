@@ -30,7 +30,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { MODE, SIZES, ledger, emit, readTask, loadState, saveTurn, reportFor, holdStdout, stderrFlood, hold, readSchema, scriptedTurn, lineReader, recordDecision, mcpToolCall, mcpConnect } from "./mock-common.mjs";
+import { MODE, SIZES, ledger, emit, readTask, loadState, saveTurn, reportFor, holdStdout, stderrFlood, hold, readSchema, scriptedTurn, lineReader, recordDecision, mcpToolCall, mcpConnect, withProposal } from "./mock-common.mjs";
 
 ledger(process.pid, "mock-claude");
 ledger(process.ppid, "parent"); // under startTurn: the supervisor
@@ -118,7 +118,7 @@ async function run(task, prev) {
     process.exitCode = 1;
     return;
   }
-  const report = script ? script.answer : reportFor(st, readSchema(flags["--json-schema"]), resumeId !== null);
+  const report = script ? withProposal(script.answer, readSchema(flags["--json-schema"])) : reportFor(st, readSchema(flags["--json-schema"]), resumeId !== null);
   const text = "Done."; // result text is not the answer; structured_output is
   await emit(assistant(text, 0));
   await emit({ ...base, subtype: "success", is_error: false, result: text, ...(MODE === "no_structured" ? {} : { structured_output: report }), ...(edit ? denialsField(denials) : {}) });
@@ -317,7 +317,7 @@ async function host() {
   if (MODE === "fail") {
     await emit({ type: "result", subtype: "error_during_execution", is_error: true, session_id: sessionId, duration_ms: 1, num_turns: 1 });
   } else {
-    const report = script ? script.answer : reportFor(st, readSchema(flags["--json-schema"]), resumeId !== null);
+    const report = script ? withProposal(script.answer, readSchema(flags["--json-schema"])) : reportFor(st, readSchema(flags["--json-schema"]), resumeId !== null);
     await emit({ type: "assistant", session_id: sessionId, message: { id: "msg_0", type: "message", role: "assistant", model: "mock", content: [{ type: "text", text: "Done." }], stop_reason: null } });
     await emit({ type: "result", subtype: "success", is_error: false, session_id: sessionId, result: "Done.", duration_ms: 1, num_turns: 1, total_cost_usd: 0, structured_output: report });
   }

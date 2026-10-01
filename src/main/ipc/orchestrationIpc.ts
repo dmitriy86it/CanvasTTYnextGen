@@ -145,13 +145,13 @@ export function parseCommand(v: unknown): { runId: string; commandId: string; ex
       };
       break;
     }
-    case "checks_decide":
+    case "checks.decide":
       obj(c, "command", ["kind", "decision"], ["checks"]);
       if (c.decision !== "accept" && c.decision !== "edit") bad("command.decision is unknown");
       if ((c.decision === "edit") !== (c.checks !== undefined)) bad("command.checks: exactly with edit");
       command = { kind: c.kind, decision: c.decision as "accept" | "edit", ...(c.checks !== undefined ? { checks: Array.isArray(c.checks) && c.checks.length === 0 ? [] : strings(c.checks, "command.checks", 16, 1000) } : {}) };
       break;
-    case "finish_confirm": {
+    case "finish.confirm": {
       obj(c, "command", ["kind", "tree", "commit", "push", "qa"]);
       const oid = (x: unknown, what: string) => (typeof x === "string" && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(x) ? x : bad(`${what} must be a Git object id`));
       const step = (x: unknown, what: string) => (x === null || x === "confirm" || x === "decline" ? x : bad(`${what} must be confirm, decline or null`));

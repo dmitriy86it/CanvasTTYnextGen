@@ -18,7 +18,7 @@ import { createRunManager, testNativeRuntime } from "../src/main/services/orches
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { buildProfile } from "../src/main/services/orchestration/sandbox.ts";
 import { openRun, readRun } from "../src/main/services/orchestration/store.ts";
-import { agentState, availableActions, runStatusKey } from "../src/renderer/src/features/orchestration/runModel.ts";
+import { agentState, availableActions, historyLines, runStatusKey } from "../src/renderer/src/features/orchestration/runModel.ts";
 import { outcomeKey, roleStatus, runStatus, stateLabel } from "../src/renderer/src/features/orchestration/runStatus.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -134,7 +134,7 @@ test("empty commands, autopilot, the lead proposes: the network of native checks
   for (const command of [{ kind: "resume" }, { kind: "step" }, { kind: "clarify", text: "x" }]) {
     assert.deepEqual(await send(m, await view(m, runId), command), { status: "rejected", code: "invalid_state" }, command.kind);
   }
-  assert.equal((await send(m, await view(m, runId), { kind: "checks_decide", decision: "accept" })).status, "accepted");
+  assert.equal((await send(m, await view(m, runId), { kind: "checks.decide", decision: "accept" })).status, "accepted");
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
   assert.deepEqual([done.progress.completion, done.progress.checksFrom], ["confirmed", "proposal"]);
@@ -146,7 +146,7 @@ test("empty commands, autopilot, the lead proposes: the network of native checks
   assert.deepEqual(all.at(-1).data.completion.kind, "confirmed");
   assert.deepEqual(shown(done), { key: "completed", lead: "completed", executor: "completed", row: "completed", card: "completed", outcome: "completed" });
   // a second decision: there is nothing to decide
-  assert.equal((await send(m, done, { kind: "checks_decide", decision: "accept" })).code, "invalid_state");
+  assert.equal((await send(m, done, { kind: "checks.decide", decision: "accept" })).code, "invalid_state");
   await m.shutdown();
 });
 
@@ -156,8 +156,8 @@ test("step by step: «Изменить» drops the proposal turn's plan, a new p
   const runId = await start(m, src, { commands: [], mode: "steps" });
   let v = await settled(m, runId, "the proposal");
   assert.equal(v.reason, "awaiting_checks_decision");
-  assert.equal((await send(m, v, { kind: "checks_decide", decision: "edit", checks: ["grep -qx 2 a.txt", "test -f a.txt", "test -f a.txt"] })).code, "invalid_command", "repeated lines");
-  assert.equal((await send(m, await view(m, runId), { kind: "checks_decide", decision: "edit", checks: ["grep -qx 2 a.txt", "test -f a.txt"] })).status, "accepted");
+  assert.equal((await send(m, v, { kind: "checks.decide", decision: "edit", checks: ["grep -qx 2 a.txt", "test -f a.txt", "test -f a.txt"] })).code, "invalid_command", "repeated lines");
+  assert.equal((await send(m, await view(m, runId), { kind: "checks.decide", decision: "edit", checks: ["grep -qx 2 a.txt", "test -f a.txt"] })).status, "accepted");
   v = await settled(m, runId, "the plan review");
   assert.deepEqual([v.status, v.reason], ["paused", "plan_review"]);
   for (;;) {
@@ -192,7 +192,7 @@ test("the lead proposes none: completed without checks — never «Completed»; 
   });
   let v = await settled(m, runId, "the proposal");
   assert.deepEqual([v.reason, v.proposal.checks.length, typeof v.proposal.none], ["awaiting_checks_decision", 0, "string"]);
-  assert.equal((await send(m, v, { kind: "checks_decide", decision: "accept" })).status, "accepted");
+  assert.equal((await send(m, v, { kind: "checks.decide", decision: "accept" })).status, "accepted");
   v = await settled(m, runId, "the push/QA confirmation");
   assert.deepEqual([v.status, v.reason], ["paused", "awaiting_finish_confirmation"]);
   assert.deepEqual(v.progress.finish.map((f) => [f.step, f.status]), [["commit", "done"], ["push", "not_started"], ["qa", "not_started"]]);
@@ -202,11 +202,23 @@ test("the lead proposes none: completed without checks — never «Completed»; 
   assert.deepEqual([v.confirm.push, v.confirm.qa, v.confirm.commit], [true, true, v.progress.finish[0].commit]);
   assert.match(v.confirm.tree, /^[0-9a-f]{40}$/);
   assert.equal((await send(m, v, { kind: "resume" })).code, "invalid_state");
-  // another tree than the one shown, a step left undecided: refused
-  assert.equal((await send(m, v, { kind: "finish_confirm", tree: "0".repeat(40), commit: v.confirm.commit, push: "confirm", qa: "confirm" })).code, "invalid_state");
-  assert.equal((await send(m, v, { kind: "finish_confirm", tree: v.confirm.tree, commit: v.confirm.commit, push: "confirm", qa: null })).code, "invalid_command");
+  // a step left undecided: refused; another tree than the one here: the view shows the current one to decide again
+  assert.equal((await send(m, v, { kind: "finish.confirm", tree: v.confirm.tree, commit: v.confirm.commit, push: "confirm", qa: null })).code, "invalid_command");
+  assert.equal((await send(m, v, { kind: "finish.confirm", tree: "0".repeat(40), commit: v.confirm.commit, push: "confirm", qa: "confirm" })).code, "stale_revision");
+  // the work changed during the pause (I1-1): the decision shown is refused, the view shows the new tree, nothing is stuck
+  const shownTree = v.confirm.tree;
+  const committed = fs.readFileSync(path.join(v.workDir, "a.txt"));
+  fs.writeFileSync(path.join(v.workDir, "a.txt"), "edited during the pause\n");
+  assert.equal((await send(m, v, { kind: "finish.confirm", tree: v.confirm.tree, commit: v.confirm.commit, push: "confirm", qa: "confirm" })).code, "stale_revision");
+  v = await view(m, runId);
+  assert.notEqual(v.confirm.tree, shownTree);
+  assert.equal(v.confirm.commit, null, "the new tree has no commit yet");
+  fs.writeFileSync(path.join(v.workDir, "a.txt"), committed); // back to the committed tree: the shown commit applies again
+  assert.equal((await send(m, v, { kind: "finish.confirm", tree: v.confirm.tree, commit: v.confirm.commit, push: "confirm", qa: "confirm" })).code, "stale_revision");
+  v = await view(m, runId);
+  assert.deepEqual([v.confirm.tree, v.confirm.commit === v.progress.finish[0].commit], [shownTree, true]);
   // decided independently: no push, QA yes
-  assert.equal((await send(m, v, { kind: "finish_confirm", tree: v.confirm.tree, commit: v.confirm.commit, push: "decline", qa: "confirm" })).status, "accepted");
+  assert.equal((await send(m, v, { kind: "finish.confirm", tree: v.confirm.tree, commit: v.confirm.commit, push: "decline", qa: "confirm" })).status, "accepted");
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
   assert.equal(done.progress.completion, "no_checks");
@@ -219,8 +231,19 @@ test("the lead proposes none: completed without checks — never «Completed»; 
   assert.notEqual(stateLabel("ru", "completed_no_checks"), stateLabel("ru", "completed"));
   assert.match(stateLabel("ru", "completed_no_checks"), /без проверок/);
   assert.match(stateLabel("en", "completed_no_checks"), /without checks/);
-  const last = (await records(m, runId)).at(-1);
+  const all = await records(m, runId);
+  const last = all.at(-1);
   assert.deepEqual([last.type, last.data.status, last.data.completion.kind], ["run.status", "completed", "no_checks"]);
+  // the journal's lines and the activity say so too (I1-6)
+  assert.equal(historyLines(all).filter((l) => l.kind === "status").at(-1).parts.status, "completed_no_checks");
+  const act = (await m.activity(runId, 0, 1000)).value.entries.filter((e) => e.kind === "status");
+  assert.equal(act.at(-1).detail.status, "completed_no_checks");
+  assert.equal(act.some((e) => e.detail.status === "completed"), false);
+  // each decision: its record, command.completed, then the run goes on (journal-v2-format.md §2.4)
+  for (const t of ["checks.decided", "finish.confirmed"]) {
+    const at = all.findIndex((r) => r.type === t);
+    assert.deepEqual(all.slice(at, at + 3).map((r) => [r.type, r.data.status ?? null]), [[t, null], ["command.completed", null], ["run.status", "running"]], t);
+  }
   await m.shutdown();
 });
 
@@ -254,6 +277,21 @@ test("the goal's own commands in v2: the run of v1 (regression) — no checks.* 
   assert.equal(JSON.parse(journalOf(m, runId).toString().split("\n")[0]).v, 2);
   assert.equal(all.some((r) => r.type.startsWith("checks.")), false);
   await m.shutdown();
+  // the second stage of reading (the goal's text): «completed, confirmed» with the goal's command failed or never run,
+  // or a proposal for a goal that has its own commands — corrupt, phase texts (I1-5)
+  const buf = journalOf(m, runId);
+  const file = path.join(m.root, "runs", runId, "journal.jsonl");
+  const texts = async (fn) => {
+    const b = rewrite(buf, runId, fn);
+    assert.equal(parseJournal(b, runId).integrity.status, "ok", "the records alone replay");
+    fs.writeFileSync(file, b);
+    const r = await readRun(m.root, runId);
+    return [r.integrity.status, r.integrity.detail?.phase ?? null, r.canContinue];
+  };
+  assert.deepEqual(await texts((r) => r), ["ok", null, true]);
+  assert.deepEqual(await texts((r) => { for (const x of r) if (x.type === "check.finished") Object.assign(x.data, { status: "failed", exitCode: 1 }); return r; }), ["corrupt", "texts", false]);
+  assert.deepEqual(await texts((r) => r.filter((x) => !x.type.startsWith("check."))), ["corrupt", "texts", false]);
+  fs.writeFileSync(file, buf);
 });
 
 // ---------------- the flag ----------------
@@ -285,7 +323,7 @@ async function linkOf(m, src) {
 
 // ---------------- recovery (§2.5) ----------------
 
-test("a decision recorded before the end, the run still on its pause: reopening writes paused(recovered); Resume continues", OPTS, async () => {
+for (const completed of [false, true]) test(`a decision recorded before the end${completed ? " with its command.completed" : ""}, the run still on its pause: reopening pauses it as recovered; Resume continues`, OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
   // one MOCK_STATE for both processes: the lead's session is resumed after the restart
   const env = { MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt", MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")) };
@@ -294,13 +332,13 @@ test("a decision recorded before the end, the run still on its pause: reopening 
   const v = await settled(m, runId, "the proposal");
   assert.equal(v.reason, "awaiting_checks_decision");
   await m.shutdown();
-  // the end came after the decision and its command.completed, before run.status(running) (the order of §2.4)
+  // the end came after the decision — before its command.completed, or after it — before run.status(running) (§2.4)
   const w = await openRun(m.root, runId);
   const st = w.state();
   const commandId = randomUUID();
-  await w.recordCommand(commandId, "checks_decide", { expectedRevision: st.orch.revision, command: { kind: "checks_decide", decision: "accept" } });
+  await w.recordCommand(commandId, "checks.decide", { expectedRevision: st.orch.revision, command: { kind: "checks.decide", decision: "accept" } });
   await w.recordEvent("checks.decided", { proposalTurnId: st.orch.checksProposal.turnId, decision: "accept", by: "person", commandId, checks: await w.putText(JSON.stringify({ checks: [{ id: "cmd-1", command: "grep -qx 2 a.txt", origin: "lead" }] })), count: 1 });
-  await w.completeCommand(commandId, { status: "accepted", code: null });
+  if (completed) await w.completeCommand(commandId, { status: "accepted", code: null });
   await w.close();
   const again = createRunManager({ platform: "darwin", root: m.root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH), journalV2: true });
@@ -311,7 +349,11 @@ test("a decision recorded before the end, the run still on its pause: reopening 
   assert.deepEqual([r.status, r.reason], ["paused", "recovered"]);
   const h = await records(again, runId);
   const at = h.findIndex((x) => x.type === "checks.decided");
-  assert.deepEqual(h.slice(at + 1).filter((x) => x.type === "run.status").map((x) => [x.data.status, x.data.reason])[0], ["paused", "recovered"]);
+  // the pause: the store's run.recovered (an unfinished command), or reopen()'s paused(recovered); nothing ran before it
+  const next = h.slice(at + 1).filter((x) => x.type !== "command.completed")[0];
+  assert.deepEqual(completed ? [next.type, next.data.status, next.data.reason] : [next.type], completed ? ["run.status", "paused", "recovered"] : ["run.recovered"]);
+  // the decision stands: its command is accepted, never interrupted (§2.5, I1-3)
+  assert.deepEqual(h.find((x) => x.type === "command.completed" && x.data.commandId === commandId).data.result, { status: "accepted", code: null });
   assert.equal((await send(again, r, { kind: "resume" })).status, "accepted");
   const done = await settled(again, runId);
   assert.deepEqual([done.status, done.progress.completion], ["completed", "confirmed"], JSON.stringify(done));
@@ -338,7 +380,7 @@ test("a completed run the completion function does not allow, and an autopilot a
   const src = project({ "a.txt": "1\n" });
   const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" });
   const runId = await start(m, src, { commands: [] });
-  await send(m, await settled(m, runId, "the proposal"), { kind: "checks_decide", decision: "accept" });
+  await send(m, await settled(m, runId, "the proposal"), { kind: "checks.decide", decision: "accept" });
   assert.equal((await settled(m, runId)).status, "completed");
   await m.shutdown();
   const buf = journalOf(m, runId);
@@ -347,8 +389,19 @@ test("a completed run the completion function does not allow, and an autopilot a
   // completed "without checks" while it had checks; completed without the final review that completes it
   assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { last(r).data.completion.kind = "no_checks"; return r; }), runId), ["replay_conflict", "run.status"]);
   assert.deepEqual(corrupt(rewrite(buf, runId, (r) => r.filter((x) => !(x.type === "review.recorded" && x.data.stage === null))), runId), ["replay_conflict", "run.status"]);
+  // completed with a stage of the plan not accepted (I1-4)
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => r.filter((x) => x.type !== "stage.accepted")), runId), ["replay_conflict", "run.status"]);
+  // between the proposal and the decision only the commands' records and run.status (I1-7): a clarification is not
+  const cmd = (ts, kind, type, data) => { const id = randomUUID(); return [{ ts, type: "command.received", data: { commandId: id, kind, payloadHash: "c".repeat(64) } }, { ts, type, data: data(id) }, { ts, type: "command.completed", data: { commandId: id, result: { status: "accepted", code: null } } }]; };
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => {
+    const i = r.findIndex((x) => x.type === "checks.proposed");
+    r.splice(i + 1, 0, ...cmd(r[i].ts, "clarify", "clarification.added", (id) => ({ version: 1, commandId: id, text: r[0].data.goal })));
+    return r;
+  }), runId), ["replay_conflict", "clarification.added"]);
+  // the decision under another command (I1-8)
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { r.find((x) => x.type === "command.received" && x.data.kind === "checks.decide").data.kind = "resume"; return r; }), runId), ["replay_conflict", "checks.decided"]);
   // completed confirmed while the check failed
-  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { for (const x of r) if (x.type === "check.finished") x.data.status = "failed", x.data.exitCode = 1; return r; }), runId)[0], "replay_conflict");
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { for (const x of r) if (x.type === "check.finished") Object.assign(x.data, { status: "failed", exitCode: 1 }); return r; }), runId)[0], "replay_conflict");
   // the autopilot accepted although the network of the checks is open
   const autopilot = (network) => (r) => {
     const from = r.findIndex((x) => x.type === "checks.proposed"), to = r.findIndex((x) => x.type === "checks.decided");

@@ -105,8 +105,8 @@ export type RunCommand =
   | { kind: "dismiss" }
   // journal v2 (journal-v2-format.md §2.1): «Принять» / «Изменить» of the proposed check commands, and the person's
   // push/QA decision of a run without checks for the tree and commit they saw
-  | { kind: "checks_decide"; decision: "accept" | "edit"; checks?: string[] }
-  | { kind: "finish_confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
+  | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
+  | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   | { kind: "permission"; requestId: string; decision: PermissionDecision; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string };
 // What the person can answer: the CLI's own options, plus remembering exactly this action for the run or the project.
 export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project";
@@ -130,7 +130,7 @@ export interface RunView {
   // journal v2, on the pause awaiting_checks_decision: the lead's proposal the person accepts or edits
   proposal?: ChecksProposalText | null;
   // journal v2, on the pause awaiting_finish_confirmation: what the person confirms push/QA for (the payload of
-  // finish_confirm) and which steps the goal asked for
+  // finish.confirm) and which steps the goal asked for
   confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
 }
 
@@ -233,8 +233,8 @@ export const REPORT_SCHEMAS: Readonly<Record<TurnPurpose, AnswerSchema>> = Objec
   final_review: findingsSchema(["complete", "replan", "question"])
 });
 // Journal v2: the first plan turn of a goal without check commands also proposes them — or says why there are none
-// (journal-v2-format.md §2.1, «Поле checks отчёта плана»). Every other plan turn keeps the plan schema above: a
-// proposal there is an extra key, so an invalid report.
+// (journal-v2-format.md §2.1, «Поле checks отчёта плана»). Every other plan turn of a v2 journal answers checks: null
+// (PLAN_V2_SCHEMA): a proposal there is an invalid report. v1 journals keep the plan schema above.
 export const PLAN_PROPOSAL_SCHEMA: AnswerSchema = {
   ...REPORT_SCHEMAS.plan,
   required: ["stages", "question", "checks"],
@@ -252,7 +252,12 @@ export const PLAN_PROPOSAL_SCHEMA: AnswerSchema = {
     }
   }
 };
-for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
+export const PLAN_V2_SCHEMA: AnswerSchema = {
+  ...REPORT_SCHEMAS.plan, required: ["stages", "question", "checks"], properties: { ...REPORT_SCHEMAS.plan.properties, checks: { type: "null" } }
+};
+const schemaOf = (purpose: TurnPurpose, st: RunState, goal: Goal): AnswerSchema => purpose !== "plan" ? REPORT_SCHEMAS[purpose]
+  : proposesChecks(st, goal) ? PLAN_PROPOSAL_SCHEMA : st.version === 2 ? PLAN_V2_SCHEMA : REPORT_SCHEMAS.plan;
+for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
 
 interface PlanReport { stages: { title: string; task: string }[]; question: string | null }
 interface ProposedCheck { command: string; why: string; source: string[] }
@@ -262,8 +267,9 @@ interface PlanProposalReport extends PlanReport { checks: { checks: ProposedChec
 interface ReviewReport { verdict: string; findings: string[]; question: string | null }
 
 // What the Р1 schema subset cannot say: counts and "question iff verdict question".
-function reportProblem(purpose: TurnPurpose, value: unknown, proposal = false): string | null {
-  const errors = validateAnswer(proposal ? PLAN_PROPOSAL_SCHEMA : REPORT_SCHEMAS[purpose], value);
+function reportProblem(purpose: TurnPurpose, value: unknown, schema: AnswerSchema = REPORT_SCHEMAS[purpose]): string | null {
+  const proposal = schema === PLAN_PROPOSAL_SCHEMA;
+  const errors = validateAnswer(schema, value);
   if (errors.length) return errors.slice(0, 3).join("; ");
   if (purpose === "plan") {
     const p = value as PlanReport;
@@ -412,8 +418,11 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
       try {
         const goal = await decidedGoal(deps.root, runId, writer.state(), JSON.parse((await readText(deps.root, runId, writer.state().goal)).toString("utf8")) as Goal);
         const ws = await openWorkspace({ root: deps.root, runId, gitPath: deps.gitPath });
+        const o = writer.state().orch;
+        const decidedBy = new Set([o.checksDecision?.commandId, ...o.confirmations.map((c) => c.commandId)]);
         for (const [id, c] of Object.entries(writer.state().commands)) {
-          if (c.status === "unfinished") await writer.completeCommand(id, { status: "rejected", code: "interrupted" });
+          // journal-v2-format.md §2.5: a decision already in the journal stands — its command was accepted
+          if (c.status === "unfinished") await writer.completeCommand(id, decidedBy.has(id) ? { status: "accepted", code: null } : { status: "rejected", code: "interrupted" });
         }
         const run = controller(deps, clock, writer, ws, goal);
         await run.reopen();
@@ -481,7 +490,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   const emit = () => {
     const st = state();
     const key = `${st.status}:${st.pausedReason ?? ""}`;
-    if (key !== shownStatus) { shownStatus = key; observe((a) => a.status(st.status, st.pausedReason)); }
+    // journal v2: a run completed without checks never says just "completed" (journal-v2-format.md §2.3)
+    if (key !== shownStatus) { shownStatus = key; observe((a) => a.status(st.completion?.kind === "no_checks" ? "completed_no_checks" : st.status, st.pausedReason)); }
     for (const l of changeListeners) { try { l(st.lastSeq); } catch { /* a listener's failure is its own */ } }
   };
   writer.onAppend(() => { tick = 0; emit(); });
@@ -769,10 +779,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const st = state();
     const role: AgentRole = action.purpose === "execute" ? "executor" : "lead";
     const limits = effectiveLimits(goal, st);
-    const proposal = action.purpose === "plan" && proposesChecks(st, goal);
+    const schema = schemaOf(action.purpose, st, goal);
     const request = {
       purpose: action.purpose, role, cwd: ws.repo, task: await buildTask(action, snapshot),
-      schema: proposal ? PLAN_PROPOSAL_SCHEMA : REPORT_SCHEMAS[action.purpose], sessionId: sessionFor(st, role),
+      schema, sessionId: sessionFor(st, role),
       // the role's own limit, cut to what is left of the run: the deadline is not extended by a long turn
       timeoutMs: Math.max(1, Math.min(role === "lead" ? limits.leadTurnMs : limits.executorTurnMs, deadline() - clock())),
       ask: askPerson(role), ...(goal.access ? { access: goal.access } : {})
@@ -851,13 +861,13 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (outcomePause) { await setStatus("paused", outcomePause); return; }
     if (!reportStored) { await setStatus("paused", "invalid_report"); return; }
     const value = result.report.value;
-    if (reportProblem(action.purpose, value, proposal) !== null) { await setStatus("paused", "invalid_report"); return; }
+    if (reportProblem(action.purpose, value, schema) !== null) { await setStatus("paused", "invalid_report"); return; }
 
     if (action.purpose === "plan") {
       const p = value as PlanReport;
       if (p.question !== null) return askQuestion(turnId, p.question);
-      if (proposal) return proposeChecks(turnId, (value as PlanProposalReport).checks!);
-      const ref = await j(() => writer.putText(canonical(p)));
+      if (schema === PLAN_PROPOSAL_SCHEMA) return proposeChecks(turnId, (value as PlanProposalReport).checks!);
+      const ref = await j(() => writer.putText(canonical({ stages: p.stages, question: p.question }))); // v2: without checks: null
       await j(() => writer.recordPlan({
         turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
         firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: p.stages.length
@@ -1609,6 +1619,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     } catch {
       return { status: "rejected", code: "store_failed" };
     }
+    // v2 decisions: the run goes on only after its command.completed (journal-v2-format.md §2.4); a failure here leaves
+    // the decision recorded and the run paused, which reopen() turns into paused(recovered)
+    if (result.status === "accepted" && (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm")) {
+      try {
+        await setStatus("running");
+      } catch {
+        return { status: "rejected", code: "store_failed" };
+      }
+    }
     if (result.status === "accepted") after(cmd);
     return result;
   }
@@ -1686,7 +1705,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       case "dismiss":
         return ["stopped", "completed", "failed"].includes(status) ? ok : reject("invalid_state");
-      case "checks_decide": {
+      case "checks.decide": {
         if (status !== "paused" || reason !== "awaiting_checks_decision" || !st.orch.checksProposal || st.orch.checksDecision) return reject("invalid_state");
         let lines: string[] | null = null;
         if (cmd.decision === "edit") {
@@ -1695,10 +1714,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
           if (new Set(lines).size !== lines.length) return reject("invalid_command");
         } else if (cmd.decision !== "accept" || cmd.checks !== undefined) return reject("invalid_command");
         await decideChecks(commandId, cmd.decision, lines);
-        await setStatus("running");
-        return ok;
+        return ok; // run.status(running) follows command.completed (journal-v2-format.md §2.4), in command()
       }
-      case "finish_confirm": {
+      case "finish.confirm": {
         if (status !== "paused" || reason !== "awaiting_finish_confirmation" || !withoutChecks(st)) return reject("invalid_state");
         const asked = (step: "push" | "qa") => !!goal.finish?.[step];
         const valid = (step: "push" | "qa", v: unknown) => asked(step) ? v === "confirm" || v === "decline" : v === null;
@@ -1706,9 +1724,14 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         // what the person saw must be what is here now: the tree of the work and its commit
         const tree = await snapshotCopyTree(ws, st.workspace!.current.tree);
         const commit = currentCommit(st, tree)?.commit ?? null;
-        if (cmd.tree !== tree || cmd.commit !== commit || confirmationFor(st, tree, commit)) return reject("invalid_state");
+        if (confirmationFor(st, tree, commit)) return reject("invalid_state");
+        if (cmd.tree !== tree || cmd.commit !== commit) {
+          // the work changed during the pause: the view shows it now and the person decides again (§2.5)
+          latest = { tree, at: new Date(clock()).toISOString() };
+          touch();
+          return reject("stale_revision");
+        }
         await j(() => writer.recordEvent("finish.confirmed", { commandId, tree, commit, push: cmd.push, qa: cmd.qa }));
-        await setStatus("running");
         return ok;
       }
       case "permission": {
@@ -1768,7 +1791,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       return;
     }
     if (cmd.kind === "step") stepBudget = 1;
-    if (cmd.kind === "checks_decide" || cmd.kind === "finish_confirm") stepBudget = null;
+    if (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm") stepBudget = null;
     if (cmd.kind === "resume") stepBudget = null;
     if (state().status === "running") schedule();
   }
@@ -1864,6 +1887,9 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
     };
   });
   const p = st.orch.prepares.at(-1);
+  // a decline stands for the commit it was given on: a new commit asks again (journal-v2-format.md §2.1)
+  const commitSeq = Math.max(-1, ...st.orch.finish.filter((f) => f.step === "commit" && f.status === "done").map((f) => f.resultSeq ?? -1));
+  const confirmed = st.orch.confirmations.filter((c) => c.seq > commitSeq).at(-1);
   return {
     mode: goal.mode ?? "autopilot", branch, access: goal.access ?? null, checks,
     // the failed step's command (the goal's steps) and the preparation's output, for the run panel to say why
@@ -1873,7 +1899,7 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
       const last = st.orch.finish.filter((f) => f.step === step).at(-1);
       return {
         step, asked: !!goal.finish?.[step], status: last?.status ?? "not_started", established: last?.established ?? false, commit: last?.commit ?? null,
-        ...(step !== "commit" && st.orch.confirmations.at(-1)?.[step] === "decline" ? { declined: true } : {}),
+        ...(step !== "commit" && confirmed?.[step] === "decline" ? { declined: true } : {}),
         evidence: last?.evidence?.sha256 ?? null,
         // an older QA result that passed without the contract (bound included) never confirmed a version
         ...(step === "qa" && last ? { version: last.version ?? (last.status === "done" ? "not_checked" : null), observed: last.observed ?? null } : {})
