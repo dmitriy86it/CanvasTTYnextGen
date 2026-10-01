@@ -1,0 +1,1 @@
+{"checks":["cmd-1"],"commands":["npm test"],"createdAt":1790845200000,"criteria":["Отчёт выгружается в CSV","Отчёт выгружается в XLSX"],"limits":{"executorTurnMs":2700000,"leadTurnMs":1200000,"noProgressRounds":3,"replans":3,"roundsPerStage":8,"runMs":14400000,"turns":40},"mode":"autopilot","reviewPlan":false,"text":"Добавить экспорт отчёта в CSV","v":1,"workMode":"project"}

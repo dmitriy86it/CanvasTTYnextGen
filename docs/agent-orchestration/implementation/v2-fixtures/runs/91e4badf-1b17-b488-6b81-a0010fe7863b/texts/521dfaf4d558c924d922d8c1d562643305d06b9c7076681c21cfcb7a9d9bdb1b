@@ -1,0 +1,1 @@
+{"checks":[{"command":"npm test","id":"cmd-1","source":["package.json"],"why":"scripts.test"},{"command":"npm run e2e","id":"cmd-2","source":["package.json"],"why":"scripts.e2e"}],"none":null}

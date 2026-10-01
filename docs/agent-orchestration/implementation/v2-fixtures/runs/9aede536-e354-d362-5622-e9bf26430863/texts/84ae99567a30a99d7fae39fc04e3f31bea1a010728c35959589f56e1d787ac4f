@@ -1,0 +1,1 @@
+{"conditions":[{"id":"C2","note":"учтён часовой пояс","paths":["src/import/date.ts"],"status":"met"}],"findings":[],"question":null,"request":"none"}

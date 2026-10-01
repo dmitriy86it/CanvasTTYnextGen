@@ -1,0 +1,1 @@
+{"checks":[{"command":"npm test","id":"cmd-1","origin":"lead"},{"command":"npm run lint","id":"cmd-2","origin":"person"}]}

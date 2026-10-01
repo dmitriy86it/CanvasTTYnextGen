@@ -1,0 +1,1 @@
+{"checks":null,"dropRequirements":[],"dropped":[],"question":null,"stages":[{"conditions":[{"covers":["R1","R2"],"evidence":{"kind":"change"},"id":"C1","text":"Выгрузка CSV с заголовками"}],"task":"Добавить выгрузку отчёта в CSV","title":"Экспорт CSV"}]}

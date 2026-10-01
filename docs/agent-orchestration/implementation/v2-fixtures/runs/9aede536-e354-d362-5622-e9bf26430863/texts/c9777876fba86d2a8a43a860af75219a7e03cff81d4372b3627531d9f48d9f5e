@@ -1,0 +1,1 @@
+{"checks":[{"command":"npm test","id":"cmd-1","origin":"lead"},{"command":"npm run typecheck","id":"cmd-2","origin":"lead"}]}

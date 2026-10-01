@@ -1,0 +1,1 @@
+{"checks":[],"commands":[],"createdAt":1790845200000,"criteria":["Даты ISO 8601 разбираются","Существующие тесты проходят"],"limits":{"executorTurnMs":2700000,"leadTurnMs":1200000,"noProgressRounds":3,"replans":3,"roundsPerStage":8,"runMs":14400000,"turns":40},"mode":"autopilot","reviewPlan":false,"text":"Исправить разбор дат в импорте","v":1,"workMode":"project"}
