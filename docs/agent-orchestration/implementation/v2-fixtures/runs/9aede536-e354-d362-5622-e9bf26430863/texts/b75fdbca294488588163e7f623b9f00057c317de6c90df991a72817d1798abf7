@@ -1,0 +1,1 @@
+{"checks":[{"command":"npm test","id":"cmd-1","source":["package.json"],"why":"package.json: scripts.test запускает node --test"},{"command":"npm run typecheck","id":"cmd-2","source":["package.json","tsconfig.json"],"why":"tsconfig.json и scripts.typecheck есть"}],"none":null}

@@ -1,0 +1,1 @@
+{"checks":[],"commands":[],"criteria":["Даты ISO 8601 разбираются","Существующие тесты проходят"],"mode":"autopilot","text":"Исправить разбор дат в импорте","workMode":"project"}

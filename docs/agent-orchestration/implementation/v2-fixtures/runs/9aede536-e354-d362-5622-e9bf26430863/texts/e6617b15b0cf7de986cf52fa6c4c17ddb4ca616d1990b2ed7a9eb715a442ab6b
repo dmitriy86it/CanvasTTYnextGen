@@ -1,0 +1,1 @@
+{"checks":null,"dropRequirements":[],"dropped":[],"question":null,"stages":[{"conditions":[{"covers":["R2"],"evidence":{"check":"cmd-1","kind":"check"},"id":"C1","text":"Тесты проекта проходят"},{"covers":["R1"],"evidence":{"kind":"change"},"id":"C2","text":"Разбор ISO 8601 с часовым поясом"}],"task":"Добавить выгрузку отчёта в CSV","title":"Экспорт CSV"}]}

@@ -1,0 +1,1 @@
+{"checks":null,"dropRequirements":[],"dropped":[],"question":null,"stages":[{"conditions":[{"covers":["R1"],"evidence":{"kind":"change"},"text":"Выгрузка CSV"},{"covers":["R2"],"evidence":{"kind":"change"},"text":"Выгрузка XLSX"}],"task":"Добавить выгрузку отчёта в CSV","title":"Экспорт CSV"}]}

@@ -1,0 +1,1 @@
+{"checks":{"checks":[{"command":"make test","id":"cmd-1","source":["Makefile"],"why":"Makefile: цель test"}],"none":null},"dropRequirements":[],"dropped":[],"question":null,"stages":[{"conditions":[{"covers":["R1","R2"],"evidence":{"check":"cmd-1","kind":"check"},"text":"make test проходит"}],"task":"Добавить выгрузку отчёта в CSV","title":"Экспорт CSV"}]}

@@ -1,0 +1,1 @@
+{"checks":{"checks":[],"none":"В проекте нет тестов и линтера: package.json без scripts, конфигураций нет"},"dropRequirements":[],"dropped":[],"question":null,"stages":[{"conditions":[{"covers":["R1","R2"],"evidence":{"kind":"change"},"text":"Кнопка «CSV» выгружает отчёт с заголовками"}],"task":"Добавить выгрузку отчёта в CSV","title":"Экспорт CSV"}]}

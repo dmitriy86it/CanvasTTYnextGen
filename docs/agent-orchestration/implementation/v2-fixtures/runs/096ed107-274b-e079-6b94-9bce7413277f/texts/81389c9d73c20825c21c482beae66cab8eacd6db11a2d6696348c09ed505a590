@@ -1,0 +1,1 @@
+{"checks":null,"dropRequirements":[],"dropped":[],"question":null,"stages":[{"conditions":[{"covers":["R1","R2"],"evidence":{"check":"cmd-1","kind":"check"},"id":"C1","text":"make test проходит"}],"task":"Добавить выгрузку отчёта в CSV","title":"Экспорт CSV"}]}

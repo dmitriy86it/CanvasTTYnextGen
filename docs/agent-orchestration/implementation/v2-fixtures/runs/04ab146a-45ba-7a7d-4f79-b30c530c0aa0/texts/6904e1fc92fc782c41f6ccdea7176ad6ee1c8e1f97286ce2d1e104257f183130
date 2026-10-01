@@ -1,0 +1,1 @@
+{"conditions":[{"id":"C1","note":"","paths":["src/report.ts"],"status":"met"},{"id":"C2","note":"XLSX нет","paths":[],"status":"not_met"}],"findings":[],"question":null,"request":"replan"}

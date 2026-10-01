@@ -1,0 +1,1 @@
+{"closed":[],"conditionsMet":[],"disputed":[],"nextFinding":2,"opened":[{"condition":"C1","id":"F1","index":0,"paths":["src/report.ts"],"possibleRepeatOf":null,"severity":"blocking","stage":1}],"refused":[],"reopened":[],"report":{"bytes":489,"sha256":"bb161502305b71e1a4cc29b900387a47f01a0c46b5ed000e525aec5ba3cc44a8"},"unchanged":[]}

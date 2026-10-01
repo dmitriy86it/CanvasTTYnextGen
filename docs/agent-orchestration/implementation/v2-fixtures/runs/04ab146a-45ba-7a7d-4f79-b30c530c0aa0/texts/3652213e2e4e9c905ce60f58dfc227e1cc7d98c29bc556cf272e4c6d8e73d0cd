@@ -1,0 +1,1 @@
+{"checks":null,"dropRequirements":[{"requirement":"R2","why":"без XLSX-библиотеки требование не выполнить"}],"dropped":[{"condition":"C2","why":"XLSX требует новой зависимости, её нет в разрешённых"}],"question":null,"stages":[{"conditions":[{"keep":"C1"}],"task":"Довести CSV","title":"Экспорт"}]}

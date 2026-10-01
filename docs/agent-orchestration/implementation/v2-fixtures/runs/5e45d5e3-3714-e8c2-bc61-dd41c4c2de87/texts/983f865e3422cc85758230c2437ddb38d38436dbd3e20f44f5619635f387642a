@@ -1,0 +1,1 @@
+{"conditions":[{"id":"C1","note":"выгрузка и заголовки","paths":["src/report.ts"],"status":"met"}],"findings":[],"question":null,"request":"none"}

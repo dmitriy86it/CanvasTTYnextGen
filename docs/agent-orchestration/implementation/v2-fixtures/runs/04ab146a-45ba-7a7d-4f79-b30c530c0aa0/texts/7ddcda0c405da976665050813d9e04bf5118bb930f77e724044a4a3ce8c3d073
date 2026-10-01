@@ -1,0 +1,1 @@
+{"checks":["cmd-1"],"commands":["npm test"],"criteria":["Отчёт выгружается в CSV","Отчёт выгружается в XLSX"],"mode":"autopilot","text":"Добавить экспорт отчёта в CSV","workMode":"project"}
