@@ -847,7 +847,8 @@ export async function readRun(root: string, runId: string): Promise<RunReadResul
   }
   const parsed = parseJournal(buf, runId);
   const integrity = await withTexts(dir, parsed);
-  if (integrity !== parsed.integrity) return { state: null, canContinue: false, integrity };
+  // corrupt in its texts: shown with its state, like a replay conflict, never continued (I2-1)
+  if (integrity !== parsed.integrity) return { state: parsed.state, canContinue: false, integrity };
   // a newer version's state is shown as journaled: what it still runs is not called interrupted here
   if (parsed.state && parsed.integrity.status !== "newer_version_compatible") { markInterruptedChecks(parsed.state); markInterruptedOperations(parsed.state); }
   return { state: parsed.state, integrity: parsed.integrity, canContinue: parsed.integrity.status === "ok" };

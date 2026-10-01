@@ -1625,7 +1625,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       try {
         await setStatus("running");
       } catch {
-        return { status: "rejected", code: "store_failed" };
+        return result; // accepted, as the journal says; the store halted the run (I2-5)
       }
     }
     if (result.status === "accepted") after(cmd);

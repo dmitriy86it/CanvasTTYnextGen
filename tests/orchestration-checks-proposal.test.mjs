@@ -286,6 +286,7 @@ test("the goal's own commands in v2: the run of v1 (regression) — no checks.* 
     assert.equal(parseJournal(b, runId).integrity.status, "ok", "the records alone replay");
     fs.writeFileSync(file, b);
     const r = await readRun(m.root, runId);
+    assert.notEqual(r.state, null, "listed with its state, as a replay conflict is");
     return [r.integrity.status, r.integrity.detail?.phase ?? null, r.canContinue];
   };
   assert.deepEqual(await texts((r) => r), ["ok", null, true]);
