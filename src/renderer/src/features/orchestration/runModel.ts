@@ -98,14 +98,20 @@ export function historyLines(records: readonly OrchestrationHistoryRecord[]): Hi
   const purposes = new Map<string, string>();
   const checkIds = new Map<string, string>();
   const out: HistoryLine[] = [];
+  let endedTurn: string | null = null;
   for (const r of records) {
     const d = r.data as Record<string, any>;
     const line = (kind: string, parts: Record<string, string | number | null>, text?: LineText) =>
       out.push({ seq: r.seq, ts: r.ts, kind, parts, ...(text ? { text } : {}) });
     switch (r.type) {
-      case "run.status": line("status", pick(d, "status", "reason")); break;
+      case "run.status":
+        // the turn whose end this status may be (pauseCause): kept only while the run does not go on
+        line("status", { ...pick(d, "status", "reason"), turnId: endedTurn });
+        if (d.status !== "paused" && d.status !== "pausing") endedTurn = null;
+        break;
       case "orch.turn": purposes.set(d.turnId, d.purpose); line("turn", pick(d, "purpose", "stage", "round")); break;
       case "turn.finished": {
+        endedTurn = typeof d.turnId === "string" ? d.turnId : null;
         const purpose = purposes.get(d.turnId) ?? null;
         const report = d.report ?? {};
         const text: LineText = { kind: "report", ref: isRef(report.ref) ? report.ref : null, missing: report.storeError ?? report.status ?? null };
@@ -392,23 +398,77 @@ export interface ParticipantState {
 // contract violation found after the transport), or a pause that this turn's outcome does not explain. The pause must be
 // the turn's own: after its turn_finished the run never ran again nor paused for another reason.
 export function pauseEnding(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string | null {
-  if (view.status !== "paused" || !view.reason) return null;
-  let at = entries.length - 1;
-  while (at >= 0 && entries[at].kind !== "turn_finished") at--;
-  const e = at >= 0 ? entries[at] : undefined;
-  const step = e?.detail?.endStep;
-  if (!e || typeof step !== "string" || step === "ok") return null;
-  const later = entries.slice(at + 1).filter((x) => x.kind === "status");
-  if (later.some((x) => x.detail?.status !== "paused" && x.detail?.status !== "pausing")) return null;
-  if (later.some((x) => x.detail?.status === "paused" && x.detail?.reason !== view.reason)) return null;
-  // the service's outcome -> pause reason mapping (pauseForOutcome)
-  const reason = e.text === "invalid_report" ? "invalid_report"
-    : e.text === "protocol_error" || e.text === "contract_violation" ? "protocol_error" : "environment_error";
-  return e.text !== "completed" && reason === view.reason ? step : null;
+  const cause = viewCause(view, entries);
+  return cause?.kind === "ending" ? cause.step : null;
 }
 
 // Steps where the application itself failed to pass the CLI's output on: the next step is not "fix the environment".
 export const APP_FAILURE_STEPS: readonly string[] = ["relay_failed", "relay_incomplete", "held_after_supervisor_exit", "stream_unknown"];
+
+// ---------- why a run paused: one classification for every place that says it ----------
+
+// Main's reason (the journal, format v1) and, for a pause a turn's end caused, what that turn's activity adds:
+// - provider_limit: a provider's usage limit ended the turn. The journal says paused(environment_error), as for any failed
+//   turn; the CLI's message is in the turn's activity. The one recorded message is Codex's (codex-cli 0.155.1,
+//   evidence/real-stage-13/series-S3-S5-S6-attempt2): "You’ve hit your usage limit. … try again at Sep 28th, 2026
+//   11:51 PM." No real Claude limit message has been recorded, so a Claude limit still reads as an environment error.
+//   The reset is the CLI's own words, not parsed.
+// - ending: the step that ended the turn (TurnResult.ending, kept as detail.endStep of its turn_finished entry).
+// - reason: main's reason as it is.
+export type PauseCause =
+  | { kind: "provider_limit"; reason: string; provider: string; resetsAt: string | null }
+  | { kind: "ending"; reason: string; step: string }
+  | { kind: "reason"; reason: string };
+const USAGE_LIMIT = /\bhit your usage limit\b/i;
+
+// reason: main's pause reason; turnId: the turn whose end the pause is (null: none); entries: the run's activity.
+export function pauseCause(reason: string, turnId: string | null, entries: readonly OrchestrationActivityEntry[]): PauseCause {
+  const turn = turnId ? entries.filter((e) => e.turnId === turnId) : [];
+  const finished = [...turn].reverse().find((e) => e.kind === "turn_finished");
+  if (!finished || finished.text === "completed") return { kind: "reason", reason };
+  // the service's outcome -> pause reason mapping (pauseForOutcome): the pause must be this outcome's
+  const mapped = finished.text === "invalid_report" ? "invalid_report"
+    : finished.text === "protocol_error" || finished.text === "contract_violation" ? "protocol_error" : "environment_error";
+  if (mapped !== reason) return { kind: "reason", reason };
+  const limit = reason === "environment_error" ? turn.find((e) => e.kind === "error" && USAGE_LIMIT.test(e.text)) : undefined;
+  if (limit) return { kind: "provider_limit", reason, provider: limit.provider ?? finished.provider ?? "provider", resetsAt: /try again at (.+?)\.?\s*$/i.exec(limit.text)?.[1] ?? null };
+  const step = finished.detail?.endStep;
+  return typeof step === "string" && step !== "ok" ? { kind: "ending", reason, step } : { kind: "reason", reason };
+}
+
+// The turn a pause at `end` (exclusive index into entries) belongs to: the last one that finished before it, unless the
+// run went on since (a status other than paused/pausing) or paused for another reason in between.
+export function pausedTurn(entries: readonly OrchestrationActivityEntry[], end: number, reason: string): string | null {
+  let at = end - 1;
+  while (at >= 0 && entries[at].kind !== "turn_finished") at--;
+  if (at < 0) return null;
+  const later = entries.slice(at + 1, end).filter((x) => x.kind === "status");
+  if (later.some((x) => x.detail?.status !== "paused" && x.detail?.status !== "pausing")) return null;
+  if (later.some((x) => x.detail?.status === "paused" && x.detail?.reason !== reason)) return null;
+  return entries[at].turnId;
+}
+
+// The cause of the run's current state (null: no reason). Only a pause is explained by a turn.
+export function viewCause(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): PauseCause | null {
+  if (!view.reason) return null;
+  if (view.status !== "paused") return { kind: "reason", reason: view.reason };
+  return pauseCause(view.reason, pausedTurn(entries, entries.length, view.reason), entries);
+}
+
+const PROVIDER_NAMES: Record<string, string> = { codex: "Codex", claude: "Claude" };
+export const providerName = (provider: string): string => PROVIDER_NAMES[provider] ?? provider;
+
+// The reason in words, the same everywhere: the run panel, the activity rows, the agent cards, the feed and the history.
+export function causeText(locale: LocaleId, cause: PauseCause): string {
+  if (cause.kind === "provider_limit") return t(locale, "orchReason_provider_limit").replace("{provider}", providerName(cause.provider));
+  const ending = cause.kind === "ending" ? t(locale, `orchEnding_${cause.step}` as TranslationKey) : undefined;
+  return ending ?? t(locale, `orchReason_${cause.reason}` as TranslationKey) ?? cause.reason;
+}
+
+// The headline key (orchHeadline_<key>): a provider's limit is not "the environment needs preparing".
+export function headlineKey(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
+  return viewCause(view, entries)?.kind === "provider_limit" ? "provider_limit" : runHeadline(view).headline;
+}
 
 // The key of the next step to offer (orchNext_<key>): the headline's, unless the pause is an application failure.
 export function nextStepKey(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
@@ -416,27 +476,11 @@ export function nextStepKey(view: OrchestrationRunView, entries: readonly Orches
   return step !== null && APP_FAILURE_STEPS.includes(step) ? "app_failure" : runHeadline(view).next;
 }
 
-// A provider's usage limit ended the turn the run is paused for. The journal keeps paused(environment_error) (format v1
-// has no other reason for a failed turn); the CLI's own message is in that turn's activity. The one recorded message is
-// Codex's (codex-cli 0.155.1, evidence/real-stage-13/series-S3-S5-S6-attempt2): "You’ve hit your usage limit. … try again
-// at Sep 28th, 2026 11:51 PM." No real Claude limit message has been recorded, so a Claude limit still reads as an
-// environment error. The reset is the CLI's own words, not parsed.
-const USAGE_LIMIT = /\bhit your usage limit\b/i;
 export function providerLimit(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): { provider: string; resetsAt: string | null } | null {
-  if (view.status !== "paused" || view.reason !== "environment_error") return null;
-  let at = entries.length - 1;
-  while (at >= 0 && entries[at].kind !== "turn_finished") at--;
-  const finished = at >= 0 ? entries[at] : undefined;
-  if (!finished?.turnId) return null;
-  // the pause must be that turn's own, as in pauseEnding
-  if (entries.slice(at + 1).some((x) => x.kind === "status" && x.detail?.status !== "paused" && x.detail?.status !== "pausing")) return null;
-  const error = entries.slice(0, at).find((e) => e.turnId === finished.turnId && e.kind === "error" && USAGE_LIMIT.test(e.text));
-  if (!error) return null;
-  return { provider: error.provider ?? finished.provider ?? "provider", resetsAt: /try again at (.+?)\.?\s*$/i.exec(error.text)?.[1] ?? null };
+  const cause = viewCause(view, entries);
+  return cause?.kind === "provider_limit" ? { provider: cause.provider, resetsAt: cause.resetsAt } : null;
 }
 
-const PROVIDER_NAMES: Record<string, string> = { codex: "Codex", claude: "Claude" };
-export const providerName = (provider: string): string => PROVIDER_NAMES[provider] ?? provider;
 // The next step as said to the person: a provider's limit is waited out (or the account changed), not fixed in the
 // environment and not raised in the run's budget; everything else is orchNext_<nextStepKey>.
 export function nextStepText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {

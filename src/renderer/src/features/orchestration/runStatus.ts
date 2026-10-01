@@ -10,7 +10,7 @@ import type {
 } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
-import { finishStatus, participantState, runHeadline, TERMINAL_STATUSES } from "./runModel.ts";
+import { causeText, finishStatus, headlineKey, participantState, runHeadline, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
 
 // read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
 export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "stopped" | "failed" | "read_only";
@@ -101,9 +101,11 @@ export function permissionReason(locale: LocaleId, p: OrchestrationPermissionReq
   return p.kind === "tool" ? tr(locale, "orchWait_perm_tool", { tool: short(p.tool, 40) }) : tr(locale, `orchWait_perm_${p.kind}`);
 }
 
-// Why a paused, stopped or failed run is where it is (main's reason, in words).
-const reasonText = (locale: LocaleId, reason: string | null): string | null =>
-  reason ? (t(locale, `orchReason_${reason}` as TranslationKey) ?? reason) : null;
+// Why a paused, stopped or failed run is where it is: the one classification of runModel (viewCause), in words.
+const reasonText = (locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string | null => {
+  const cause = viewCause(view, entries);
+  return cause ? causeText(locale, cause) : null;
+};
 
 function quietText(locale: LocaleId, state: ActivityState, last: string | null, now: number): string | null {
   if (state !== "working" && state !== "checking" && state !== "starting") return null;
@@ -113,20 +115,20 @@ function quietText(locale: LocaleId, state: ActivityState, last: string | null, 
 }
 
 // The state of a run that is not moving by itself: waiting for the person, paused, stopping or ended.
-function heldState(locale: LocaleId, view: OrchestrationRunView): { state: ActivityState; doing: string; wait: string | null } | null {
+function heldState(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): { state: ActivityState; doing: string; wait: string | null } | null {
   if (view.newer) return { state: "read_only", doing: t(locale, "orchReadOnly"), wait: t(locale, "orchReason_newer_version") };
   if (view.halted) return { state: "waiting_user", doing: t(locale, "orchHeadline_halted"), wait: t(locale, "orchNext_halted") };
   if (view.permission && ["preparing", "running", "pausing"].includes(view.status)) {
     return { state: "waiting_user", doing: tr(locale, "orchNow_needsYou", { who: who(view.permission.role) }), wait: permissionReason(locale, view.permission) };
   }
   if (TERMINAL_STATUSES.includes(view.status)) {
-    return { state: view.status as ActivityState, doing: t(locale, `orchHeadline_${view.status}` as TranslationKey), wait: reasonText(locale, view.reason) };
+    return { state: view.status as ActivityState, doing: t(locale, `orchHeadline_${view.status}` as TranslationKey), wait: reasonText(locale, view, entries) };
   }
   if (view.status === "stopping") return { state: "stopping", doing: t(locale, "orchHeadline_stopping"), wait: null };
   if (view.status === "paused") {
     const head = runHeadline(view).headline;
     const user = head !== "paused";
-    return { state: user ? "waiting_user" : "paused", doing: t(locale, `orchHeadline_${head}` as TranslationKey), wait: reasonText(locale, view.reason) };
+    return { state: user ? "waiting_user" : "paused", doing: t(locale, `orchHeadline_${headlineKey(view, entries)}` as TranslationKey), wait: reasonText(locale, view, entries) };
   }
   return null;
 }
@@ -136,7 +138,7 @@ export function runStatus(locale: LocaleId, input: StatusInput): StatusLine {
   const { view, entries, now } = input;
   const lastEventAt = entries.at(-1)?.ts ?? null;
   const base = { stage: view.stage, lastEventAt };
-  const held = heldState(locale, view);
+  const held = heldState(locale, view, entries);
   if (held) return { ...base, ...held, actor: view.permission?.role ?? null, now: null, quiet: null };
   const act = activeDoing(locale, view, input.stageTitles);
   const pausing = view.status === "pausing" ? t(locale, "orchHeadline_stopping_after_turn") : null;
@@ -164,7 +166,7 @@ export function roleStatus(locale: LocaleId, role: Role, input: StatusInput): St
     return { ...base, state: "waiting_agent", doing: tr(locale, "orchNow_waitsFor", { who: who(role) }), now: null,
       wait: tr(locale, "orchNow_otherNeedsYou", { who: who(view.permission.role) }), quiet: null };
   }
-  const held = heldState(locale, view);
+  const held = heldState(locale, view, entries);
   if (held) return { ...base, ...held, now: null, quiet: null };
   const act = activeDoing(locale, view, input.stageTitles);
   const pausing = view.status === "pausing" ? t(locale, "orchHeadline_stopping_after_turn") : null;

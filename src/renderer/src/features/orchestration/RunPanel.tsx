@@ -31,12 +31,14 @@ import {
   outcomeOf,
   parsePlan,
   nextStepText,
-  providerLimit,
-  providerName,
+  causeText,
+  headlineKey,
+  pauseCause,
+  pausedTurn,
+  viewCause,
   orchestrationAvailableHere,
   orchestrationEntry,
   participantState,
-  pauseEnding,
   resultFacts,
   runHeadline,
   type HistoryLine,
@@ -77,22 +79,25 @@ function useNow(ms = 1000): number {
 
 // Why the run is paused: the step that ended the turn when main recorded it, else the reason's general words.
 function reasonText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
-  const limit = providerLimit(view, entries);
-  if (limit) return t(locale, "orchReason_provider_limit").replace("{provider}", providerName(limit.provider));
-  const step = pauseEnding(view, entries);
-  return step && known(locale, `orchEnding_${step}`) ? tr(locale, `orchEnding_${step}`) : tr(locale, `orchReason_${view.reason}`);
+  const cause = viewCause(view, entries);
+  return cause ? causeText(locale, cause) : "";
 }
 
-// The headline of a pause a provider's usage limit caused is not "the environment needs preparing".
-function headlineText(locale: LocaleId, headline: string, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
-  return providerLimit(view, entries) ? t(locale, "orchHeadline_provider_limit") : tr(locale, `orchHeadline_${headline}`);
+function headlineText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
+  return tr(locale, `orchHeadline_${headlineKey(view, entries)}`);
 }
 
-function lineText(locale: LocaleId, line: HistoryLine): string {
+// A status line's reason: a pause by pauseCause with the turn it followed, anything else as main said it.
+function statusReason(locale: LocaleId, status: unknown, reason: unknown, turnId: string | null, entries: readonly OrchestrationActivityEntry[]): string {
+  if (typeof reason !== "string" || !reason) return "";
+  return ` — ${causeText(locale, status === "paused" ? pauseCause(reason, turnId, entries) : { kind: "reason", reason })}`;
+}
+
+function lineText(locale: LocaleId, line: HistoryLine, entries: readonly OrchestrationActivityEntry[]): string {
   const p = line.parts;
   const head = tr(locale, `orchLine_${line.kind}`);
   switch (line.kind) {
-    case "status": return `${head}: ${tr(locale, `orchStatus_${p.status}`)}${p.reason ? ` — ${tr(locale, `orchReason_${p.reason}`)}` : ""}`;
+    case "status": return `${head}: ${tr(locale, `orchStatus_${p.status}`)}${statusReason(locale, p.status, p.reason, typeof p.turnId === "string" ? p.turnId : null, entries)}`;
     case "turn": return `${head}: ${tr(locale, `orchPurpose_${p.purpose}`)}${p.stage !== null ? ` · ${t(locale, "orchStage")} ${p.stage}` : ""}`;
     case "turn_failed": return `${head}: ${p.purpose ? `${tr(locale, `orchPurpose_${p.purpose}`)} — ` : ""}${p.outcome}`;
     case "report": return head;
@@ -182,12 +187,16 @@ const FEED_KINDS = new Set(["task_sent", "process_started", "process_exited", "s
   "file_changed", "subagent", "refusal", "error", "turn_finished", "check_started", "check_finished", "status", "truncated",
   "permission_requested", "permission_decided", "permission_applied", "prepare_started", "prepare_finished", "external_action"]);
 
-function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry): string {
+function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: readonly OrchestrationActivityEntry[]): string {
   const d = e.detail ?? {};
   switch (e.kind) {
     case "thinking": return tr(locale, "orchAct_thinking");
     case "turn_finished": return `${tr(locale, "orchAct_turn_finished")}: ${tr(locale, `orchOutcome_${e.text}`)}${d.reportedDone === true ? ` · ${tr(locale, "orchAct_reportedDone")}` : d.reportedDone === false ? ` · ${tr(locale, "orchAct_reportedNotDone")}` : ""}${d.question === true ? ` · ${tr(locale, "orchAct_asked")}` : ""}${typeof d.endStep === "string" && d.endStep !== "ok" && known(locale, `orchEnding_${d.endStep}`) ? ` — ${tr(locale, `orchEnding_${d.endStep}`)}` : ""}`;
-    case "status": return `${tr(locale, "orchAct_status")}: ${tr(locale, `orchStatus_${d.status}`)}${d.reason ? ` — ${tr(locale, `orchReason_${d.reason}`)}` : ""}`;
+    case "status": {
+      const at = entries.findIndex((x) => x.id === e.id);
+      const turn = typeof d.reason === "string" && at >= 0 ? pausedTurn(entries, at, d.reason) : null;
+      return `${tr(locale, "orchAct_status")}: ${tr(locale, `orchStatus_${d.status}`)}${statusReason(locale, d.status, d.reason, turn, entries)}`;
+    }
     case "task_sent": return `${tr(locale, "orchAct_task_sent")}: ${tr(locale, `orchPurpose_${d.purpose}`)}${d.stage !== null && d.stage !== undefined ? ` · ${t(locale, "orchStage")} ${d.stage}` : ""}`;
     case "process_exited": return `${tr(locale, "orchAct_process_exited")}${d.code !== null && d.code !== undefined ? ` (${t(locale, "orchExitCode")} ${d.code})` : d.signal ? ` (${d.signal})` : ""}`;
     case "tool_finished": return `${tr(locale, "orchAct_tool_finished")}: ${e.text}${typeof d.exitCode === "number" ? ` (${t(locale, "orchExitCode")} ${d.exitCode})` : ""}`;
@@ -281,7 +290,7 @@ function ActivityList({ locale, entries, gaps, filter, emptyText, silence }: {
         {list.map((e) => { const report = structured(e); return (
           <div key={e.id} className={`orch-feed__item orch-feed__item--${e.detail?.accessMismatch === true ? "warning" : e.kind}${isServiceEntry(e) ? " orch-feed__item--service" : ""}`} data-activity-kind={e.kind} data-activity-id={e.id}>
             <time>{time(locale, e.ts)}</time>
-            <span className="orch-feed__text">{report ? `${tr(locale, "orchAct_message")}: ${t(locale, "orchFeedReport")}` : entryLabel(locale, e)}</span>
+            <span className="orch-feed__text">{report ? `${tr(locale, "orchAct_message")}: ${t(locale, "orchFeedReport")}` : entryLabel(locale, e, entries)}</span>
             {report && <details open data-orch-structured><summary>{t(locale, "orchFeedReport")}</summary><ReportView locale={locale} parts={report} /></details>}
             {typeof e.detail?.output === "string" && e.detail.output && (
               <details><summary>{t(locale, "orchFeedOutput")}</summary><pre>{e.detail.output}</pre></details>
@@ -584,7 +593,6 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
   const finalText = useText(orch, runId, m.finalReport?.sha256);
   const lastText = useText(orch, runId, m.lastReport?.sha256);
   const next = (finalText ? reportParts(finalText).next : null) ?? (lastText ? reportParts(lastText).next : null);
-  const head = runHeadline(view);
   const outcome = outcomeKey(view, m.finalVerdict, m.complete);
   // Read only in part: what was read stands, but nothing is concluded from what was not read yet.
   const stageStateText = (st: { state: string }) => tr(locale, !m.complete && st.state !== "done" ? "orchSumStage_unloaded" : `orchSumStage_${st.state}`);
@@ -623,7 +631,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
 
       <Section id="outcome" title={t(locale, "orchSum_outcome")} src="journal" locale={locale}>
         <p className={`orch-sum__outcome orch-sum__outcome--${outcome}`} data-sum-outcome={outcome}>
-          <b>{headlineText(locale, head.headline, view, orch.activity[runId]?.entries ?? [])}</b> — {tr(locale, `orchSumOutcome_${outcome}`)}
+          <b>{headlineText(locale, view, orch.activity[runId]?.entries ?? [])}</b> — {tr(locale, `orchSumOutcome_${outcome}`)}
         </p>
         {view.reason && <p><b>{t(locale, "orchSum_reason")}:</b> {reasonText(locale, view, orch.activity[runId]?.entries ?? [])}</p>}
         {outcome === "completed" && <p className="orch-hint" data-sum-scope>{t(locale, "orchSumScope")}</p>}
@@ -1020,7 +1028,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
           <section ref={summary} tabIndex={-1} className={`orch-summary orch-summary--${head.headline} orch-panel__status orch-panel__status--${view.status}${flash ? " orch-summary--flash" : ""}${panel.tab !== "overview" ? " orch-summary--compact" : ""}`}
             role="status" aria-live="polite" data-orch-summary data-headline={head.headline}>
             <div className="orch-summary__headline">
-              <strong>{headlineText(locale, head.headline, view, activity.entries)}</strong>
+              <strong>{headlineText(locale, view, activity.entries)}</strong>
               {view.reason && <span data-orch-reason>{reasonText(locale, view, activity.entries)}</span>}
             </div>
             {endedHere && panel.tab !== "summary" && (
@@ -1270,7 +1278,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <ol className="orch-history">
                   {lines.map((l) => (
                     <li key={l.seq} data-history-kind={l.kind}>
-                      <time>{new Date(l.ts).toLocaleTimeString(locale)}</time> {lineText(locale, l)}
+                      <time>{new Date(l.ts).toLocaleTimeString(locale)}</time> {lineText(locale, l, activity.entries)}
                       {l.text && runId && <LineDetails runId={runId} text={l.text} dropped={Number(l.parts.outputDropped ?? 0)} locale={locale} />}
                     </li>
                   ))}
