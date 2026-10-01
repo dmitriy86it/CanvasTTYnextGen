@@ -3,7 +3,7 @@
 //   node mock-codex.mjs exec resume <thread_id> --json [...] -o <file> -
 // Unknown flags are ignored (value flags: -o -c -C -s -m -p --output-schema --sandbox --model --profile --cd).
 // Reads the task from stdin to EOF; stores len/sha256/exact bytes in MOCK_STATE/<thread_id>.json (see mock-common.mjs).
-// Modes: ok | fail | bad_schema | not_json | exit_after_success | no_terminal | sleep | oversized_line |
+// Modes: ok | fail | usage_limit (app-server) | bad_schema | not_json | exit_after_success | no_terminal | sleep | oversized_line |
 //        many_big_events | hold_stdout | no_report_file | wrong_session | big_report | stderr_flood |
 //        no_read_stdin (never reads stdin, full successful turn, exit 0) |
 //        result_then_hang (full successful turn, ledger line {pid,label:"result_sent"}, then waits for a signal) |
@@ -225,6 +225,14 @@ async function appServer(args) {
       }
       if (MODE === "fail") {
         await emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", items: [], error: { message: "mock failure" } } } });
+        continue;
+      }
+      if (MODE === "usage_limit") {
+        // The account's usage limit, as codex-cli 0.155.1 ended a real turn (evidence/real-stage-13/series-S3-S5-S6-attempt2,
+        // codex-turn-error.jsonl): an error notification, then the turn failed with the same message; the process exits 0.
+        const message = "You’ve hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 28th, 2026 11:51 PM.";
+        await emit({ method: "error", params: { threadId, turnId, willRetry: false, error: { message } } });
+        await emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", items: [], error: { message } } } });
         continue;
       }
       const text = JSON.stringify(script ? script.answer : reportFor(st, p.outputSchema ?? null, prev !== null && st.turns.length > 1));

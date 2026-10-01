@@ -751,6 +751,19 @@ test("real HTTP client pairs with six digits, rejects wrong PIN and waits for Ma
   assert.equal(f.writes[0].id, "one");
 });
 
+// CI flake (Linux, ENOTEMPTY in the fixture's rm): a pairing response queues a write of even-g2-pairing.log after it
+// finishes. close() must wait for that write, or it lands in a folder being removed. The write is made slow here so
+// the order does not depend on timing.
+test("close() waits for the pairing log write a finished response queued", async (t) => {
+  const f = await fixture(t);
+  await f.enable();
+  const log = join(f.directory, "even-g2-pairing.log");
+  f.controller.diagnosticsWrite = new Promise((r) => setTimeout(r, 100)).then(() => writeFile(log, "late\n"));
+  await f.controller.close();
+  assert.equal(await readFile(log, "utf8"), "late\n", "written before close() resolved");
+  await rm(f.directory, { recursive: true }); // as the cleanup does: nothing lands in the folder after it
+});
+
 test("six-digit handshakes enforce expiry and a bounded guess budget", async () => {
   const { LocalPairing } = await import("../src/main/services/companion/LocalPairing.ts");
   const srp = (await import("secure-remote-password/client.js")).default;

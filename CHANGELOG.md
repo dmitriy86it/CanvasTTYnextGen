@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- A provider's usage limit (the recorded Codex message) is no longer shown as an environment error: the run panel names the provider and the reset time the CLI gave and offers waiting or another account, not fixing dependencies or raising the run's budget. A PHP project with a front-end package.json and no JS lock file is no longer prepared with `npm install`, which wrote a new package-lock.json into it. The Even G2 companion waits for its pairing log write when it closes.
 - Orchestration is offered only where a run can finish (macOS): on Linux and Windows its items are shown inactive with a hint, and new links, goals and Resume are refused before any CLI or model call, so no tokens are spent on a run that would pause at its first check. Existing runs there can still be read, stopped and unlinked. The deb package's Maintainer is now the fork's packager, and a failed browser tab-restore setting is logged instead of left unhandled.
 - Added the Biome linter in lint-only mode (`npm run lint`, CI step Lint); the formatter stays off.
 - Documentation and CI: the README, package metadata and install guide point to this fork (releases, homepage, repository), the README gains a platform matrix and credits to the upstream CanvasTTY, the Simplified Chinese note is removed, and LICENSE adds the fork's copyright line. CI checks out the full history so the workspaces rollback test runs, and Linux jobs are pinned to `ubuntu-24.04`. Technical identifiers (`canvastty`, `appId`, data folder) are unchanged.

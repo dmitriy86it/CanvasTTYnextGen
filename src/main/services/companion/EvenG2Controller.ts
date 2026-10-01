@@ -627,6 +627,7 @@ export class EvenG2Controller {
     await this.stop();
     this.presentation.close();
     await this.saveQueue;
+    await this.diagnosticsWrite; // a pairing response's log write may still be in flight
   }
   private json(res: ServerResponse, status: number, value: unknown): void {
     res.writeHead(status, {
@@ -680,6 +681,7 @@ export class EvenG2Controller {
         const line = `${new Date().toISOString()} ${req.method} ${url.pathname} HTTP ${res.statusCode} active=${active} family=${address.includes(":") ? "IPv6" : "IPv4"}`;
         this.pairingDiagnostics = [...this.pairingDiagnostics, line].slice(-64);
         const text = this.pairingDiagnostics.join("\n") + "\n";
+        if (this.closing) return; // close() has taken the last write; nothing is written into userData after it
         this.diagnosticsWrite = this.diagnosticsWrite.catch(() => {}).then(() =>
           writeFile(join(this.file, "..", "even-g2-pairing.log"), text, { mode: 0o600 })).catch(() => {});
       });
