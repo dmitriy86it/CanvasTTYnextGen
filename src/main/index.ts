@@ -537,7 +537,7 @@ function buildRunManager(): RunManager {
       : providerAgents({ clis: providerClis!, launch, home: app.getPath("home") }),
     // Stage 12: the CLIs as the user runs them in a CanvasTTY terminal of the project.
     native: testProviders && isAbsolute(testProviders)
-      ? testNativeRuntime(testProviders, launch)
+      ? testNativeRuntime(testProviders, launch, hermeticSmoke() ? developmentEnv("CANVASTTY_SMOKE_SHELL") : undefined)
       : nativeRuntime({ clis: providerClis!, launch, baseEnv: () => terminalEnvironment(), clientVersion: app.getVersion() })
   });
 }

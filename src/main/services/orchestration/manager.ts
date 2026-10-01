@@ -915,7 +915,8 @@ export function nativeRuntime(input: {
 
 // Development and smoke runs only: the fake CLIs of testProviderAgents speaking the stage 12 protocols, with the
 // file's environments instead of a login shell (a test must not depend on the developer's rc files).
-export function testNativeRuntime(file: string, launch: () => SupervisorLaunch) {
+// shell: the default shell of checks and preparation when the file names none (a hermetic smoke: a shell without login).
+export function testNativeRuntime(file: string, launch: () => SupervisorLaunch, shell?: string) {
   const cfg = JSON.parse(readFileSync(file, "utf8")) as Record<"codex" | "claude", { executable: string; version: string; path: string; env: Record<string, string> }>
     & { shell?: string; checkEnv?: Record<string, string> };
   const cli = (p: "codex" | "claude"): AvailableProviderCli => ({
@@ -929,7 +930,7 @@ export function testNativeRuntime(file: string, launch: () => SupervisorLaunch) 
     }),
     executables: { codex: cfg.codex.executable, claude: cfg.claude.executable }, direnv: "off",
     claudeHelp: () => run(cfg.claude.executable, ["--help"], { timeout: 20_000, env: envOf("claude") }).then((r) => r.stdout),
-    shell: cfg.shell ?? "/bin/sh",
+    shell: cfg.shell ?? shell ?? "/bin/sh",
     env: cfg.checkEnv ?? { PATH: cfg.codex.path, HOME: cfg.codex.env.HOME ?? "/nonexistent" },
     versions: { codex: cfg.codex.version, claude: cfg.claude.version }
   });

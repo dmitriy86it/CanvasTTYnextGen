@@ -902,6 +902,11 @@ CanvasTTY отдельно фиксирует три факта: проверк�
   смотрит только PATH, `LimitsService` не опрашивает ни одного провайдера, `node` для проверок задан абсолютным путём
   (`CANVASTTY_SMOKE_NODE`). В лог smoke выводятся строки `[smoke] provider CLIs: PATH only…` и
   `[smoke] limits: no provider is polled…`.
+- **Shell проверок.** Проверки и подготовка идут через `<shell> -ilc`. Login-shell на macOS запускает `path_helper`, и
+  тот из `/etc/paths.d/homebrew` возвращает `/opt/homebrew/bin` в начало PATH: в первой серии прогонов `node --test`
+  запускался из Homebrew. Тестовой среде выполнения герметичный smoke передаёт `tests/fixtures/smoke-shell.sh`
+  (`CANVASTTY_SMOKE_SHELL`): та же командная строка, но без login. В продукте shell проверок по-прежнему login-shell
+  пользователя.
 - **Проверка процессов.** Хелпер каждые 500 мс смотрит дерево процессов приложения: исполняемый файл (через `lsof`
   на macOS, `/proc/<pid>/exe` на Linux), а для интерпретаторов и скрипт. Если программа лежит вне системных каталогов,
   Electron и исходников репозитория, временных каталогов smoke и явно названных `node` и `git`, сценарий падает при

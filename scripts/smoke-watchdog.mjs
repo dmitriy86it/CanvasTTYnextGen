@@ -60,14 +60,16 @@ export function watch(child, name = "app", { check = false, report = false, allo
 
 const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const SMOKE_BIN = path.join(ROOT, "tests", "fixtures", "smoke-bin");
+// checks and preparation of the test runtime run through it: no login, so no path_helper putting Homebrew back in PATH
+const SMOKE_SHELL = path.join(ROOT, "tests", "fixtures", "smoke-shell.sh");
 const real = (p) => { try { return fs.realpathSync(p); } catch { return p; } };
 const NODE = real(process.execPath);
 export const HERMETIC_PATH = [SMOKE_BIN, "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
 
 // The development app's environment in a smoke: PATH without user or Homebrew folders, the hermetic switch, node by
-// its absolute path, the system shell. `extra` (HOME, providers, …) comes last.
+// its absolute path, the system shell (checks: a shell without login). `extra` (HOME, providers, …) comes last.
 export function hermeticEnv(extra = {}) {
-  return { ...process.env, PATH: HERMETIC_PATH, SHELL: "/bin/sh", CANVASTTY_SMOKE_HERMETIC: "1", CANVASTTY_SMOKE_NODE: NODE, ...extra };
+  return { ...process.env, PATH: HERMETIC_PATH, SHELL: "/bin/sh", CANVASTTY_SMOKE_HERMETIC: "1", CANVASTTY_SMOKE_NODE: NODE, CANVASTTY_SMOKE_SHELL: SMOKE_SHELL, ...extra };
 }
 
 // Where a program the app starts may live: the system, this repository's Electron, sources, build and fixtures, the
