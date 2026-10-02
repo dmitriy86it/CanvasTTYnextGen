@@ -488,9 +488,11 @@ sync("allow.write-tmp", () => { fs.writeFileSync(tmp + "/" + id, "x"); fs.unlink
 sync("deny.write-home", () => { fs.writeFileSync(home + "/" + id, "x"); fs.unlinkSync(home + "/" + id); });
 sync("deny.read-secrets", () => fs.readdirSync(home + "/Library/Keychains"));
 sync("deny.read-root", () => fs.readdirSync(root));
-// .git itself when the folder has none: recursive mkdir creates it first, and that is refused as well
-const git = work + "/.git", hadGit = fs.existsSync(git);
-sync("deny.write-git", () => { fs.mkdirSync(git + "/" + id, { recursive: true }); fs.rmSync(hadGit ? git + "/" + id : git, { recursive: true }); });
+// .git itself when the folder has none: recursive mkdir creates it first, and that is refused as well; a worktree's
+// .git is a file (gitdir: …): an append to it, refused the same way (an empty append changes nothing if it is not)
+const git = work + "/.git", gitStat = fs.statSync(git, { throwIfNoEntry: false });
+sync("deny.write-git", () => gitStat?.isFile() ? fs.appendFileSync(git, "")
+  : (fs.mkdirSync(git + "/" + id, { recursive: true }), fs.rmSync(gitStat ? git + "/" + id : git, { recursive: true })));
 const tcp = (host, p) => new Promise((res) => { const c = net.connect(p, host); const t = setTimeout(() => { c.destroy(); res("ETIMEDOUT"); }, 5000);
   c.on("connect", () => { clearTimeout(t); c.destroy(); res("ok"); }); c.on("error", (e) => { clearTimeout(t); res(e.code || "error"); }); });
 (async () => {

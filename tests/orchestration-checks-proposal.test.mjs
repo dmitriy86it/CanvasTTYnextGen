@@ -668,6 +668,11 @@ test("A1.1: the profile's self-test fails — the check does not run, the run pa
   const open = await checkSelftest({ profilePath: path.join(d, "open.sb"), ...paths, launch: LAUNCH });
   assert.deepEqual(open.failed.map((f) => f.name).sort(), ["deny.read-root", "deny.read-secrets", "deny.tcp-external", "deny.write-git", "deny.write-home"]);
   assert.equal(fs.existsSync(path.join(paths.work, ".git")), false, "the open profile's self-test left nothing behind");
+  // a worktree's work folder: .git is a file (review S2-1) — refused all the same, the self-test passes
+  fs.writeFileSync(path.join(paths.work, ".git"), "gitdir: /nowhere\n");
+  assert.deepEqual(await checkSelftest({ profilePath: path.join(d, "p.sb"), ...paths, launch: LAUNCH }), { passed: true, checks: 8, failed: [] });
+  assert.deepEqual((await checkSelftest({ profilePath: path.join(d, "open.sb"), ...paths, launch: LAUNCH })).failed.map((f) => f.name).includes("deny.write-git"), true);
+  assert.equal(fs.readFileSync(path.join(paths.work, ".git"), "utf8"), "gitdir: /nowhere\n");
   // a work folder that covers the home or a credential store is refused before any profile (review S1-6)
   assert.throws(() => buildCheckProfile({ ...paths, work: os.homedir() }), /covers/);
   fs.mkdirSync(path.join(d, "home", ".ssh", "x"), { recursive: true });
