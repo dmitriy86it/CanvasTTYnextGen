@@ -518,7 +518,7 @@ test("the fixtures (A4's final form) with the reviewer's results and nothing of 
 test("the UI model: «Открыто блокирующих: N» on the result, the cards and the activity feed alike; the reviewer is its own participant on the Codex card", () => {
   const findings = {
     items: [{ id: "F1", severity: "blocking", status: "open", condition: null, stage: 1, problem: "p", evidence: "", closeWhen: "c", paths: ["a.txt"], possibleRepeatOf: null,
-      history: [{ kind: "opened", reviewTurnId: "t1", runKey: "k", tree: "a".repeat(40), reason: null }] }],
+      history: [{ kind: "opened", reviewTurnId: "t1", index: 0, runKey: "k", tree: "a".repeat(40), reason: null }] }],
     disputed: [], openBlocking: 1
   };
   const v = { runId: "r", status: "running", reason: null, revision: 1, stage: 1, turns: 3, halted: false, active: { kind: "turn", purpose: "review" }, progress: { findings, finish: [] } };

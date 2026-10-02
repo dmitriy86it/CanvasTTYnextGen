@@ -2347,7 +2347,7 @@ export function findingsView(st: RunState, c: ConditionTexts | null): Orchestrat
     items: [...book.list.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1))).map((f) => ({
       id: f.id, severity: f.severity, status: f.status, condition: f.condition, stage: f.status === "open" ? ownerOf(f, owners) : null,
       problem: f.problem, evidence: f.evidence, closeWhen: f.closeWhen, paths: f.paths, possibleRepeatOf: f.possibleRepeatOf,
-      history: f.history.map((h) => ({ kind: h.kind, reviewTurnId: h.turnId, runKey: h.runKey, tree: h.tree, reason: h.reason ?? null }))
+      history: f.history.map((h) => ({ kind: h.kind, reviewTurnId: h.turnId, index: h.index, runKey: h.runKey, tree: h.tree, reason: h.reason ?? null }))
     })),
     disputed: book.disputed.map((d) => ({ reviewTurnId: d.turnId, index: d.index, problem: d.problem, candidates: d.candidates })),
     openBlocking: openBlocking(book).length

@@ -687,7 +687,7 @@ function Findings({ f, locale }: { f: OrchestrationFindings; locale: LocaleId })
       <details data-finding-history>
         <summary>{t(locale, "orchFindingHistory")}</summary>
         <ol>{x.history.map((h) => (
-          <li key={`${h.kind}:${h.reviewTurnId}`} data-finding-event={h.kind} data-finding-review={h.reviewTurnId} data-finding-tree={h.tree}>
+          <li key={`${h.kind}:${h.reviewTurnId}:${h.index}`} data-finding-event={h.kind} data-finding-review={h.reviewTurnId} data-finding-tree={h.tree}>
             {fill(t(locale, `orchFindingHist_${h.kind}`), { turn: h.reviewTurnId.slice(0, 8) })} · <code>{fill(t(locale, "orchFindingTree"), { tree: h.tree.slice(0, 12) })} · {fill(t(locale, "orchFindingState"), { key: h.runKey.slice(0, 12) })}</code>
             {h.reason && <> — {t(locale, `orchFindingRefused_${h.reason}` as TranslationKey)}</>}
           </li>

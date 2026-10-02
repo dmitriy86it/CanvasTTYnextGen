@@ -253,7 +253,7 @@ export interface OrchestrationFindings {
   items: {
     id: string; severity: "blocking" | "wish"; status: "open" | "closed"; condition: string | null; stage: number | null;
     problem: string; evidence: string; closeWhen: string; paths: string[]; possibleRepeatOf: string | null;
-    history: { kind: "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged"; reviewTurnId: string; runKey: string; tree: string; reason: string | null }[];
+    history: { kind: "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged"; reviewTurnId: string; index: number; runKey: string; tree: string; reason: string | null }[];
   }[];
   disputed: { reviewTurnId: string; index: number; problem: string; candidates: string[] }[]; // waiting for the person (A4 decides)
   openBlocking: number;
