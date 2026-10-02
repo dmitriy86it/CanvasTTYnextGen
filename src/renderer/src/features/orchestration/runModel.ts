@@ -15,7 +15,7 @@ import { t, type TranslationKey } from "../../lib/i18n.ts";
 
 // The same sets the service uses (orchestrationService.ts); the service still decides.
 const RESUMABLE = ["user_request", "step_done", "plan_review", "permission_denied", "loop_suspected", "environment_error", "recovered",
-  "stage_done", "external_failure", "needs_user_action", "finish_unconfirmed", "app_closed"];
+  "stage_done", "external_failure", "needs_user_action", "finish_unconfirmed", "app_closed", "tree_changed_during_review"];
 const STEP_ONLY = ["invalid_report", "protocol_error"];
 const STOP_ONLY = ["lead_modified_tree", "shared_git_tampered", "journal_corrupt", "sandbox_unavailable"];
 export const ACTIVE_STATUSES = ["preparing", "running", "pausing", "paused", "stopping"];
@@ -66,11 +66,19 @@ export function availableActions(view: OrchestrationRunView): RunAction[] {
 
 // Who works now, for the cards and the panel. Preparation and the actions after success are CanvasTTY's own shell
 // work, shown with the checks.
-export function activeRole(view: OrchestrationRunView | null): "lead" | "executor" | "check" | null {
+// A3: the reviewer reviews a run whose view has findings (journal-v2-format.md §2.8); its CLI is the lead's (Codex), so
+// the Codex card shows its work.
+export const byReviewer = (view: OrchestrationRunView | null): boolean => view?.progress?.findings != null;
+export function activeRole(view: OrchestrationRunView | null): "lead" | "executor" | "reviewer" | "check" | null {
   const a = view?.active;
   if (!a) return null;
   if (a.kind !== "turn") return "check";
-  return a.purpose === "execute" ? "executor" : "lead";
+  return a.purpose === "execute" ? "executor" : a.purpose !== "plan" && byReviewer(view) ? "reviewer" : "lead";
+}
+// The participant a canvas card (lead or executor) stands for now: the Codex card is the reviewer while it reviews or asks.
+export function cardRole(role: "lead" | "executor", view: OrchestrationRunView | null): "lead" | "executor" | "reviewer" {
+  if (role !== "lead") return role;
+  return activeRole(view) === "reviewer" || view?.permission?.role === "reviewer" ? "reviewer" : "lead";
 }
 
 // The run's status as every place names it (panel, cards, link chip, widget, workspace history): a run of journal v2
@@ -88,9 +96,10 @@ export function agentState(role: "lead" | "executor", view: OrchestrationRunView
   if (view.newer) return "read_only"; // a newer version's run, whatever its journaled status: only viewed here
   if (view.status === "completed") return runStatusKey(view) as AgentState;
   if (view.status === "stopped" || view.status === "failed" || view.status === "stopping") return view.status;
-  if (view.permission?.role === role) return "needs_you";
+  const onCard = (r: string | null | undefined) => (r === "reviewer" ? "lead" : r);
+  if (onCard(view.permission?.role) === role) return "needs_you";
   if (view.status === "paused") return "paused";
-  return activeRole(view) === role ? "working" : "waiting";
+  return onCard(activeRole(view)) === role ? "working" : "waiting";
 }
 
 // ---------- journal pages ----------
@@ -347,7 +356,7 @@ export type Headline = "working" | "awaiting_permission" | "stopping_after_turn"
   | "awaiting_checks" | "awaiting_checks_none" | "awaiting_finish_confirmation" | "check_needs_permissions";
 const NEEDS_SETUP = ["environment_error", "sandbox_unavailable", "permission_denied", "external_failure"];
 const NEEDS_DECISION = ["outcome_unknown", "limit_reached", "loop_suspected", "invalid_report", "protocol_error", "lead_modified_tree", "shared_git_tampered", "journal_corrupt",
-  "finish_unconfirmed"];
+  "finish_unconfirmed", "tree_changed_during_review", "awaiting_person_decision"];
 
 export function runHeadline(view: OrchestrationRunView): { headline: Headline; next: string } {
   if (view.halted) return { headline: "halted", next: "halted" };
@@ -561,7 +570,7 @@ export function prepareReasonText(locale: LocaleId, r: PrepareReason | null): st
 // The last `n` lines of a step's output, the shell's noise left out.
 export const lastLines = (text: string, n = 40): string => text.replace(ANSI, "").split("\n").filter((l) => !SHELL_NOISE.some((r) => r.test(l.trim()))).slice(-n).join("\n");
 
-export function participantState(role: "lead" | "executor", view: OrchestrationRunView | null, entries: readonly OrchestrationActivityEntry[],
+export function participantState(role: "lead" | "executor" | "reviewer", view: OrchestrationRunView | null, entries: readonly OrchestrationActivityEntry[],
   open = true): ParticipantState {
   const mine = entries.filter((e) => e.role === role);
   const lastEventAt = mine.at(-1)?.ts ?? null;

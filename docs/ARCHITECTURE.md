@@ -225,6 +225,18 @@ A2 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-forma
 
 The completion's basis records R → C → evidence; replay re-derives the conditions from the plans' and reviews' texts (`journal.ts` `conditionsConflict`) and marks a journal that says completed without that evidence as damaged (`phase: "texts"`). The result's "Conditions" section, the agent cards and the activity feed show the same facts (`conditionsView`, `conditionsLine`).
 
+### Findings and the reviewer (journal v2, development flag only)
+
+A3 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.8. In a v2 journal the stages and the final result are reviewed by a separate role, `reviewer`: the lead's CLI (Codex) in a new session for every review, with the lead's turn limit and rights. Its task carries the requirements and conditions, the paths changed (since the stage started and since the run started), the check results on the current tree and every finding of the run — never the executor's report or task, nor the lead's conversation. The lead only plans. A journal the lead already reviewed in (A1–A2, `review.recorded`) goes on with the lead; mixing the two is a replay conflict.
+
+The reviewer has no verdict. It reports findings — `blocking` or `wish`, with the files they are about — and a request (`none`, `replan`, `question`). The application (`findings.ts`, pure):
+
+- numbers new findings F1, F2, … from a counter and never renumbers them; a report naming a number that does not exist, changing a finding's severity or condition, or opening a blocking one without files is `invalid_report` and is not applied;
+- closes a blocking finding only on a later state than it was opened on, with the files changed for it since; a repeat of a closed finding on unchanged files is refused or disputed (the person decides — A4; until then the run waits, `awaiting_person_decision`);
+- writes what it did (`applied`: opened, closed, reopened, refused, disputed, unchanged, the next number) as a text and one `review.assessed` record per review; `orch.turn.tree` keeps the tree the reviewer saw, and a review whose tree changed during it is dropped (`review.discarded`, one retry, then `tree_changed_during_review`).
+
+A stage is accepted only with its checks passing, its conditions met and no open blocking finding it owns; the completion function adds `blocking_open` and `disputed_pending`. Replay re-applies every result from the texts and marks a journal whose stage was accepted, or run completed, with an open blocking finding as damaged (`phase: "texts"`). The result's "Findings" section (number, severity, status, owning stage, history with the review and the tree), the cards and the activity feed say "Open blocking: N" through one function (`findingsView`, `findingsLine`); the run panel lists the reviewer as its own participant, and the Codex card shows its work.
+
 ### Requirements and limits
 
 - **Platforms.**

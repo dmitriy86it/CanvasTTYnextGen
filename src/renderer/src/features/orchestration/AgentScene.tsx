@@ -8,9 +8,9 @@ import { t, type TranslationKey } from "../../lib/i18n";
 import { agentLayerId, pastCanvasDragThreshold } from "../workspace/canvasSelectionGesture";
 import { AgentCard } from "./AgentCard";
 import { linkTrace } from "./linkTrace";
-import { ACTIVE_STATUSES, activeRole, agentState, orchestrationAvailableHere, orchestrationEntry, participantState, runStatusKey, TERMINAL_STATUSES, type AgentState } from "./runModel";
+import { ACTIVE_STATUSES, activeRole, agentState, cardRole, orchestrationAvailableHere, orchestrationEntry, participantState, runStatusKey, TERMINAL_STATUSES, type AgentState } from "./runModel";
 import { ReleaseNewerLink } from "./RunPanel";
-import { conditionsLine, duration, roleStatus, type StatusLine } from "./runStatus";
+import { conditionsLine, duration, findingsLine, roleStatus, type StatusLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import type { Orchestration } from "./useOrchestration";
 
@@ -73,21 +73,21 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
     const run = runId ? orch.runs[runId] ?? null : null;
     const s = agentState(card.role, run?.view ?? null);
     if (s !== "working" || !runId) return s;
-    const p = participantState(card.role, run!.view, orch.activity[runId]?.entries ?? [], run!.open);
+    const p = participantState(cardRole(card.role, run!.view), run!.view, orch.activity[runId]?.entries ?? [], run!.open);
     return p.phase === "running" || p.phase === "finishing" ? "working" : "starting";
   };
   // The concrete line under the state: the same rules as the home widget and the summary.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
-  const cardStatus = (card: OrchestrationAgentCard, link: OrchestrationAgentLink | undefined): { status: StatusLine | null; time: string | null; conditions: string | null } => {
+  const cardStatus = (card: OrchestrationAgentCard, link: OrchestrationAgentLink | undefined): { status: StatusLine | null; time: string | null; conditions: string | null; findings: string | null } => {
     const runId = link?.runIds.at(-1);
     const run = runId ? orch.runs[runId] : undefined;
-    if (!runId || !run) return { status: null, time: runId && orch.runErrors[runId] ? t(locale, "actRunError") : null, conditions: null };
-    const status = roleStatus(locale, card.role, { view: run.view, entries: orch.activity[runId]?.entries ?? [], open: run.open, stageTitles: orch.stageTitles(runId), now });
+    if (!runId || !run) return { status: null, time: runId && orch.runErrors[runId] ? t(locale, "actRunError") : null, conditions: null, findings: null };
+    const status = roleStatus(locale, cardRole(card.role, run.view), { view: run.view, entries: orch.activity[runId]?.entries ?? [], open: run.open, stageTitles: orch.stageTitles(runId), now });
     const time = status.quiet ?? (status.lastEventAt
       ? `${t(locale, "orchNow_lastEvent").replace("{time}", new Date(status.lastEventAt).toLocaleTimeString(locale))} · ${duration(locale, now - Date.parse(status.lastEventAt))}`
       : null);
-    return { status, time, conditions: conditionsLine(locale, run.view) };
+    return { status, time, conditions: conditionsLine(locale, run.view), findings: findingsLine(locale, run.view) };
   };
 
   return (
@@ -119,6 +119,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             status={shown.status}
             statusTime={shown.time}
             conditions={shown.conditions}
+            findings={shown.findings}
             ended={view !== null && TERMINAL_STATUSES.includes(view.status)}
             message={ui.messages[card.agentId] ?? null}
             linking={ui.linkingFrom === card.agentId ? "source" : ui.linkingFrom && card.role === "executor" ? "target" : null}

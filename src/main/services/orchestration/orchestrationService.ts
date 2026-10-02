@@ -18,7 +18,9 @@ import type { ProjectCheckResult } from "./checkService.ts";
 import { DEFAULT_LIMITS, completion, confirmationFor, currentCommit, effectiveLimits, nextAction, proposesChecks, withoutChecks } from "./cycle.ts";
 import type { Action, Goal, LimitKind, RunLimits, Snapshot } from "./cycle.ts";
 import { canonical } from "./journal.ts";
-import type { CommandResult, CompletionBasis, CompletionKind, PausedReason, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
+import type { CommandResult, CompletionBasis, CompletionKind, PausedReason, ReviewRequest, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
+import { byReviewer, openBlocking, ownerOf, planReview, replayFindings } from "./findings.ts";
+import type { Applied, Finding, FindingsReplay, ReportFinding } from "./findings.ts";
 import { checkKey, findingsKey, runKey } from "./progress.ts";
 import type { CheckDef, DepsFacts } from "./progress.ts";
 import type { ProviderTurnResult } from "./providers.ts";
@@ -32,7 +34,7 @@ import { endingDetail, sanitize } from "./activity.ts";
 import type { AskPerson, PermissionAsk, PermissionReply } from "./sessions.ts";
 import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
-import type { OrchestrationConditions, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
+import type { OrchestrationConditions, OrchestrationFindings, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
 import { bookOf, changeIdsOf, conditionBlockers, factsOf, finalMarksProblems, numberPlan, planProblems, reportConditions, stageMarksProblems } from "./conditions.ts";
 import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, RequirementMark, Status } from "./conditions.ts";
 import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, diffTreeNames, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
@@ -215,7 +217,7 @@ class Refused extends OrchestrationError {
 const DEFAULT_STOP_GRACE_MS = 20_000;
 const RAISABLE: readonly LimitKind[] = ["turns", "roundsPerStage", "replans", "runMs"];
 const RESUMABLE: readonly string[] = ["user_request", "step_done", "plan_review", "permission_denied", "loop_suspected", "environment_error", "recovered",
-  "app_closed", "stage_done", "external_failure", "needs_user_action", "finish_unconfirmed"];
+  "app_closed", "stage_done", "external_failure", "needs_user_action", "finish_unconfirmed", "tree_changed_during_review"];
 const STEP_ONLY: readonly string[] = ["invalid_report", "protocol_error"];
 const STOP_ONLY: readonly string[] = ["lead_modified_tree", "shared_git_tampered", "journal_corrupt", "sandbox_unavailable"];
 const ACTIVE: readonly string[] = ["preparing", "running", "pausing", "paused"];
@@ -294,6 +296,31 @@ export const FINAL_V2_SCHEMA: AnswerSchema = {
     requirements: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "status", "note"], properties: MARK(["met", "not_met"]) } }
   }
 };
+// A3 (journal-v2-format.md §2.8): the reviewer's report — no verdict (the application decides the stage), findings with
+// their numbers and a flat relation (the subset has no anyOf), a request instead.
+const FINDING_ITEM: AnswerSchema = {
+  type: "object", additionalProperties: false, required: ["id", "severity", "condition", "problem", "evidence", "closeWhen", "status", "paths", "relation"],
+  properties: {
+    id: { type: ["string", "null"], maxLength: 16 }, severity: { type: "string", enum: ["blocking", "wish"] }, condition: { type: ["string", "null"], maxLength: 16 },
+    problem: str(1, 2000), evidence: { type: "string", maxLength: 2000 }, closeWhen: str(1, 1000), status: { type: "string", enum: ["open", "closed"] },
+    paths: { type: "array", items: str(1, 500) },
+    relation: {
+      type: ["object", "null"], additionalProperties: false, required: ["repeatOf", "distinctFrom", "why"],
+      properties: { repeatOf: { type: ["string", "null"], maxLength: 16 }, distinctFrom: { type: ["string", "null"], maxLength: 16 }, why: { type: ["string", "null"], maxLength: 1000 } }
+    }
+  }
+};
+export const REVIEWER_SCHEMA: AnswerSchema = {
+  type: "object", additionalProperties: false, required: ["conditions", "findings", "request", "question"],
+  properties: {
+    conditions: REVIEW_V2_SCHEMA.properties!.conditions, findings: { type: "array", items: FINDING_ITEM },
+    request: { type: "string", enum: ["none", "replan", "question"] }, question: { type: ["string", "null"], maxLength: 2000 }
+  }
+};
+export const FINAL_REVIEWER_SCHEMA: AnswerSchema = {
+  ...REVIEWER_SCHEMA, required: [...REVIEWER_SCHEMA.required!, "requirements"],
+  properties: { ...REVIEWER_SCHEMA.properties, requirements: FINAL_V2_SCHEMA.properties!.requirements }
+};
 // Journal v2: the first plan turn of a goal without check commands also proposes them — or says why there are none
 // (journal-v2-format.md §2.1, «Поле checks отчёта плана»). Every other plan turn of a v2 journal answers checks: null
 // (PLAN_V2_SCHEMA): a proposal there is an invalid report. v1 journals keep the plan schema above.
@@ -319,8 +346,9 @@ export const PLAN_V2_SCHEMA: AnswerSchema = {
 };
 const schemaOf = (purpose: TurnPurpose, st: RunState, goal: Goal): AnswerSchema => st.version !== 2 ? REPORT_SCHEMAS[purpose]
   : purpose === "plan" ? (proposesChecks(st, goal) ? PLAN_PROPOSAL_SCHEMA : PLAN_V2_SCHEMA)
-    : purpose === "review" ? REVIEW_V2_SCHEMA : purpose === "final_review" ? FINAL_V2_SCHEMA : REPORT_SCHEMAS[purpose];
-for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA, REVIEW_V2_SCHEMA, FINAL_V2_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
+    : purpose === "review" ? (byReviewer(st) ? REVIEWER_SCHEMA : REVIEW_V2_SCHEMA) : purpose === "final_review" ? (byReviewer(st) ? FINAL_REVIEWER_SCHEMA : FINAL_V2_SCHEMA)
+      : REPORT_SCHEMAS[purpose];
+for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA, REVIEW_V2_SCHEMA, FINAL_V2_SCHEMA, REVIEWER_SCHEMA, FINAL_REVIEWER_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
 
 interface PlanReport { stages: { title: string; task: string }[]; question: string | null }
 interface ProposedCheck { command: string; why: string; source: string[] }
@@ -328,6 +356,7 @@ interface ProposedCheck { command: string; why: string; source: string[] }
 export interface ChecksProposalText { checks: (ProposedCheck & { id: string })[]; none: string | null }
 interface PlanProposalReport extends PlanReport { checks: { checks: ProposedCheck[]; none: string | null } | null }
 interface ReviewReport { verdict: string; findings: string[]; question: string | null }
+interface ReviewerReport { conditions: ConditionMark[]; requirements?: RequirementMark[]; findings: ReportFinding[]; request: ReviewRequest; question: string | null }
 
 // What the Р1 schema subset cannot say: counts and "question iff verdict question".
 function reportProblem(purpose: TurnPurpose, value: unknown, schema: AnswerSchema = REPORT_SCHEMAS[purpose]): string | null {
@@ -351,6 +380,12 @@ function reportProblem(purpose: TurnPurpose, value: unknown, schema: AnswerSchem
       if (c.checks.some((x) => x.source.length > 16 || x.source.some((f) => f.startsWith("/") || f.split("/").includes("..")))) return "source: up to 16 relative paths";
       if ((c.none !== null && c.none.trim() !== "") !== (lines.length === 0)) return "none says why exactly when no command is proposed";
     }
+  }
+  if (schema === REVIEWER_SCHEMA || schema === FINAL_REVIEWER_SCHEMA) {
+    const r = value as ReviewerReport;
+    if (r.findings.length > 50) return "at most 50 findings";
+    if ((r.request === "question") !== (r.question !== null && r.question.trim() !== "")) return "question is required exactly for request question";
+    return null;
   }
   if (purpose === "review" || purpose === "final_review") {
     const r = value as ReviewReport;
@@ -587,7 +622,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     return g ? { grantId: g.id, scope: "project" } : null;
   }
   function askPerson(role: AgentRole): AskPerson {
-    const provider = role === "lead" ? "codex" as const : "claude" as const;
+    const provider = role === "executor" ? "claude" as const : "codex" as const; // the reviewer runs the lead's CLI (A3)
     return async (ask: PermissionAsk, signal: AbortSignal) => {
       // a prompt the CLI says must reach the person is never answered by a saved decision, nor offered to be saved
       const fingerprint = GRANTABLE.includes(ask.kind) && !ask.alwaysAsk ? grantFingerprint(provider, ask.kind, ask.tool, ask.input) : null;
@@ -643,7 +678,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const st = state();
     return {
       permission: first?.view ?? null, pendingPermissions: permissions.size, workMode: ws.mode, workDir: ws.repo,
-      progress: { ...progressOf(st, goal, ws.branch), ...(st.version === 2 ? { conditions: shownConditions } : {}) },
+      progress: { ...progressOf(st, goal, ws.branch), ...(st.version === 2 ? { conditions: shownConditions, findings: shownFindings } : {}) },
       ...(st.pausedReason === "awaiting_checks_decision" ? { proposal: proposalText } : {}),
       ...(st.pausedReason === "check_needs_permissions" ? { refused: refusedCheck(st) } : {}),
       ...(st.pausedReason === "awaiting_finish_confirmation" ? {
@@ -748,6 +783,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
           case "record_plan":
             await recordProposedPlan(action.turnId);
             continue;
+          case "discard":
+            await j(() => writer.recordEvent("review.discarded", { turnId: action.turnId, treeBefore: state().orch.turns[action.turnId].tree, treeAfter: decided.snapshot!.tree }));
+            continue;
           case "checkpoint":
             await doCheckpoint(action.stage, action.tree);
             continue;
@@ -758,6 +796,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
             await runTurn(action, decided.snapshot!);
             // A2: the conditions as shown, after the turn (a pause in it does not reach decide())
             shownConditions = conditionsView(state(), goal, await conds(), null);
+            shownFindings = findingsView(state(), await conds());
             touch();
             break;
           case "check":
@@ -829,6 +868,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const c = await conds();
     const facts = conditionFacts(st, goal, c, snapshot.checkKeys);
     shownConditions = conditionsView(st, goal, c, snapshot.checkKeys);
+    shownFindings = findingsView(st, c);
     const action = nextAction({
       state: st, goal, limits: effectiveLimits(goal, st), snapshot, now: clock(),
       findingsOf: (turnId) => findingsCache.get(turnId) ?? [],
@@ -839,7 +879,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
           stageUnmet: (stage: number, turnId: string) => changeIdsOf(c.book, stage).some((id) => marksIn(c.reports, turnId).find((m) => m.id === id)?.status !== "met"),
           finalUnmet: conditionBlockers(facts).length > 0
         }
-      } : {})
+      } : {}),
+      // A3: the open blocking findings and the disputed items, from the applied texts (journal-v2-format.md §2.8)
+      ...(c?.findings ? { findings: findingsInput(st, c) } : {})
     });
     return { action, snapshot };
   }
@@ -869,12 +911,20 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   };
   const conds = async (): Promise<ConditionTexts | null> => (state().version === 2 ? loadConditions(state(), readJson) : null);
   let shownConditions: OrchestrationConditions | null = null;
+  let shownFindings: OrchestrationFindings | null = null;
 
   // Findings of past reviews, read once from texts/ (the journal holds only the reference).
   const findingsCache = new Map<string, string[]>();
   async function loadFindings(): Promise<void> {
     for (const r of state().orch.reviews) {
       if (findingsCache.has(r.turnId)) continue;
+      if (r.assessed) {
+        // A3 (5h §3.3): a reviewer's round is the stage's open blocking findings and unmet conditions after it
+        const c = (await conds())!;
+        const unmet = r.stage === null ? [] : changeIdsOf(c.book, r.stage).filter((id) => marksIn(c.reports, r.turnId).find((m) => m.id === id)?.status !== "met");
+        findingsCache.set(r.turnId, [...(c.findings?.openAfter.get(r.turnId) ?? []), ...unmet]);
+        continue;
+      }
       const ref = r.findings;
       findingsCache.set(r.turnId, ref ? JSON.parse((await readText(root, runId, ref)).toString("utf8")) as string[] : []);
     }
@@ -884,17 +934,18 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
 
   async function runTurn(action: Extract<Action, { kind: "turn" }>, snapshot: Snapshot): Promise<void> {
     const st = state();
-    const role: AgentRole = action.purpose === "execute" ? "executor" : "lead";
+    // A3 (§2.8): the reviewer reviews a v2 journal the lead did not review — a new session of the lead's CLI each time
+    const role: AgentRole = action.purpose === "execute" ? "executor" : action.purpose !== "plan" && byReviewer(st) ? "reviewer" : "lead";
     const limits = effectiveLimits(goal, st);
     const schema = schemaOf(action.purpose, st, goal);
     const request = {
       purpose: action.purpose, role, cwd: ws.repo, task: await buildTask(action, snapshot),
-      schema, sessionId: sessionFor(st, role),
+      schema, sessionId: role === "reviewer" ? null : sessionFor(st, role),
       // the role's own limit, cut to what is left of the run: the deadline is not extended by a long turn
-      timeoutMs: Math.max(1, Math.min(role === "lead" ? limits.leadTurnMs : limits.executorTurnMs, deadline() - clock())),
+      timeoutMs: Math.max(1, Math.min(role === "executor" ? limits.executorTurnMs : limits.leadTurnMs, deadline() - clock())),
       ask: askPerson(role), ...(goal.access ? { access: goal.access } : {})
     };
-    const roleTimeoutMs = role === "lead" ? limits.leadTurnMs : limits.executorTurnMs;
+    const roleTimeoutMs = role === "executor" ? limits.executorTurnMs : limits.leadTurnMs;
     const prepared = deps.agents.prepare(request);
     if (!prepared.ok) {
       await setStatus("paused", "permission_denied");
@@ -903,7 +954,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const turnId = randomUUID();
     await j(() => writer.recordOrchTurn({
       turnId, purpose: action.purpose, stage: action.stage, round: action.round,
-      planVersion: st.orch.plan?.version ?? null, clarificationVersion: st.orch.clarifications
+      planVersion: st.orch.plan?.version ?? null, clarificationVersion: st.orch.clarifications,
+      // A3 (§2.8): the tree a reviewer's turn reviews; every turn of a journal the reviewer reviews says it
+      ...(st.version === 2 && byReviewer(st) ? { tree: role === "reviewer" ? snapshot.tree : null } : {})
     }));
     await j(() => writer.recordTurnIntent({
       turnId, commandId: null, role, provider: prepared.provider, mode: prepared.mode, sessionId: request.sessionId, task: request.task
@@ -957,6 +1010,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (halted || state().status !== "running" && state().status !== "pausing") return; // a late result: a fact, no continuation
     if (abort !== null) return; // stopped by the deadline or its timeout: the result is a fact, nothing follows from it
 
+    if (role === "reviewer") {
+      // 5h §3.1: a review of a tree that changed during it is dropped before anything else is concluded from it
+      const after = await snapshotCopyTree(ws, state().workspace!.current.tree);
+      latest = { tree: after, at: new Date(clock()).toISOString() };
+      if (after !== snapshot.tree) { await j(() => writer.recordEvent("review.discarded", { turnId, treeBefore: snapshot.tree, treeAfter: after })); return; }
+    }
     if (role === "lead") {
       const after = await snapshotCopyTree(ws, state().workspace!.current.tree);
       latest = { tree: after, at: new Date(clock()).toISOString() };
@@ -983,6 +1042,17 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
         firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: p.stages.length
       }));
+    } else if (role === "reviewer") {
+      const r = value as ReviewerReport;
+      const plan = await reviewerPlan(action, r, snapshot.tree, snapshot.runKey);
+      if (!plan.applied) { await setStatus("paused", "invalid_report"); return; }
+      const report = state().turns[turnId].report!.ref!;
+      const applied: Applied = { report, conditionsMet: r.conditions.filter((m) => m.status === "met").map((m) => m.id), ...plan.applied };
+      const ref = await j(() => writer.putText(canonical(applied)));
+      await j(() => writer.recordEvent("review.assessed", {
+        turnId, stage: action.stage, request: r.request, report, applied: ref, clarificationVersion: state().orch.turns[turnId].clarificationVersion, runKey: snapshot.runKey
+      }));
+      if (r.request === "question") return askQuestion(turnId, r.question as string);
     } else if (action.purpose === "review" || action.purpose === "final_review") {
       const r = value as ReviewReport;
       // A2: the lead's marks — each "change" condition of the stage with paths the run changed, each requirement in the
@@ -1084,13 +1154,48 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     return stageMarksProblems(r.conditions, changeIdsOf(c.book, action.stage!), changed);
   }
 
+  // A3 (journal-v2-format.md §2.8): the reviewer's report against the conditions and the findings now — the violations
+  // (invalid_report), or what the application does with it. tree: the reviewed one.
+  async function reviewerPlan(action: Extract<Action, { kind: "turn" }>, r: ReviewerReport, tree: string, key: string): Promise<{ problems: string[]; applied: Omit<Applied, "report" | "conditionsMet"> | null }> {
+    const c = (await conds())!;
+    const book = c.findings!.book;
+    const problems: string[] = [];
+    const changedSince = async (from: string) => new Set((await diffTreeNames(ws, from, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
+    if (action.purpose === "final_review") {
+      if (r.conditions.length) problems.push("conditions: the final review marks requirements, not conditions");
+      if (r.request === "none" && c.book.conditioned) problems.push(...finalMarksProblems(r.requirements ?? [], goal.criteria.length));
+    } else if (r.request === "none") {
+      problems.push(...stageMarksProblems(r.conditions, changeIdsOf(c.book, action.stage!), await changedSince(state().workspace!.baseline.tree)));
+    }
+    const diffs = new Map<string, Set<string>>();
+    for (const f of book.list.values()) for (const t of [f.openTree, f.closeTree]) if (t && !diffs.has(t)) diffs.set(t, await changedSince(t));
+    const planned = planReview(book, r.findings, {
+      turnId: "", seq: 0, runKey: key, tree, stage: action.stage, changedSince: (t) => diffs.get(t) ?? new Set(),
+      stageConditions: action.stage === null ? null : c.book.stages.get(action.stage) ?? [], conditions: [...c.book.defs.keys()]
+    });
+    problems.push(...planned.problems);
+    return { problems, applied: problems.length ? null : planned.applied };
+  }
+  // The reviewer's last turn the application did not apply (invalid_report): what was wrong, recomputed from its report.
+  async function rejectedReview(snapshot: Snapshot): Promise<string[]> {
+    const st = state();
+    const id = st.orch.lastOrchTurn;
+    const t = id ? st.orch.turns[id] : null;
+    const ref = id ? st.turns[id]?.report?.ref : null;
+    if (!id || !t || !ref || st.turns[id].role !== "reviewer" || st.orch.reviews.some((r) => r.turnId === id) || Object.hasOwn(st.orch.discarded, id)) return [];
+    const report = await readJson<ReviewerReport>(ref);
+    const shape = reportProblem(t.purpose, report, schemaOf(t.purpose, st, goal));
+    return shape ? [shape] : (await reviewerPlan({ kind: "turn", purpose: t.purpose, stage: t.stage, round: t.round }, report, t.tree ?? snapshot.tree, snapshot.runKey)).problems;
+  }
+
   // run.status(completed) of a v2 journal: only as the completion function allows, with its kind and what it was
   // decided on (journal-v2-format.md §2.3). A cycle that disagrees with it never completes the run.
   async function complete(snapshot: Snapshot): Promise<void> {
     const st = state();
     if (st.version !== 2) return setStatus("completed");
     const facts = conditionFacts(st, goal, await conds(), snapshot.checkKeys);
-    const c = completion(st, goal, snapshot, facts);
+    const f = (await conds())?.findings ?? null;
+    const c = completion(st, goal, snapshot, facts, f && { open: openBlocking(f.book).length, disputed: f.book.disputed.length });
     if (!c.allowed) { await setStatus("paused", "environment_error"); return; }
     const progress = progressOf(st, goal, ws.branch);
     // the run on the tree it completes on (A2: the evidence the facts above counted, never one of another tree)
@@ -1591,8 +1696,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     await loadFindings();
     const st = state();
     const text = async (ref: TextRef | null) => ref ? (await readText(root, runId, ref)).toString("utf8") : "";
+    // A3 (5h §3.2): the reviewer gets no executor's report or task and no lead's conversation
+    const reviewer = action.purpose !== "plan" && action.purpose !== "execute" && byReviewer(st);
     const parts: string[] = [
-      `Role: ${action.purpose === "execute" ? "executor" : "lead"}. Purpose: ${action.purpose}.`,
+      `Role: ${action.purpose === "execute" ? "executor" : reviewer ? "reviewer" : "lead"}. Purpose: ${action.purpose}.`,
       `Goal:\n${goal.text}`,
       `Acceptance criteria (fixed; you cannot change them):\n${goal.criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
       goal.commands?.length === 0
@@ -1608,11 +1715,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
           : "Work place: the user's own project folder (your working directory), exactly as in their terminal. It may hold the user's "
             + "uncommitted changes: keep them. Your tools and permissions are the user's own CLI settings; a prompt goes to the user.",
         action.purpose === "execute"
-          ? "Your duty: implement the current stage. The lead plans and reviews."
-          : "Your duty: plan and review; the executor implements the stages. Do not implement the stages yourself."
+          ? `Your duty: implement the current stage. The lead plans${byReviewer(st) ? "; an independent reviewer reviews" : " and reviews"}.`
+          : reviewer ? "Your duty: review the work independently. Do not change any file: a review of a tree that changes is dropped."
+            : `Your duty: plan${byReviewer(st) ? "" : " and review"}; the executor implements the stages. Do not implement the stages yourself.`
       ].join("\n")] : []),
       ...modeLines(),
-      rulesFor(action.purpose),
+      rulesFor(action.purpose, reviewer),
       budgetLine(action)
     ];
     if (st.orch.clarifications > 0) parts.push(`User clarifications (${st.orch.clarifications}):\n${await clarificationTexts()}`);
@@ -1625,7 +1733,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         "- The person accepts or edits your proposal before any work starts; nothing runs until then. Do not ask a question in the same report: "
           + "if you need an answer first, ask it with checks: null and propose in the next plan."].join("\n"));
     }
-    if (st.orch.question?.answered) parts.push(`Answer to your question: ${await text(st.orch.question.answerRef)}`);
+    if (st.orch.question?.answered && (st.turns[st.orch.question.turnId]?.role === "reviewer") === reviewer) parts.push(`Answer to your question: ${await text(st.orch.question.answerRef)}`);
     if (st.orch.plan) {
       const plan = JSON.parse(await text(st.orch.plan.ref)) as PlanReport;
       const accepted = Object.keys(st.orch.accepted).length;
@@ -1633,7 +1741,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         .map((s, i) => `${st.orch.plan!.firstStage + i}. ${s.title}`).join("\n"));
       if (action.stage !== null) {
         const s = plan.stages[action.stage - st.orch.plan.firstStage];
-        if (s) parts.push(`Current stage ${action.stage} (round ${action.round}): ${s.title}\n${s.task}`);
+        if (s) parts.push(`Current stage ${action.stage} (round ${action.round}): ${s.title}${reviewer ? "" : `\n${s.task}`}`);
       }
     }
     const lastReview = st.orch.reviews.at(-1);
@@ -1642,11 +1750,11 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     // whatever the review said (an accept with failing checks, or no useful findings, sends the stage back too).
     const repeat = action.purpose === "execute" && (action.round ?? 1) > 1;
     const isReplan = action.purpose === "plan" && st.orch.plan !== null;
-    if (lastReview && action.purpose === "execute") {
+    if (lastReview && action.purpose === "execute" && !lastReview.assessed) {
       const findings = findingsOf(lastReview);
       if (findings) parts.push(`Findings of the last review (verdict ${lastReview.verdict}):\n${findings}`);
     }
-    if (isReplan && lastReview) {
+    if (isReplan && lastReview && !lastReview.assessed) {
       parts.push(`Why a new plan is needed: the last review of plan v${st.orch.plan!.version} returned ${lastReview.verdict}` +
         `${lastReview.stage === null ? " in the final review" : ` on stage ${lastReview.stage}`}.` +
         `${findingsOf(lastReview) ? `\nIts findings:\n${findingsOf(lastReview)}` : ""}`);
@@ -1655,6 +1763,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       parts.push(`Check results on the current state of the copy (results of other states are not shown):\n${await checkLines(snapshot)}`);
     }
     if (st.version === 2) parts.push(...await conditionLines(action, snapshot));
+    if (byReviewer(st)) parts.push(...await findingLines(action, snapshot, reviewer));
     parts.push(`Answer only with the JSON object the schema describes.`);
     return parts.join("\n\n");
   }
@@ -1708,6 +1817,58 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         + "is met and covered by a met condition."];
   }
 
+  // A3 (5h §3.2, journal-v2-format.md §2.8): the findings as each role needs them. The executor: the open blocking ones of
+  // its stage. The plan: every open blocking one. The reviewer: the changed paths and every finding with its state, then
+  // how to answer.
+  async function findingLines(action: Extract<Action, { kind: "turn" }>, snapshot: Snapshot, reviewer: boolean): Promise<string[]> {
+    const st = state();
+    const c = (await conds())!;
+    const book = c.findings!.book;
+    const say = (f: Finding) => `- ${f.id} [${f.severity}${f.condition ? `, ${f.condition}` : ""}; ${f.status}${f.paths.length ? `; ${f.paths.join(", ")}` : ""}]: ${f.problem}`
+      + `${f.evidence ? `\n  evidence: ${f.evidence}` : ""}\n  close when: ${f.closeWhen}`;
+    if (action.purpose === "execute") {
+      const own = heldBy(st, c, action.stage!);
+      return own.length ? [`Open blocking findings of this stage (fix each; only the reviewer closes them):\n${own.map(say).join("\n")}`] : [];
+    }
+    if (action.purpose === "plan") {
+      const open = openBlocking(book);
+      return open.length ? [`Open blocking findings of the run (the new plan must leave the work to fix them):\n${open.map(say).join("\n")}`] : [];
+    }
+    if (!reviewer) return [];
+    const changed = async (from: string, label: string) => {
+      const d = await diffTreeNames(ws, from, snapshot.tree, 500);
+      return `Paths changed ${label}${d.truncated ? " (the list is cut)" : ""}:\n${d.files.map((f) => `- ${f.path}`).join("\n") || "(none)"}`;
+    };
+    const start = action.stage === null || action.stage === 1 ? null : st.workspace!.checkpoints[String(action.stage - 1)]?.tree ?? null;
+    const out = [
+      ...(start ? [await changed(start, `since stage ${action.stage} started`)] : []),
+      await changed(st.workspace!.baseline.tree, "since the run started")
+    ];
+    const findings = [...book.list.values()];
+    const since = async (f: Finding) => {
+      if (f.status !== "closed") return "";
+      const d = new Set((await diffTreeNames(ws, f.closeTree!, snapshot.tree, Number.MAX_SAFE_INTEGER)).files.map((x) => x.path));
+      return f.paths.some((p) => d.has(p)) ? " (its paths changed since it was closed)" : " (its paths did not change since it was closed)";
+    };
+    const lines: string[] = [];
+    for (const f of findings) lines.push(`${say(f)}${await since(f)}`);
+    out.push(lines.length ? `Findings of this run (numbered by the application; never renumber them):\n${lines.join("\n")}` : "Findings of this run: none yet.");
+    out.push([
+      "How to answer (findings):",
+      "- Every problem you see is a finding {id, severity, condition, problem, evidence, closeWhen, status, paths, relation}. A new one has id null: "
+        + "the application gives it the next number. Name an existing one by its id with its status now: open, or closed when it is fixed.",
+      "- severity blocking stops the stage until the finding is closed; wish does not block. The severity and condition of a finding never change.",
+      "- A new blocking finding names the files it is about (paths). Closing a blocking one names the files changed for it since it was opened (paths); "
+        + "it cannot be closed on the state it was opened on.",
+      "- A new blocking finding about the files of a closed one that did not change since: say relation {repeatOf: \"F<n>\", distinctFrom: null, why: null} "
+        + "when it is that one again, or {repeatOf: null, distinctFrom: \"F<n>\", why} when it is another problem; otherwise relation null.",
+      "- request: none (the application decides the stage by the checks, the conditions and the open blocking findings), replan when the plan "
+        + "itself cannot work, question (with question) when only the person can answer.",
+      ...(await rejectedReview(snapshot)).map((x, i) => `${i === 0 ? "Your previous report was not accepted by the application:\n" : ""}- ${x}`)
+    ].join("\n"));
+    return out;
+  }
+
   // The last plan turn the application did not accept for its plan (invalid_report): what was wrong, recomputed from its
   // report and the plans now (5h §2.3, «Перечень нарушений»).
   async function rejectedPlan(): Promise<string[]> {
@@ -1744,7 +1905,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   }
 
   // The rules the service applies, stated to the agent that has to live with them (stage-6-contract.md §5.3).
-  function rulesFor(purpose: TurnPurpose): string {
+  function rulesFor(purpose: TurnPurpose, reviewer = false): string {
     const checks = goal.checks.join(", ");
     const stage = goal.checks.length === 0 ? "A stage is accepted when the lead's review accepts it: this run has no check commands."
       : `A stage is accepted only when every required check (${checks}) passes on the copy after that stage, `
@@ -1766,6 +1927,11 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       return ["Rules for this turn:",
         "- Implement the current stage completely in this turn, including the inspection you need; there is no separate turn for reading.",
         `- ${stage} CanvasTTY runs the checks after your turn; your own report does not count.`].join("\n");
+    }
+    if (reviewer) {
+      return ["Rules for this review:", "- You are an independent reviewer in a new session: judge the work by the files in the folder and the check results, not by anyone's word.",
+        `- A stage is accepted by the application only when every required check passes, every condition of the stage is met and no blocking finding of it is open.`,
+        ...(purpose === "final_review" ? [`- ${final.replace("lead turn", "review")}`] : [])].join("\n");
     }
     if (purpose === "review") return ["Rules for this review:", `- ${stage}`, "- Use fix with concrete findings when a check fails; use replan when the plan itself cannot pass."].join("\n");
     return ["Rules for the final review:", `- ${final}`].join("\n");
@@ -2082,6 +2248,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       if (state().pausedReason === "awaiting_checks_decision") await loadProposal();
       if (state().pausedReason === "awaiting_finish_confirmation") latest = { tree: await snapshotCopyTree(ws, st.workspace!.current.tree), at: new Date(clock()).toISOString() };
       shownConditions = conditionsView(state(), goal, await conds(), await shownCheckKeys(state(), readJson).catch(() => null));
+      shownFindings = findingsView(state(), await conds());
       touch();
     },
     async start() {
@@ -2156,12 +2323,37 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
 // ---------- A2: requirements and readiness conditions (journal-v2-format.md §2.7) ----------
 
 type ReadJson = <T>(ref: TextRef) => Promise<T>;
-export interface ConditionTexts { book: ConditionsBook; reports: Record<string, unknown> }
+export interface ConditionTexts { book: ConditionsBook; reports: Record<string, unknown>; findings: FindingsReplay | null }
 // The plans' conditions and the lead's review answers of a run, from its texts (the same reading as the store's check).
 export async function loadConditions(st: RunState, read: ReadJson): Promise<ConditionTexts> {
   const t = await conditionTexts(st, read);
-  return { book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned ?? null }))), reports: t.reports! };
+  return {
+    book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned ?? null }))), reports: t.reports!,
+    // A3: the findings of a journal the reviewer reviews (journal-v2-format.md §2.8)
+    findings: byReviewer(st) ? replayFindings(st, { plans: t.plans!, reports: t.reports!, applied: t.applied! }) : null
+  };
 }
+// A3: the findings as the run panel shows them (journal-v2-format.md §2.8); null when the lead reviews.
+export function findingsView(st: RunState, c: ConditionTexts | null): OrchestrationFindings | null {
+  if (!c?.findings) return null;
+  const owners = ownersOf(st, c);
+  const book = c.findings.book;
+  return {
+    items: [...book.list.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1))).map((f) => ({
+      id: f.id, severity: f.severity, status: f.status, condition: f.condition, stage: f.status === "open" ? ownerOf(f, owners) : null,
+      problem: f.problem, evidence: f.evidence, closeWhen: f.closeWhen, paths: f.paths, possibleRepeatOf: f.possibleRepeatOf,
+      history: f.history.map((h) => ({ kind: h.kind, reviewTurnId: h.turnId, runKey: h.runKey, tree: h.tree, reason: h.reason ?? null }))
+    })),
+    disputed: book.disputed.map((d) => ({ reviewTurnId: d.turnId, problem: d.problem, candidates: d.candidates })),
+    openBlocking: openBlocking(book).length
+  };
+}
+// Who owns an open finding now, by the plans in force (5h §3.4).
+const ownersOf = (st: RunState, c: ConditionTexts) => ({ stages: c.book.stages, accepted: Object.keys(st.orch.accepted).length, recorded: st.orch.plans });
+const heldBy = (st: RunState, c: ConditionTexts, stage: number): Finding[] => openBlocking(c.findings!.book).filter((f) => ownerOf(f, ownersOf(st, c)) === stage);
+const findingsInput = (st: RunState, c: ConditionTexts) => ({
+  stageHeld: (stage: number) => heldBy(st, c, stage).length > 0, anyHeld: openBlocking(c.findings!.book).length > 0, disputed: c.findings!.book.disputed.length > 0
+});
 const marksIn = (reports: Record<string, unknown>, turnId: string | null): ConditionMark[] => {
   const c = turnId ? (reports[turnId] as { conditions?: unknown } | undefined)?.conditions : undefined;
   return Array.isArray(c) ? c as ConditionMark[] : [];

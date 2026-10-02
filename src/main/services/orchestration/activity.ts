@@ -76,7 +76,7 @@ const CLAUDE_FILE_TOOLS_READ = new Set(["Read", "NotebookRead"]);
 export const ACCESS_MISMATCH = Symbol("canvastty.accessMismatch");
 export interface AccessMismatch { field: string; asked: string; reported: string }
 
-export function createFrameMapper(provider: "codex" | "claude", role: "lead" | "executor", cwd: string | null) {
+export function createFrameMapper(provider: "codex" | "claude", role: "lead" | "executor" | "reviewer", cwd: string | null) {
   const tools = new Map<string, { name: string; target: string | null }>();
   const base = { role, provider } as const;
   const d = (kind: OrchestrationActivityKind, text: string, detail?: Draft["detail"], max?: number): Draft => {
@@ -469,7 +469,7 @@ export type ActivityLog = ReturnType<typeof createActivityLog>;
 
 export interface ActivityTurnInfo {
   turnId: string;
-  role: "lead" | "executor";
+  role: "lead" | "executor" | "reviewer";
   provider: "codex" | "claude";
   purpose: string;
   stage: number | null;
@@ -539,7 +539,7 @@ export function createRunActivity(log: ActivityLog, runId: string) {
     },
     // A permission or question of a CLI (stage 12): asked, answered by the person, or withdrawn by the CLI.
     // applied (stage 13): a decision the person saved for the run or the project was used again, without a dialog.
-    permission(role: "lead" | "executor", provider: "codex" | "claude", turnId: string | null, phase: "requested" | "decided" | "withdrawn" | "applied",
+    permission(role: "lead" | "executor" | "reviewer", provider: "codex" | "claude", turnId: string | null, phase: "requested" | "decided" | "withdrawn" | "applied",
       text: string, detail?: Draft["detail"]) {
       put(role, provider, turnId, phase === "requested" ? "permission_requested" : phase === "applied" ? "permission_applied" : "permission_decided", text, { phase, ...(detail ?? {}) });
     },

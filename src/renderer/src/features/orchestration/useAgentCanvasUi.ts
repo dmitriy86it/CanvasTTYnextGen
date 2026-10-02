@@ -9,7 +9,7 @@ import { createIdKeeper, TERMINAL_STATUSES } from "./runModel";
 import { outcomeText, type Orchestration } from "./useOrchestration";
 
 export type PanelTab = "summary" | "overview" | "activity" | "changes" | "log" | "history";
-export type PanelRole = "lead" | "executor" | "check";
+export type PanelRole = "lead" | "executor" | "reviewer" | "check";
 // The one run panel: which link, which tab and participant, and a counter that grows with every "open" so that opening
 // the panel that is already open still has a visible effect (it scrolls to the pinned summary and highlights it).
 // runId: a run opened by id (a workspace's history, a link that is gone); absent: the link's latest run.

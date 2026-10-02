@@ -720,14 +720,15 @@ function RunActivityRow({ row, locale, onOpen }: { row: ActivityRunRow; locale: 
     <div className="usage-row-wrap activity-run" data-activity-run={row.runId} data-run-state={line.state}>
       <button className="usage-row activity-run__main" type="button" data-session-tone={RUN_TONE[line.state]} onClick={onOpen}
         aria-label={`${row.project}, ${stateLabel(locale, line.state)}: ${line.doing}`} title={row.projectPath}>
-        {line.actor === "lead" || line.actor === "executor"
-          ? <ProviderIcon provider={line.actor === "lead" ? "codex" : "claude"} size="medium" />
+        {line.actor === "lead" || line.actor === "executor" || line.actor === "reviewer"
+          ? <ProviderIcon provider={line.actor === "executor" ? "claude" : "codex"} size="medium" />
           : <UiIcon name="blocks" size={28} />}
         <span className="usage-row__copy">
           <strong>{stateLabel(locale, line.state)} · {row.project}</strong>
           <span>{kind} {line.doing}</span>
           {extra && <span className="activity-run__extra" data-activity-extra>{extra}</span>}
           {row.conditions && <span className="activity-run__extra" data-activity-conditions>{row.conditions}</span>}
+          {row.findings && <span className="activity-run__extra" data-activity-findings>{row.findings}</span>}
           {(line.quiet || last) && <span className="activity-run__time">{line.quiet ?? last}</span>}
         </span>
         {icon && <UiIcon name={icon} size={24} />}
@@ -737,7 +738,7 @@ function RunActivityRow({ row, locale, onOpen }: { row: ActivityRunRow; locale: 
         <ul>
           {row.roles.map(({ role, line: r }) => (
             <li key={role} data-activity-role={role} data-run-state={r.state}>
-              <b>{role === "lead" ? "Codex" : "Claude"}</b> · {stateLabel(locale, r.state)} — {r.doing}{r.wait ? ` (${r.wait})` : ""}
+              <b>{role === "executor" ? "Claude" : "Codex"}{role === "reviewer" ? ` · ${t(locale, "orchRoleReviewer")}` : ""}</b> · {stateLabel(locale, r.state)} — {r.doing}{r.wait ? ` (${r.wait})` : ""}
             </li>
           ))}
         </ul>

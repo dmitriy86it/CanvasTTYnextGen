@@ -35,6 +35,7 @@ import {
 import type { Stage13Event } from "./journal.ts";
 import type { CompletionBasis, V2Texts } from "./journal.ts";
 import type { PlanText } from "./conditions.ts";
+import type { Applied } from "./findings.ts";
 import type {
   CheckAssessedData, CheckStatus, ClarificationAddedData, CommandResult, EventType, JournalIntegrity, LimitsChangedData, NotVerifiedReason,
   OrchTurnData, PausedReason, PlanRecordedData, QuestionAnsweredData, QuestionAskedData, RecoveryDecidedData, ReportStoreError,
@@ -98,7 +99,7 @@ export type CommandCheck =
 export interface TurnIntentInput {
   turnId: string;
   commandId: string | null;
-  role: "lead" | "executor";
+  role: "lead" | "executor" | "reviewer";
   provider: "codex" | "claude";
   mode: string;
   sessionId: string | null;
@@ -551,7 +552,7 @@ class Writer implements RunWriter {
       mode: input.mode, sessionId: input.sessionId ?? null
     };
     // Check the shape before writing the task text, so bad input leaves no file behind.
-    if (!isValidEventData("turn.intent", { ...fields, task: { sha256: ZERO_HASH, bytes: 0 } })) {
+    if (!isValidEventData("turn.intent", { ...fields, task: { sha256: ZERO_HASH, bytes: 0 } }, this.version)) {
       fail("invalid_input", "turn.intent data does not match the schema");
     }
     const task = await this.putText(input.task);
@@ -654,7 +655,9 @@ class Writer implements RunWriter {
 
   // Orchestration events: only the contract fields are copied (a missing one fails the schema), like the ones above.
   recordOrchTurn(data: OrchTurnData): Promise<void> {
-    return this.append("orch.turn", pick(data, ["turnId", "purpose", "stage", "round", "planVersion", "clarificationVersion"]));
+    // A3 (§2.8): tree only when given (journals A1–A2 and v1 have none)
+    return this.append("orch.turn", pick(data, data.tree === undefined ? ["turnId", "purpose", "stage", "round", "planVersion", "clarificationVersion"]
+      : ["turnId", "purpose", "stage", "round", "planVersion", "clarificationVersion", "tree"]));
   }
 
   recordPlan(data: PlanRecordedData): Promise<void> {
@@ -837,7 +840,7 @@ async function withTexts(dir: string, parsed: ReturnType<typeof parseJournal>): 
 
 // A2 (journal-v2-format.md §2.7): the plans, the lead's review answers and the completed status' basis. Shared with the
 // service and the run view, which show the conditions from the same texts.
-export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Promise<T>): Promise<Pick<V2Texts, "plans" | "reports" | "basis">> {
+export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Promise<T>): Promise<Pick<V2Texts, "plans" | "reports" | "basis" | "applied">> {
   const plans: PlanText[] = [];
   for (const p of st.orch.plans) plans.push(await read<PlanText>(p.ref));
   const reports: Record<string, unknown> = {};
@@ -845,7 +848,10 @@ export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Pr
     const ref = st.turns[r.turnId]?.report?.ref;
     if (ref) reports[r.turnId] = await read(ref);
   }
-  return { plans, reports, basis: st.completion ? await read<CompletionBasis>(st.completion.basis) : null };
+  // A3 (§2.8): the applied text of every reviewer's result
+  const applied: Record<string, Applied> = {};
+  for (const r of st.orch.reviews) if (r.assessed) applied[r.turnId] = await read<Applied>(r.assessed.applied);
+  return { plans, reports, basis: st.completion ? await read<CompletionBasis>(st.completion.basis) : null, applied };
 }
 
 const refuseNewer = (buf: Buffer | { head: Buffer }): void => {
