@@ -3,6 +3,7 @@
 // actions after success. Nothing here decides what a result means.
 import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
+import { SANDBOX_EXEC } from "./sandbox.ts";
 import type { SupervisorLaunch } from "./types.ts";
 
 const GRACE_MS = 15_000; // after the supervisor's own stop sequence
@@ -12,6 +13,7 @@ export interface ShellRunResult {
   exitCode: number | null;
   signal: string | null;
   groupCleared: boolean;
+  sandboxCleared: boolean | null; // A1.1: the supervisor's in-sandbox scan came back empty; null — not sandboxed
   supervisorExitCode: number | null;
   spawnError: string | null; // the supervisor or the shell could not start
   stopCause: ShellStopCause | null;
@@ -22,6 +24,10 @@ export interface ShellRunResult {
 export interface ShellRunOptions {
   shell: string; // the user's login shell (absolute)
   line: string; // run as `<shell> -ilc <line>`
+  // A1.1: the profile the line runs in, as `sandbox-exec -f <profile> -- <supervisor> <shell> -c <line>`. The
+  // supervisor runs inside, so its scan (SUP_SANDBOX_SWEEP) finds and kills whatever the line left behind, detached
+  // processes included, before it reports `done` (the check runner's way, checkRunner.ts)
+  profile?: string;
   cwd: string;
   env: Readonly<Record<string, string>>;
   launch: SupervisorLaunch;
@@ -30,15 +36,19 @@ export interface ShellRunOptions {
   clock?: () => number;
 }
 
-interface SupDone { leaderExit?: { code: number | null; signal: string | null } | null; groupCleared?: boolean; error?: string }
+interface SupDone { leaderExit?: { code: number | null; signal: string | null } | null; groupCleared?: boolean; error?: string; sandbox?: { cleared?: boolean } }
 
 export function runShell(opts: ShellRunOptions): { stop(): void; result: Promise<ShellRunResult> } {
   const clock = opts.clock ?? (() => Date.now());
   const startedAt = clock();
   let stopCause: ShellStopCause | null = null;
-  const sup = spawn(opts.launch.command, [...opts.launch.args, opts.shell, "-ilc", opts.line], {
-    cwd: opts.cwd, env: { ...opts.launch.env, SUP_CHILD_ENV: JSON.stringify(opts.env) }, stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"]
-  });
+  const sup = opts.profile
+    ? spawn(SANDBOX_EXEC, ["-f", opts.profile, "--", opts.launch.command, ...opts.launch.args, opts.shell, "-c", opts.line], {
+      cwd: opts.cwd, env: { ...opts.launch.env, SUP_CHILD_ENV: JSON.stringify(opts.env), SUP_SANDBOX_SWEEP: "1" }, stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"]
+    })
+    : spawn(opts.launch.command, [...opts.launch.args, opts.shell, "-ilc", opts.line], {
+      cwd: opts.cwd, env: { ...opts.launch.env, SUP_CHILD_ENV: JSON.stringify(opts.env) }, stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"]
+    });
   const control = sup.stdio[0] as Writable;
   (sup.stdio[4] as Writable).end(); // no input: EOF on the command's stdin
   control.on("error", () => {});
@@ -82,6 +92,7 @@ export function runShell(opts: ShellRunOptions): { stop(): void; result: Promise
     const text = dropped > 0 ? `${head.toString("utf8")}\n[… ${dropped} bytes not kept …]\n${tail.toString("utf8")}` : Buffer.concat([head, tail]).toString("utf8");
     return {
       exitCode: d?.leaderExit?.code ?? null, signal: d?.leaderExit?.signal ?? null, groupCleared: d?.groupCleared === true,
+      sandboxCleared: opts.profile ? d?.sandbox?.cleared === true : null,
       supervisorExitCode: supExit, spawnError, stopCause,
       // head and tail: the first and the last 2000 characters of all the output (a short one is in both)
       output: { text, head: text.slice(0, 2000), tail: text.slice(-2000), bytes, dropped },

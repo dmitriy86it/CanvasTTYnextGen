@@ -1117,7 +1117,7 @@ button { border: 0; }
 /* Pinned run summary: always above the tabs; on short windows it scrolls by itself so the tabs stay reachable. */
 .orch-summary { flex: 0 0 auto; max-height: 46vh; overflow: auto; margin: 12px 12px 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; border-radius: 12px; background: var(--surface-soft); box-shadow: inset 4px 0 0 var(--secondary); outline: none; transition: box-shadow .25s; }
 .orch-summary--working, .orch-summary--stopping_after_turn { box-shadow: inset 4px 0 0 var(--primary); }
-.orch-summary--awaiting_answer, .orch-summary--awaiting_plan_review, .orch-summary--awaiting_checks, .orch-summary--awaiting_finish_confirmation, .orch-summary--completed_no_checks, .orch-summary--needs_decision, .orch-summary--needs_action, .orch-summary--paused { box-shadow: inset 4px 0 0 var(--yellow); }
+.orch-summary--awaiting_answer, .orch-summary--awaiting_plan_review, .orch-summary--awaiting_checks, .orch-summary--awaiting_checks_none, .orch-summary--check_needs_permissions, .orch-summary--awaiting_finish_confirmation, .orch-summary--completed_no_checks, .orch-summary--needs_decision, .orch-summary--needs_action, .orch-summary--paused { box-shadow: inset 4px 0 0 var(--yellow); }
 .orch-summary--needs_setup, .orch-summary--failed, .orch-summary--halted { box-shadow: inset 4px 0 0 var(--danger); }
 .orch-summary--completed { box-shadow: inset 4px 0 0 var(--success); }
 .orch-summary--flash { box-shadow: inset 4px 0 0 var(--primary), 0 0 0 3px var(--primary); }

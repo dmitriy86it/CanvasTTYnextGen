@@ -33,8 +33,8 @@ export const PAUSED_REASONS = [
   "app_closed" // the application closed while the run worked (older journals say user_request)
 ] as const;
 // v2 only (journal-v2-format.md §2.1): waiting for the decision on the lead's proposed check commands, and for the
-// person's confirmation of push/QA of a run without checks.
-export const PAUSED_REASONS_V2 = [...PAUSED_REASONS, "awaiting_checks_decision", "awaiting_finish_confirmation"] as const;
+// person's confirmation of push/QA of a run without checks; A1.1: a lead's check the sandbox refused (§2.6).
+export const PAUSED_REASONS_V2 = [...PAUSED_REASONS, "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions"] as const;
 const TURN_OUTCOMES: readonly string[] = ["completed", "invalid_report", "delivery_failed", "failed", "stopped", "timeout",
   "protocol_error", "cleanup_unverified", "harness_error"];
 const REPORT_STATUSES: readonly string[] = ["valid", "invalid_json", "schema_mismatch", "missing", "too_large", "not_checked"];
@@ -82,12 +82,13 @@ export type EventType =
   // journal v2 (A1)
   | "checks.proposed"
   | "checks.decided"
+  | "checks.amended" // A1.1
   | "finish.confirmed";
 
 export const STAGE13_EVENTS = ["prepare.started", "prepare.finished", "check.classified", "permission.granted",
   "permission.applied", "finish.intent", "finish.result"] as const;
 export type Stage13Event = (typeof STAGE13_EVENTS)[number];
-export const V2_EVENTS = ["checks.proposed", "checks.decided", "finish.confirmed"] as const;
+export const V2_EVENTS = ["checks.proposed", "checks.decided", "finish.confirmed", "checks.amended"] as const;
 export type V2Event = (typeof V2_EVENTS)[number];
 
 export type CommandResult = { status: "accepted" | "rejected"; code: string | null };
@@ -211,7 +212,7 @@ export interface LimitsChangedData { commandId: string; kind: LimitKind; value: 
 export interface RecoveryDecidedData { commandId: string; action: RecoveryAction; turnId: string }
 
 // Stage 13 facts.
-export type FailureClass = "code" | "environment" | "external";
+export type FailureClass = "code" | "environment" | "external" | "sandbox"; // sandbox: v2 only (journal-v2-format.md §2.6)
 export type FinishStep = "commit" | "push" | "qa";
 export type FinishStatus = "done" | "failed" | "not_done" | "unknown";
 export type QaVersion = "confirmed" | "mismatch" | "not_reported" | "invalid" | "not_checked";
@@ -266,6 +267,8 @@ export interface OrchState {
   checksProposal: { turnId: string; ref: TextRef; count: number; sandboxNetwork: SandboxNetwork; seq: number } | null;
   checksDecision: { decision: "accept" | "edit"; by: "autopilot" | "person"; commandId: string | null; ref: TextRef; count: number; seq: number } | null;
   confirmations: FinishConfirmation[];
+  // A1.1 (§2.6): the checks the person let run without the sandbox, or changed (line: the new command line)
+  amended: Record<string, { commandId: string; line: TextRef | null; seq: number }>;
 }
 export type SandboxNetwork = "denied" | "open";
 export type FinishDecision = "confirm" | "decline";
@@ -511,7 +514,12 @@ const DATA_SCHEMAS_V2: Record<string, (d: Record<string, unknown>) => boolean> =
     && isTextRef(d.checks) && isInt(d.count) && d.count >= 0 && d.count <= 16,
   "finish.confirmed": (d) => exactKeys(d, ["commandId", "tree", "commit", "push", "qa"]) && isUuid(d.commandId) && isGitOid(d.tree)
     && (d.commit === null || isGitOid(d.commit)) && (d.push === null || oneOf(d.push, FINISH_DECISIONS))
-    && (d.qa === null || oneOf(d.qa, FINISH_DECISIONS)) && (d.push !== null || d.qa !== null)
+    && (d.qa === null || oneOf(d.qa, FINISH_DECISIONS)) && (d.push !== null || d.qa !== null),
+  // A1.1 (§2.6): a lead's check the sandbox refused, as the person decided — run without the sandbox (line null) or
+  // with the person's own line (a person's command: without the sandbox too)
+  "checks.amended": (d) => exactKeys(d, ["commandId", "checkId", "line"]) && isUuid(d.commandId) && isCheckId(d.checkId)
+    && (d.line === null || isTextRef(d.line)),
+  "check.classified": (d) => exactKeys(d, ["checkRunId", "class"]) && isUuid(d.checkRunId) && oneOf(d.class, [...FAILURE_CLASSES, "sandbox"])
 };
 const schemasOf = (version: number): Record<string, (d: Record<string, unknown>) => boolean> => version === 2 ? DATA_SCHEMAS_V2 : DATA_SCHEMAS;
 
@@ -549,7 +557,7 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
         clarifications: 0, clarificationRefs: [], clarificationSeqs: [], question: null, answers: 0, answerSeqs: [],
         lastPausedSeq: {}, assessed: {}, limitOverrides: {}, recoveryDecisions: {},
         prepares: [], classified: {}, grants: {}, applied: 0, finish: [],
-        lastOrchTurn: null, checksProposal: null, checksDecision: null, confirmations: []
+        lastOrchTurn: null, checksProposal: null, checksDecision: null, confirmations: [], amended: {}
       }
     };
   }
@@ -879,6 +887,7 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       const c = state.checks[id];
       if (!c || c.status !== "failed") conflict(`check ${id} is not a finished failed check`);
       if (Object.hasOwn(o.classified, id)) conflict(`check ${id} classified twice`);
+      if (d.class === "sandbox" && c.profileSha256 === NO_SANDBOX_SHA256) conflict(`check ${id} ran without a sandbox`);
       o.classified[id] = d.class as FailureClass;
       break;
     }
@@ -936,11 +945,25 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (p.turnId !== d.proposalTurnId) conflict("the decision is about another proposal");
       const auto = d.by === "autopilot";
       if (auto !== (d.commandId === null) || (auto && d.decision !== "accept")) conflict("an autopilot decision is an acceptance without a command");
-      if (auto && p.sandboxNetwork !== "denied") conflict("the autopilot accepts proposed commands only when the checks' sandbox denies the network");
+      // A1.1 (§7 Q1, Q2): no command proposed — nothing to run, the network rule does not apply
+      if (auto && p.sandboxNetwork !== "denied" && p.count !== 0) conflict("the autopilot accepts proposed commands only when the checks' sandbox denies the network");
       if (d.decision === "accept" && d.count !== p.count) conflict("an acceptance changes the number of commands");
       if (!auto) openCommand("checks.decide");
       o.checksDecision = { decision: d.decision as "accept" | "edit", by: d.by as "autopilot" | "person", commandId: d.commandId as string | null,
         ref: d.checks as TextRef, count: d.count as number, seq: rec.seq };
+      break;
+    }
+    case "checks.amended": {
+      const id = d.checkId as string;
+      const decided = o.checksDecision ?? conflict("an amendment without decided check commands");
+      openCommand("check.amend");
+      if (!Array.from({ length: decided.count }, (_, i) => `cmd-${i + 1}`).includes(id)) conflict(`check ${id} is not one of the decided commands`);
+      if (Object.hasOwn(o.amended, id)) conflict(`check ${id} was already amended`);
+      // only after the sandbox refused it: its latest finished run is classified "sandbox"
+      const runs = Object.entries(state.checks).filter(([, c]) => c.checkId === id && c.status !== "in_flight");
+      const last = runs.at(-1)?.[0];
+      if (!last || o.classified[last] !== "sandbox") conflict(`check ${id} was not refused by the sandbox`);
+      o.amended[id] = { commandId: d.commandId as string, line: d.line as TextRef | null, seq: rec.seq };
       break;
     }
     case "finish.confirmed":
@@ -962,7 +985,10 @@ function checkOfDecidedSet(state: RunState, checkId: string, profileSha256: stri
   if (o.checksDecision && !Array.from({ length: o.checksDecision.count }, (_, i) => `cmd-${i + 1}`).includes(checkId)) {
     conflict(`check ${checkId} is not one of the decided commands`);
   }
-  if (o.checksProposal?.sandboxNetwork === "denied" && profileSha256 === NO_SANDBOX_SHA256) conflict("a check without a sandbox in a run whose checks deny the network");
+  // the lead's commands of an accepted proposal run in the profile, unless the person let one out (§2.6); an edited
+  // set says per line who wrote it — its texts (second stage)
+  if (o.checksProposal?.sandboxNetwork === "denied" && o.checksDecision?.decision === "accept" && profileSha256 === NO_SANDBOX_SHA256
+    && !Object.hasOwn(o.amended, checkId)) conflict("a check without a sandbox in a run whose checks deny the network");
 }
 
 // The latest assessed result of each of the checks `ids`: passed for every one (journal-v2-format.md §2.3).
@@ -1017,6 +1043,11 @@ export function textsConflict(state: RunState, t: V2Texts): string | null {
     const proposed = t.proposal.checks.map((c) => c.command);
     if (d.decision === "accept" && t.decision.checks.some((c, i) => c.command !== proposed[i])) return "an acceptance that is not the proposal";
     if (t.decision.checks.some((c) => c.origin !== (proposed.includes(c.command) ? "lead" : "person"))) return "an origin against the rule";
+    // A1.1 (§2.6): a lead's line of a run whose checks deny the network runs in the profile unless the person let it out
+    const lead = new Set(t.decision.checks.filter((c) => c.origin === "lead").map((c) => c.id));
+    if (o.checksProposal?.sandboxNetwork === "denied" && Object.values(state.checks).some((c) => lead.has(c.checkId) && c.profileSha256 === NO_SANDBOX_SHA256 && !Object.hasOwn(o.amended, c.checkId))) {
+      return "a lead's check without the sandbox";
+    }
   }
   if (state.completion) {
     const n = d ? d.count : own?.length ?? 0;
@@ -1223,6 +1254,9 @@ export function newerVersion(buf: Uint8Array, maxVersion = MAX_JOURNAL_VERSION):
 // with state null. Records keep their own types and data; nothing is replayed (no applyRecord).
 function parseNewerJournal(buf: Uint8Array, runId: string, version: number, readerVersion: number): ParsedJournal {
   const min = minReaderVersion(buf);
+  // owner's decision A1.1 Q3: v2 without formatPreview (the final form of A4) is never replayed by A1–A3 rules — read
+  // only, the records as they are, no computed state: a state cut to what this build knows is never shown
+  if (version === 2) return parseRawNewerJournal(buf, runId, version);
   if (min !== null && min >= 1 && min <= Math.min(readerVersion, READER_VERSION)) {
     const compatible = parseCompatibleJournal(buf, runId, version, min);
     if (!("fallback" in compatible)) return compatible;

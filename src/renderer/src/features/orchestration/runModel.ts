@@ -22,7 +22,8 @@ export const ACTIVE_STATUSES = ["preparing", "running", "pausing", "paused", "st
 export const TERMINAL_STATUSES = ["stopped", "completed", "failed"];
 
 export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission"
-  | "checks_decide" | "finish_confirm"; // journal v2: the person's decisions, with Stop the only actions on their pauses
+  | "checks_decide" | "finish_confirm" // journal v2: the person's decisions, with Stop the only actions on their pauses
+  | "check_amend"; // A1.1: a lead's check the sandbox refused — without the sandbox, or another command
 
 // Where orchestration is unavailable (orchestrationAvailable() false, main refuses with unsupported_platform) its entry
 // points stay visible but inactive, with this hint: new agent cards, linking, a new goal (and so autopilot).
@@ -51,6 +52,7 @@ export function availableActions(view: OrchestrationRunView): RunAction[] {
       if (r === "awaiting_answer") return ["answer", "stop", ...clarify];
       if (r === "awaiting_checks_decision") return ["checks_decide", "stop"];
       if (r === "awaiting_finish_confirmation") return ["finish_confirm", "stop"];
+      if (r === "check_needs_permissions") return ["check_amend", "stop"];
       if (r === "limit_reached") return ["raise_limit", "stop", ...clarify];
       if (r === "outcome_unknown") return ["recover", "stop", ...clarify];
       if (STOP_ONLY.includes(r)) return ["stop", ...clarify];
@@ -309,7 +311,8 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
   recover?: "accept" | "retry_turn" | "reset_to_checkpoint"; confirm?: boolean;
   requestId?: string; decision?: OrchestrationPermissionOption; answers?: Record<string, string[]>;
   content?: Record<string, unknown>; feedback?: string;
-  checks?: string[]; tree?: string; commit?: string | null; push?: "confirm" | "decline" | null; qa?: "confirm" | "decline" | null } = {}): OrchestrationRunCommand {
+  checks?: string[]; tree?: string; commit?: string | null; push?: "confirm" | "decline" | null; qa?: "confirm" | "decline" | null;
+  checkId?: string; line?: string } = {}): OrchestrationRunCommand {
   switch (action) {
     case "pause": return { kind: "pause_after_turn", on: true };
     case "keep_running": return { kind: "pause_after_turn", on: false };
@@ -322,6 +325,7 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
     case "recover": return { kind: "recover", action: input.recover ?? "accept", ...(input.confirm ? { confirm: true } : {}) };
     case "checks_decide": return { kind: "checks.decide", decision: input.checks ? "edit" : "accept", ...(input.checks ? { checks: input.checks } : {}) };
     case "finish_confirm": return { kind: "finish.confirm", tree: input.tree ?? "", commit: input.commit ?? null, push: input.push ?? null, qa: input.qa ?? null };
+    case "check_amend": return { kind: "check.amend", checkId: input.checkId ?? "", ...(input.line !== undefined ? { line: input.line } : {}) };
     case "permission": return {
       kind: "permission", requestId: input.requestId ?? "", decision: input.decision ?? "deny", ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}), ...(input.feedback !== undefined ? { feedback: input.feedback } : {})
@@ -340,7 +344,7 @@ export const newerStamp = (a: { seq: number; tick: number }, b: { seq: number; t
 // One plain headline for the state, the reason it is in, and the one next step to offer.
 export type Headline = "working" | "awaiting_permission" | "stopping_after_turn" | "awaiting_answer" | "awaiting_plan_review" | "needs_setup"
   | "needs_decision" | "needs_action" | "paused" | "stopping" | "stopped" | "completed" | "completed_no_checks" | "failed" | "halted"
-  | "awaiting_checks" | "awaiting_finish_confirmation";
+  | "awaiting_checks" | "awaiting_checks_none" | "awaiting_finish_confirmation" | "check_needs_permissions";
 const NEEDS_SETUP = ["environment_error", "sandbox_unavailable", "permission_denied", "external_failure"];
 const NEEDS_DECISION = ["outcome_unknown", "limit_reached", "loop_suspected", "invalid_report", "protocol_error", "lead_modified_tree", "shared_git_tampered", "journal_corrupt",
   "finish_unconfirmed"];
@@ -365,7 +369,9 @@ export function runHeadline(view: OrchestrationRunView): { headline: Headline; n
       const r = view.reason ?? "";
       if (r === "awaiting_answer") return { headline: "awaiting_answer", next: "answer" };
       if (r === "plan_review") return { headline: "awaiting_plan_review", next: "review_plan" };
-      if (r === "awaiting_checks_decision") return { headline: "awaiting_checks", next: "decide_checks" };
+      // A1.1 Q1: step by step, the lead found none — add commands or go on without checks
+      if (r === "awaiting_checks_decision") return view.proposal?.checks.length === 0 ? { headline: "awaiting_checks_none", next: "decide_no_checks" } : { headline: "awaiting_checks", next: "decide_checks" };
+      if (r === "check_needs_permissions") return { headline: "check_needs_permissions", next: "amend_check" };
       if (r === "awaiting_finish_confirmation") return { headline: "awaiting_finish_confirmation", next: "confirm_finish" };
       if (NEEDS_SETUP.includes(r)) return { headline: "needs_setup", next: r };
       // failed: "resume" runs the action again; unknown: it only checks what happened (finishOrComplete in main)
@@ -660,7 +666,7 @@ export function board(view: OrchestrationRunView): Board {
       failed: checks.filter((c) => c.status === "failed").map((c) => ({ title: c.title, class: c.class }))
     },
     prepare: view.progress?.prepare?.status ?? null,
-    action: !!view.permission || ["awaiting_answer", "awaiting_plan_review", "needs_setup", "needs_decision", "needs_action", "awaiting_checks", "awaiting_finish_confirmation"].includes(head)
+    action: !!view.permission || ["awaiting_answer", "awaiting_plan_review", "needs_setup", "needs_decision", "needs_action", "awaiting_checks", "awaiting_checks_none", "awaiting_finish_confirmation", "check_needs_permissions"].includes(head)
       || (view.status === "paused" && view.reason === "stage_done"),
     grantsApplied: view.progress?.grantsApplied ?? 0
   };

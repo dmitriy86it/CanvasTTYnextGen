@@ -153,6 +153,14 @@ const ENV_SERVICE = /SQLSTATE\[HY000\] \[2002\]|SQLSTATE\[08006\]|could not conn
 const EXTERNAL = /\b(?:ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|ECONNRESET|ETIMEDOUT)\b|getaddrinfo|Could not resolve host|Network is unreachable|network (?:error|timeout)|socket hang up|TLS handshake timeout|certificate verify failed|503 Service Unavailable|502 Bad Gateway|429 Too Many Requests|curl error \d+ while downloading|The "https?:\/\/[^"]+" file could not be downloaded/i;
 const ENVIRONMENT = /command not found|: not found\b|No such file or directory.{0,80}(?:vendor\/autoload\.php|node_modules)|vendor\/autoload\.php|Could not open input file: artisan|Cannot find module '(?![./])[^']+'|ERR_MODULE_NOT_FOUND[\s\S]{0,200}node_modules|Class "?Composer\\Autoload|No application encryption key has been specified|MissingAppKeyException/i;
 
+// A1.1 (journal-v2-format.md §2.6): what a check in the check profile prints when Seatbelt refused it — a write
+// outside the work folder (EPERM, "Operation not permitted"), a connection outside this machine (EPERM on connect),
+// a name lookup (the resolver is outside: ENOTFOUND and its kin). Only for a check that ran in the profile: there
+// these are the sandbox's, not the code's. ponytail: the texts of common tools; a refusal the tool swallows or
+// rewords counts as the code's failure.
+const SANDBOX_REFUSED = /\bEPERM\b|Operation not permitted|\bENOTFOUND\b|\bEAI_AGAIN\b|getaddrinfo|Could not resolve host|nodename nor servname|Temporary failure in name resolution|php_network_getaddresses|Name or service not known|sandbox-exec|deny\(\d+\)/i;
+export const sandboxRefused = (text: string): boolean => SANDBOX_REFUSED.test(text);
+
 export function classifyFailure(text: string, exitCode: number | null): FailureClass {
   if (ENV_SERVICE.test(text)) return "environment";
   if (EXTERNAL.test(text)) return "external";

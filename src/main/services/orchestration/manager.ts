@@ -79,6 +79,8 @@ export interface RunManagerDeps {
   // Journal v2 for new native runs and optional check commands (journal-v2-format.md §3.4): until A4 only the
   // development flag CANVASTTY_JOURNAL_V2, which a packaged build ignores.
   journalV2?: boolean;
+  // A1.1: the lead's proposed checks in the check profile (absent: where Seatbelt is); tests only otherwise
+  leadSandbox?: false | { realHome?: string };
   stopGraceMs?: number;
   // Project workspaces: may a card be placed in (or moved to) this workspace? Absent: only the common canvas.
   workspaceOpen?(workspaceId: string): boolean;
@@ -235,7 +237,10 @@ export function createRunManager(deps: RunManagerDeps) {
           list: async () => (await profiles.get(source))?.grants ?? [],
           add: async (g) => { await profiles.addGrant(source, g); }
         },
-        checks: { registry: checkRegistry(deps.nodePath()), deps: null, launch: deps.launch(), shell: { shell: rt.shell, env: rt.env } },
+        checks: {
+          registry: checkRegistry(deps.nodePath()), deps: null, launch: deps.launch(), shell: { shell: rt.shell, env: rt.env },
+          ...(deps.leadSandbox !== undefined ? { leadSandbox: deps.leadSandbox } : {})
+        },
         ...(deps.cloneDir ? { cloneDir: deps.cloneDir } : {})
       }) };
     }
