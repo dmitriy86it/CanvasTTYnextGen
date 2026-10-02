@@ -76,9 +76,16 @@ function script(answers) {
   });
   return dir;
 }
-const PLAN = { answer: { stages: [{ title: "fix", task: "make a.txt say 2" }], question: null } };
-const REVIEW = { answer: { verdict: "accept", findings: [], question: null } };
-const FINAL = { answer: { verdict: "complete", findings: [], question: null } };
+// journal v2 answers (A2, journal-v2-format.md §2.7): the plan's one condition C1 (a change) covers R1, the goal's one
+// criterion; the review marks it met on a.txt, which the executor changes; the final review marks R1 met
+const C1 = { keep: null, text: "a.txt says 2", covers: ["R1"], evidence: { kind: "change", check: null } };
+const PLAN = { answer: { stages: [{ title: "fix", task: "make a.txt say 2", conditions: [C1] }], dropped: [], dropRequirements: [], question: null } };
+const REVIEW = { answer: { verdict: "accept", findings: [], question: null, conditions: [{ id: "C1", status: "met", paths: ["a.txt"], note: "a.txt says 2" }] } };
+const FINAL = { answer: { verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "met", note: "a.txt says 2" }] } };
+// v1 answers (no conditions: the v1 schemas forbid the keys)
+const PLAN_V1 = { answer: { stages: [{ title: "fix", task: "make a.txt say 2" }], question: null } };
+const REVIEW_V1 = { answer: { verdict: "accept", findings: [], question: null } };
+const FINAL_V1 = { answer: { verdict: "complete", findings: [], question: null } };
 const EXEC = { answer: { summary: "done", done: true }, writes: [{ rel: "a.txt", base64: Buffer.from("2\n").toString("base64") }] };
 
 // leadSandbox false: as without Seatbelt (A1) — the lead's commands would run in the user's shell, the person decides
@@ -303,7 +310,7 @@ test("the goal's own commands in v2: the run of v1 (regression) — no checks.* 
 
 test("without the flag: a new run is written in v1 and its commands are required, as before", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
-  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]) }, { v2: false });
+  const m = manager({ MOCK_SCRIPT: script([PLAN_V1, EXEC, REVIEW_V1, FINAL_V1]) }, { v2: false });
   const runId = await start(m, src, { commands: ["grep -qx 2 a.txt"] });
   const v = await settled(m, runId);
   assert.equal(v.status, "completed");

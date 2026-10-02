@@ -6,6 +6,8 @@ import type { CompletionKind, FailureClass, FinishStep, PausedReason, RunState }
 import type { AgentAccess } from "./access.ts";
 import type { PrepareStep } from "./prepare.ts";
 import { detectLoop, normalizeFinding } from "./progress.ts";
+import { conditionBlockers } from "./conditions.ts";
+import type { ConditionBlocker, ConditionFacts } from "./conditions.ts";
 import type { RoundFacts } from "./progress.ts";
 import type { TurnPurpose } from "./agents.ts";
 
@@ -74,6 +76,9 @@ export interface CycleInput {
   snapshot: Snapshot;
   now: number;
   findingsOf(reviewTurnId: string): readonly string[]; // the review's findings as recorded (texts/)
+  // journal v2, A2 (journal-v2-format.md §2.7), from the texts: whether a review left a "change" condition of its stage
+  // unmet, and whether the conditions and requirements block completion now. Absent: no condition rule applies.
+  conditions?: { stageUnmet(stage: number, reviewTurnId: string): boolean; finalUnmet: boolean };
 }
 
 // A result that says nothing about the state: the operation itself did not complete, so the check runs again.
@@ -201,7 +206,7 @@ function decide(input: CycleInput): Action {
     const reviewFresh = lastReview !== undefined && lastReview.runKey === snapshot.runKey && !answeredAfter(lastReview);
 
     const needExecute = lastExec === undefined || !execDone(lastExec)
-      || (reviewFresh && (lastReview.verdict === "fix" || (lastReview.verdict === "accept" && !allPassed)));
+      || (reviewFresh && (lastReview.verdict === "fix" || (lastReview.verdict === "accept" && (!allPassed || !!input.conditions?.stageUnmet(s, lastReview.turnId)))));
     if (needExecute) {
       if (round + 1 > limits.roundsPerStage) return pause("limit_reached", "roundsPerStage");
       const loop = round >= 1 ? loopOf(input, reviews) : null;
@@ -220,7 +225,8 @@ function decide(input: CycleInput): Action {
   const fresh = last !== undefined && last.runKey === snapshot.runKey
     && last.clarificationVersion === orch.clarifications && !answeredAfter(last);
   if (!fresh) return turn("final_review", null, null);
-  if (last.verdict === "complete") return allPassed ? finishOrComplete(input) : replan(); // the lead cannot waive a check
+  // the lead cannot waive a check, nor a condition or a requirement without its evidence (A2): a new plan says why
+  if (last.verdict === "complete") return allPassed && !input.conditions?.finalUnmet ? finishOrComplete(input) : replan();
   return turn("final_review", null, null); // replan and an open question were handled above
 }
 
@@ -249,17 +255,23 @@ export function confirmationFor(state: RunState, tree: string, commit: string | 
   return state.orch.confirmations.filter((c) => c.seq > commitSeq && c.tree === tree && c.commit === commit).at(-1) ?? null;
 }
 
-export type CompletionBlocker = "checks_undecided" | "stage_not_accepted" | "check_not_passed" | "final_report_stale" | "finish_pending" | "finish_awaiting_person";
+export type CompletionBlocker = "checks_undecided" | "stage_not_accepted" | "check_not_passed" | "final_report_stale" | "finish_pending" | "finish_awaiting_person"
+  | ConditionBlocker;
 // The completion function, its A1 part (journal-v2-format.md §2.3): the run may be completed only when its checks
 // passed — or it has none by decision (no_checks) — every stage is accepted, the final review completes it, and every
 // action after success the goal asked for is done for the current commit or declined by the person.
-export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot, "tree" | "runKey">):
+// A2: and every condition in force has its evidence and every requirement is met (conditions: the facts from the texts,
+// null when no condition rule applies — v1 or a plan of A1's form).
+export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot, "tree" | "runKey">, conditions: ConditionFacts | null = null):
   { allowed: true; kind: CompletionKind } | { allowed: false; blockers: CompletionBlocker[] } {
   const o = state.orch;
   const blockers: CompletionBlocker[] = [];
   if (o.checksProposal && !o.checksDecision) blockers.push("checks_undecided");
   if (!o.plan || Object.keys(o.accepted).length < o.plan.firstStage - 1 + o.plan.stageCount) blockers.push("stage_not_accepted");
+  const byConditions = conditionBlockers(conditions);
+  if (byConditions.includes("condition_unmet")) blockers.push("condition_unmet");
   if (!checksPassed(state, goal.checks)) blockers.push("check_not_passed");
+  if (byConditions.includes("requirement_unmet")) blockers.push("requirement_unmet");
   const final = o.reviews.filter((r) => r.stage === null && o.turns[r.turnId]?.planVersion === o.plan?.version).at(-1);
   if (final?.verdict !== "complete" || final.runKey !== snapshot.runKey || final.clarificationVersion !== o.clarifications) blockers.push("final_report_stale");
   const commit = currentCommit(state, snapshot.tree);

@@ -215,6 +215,16 @@ With `CANVASTTY_JOURNAL_V2=1` a goal may leave its check commands empty: the lea
 
 A self-test of the profile runs before every such check (a write to the work folder works; a write to `$HOME` or `.git`, a read of `~/Library/Keychains` or of the orchestration data and an outside connection fail with EPERM; 127.0.0.1 works). If it fails, the check does not run and the run pauses with `sandbox_unavailable`. Because the profile denies the outside network, the autopilot accepts the lead's commands itself. A check whose output reports a refusal (EPERM, a failed name lookup — the output, not the kernel, so the command can print it itself) is not a code failure: the run pauses with "A check needs more permissions". The lead's command is never run without the sandbox as it is: the person opens it in full ("Change the command") and saves it, changed or not, as their own command, which then runs in their shell without the sandbox; the decision is journaled (`checks.amended`) and holds for that command in that run. Commands the person entered run as before, in their login shell without a sandbox.
 
+### Requirements and readiness conditions (journal v2, development flag only)
+
+A2 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.7. The goal's acceptance criteria are the requirements R1, R2, … (set by the person, fixed). Every stage of a v2 plan lists 1–12 readiness conditions, each covering requirements and naming its evidence: `check` (a check command of the run passes) or `change` (the lead's review marks it met, naming files the run changed). The application numbers new conditions C1, C2, … (`plan.recorded.conditionsAssigned`); a new plan keeps every open one by id, and dropping one is not available before A4. `conditions.ts` holds the pure rules (plan check, numbering, marks, facts); the service validates the lead's answers before recording them (`invalid_report` otherwise) and computes the facts before every decision:
+
+- a `check` condition is met by the latest result of its command on the tree being decided (`checkKey`) — a pass on an older tree is no evidence;
+- a `change` condition, by the review the stage was accepted on; a stage is accepted only with its `change` conditions met, otherwise it goes back to the executor;
+- the final review marks each requirement; completion needs every condition and requirement met (`condition_unmet`, `requirement_unmet` in `cycle.ts` `completion`), otherwise a new plan.
+
+The completion's basis records R → C → evidence; replay re-derives the conditions from the plans' and reviews' texts (`journal.ts` `conditionsConflict`) and marks a journal that says completed without that evidence as damaged (`phase: "texts"`). The result's "Conditions" section, the agent cards and the activity feed show the same facts (`conditionsView`, `conditionsLine`).
+
 ### Requirements and limits
 
 - **Platforms.**

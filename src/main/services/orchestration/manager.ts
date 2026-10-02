@@ -37,7 +37,7 @@ import { DEFAULT_LIMITS } from "./cycle.ts";
 import type { Goal } from "./cycle.ts";
 import { MAX_JOURNAL_BYTES, MAX_LINE_BYTES, MAX_TEXT_BYTES, TERMINAL_STATUSES, canonical, isSha256, isTextRef, isUuid, needsRecovery, newerGoal, newerVersion, parseJournal, unfinishedWork } from "./journal.ts";
 import type { JournalRecord, RunState, TextRef } from "./journal.ts";
-import { createOrchestrationService, decidedGoal, progressOf, runView } from "./orchestrationService.ts";
+import { conditionsView, createOrchestrationService, decidedGoal, loadConditions, progressOf, runView } from "./orchestrationService.ts";
 import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchestrationService.ts";
 import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
@@ -325,9 +325,12 @@ export function createRunManager(deps: RunManagerDeps) {
     // Where it works and what is done, as the open run would show it (UX-5): from the marker, the goal and the journal.
     const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
     const goal = await readText(deps.root, runId, st.goal).then((b) => decidedGoal(deps.root, runId, st, JSON.parse(b.toString("utf8")) as Goal), () => null);
+    // A2: the conditions as their texts say, with the latest result of each check (nobody holds the run's tree now)
+    const readJson = async <T>(ref: TextRef): Promise<T> => JSON.parse((await readText(deps.root, runId, ref)).toString("utf8")) as T;
+    const conditions = goal && st.version === 2 ? await loadConditions(st, readJson).then((c) => conditionsView(st, goal, c, null), () => null) : undefined;
     const view = runView(st, false, null, {
       ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
-      ...(goal ? { progress: progressOf(st, goal, place?.branch ?? null) } : {})
+      ...(goal ? { progress: { ...progressOf(st, goal, place?.branch ?? null), ...(conditions !== undefined ? { conditions } : {}) } } : {})
     });
     // Not held by this process, yet left running, pausing or with work in flight: the process that ran it ended without
     // shutdown. Shown as opening it will record it (run.recovered): paused, outcome_unknown if a turn was in flight,

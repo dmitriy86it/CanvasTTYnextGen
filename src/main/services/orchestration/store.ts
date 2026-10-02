@@ -33,6 +33,8 @@ import {
   unfinishedWork
 } from "./journal.ts";
 import type { Stage13Event } from "./journal.ts";
+import type { CompletionBasis, V2Texts } from "./journal.ts";
+import type { PlanText } from "./conditions.ts";
 import type {
   CheckAssessedData, CheckStatus, ClarificationAddedData, CommandResult, EventType, JournalIntegrity, LimitsChangedData, NotVerifiedReason,
   OrchTurnData, PausedReason, PlanRecordedData, QuestionAnsweredData, QuestionAskedData, RecoveryDecidedData, ReportStoreError,
@@ -656,7 +658,8 @@ class Writer implements RunWriter {
   }
 
   recordPlan(data: PlanRecordedData): Promise<void> {
-    return this.append("plan.recorded", pick(data, ["turnId", "version", "plan", "firstStage", "stageCount"]));
+    return this.append("plan.recorded", pick(data, data.conditionsAssigned === undefined ? ["turnId", "version", "plan", "firstStage", "stageCount"]
+      : ["turnId", "version", "plan", "firstStage", "stageCount", "conditionsAssigned"]));
   }
 
   recordReview(data: ReviewRecordedData): Promise<void> {
@@ -823,12 +826,26 @@ async function withTexts(dir: string, parsed: ReturnType<typeof parseJournal>): 
     why = textsConflict(st, {
       goal: await read(st.goal),
       proposal: st.orch.checksProposal ? await read(st.orch.checksProposal.ref) : null,
-      decision: st.orch.checksDecision ? await read(st.orch.checksDecision.ref) : null
+      decision: st.orch.checksDecision ? await read(st.orch.checksDecision.ref) : null,
+      ...await conditionTexts(st, read)
     });
   } catch {
     return parsed.integrity;
   }
   return why === null ? parsed.integrity : { status: "corrupt", detail: { line: st.lastSeq + 1, offset: parsed.validBytes, code: "replay_conflict", phase: "texts" } };
+}
+
+// A2 (journal-v2-format.md §2.7): the plans, the lead's review answers and the completed status' basis. Shared with the
+// service and the run view, which show the conditions from the same texts.
+export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Promise<T>): Promise<Pick<V2Texts, "plans" | "reports" | "basis">> {
+  const plans: PlanText[] = [];
+  for (const p of st.orch.plans) plans.push(await read<PlanText>(p.ref));
+  const reports: Record<string, unknown> = {};
+  for (const r of st.orch.reviews) {
+    const ref = st.turns[r.turnId]?.report?.ref;
+    if (ref) reports[r.turnId] = await read(ref);
+  }
+  return { plans, reports, basis: st.completion ? await read<CompletionBasis>(st.completion.basis) : null };
 }
 
 const refuseNewer = (buf: Buffer | { head: Buffer }): void => {

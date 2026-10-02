@@ -187,6 +187,13 @@ export function roleStatus(locale: LocaleId, role: Role, input: StatusInput): St
   return { ...base, state: "waiting_agent", doing, now: null, wait: act ? act.doing : t(locale, "orchNow_between"), quiet: null };
 }
 
+// Journal v2, A2 (journal-v2-format.md §2.7): "N of M conditions met" — the one line the result, the cards and the
+// activity feed show; null without conditions (v1, a plan of A1's form, nothing planned yet).
+export function conditionsLine(locale: LocaleId, view: Pick<OrchestrationRunView, "progress">): string | null {
+  const c = view.progress?.conditions;
+  return c && c.total > 0 ? tr(locale, "orchConditionsCount", { met: c.met, total: c.total }) : null;
+}
+
 export function stateLabel(locale: LocaleId, state: ActivityState): string {
   return t(locale, `orchState_${state}` as TranslationKey);
 }
@@ -452,6 +459,7 @@ export interface ActivityRunRow {
   projectPath: string;
   load: "loading" | "error" | "ready";
   line: StatusLine | null; // null while the run's state is not loaded
+  conditions: string | null; // A2: conditionsLine
   roles: { role: Role; line: StatusLine }[];
   ended: boolean;
   at: string | null; // the newest known event, for the order
@@ -481,13 +489,13 @@ export function activityRuns(locale: LocaleId, input: ActivityRunsInput, recentL
     const run = input.runs[runId];
     const base = { linkId: link.linkId, runId, project, projectPath };
     if (!run) {
-      rows.push({ ...base, load: input.runErrors[runId] ? "error" : "loading", line: null, roles: [], ended: false, at: null });
+      rows.push({ ...base, load: input.runErrors[runId] ? "error" : "loading", line: null, conditions: null, roles: [], ended: false, at: null });
       continue;
     }
     const s: StatusInput = { view: run.view, entries: input.entries(runId), open: run.open, stageTitles: input.stageTitles(runId), now: input.now };
     const line = runStatus(locale, s);
     rows.push({
-      ...base, load: "ready", line, ended: TERMINAL_STATUSES.includes(run.view.status),
+      ...base, load: "ready", line, conditions: conditionsLine(locale, run.view), ended: TERMINAL_STATUSES.includes(run.view.status),
       roles: (["lead", "executor"] as const).map((role) => ({ role, line: roleStatus(locale, role, s) })),
       at: [line.lastEventAt, input.lastRecordAt(runId)].filter((x): x is string => !!x).sort().at(-1) ?? null
     });

@@ -240,6 +240,23 @@ export interface OrchestrationRunProgress {
   completion?: "confirmed" | "no_checks" | null;
   // journal v2: where the check commands came from — the goal, the lead's proposal as accepted, or edited by the person
   checksFrom?: "goal" | "proposal" | "edited" | null;
+  // journal v2, A2 (journal-v2-format.md §2.7): requirements and readiness conditions with their evidence; null — the run
+  // has none (v1, or a plan of A1's form)
+  conditions?: OrchestrationConditions | null;
+}
+
+export type OrchestrationConditionStatus = "met" | "not_met" | "not_checked";
+// R<n>: the n-th criterion of the goal. C<n>: a condition of the plans, numbered by the application. The proof of a
+// condition is a check run (its output) or the lead's review answer; met counts conditions in force that are met.
+export interface OrchestrationConditions {
+  requirements: { id: string; text: string; conditions: string[]; status: OrchestrationConditionStatus }[];
+  conditions: {
+    id: string; text: string; covers: string[]; stage: number; status: OrchestrationConditionStatus;
+    evidence: { kind: "check"; check: string; command: string | null } | { kind: "change" };
+    proof: { checkRunId: string; output: { sha256: string; bytes: number } | null } | { reviewTurnId: string; paths: string[]; note: string } | null;
+  }[];
+  met: number;
+  total: number;
 }
 
 // seq: the journal position the view belongs to (not the revision); tick: changes of the view since that record that
