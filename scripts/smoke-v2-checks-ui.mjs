@@ -6,8 +6,9 @@
 //            minReaderVersion 2 and formatPreview in its first record;
 //   refused: the lead proposes a command that writes outside the work folder; the autopilot accepts it (it runs in the
 //            check profile, A1.1 Q2) and the sandbox refuses it — the panel says «Проверке нужно больше прав» with
-//            «Запустить без песочницы» and «Изменить команду», no Resume; the autopilot waits; «Запустить без
-//            песочницы» runs it in the person's shell and the run completes, confirmed.
+//            «Изменить команду» only (no «Запустить без песочницы» for a lead's command, owner's decision on S1-4), no
+//            Resume; the autopilot waits; the editor holds the whole command and says it will run as the person's;
+//            saved unchanged, it runs in the person's shell and the run completes, confirmed.
 // Needs `npm run build` first; macOS (Seatbelt). Starts no real model. Usage: node scripts/smoke-v2-checks-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
@@ -108,8 +109,8 @@ try {
     const panel = await app.ev(`(() => { const p = ${q("[data-orch-check-refused]")}; return { id: p.dataset.orchCheckRefused, title: p.querySelector("h4").textContent,
       buttons: [...p.querySelectorAll("button")].map((b) => b.textContent.trim()), actions: [...document.querySelectorAll(".orch-panel__actions button")].map((b) => b.textContent.trim()),
       headline: document.querySelector(".orch-summary__headline")?.textContent ?? "" }; })()`);
-    expect(panel.id === "cmd-1" && panel.title === "Проверке нужно больше прав" && panel.buttons.includes("Запустить без песочницы") && panel.buttons.includes("Изменить команду"),
-      "refused: the panel offers «Запустить без песочницы» and «Изменить команду»", panel);
+    expect(panel.id === "cmd-1" && panel.title === "Проверке нужно больше прав" && panel.buttons.join("|") === "Изменить команду",
+      "refused: the panel offers «Изменить команду» only — no «Запустить без песочницы»", panel);
     expect(!panel.actions.some((b) => /Продолжить|Шаг/.test(b)) && /больше прав/.test(panel.headline), "refused: no Resume or Step, the headline says so", panel);
     expect(!fs.existsSync(outside), "refused: nothing was written outside the work folder", null);
     const runId = (await runs(app))[0].runId;
@@ -117,11 +118,17 @@ try {
     const still = await app.ev(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.reason)`);
     expect(still === "check_needs_permissions", "refused: the autopilot waits for the person", still);
     await app.shot("v2-03-check-needs-permissions");
-    await app.clickEl(q("[data-orch-check-unsandbox]"));
+    await app.clickEl(q("[data-orch-check-edit-open]"));
+    await app.waitFor(`${q("[data-orch-check-refused-line]")} && true`, "the editor");
+    const editor = await app.ev(`(() => { const e = ${q("[data-orch-check-refused-line]")}; return { value: e.value, hint: e.parentElement.querySelector("small").textContent }; })()`);
+    expect(editor.value === `test -f src/note.mjs && touch ${outside}` && editor.hint === "Команду предложил лид. После сохранения она будет выполняться как ваша — без песочницы.",
+      "refused: the editor holds the whole command and says it runs as the person's", editor);
+    await app.shot("v2-04-edit-lead-command");
+    await app.clickEl(q("[data-orch-check-edit-save]"));
     await app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.status === "completed")`, "completed", 120_000);
     const done = await app.ev(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.progress.completion)`);
-    expect(done === "confirmed" && fs.existsSync(outside), "refused: run without the sandbox, the check passed and the run completed, confirmed", done);
-    await app.shot("v2-04-completed-after-unsandbox");
+    expect(done === "confirmed" && fs.existsSync(outside), "refused: saved unchanged — run as the person's, without the sandbox; the run completed, confirmed", done);
+    await app.shot("v2-05-completed-as-person-command");
   });
 } catch (error) {
   failures.push(`exception: ${error?.stack ?? error}`);

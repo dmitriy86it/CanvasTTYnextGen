@@ -268,7 +268,7 @@ export interface OrchState {
   checksDecision: { decision: "accept" | "edit"; by: "autopilot" | "person"; commandId: string | null; ref: TextRef; count: number; seq: number } | null;
   confirmations: FinishConfirmation[];
   // A1.1 (§2.6): the checks the person let run without the sandbox, or changed (line: the new command line)
-  amended: Record<string, { commandId: string; line: TextRef | null; seq: number }>;
+  amended: Record<string, { commandId: string; line: TextRef; seq: number }>;
 }
 export type SandboxNetwork = "denied" | "open";
 export type FinishDecision = "confirm" | "decline";
@@ -515,10 +515,10 @@ const DATA_SCHEMAS_V2: Record<string, (d: Record<string, unknown>) => boolean> =
   "finish.confirmed": (d) => exactKeys(d, ["commandId", "tree", "commit", "push", "qa"]) && isUuid(d.commandId) && isGitOid(d.tree)
     && (d.commit === null || isGitOid(d.commit)) && (d.push === null || oneOf(d.push, FINISH_DECISIONS))
     && (d.qa === null || oneOf(d.qa, FINISH_DECISIONS)) && (d.push !== null || d.qa !== null),
-  // A1.1 (§2.6): a lead's check the sandbox refused, as the person decided — run without the sandbox (line null) or
-  // with the person's own line (a person's command: without the sandbox too)
+  // A1.1 (§2.6): a lead's check the sandbox refused, replaced by the person's line (unchanged or not): from then on a
+  // person's command, without the sandbox
   "checks.amended": (d) => exactKeys(d, ["commandId", "checkId", "line"]) && isUuid(d.commandId) && isCheckId(d.checkId)
-    && (d.line === null || isTextRef(d.line)),
+    && isTextRef(d.line),
   "check.classified": (d) => exactKeys(d, ["checkRunId", "class"]) && isUuid(d.checkRunId) && oneOf(d.class, [...FAILURE_CLASSES, "sandbox"])
 };
 const schemasOf = (version: number): Record<string, (d: Record<string, unknown>) => boolean> => version === 2 ? DATA_SCHEMAS_V2 : DATA_SCHEMAS;
@@ -963,7 +963,7 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       const runs = Object.entries(state.checks).filter(([, c]) => c.checkId === id && c.status !== "in_flight");
       const last = runs.at(-1)?.[0];
       if (!last || o.classified[last] !== "sandbox") conflict(`check ${id} was not refused by the sandbox`);
-      o.amended[id] = { commandId: d.commandId as string, line: d.line as TextRef | null, seq: rec.seq };
+      o.amended[id] = { commandId: d.commandId as string, line: d.line as TextRef, seq: rec.seq };
       break;
     }
     case "finish.confirmed":

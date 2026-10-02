@@ -18,6 +18,7 @@ import { createRunManager, testNativeRuntime } from "../src/main/services/orches
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { buildCheckProfile, buildProfile, checkSelftest } from "../src/main/services/orchestration/sandbox.ts";
 import { openRun, readRun } from "../src/main/services/orchestration/store.ts";
+import { parseCommand } from "../src/main/ipc/orchestrationIpc.ts";
 import { agentState, availableActions, historyLines, runHeadline, runStatusKey } from "../src/renderer/src/features/orchestration/runModel.ts";
 import { outcomeKey, roleStatus, runStatus, stateLabel } from "../src/renderer/src/features/orchestration/runStatus.ts";
 
@@ -603,7 +604,7 @@ test("A1.1 (review S1-2): a lead's line of a denied run reopened where the profi
   await again.shutdown();
 });
 
-test("A1.1: a lead's check the sandbox refuses pauses «Проверке нужно больше прав» — even the autopilot; only the person lets it out or changes it", DARWIN, async () => {
+test("A1.1: a lead's check the sandbox refuses pauses «Проверке нужно больше прав» — even the autopilot; only the person's line (S1-4: no «without the sandbox» for the lead's command) lets it go on", DARWIN, async () => {
   const src = project({ "a.txt": "1\n" });
   const outside = path.join(TMP, `outside-${++n}`);
   const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && touch ${outside}` });
@@ -621,15 +622,20 @@ test("A1.1: a lead's check the sandbox refuses pauses «Проверке нуж�
   // the autopilot never lets it out by itself
   await sleep(500);
   assert.equal((await view(m, runId)).reason, "check_needs_permissions");
-  // «Запустить без песочницы»: this command in this run, in the person's shell
-  assert.equal((await send(m, await view(m, runId), { kind: "check.amend", checkId: "cmd-1" })).status, "accepted");
+  // the former «Запустить без песочницы» (no line) is no command at all: refused by main and by the IPC parser
+  assert.equal((await send(m, await view(m, runId), { kind: "check.amend", checkId: "cmd-1" })).code, "invalid_command");
+  const base = { runId, commandId: randomUUID(), expectedRevision: 1 };
+  assert.throws(() => parseCommand({ ...base, command: { kind: "check.amend", checkId: "cmd-1" } }), /line/);
+  assert.equal(parseCommand({ ...base, command: { kind: "check.amend", checkId: "cmd-1", line: "x" } }).command.line, "x");
+  // «Изменить команду», saved unchanged: the person's command now, in their shell
+  assert.equal((await send(m, await view(m, runId), { kind: "check.amend", checkId: "cmd-1", line: `grep -qx 2 a.txt && touch ${outside}` })).status, "accepted");
   v = await settled(m, runId);
   assert.equal(v.status, "completed", JSON.stringify(v));
   assert.equal(fs.existsSync(outside), true);
   assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"], ["cmd-1", "shell"]]);
   const all = await records(m, runId);
   const amended = all.find((r) => r.type === "checks.amended");
-  assert.deepEqual([amended.data.checkId, amended.data.line], ["cmd-1", null]);
+  assert.deepEqual([amended.data.checkId, typeof amended.data.line?.sha256], ["cmd-1", "string"]);
   const at = all.indexOf(amended);
   assert.deepEqual(all.slice(at + 1, at + 3).map((r) => [r.type, r.data.status ?? null]), [["command.completed", null], ["run.status", "running"]]);
   await m.shutdown();
@@ -708,7 +714,7 @@ test("A1.1 replay: a lead's check of a denied run without the profile and withou
   const outside = path.join(TMP, `outside-${++n}`);
   const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && touch ${outside}` });
   const runId = await start(m, src, { commands: [] });
-  await send(m, await settled(m, runId, "the refusal"), { kind: "check.amend", checkId: "cmd-1" });
+  await send(m, await settled(m, runId, "the refusal"), { kind: "check.amend", checkId: "cmd-1", line: `grep -qx 2 a.txt && touch ${outside}` });
   assert.equal((await settled(m, runId)).status, "completed");
   await m.shutdown();
   const buf = journalOf(m, runId);
@@ -720,6 +726,8 @@ test("A1.1 replay: a lead's check of a denied run without the profile and withou
     return r.filter((x) => x.data.commandId !== id);
   };
   assert.deepEqual(corrupt(rewrite(buf, runId, dropAmend), runId), ["replay_conflict", "check.started"]);
+  // the lead's command without the sandbox, as such (no line): no longer a record of the format (S1-4)
+  assert.equal(corrupt(rewrite(buf, runId, (r) => { r.find((x) => x.type === "checks.amended").data.line = null; return r; }), runId)[1], "checks.amended");
   // an amendment of a check the sandbox did not refuse (classified as the code's)
   assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { r.find((x) => x.type === "check.classified").data.class = "code"; return r; }), runId), ["replay_conflict", "checks.amended"]);
   // "refused by the sandbox" said of a check that ran in the shell (the run after the amendment, made a failure)

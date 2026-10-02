@@ -159,10 +159,11 @@ export function parseCommand(v: unknown): { runId: string; commandId: string; ex
       break;
     }
     case "check.amend":
-      // A1.1 (journal-v2-format.md §2.6): the decided set's id; a line only to change the command (main checks it)
-      obj(c, "command", ["kind", "checkId"], ["line"]);
+      // A1.1 (journal-v2-format.md §2.6): the decided set's id and the person's line (main checks it); without a line
+      // ("run the lead's command without the sandbox") there is no such command
+      obj(c, "command", ["kind", "checkId", "line"]);
       if (typeof c.checkId !== "string" || !/^cmd-([1-9]|1[0-6])$/.test(c.checkId)) bad("command.checkId must be cmd-1…cmd-16");
-      command = { kind: c.kind, checkId: c.checkId as string, ...(c.line !== undefined ? { line: str(c.line, "command.line", 1000, 1) } : {}) };
+      command = { kind: c.kind, checkId: c.checkId as string, line: str(c.line, "command.line", 1000, 1) };
       break;
     default:
       return bad("command.kind is unknown");

@@ -119,7 +119,7 @@ export type RunCommand =
   | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
   | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   // A1.1 (§2.6): a lead's check the sandbox refused — run it without the sandbox (no line) or as the person's line
-  | { kind: "check.amend"; checkId: string; line?: string }
+  | { kind: "check.amend"; checkId: string; line: string }
   | { kind: "permission"; requestId: string; decision: PermissionDecision; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string };
 // What the person can answer: the CLI's own options, plus remembering exactly this action for the run or the project.
 export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project";
@@ -394,13 +394,13 @@ export async function decidedGoal(root: string, runId: string, st: RunState, goa
   const d = st.orch.checksDecision;
   if (!d) return goal;
   const text = JSON.parse((await readText(root, runId, d.ref)).toString("utf8")) as { checks: DecidedCheck[] };
-  const amended: Record<string, string | null> = {};
-  for (const [id, a] of Object.entries(st.orch.amended)) amended[id] = a.line ? JSON.parse((await readText(root, runId, a.line)).toString("utf8")) as string : null;
+  const amended: Record<string, string> = {};
+  for (const [id, a] of Object.entries(st.orch.amended)) amended[id] = JSON.parse((await readText(root, runId, a.line)).toString("utf8")) as string;
   return decided(goal, text.checks, amended, st.orch.checksProposal?.sandboxNetwork === "denied");
 }
 interface DecidedCheck { id: string; command: string; origin: "lead" | "person" }
 // the effective lines (an amendment's line replaces the decided one) and the lead's lines still in the profile
-const decided = (goal: Goal, checks: readonly DecidedCheck[], amended: Readonly<Record<string, string | null>>, profile: boolean): Goal =>
+const decided = (goal: Goal, checks: readonly DecidedCheck[], amended: Readonly<Record<string, string>>, profile: boolean): Goal =>
   withCommands(goal, checks.map((c) => amended[c.id] ?? c.command),
     profile ? checks.filter((c) => c.origin === "lead" && !Object.hasOwn(amended, c.id)).map((c) => c.id) : []);
 const withCommands = (goal: Goal, commands: string[], sandboxed: string[] = []): Goal => ({ ...goal, commands, checks: commands.map((_, i) => `cmd-${i + 1}`), sandboxed });
@@ -1758,15 +1758,17 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         return ok; // run.status(running) follows command.completed (journal-v2-format.md §2.4), in command()
       }
       case "check.amend": {
-        // A1.1 (§2.6): only the person, only for a lead's check the sandbox refused, once per check
+        // A1.1 (§2.6): only the person, only for a lead's check the sandbox refused, once per check. Always with the
+        // person's line (unchanged is a decision too): it becomes the person's command, without the sandbox. There is no
+        // "run the lead's command without the sandbox" (owner's decision on S1-4: the refusal is seen in the output only)
         if (status !== "paused" || reason !== "check_needs_permissions") return reject("invalid_state");
         const refused = refusedCheck(st);
         if (typeof cmd.checkId !== "string" || cmd.checkId !== refused?.checkId) return reject("invalid_state");
-        if (cmd.line !== undefined && (typeof cmd.line !== "string" || !LINE(cmd.line.trim()))) return reject("invalid_command");
-        const line = cmd.line === undefined ? null : cmd.line.trim();
-        const ref = line === null ? null : await j(() => writer.putText(canonical(line)));
+        if (typeof cmd.line !== "string" || !LINE(cmd.line.trim())) return reject("invalid_command");
+        const line = cmd.line.trim();
+        const ref = await j(() => writer.putText(canonical(line)));
         await j(() => writer.recordEvent("checks.amended", { commandId, checkId: cmd.checkId, line: ref }));
-        adoptGoal(withCommands(goal, (goal.commands ?? []).map((c, i) => (`cmd-${i + 1}` === cmd.checkId && line !== null ? line : c)),
+        adoptGoal(withCommands(goal, (goal.commands ?? []).map((c, i) => (`cmd-${i + 1}` === cmd.checkId ? line : c)),
           (goal.sandboxed ?? []).filter((id) => id !== cmd.checkId)));
         return ok;
       }
