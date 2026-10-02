@@ -234,7 +234,14 @@ test("a lead's command as a condition: met by its passed run → completion allo
   const m = manager({ MOCK_SCRIPT: script([plan(["a", [byCheck("the proposed check passes", ["R1"], "cmd-1")]]), exec({ "a.txt": "2\n" }), review(), final(["R1", "met"])]),
     MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" });
   const runId = await start(m, src, {});
-  const v = await settled(m, runId);
+  let v = await settled(m, runId);
+  // without Seatbelt (Linux) the lead's commands would run unsandboxed: the person accepts them
+  if (v.reason === "awaiting_checks_decision") {
+    const r = await m.command(runId, { commandId: randomUUID(), expectedRevision: v.revision, command: { kind: "checks.decide", decision: "accept" } });
+    assert.equal(r.value?.status, "accepted", JSON.stringify(r));
+    await until(async () => (await view(m, runId)).reason !== "awaiting_checks_decision", "the decision taken");
+    v = await settled(m, runId);
+  }
   assert.deepEqual([v.status, v.progress.completion, v.progress.checksFrom], ["completed", "confirmed", "proposal"], JSON.stringify(v));
   const c1 = v.progress.conditions.conditions[0];
   assert.deepEqual([c1.id, c1.status, c1.evidence], ["C1", "met", { kind: "check", check: "cmd-1", command: "grep -qx 2 a.txt" }]);
