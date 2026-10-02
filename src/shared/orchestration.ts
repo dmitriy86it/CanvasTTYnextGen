@@ -124,6 +124,7 @@ export type OrchestrationRunCommand =
   // person's push/QA decision of a run completed without checks, for the tree and commit shown in the dialog
   | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
   | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
+  | { kind: "check.amend"; checkId: string; line?: string }
   | {
     kind: "permission"; requestId: string; decision: OrchestrationPermissionOption; answers?: Record<string, string[]>;
     content?: Record<string, unknown>; // an MCP form's values (accept)
@@ -202,6 +203,8 @@ export interface OrchestrationRunView {
   // journal v2, on the pause awaiting_finish_confirmation: the tree and commit the decision is about (finish.confirm's
   // payload) and the steps the goal asked for
   confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
+  // A1.1, on the pause check_needs_permissions: the lead's check the sandbox refused; check.amend is about it
+  refused?: { checkId: string; command: string } | null;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only
   // (status paused, reason newer_version), never opened or changed here. chain: the hash chain of what was read.
   // compatible: its journal declares minReaderVersion this build reads, so the view is its whole state (status and
@@ -226,8 +229,8 @@ export interface OrchestrationRunProgress {
   mode: OrchestrationRunMode;
   branch: string | null;
   access: { claude: string; codex: string } | null;
-  checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: "code" | "environment" | "external" | null }[]; // the latest result of each
-  prepare: { status: string; failed: string | null; class: "code" | "environment" | "external" | null; command: string | null; output: { sha256: string; bytes: number } | null } | null;
+  checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: "code" | "environment" | "external" | "sandbox" | null }[]; // the latest result of each
+  prepare: { status: string; failed: string | null; class: "code" | "environment" | "external" | "sandbox" | null; command: string | null; output: { sha256: string; bytes: number } | null } | null;
   // version (QA): what the verification established about the deployed version (see OrchestrationQaVersion);
   // observed: the commit id the verification reported (only a validated id, never other output)
   // declined (journal v2): the person declined this step of a run completed without checks

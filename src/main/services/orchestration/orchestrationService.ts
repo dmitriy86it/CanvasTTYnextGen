@@ -12,6 +12,7 @@ import { failedTurnResult } from "./agents.ts";
 import { commandSha256, createRegistry, resolveCheck } from "./checks.ts";
 import type { CheckRegistry, PreparedDeps } from "./checks.ts";
 import type { SandboxApi } from "./checkRunner.ts";
+import { sandboxSupport } from "./sandbox.ts";
 import { currentExecutableSha256, inspectPreparedDeps, startProjectCheck } from "./checkService.ts";
 import type { ProjectCheckResult } from "./checkService.ts";
 import { DEFAULT_LIMITS, completion, confirmationFor, currentCommit, effectiveLimits, nextAction, proposesChecks, withoutChecks } from "./cycle.ts";
@@ -41,7 +42,8 @@ import { commitLine, findCommitLine, pushLine, qaEnv, qaVersion, remoteHead, rem
 import type { CommitParams, PushParams, QaParams } from "./finish.ts";
 import { validateForm } from "./forms.ts";
 import type { FailureClass, FinishStep } from "./journal.ts";
-import { classifyFailure, installsNothing, lockFingerprints, neededSteps } from "./prepare.ts";
+import { classifyFailure, installsNothing, lockFingerprints, neededSteps, sandboxRefused } from "./prepare.ts";
+import { NO_SANDBOX_SHA256 } from "./journal.ts";
 import type { PrepareStep } from "./prepare.ts";
 import { grantFingerprint } from "./profile.ts";
 import { runShell } from "./shellRun.ts";
@@ -65,10 +67,14 @@ export interface GoalInput {
 
 // Stage 12: the checks of a goal with commands are those command lines, run by the user's login shell.
 const CHECK_TIMEOUT_MS = 30 * 60_000;
-export function shellRegistry(shell: string, commands: readonly string[]): CheckRegistry {
+// A1.1: a check in the check profile runs `<shell> -c <line>` (the login environment is passed in; the shell's start
+// files would only be refused their writes) — another command, so another key: a result in the sandbox never stands
+// for the same line run without it.
+export function shellRegistry(shell: string, commands: readonly string[], sandboxed: readonly string[] = []): CheckRegistry {
   if (commands.length === 0) return Object.freeze({ commands: Object.freeze([]) }); // journal v2: no commands (yet), nothing to run
   return createRegistry(commands.map((line, i) => ({
-    id: `cmd-${i + 1}`, title: line.slice(0, 200), executable: shell, argv: ["-ilc", line], timeoutMs: CHECK_TIMEOUT_MS, maxOutputBytes: 65_536
+    id: `cmd-${i + 1}`, title: line.slice(0, 200), executable: shell, argv: sandboxed.includes(`cmd-${i + 1}`) ? ["-c", line] : ["-ilc", line],
+    timeoutMs: CHECK_TIMEOUT_MS, maxOutputBytes: 65_536
   })));
 }
 
@@ -81,7 +87,12 @@ export interface OrchestrationDeps {
   agents: AgentAdapter;
   // registry/deps/sandbox: the node-test check of stages 4–11. shell (stage 12): the user's login shell (its real path)
   // and environment, for goals whose checks are their own commands; deps is then null (the project keeps its own).
-  checks: { registry: CheckRegistry; deps: PreparedDeps | null; launch: SupervisorLaunch; sandbox?: SandboxApi; shell?: { shell: string; env: Record<string, string> } };
+  checks: {
+    registry: CheckRegistry; deps: PreparedDeps | null; launch: SupervisorLaunch; sandbox?: SandboxApi; shell?: { shell: string; env: Record<string, string> };
+    // A1.1 (journal-v2-format.md §2.6): the lead's proposed commands run in the check profile — where Seatbelt is
+    // (absent: by the platform); false: never (they wait for the person, as in A1); realHome: tests only
+    leadSandbox?: false | { realHome?: string };
+  };
   clock?: () => number;
   stopGraceMs?: number;
   storeIo?: StoreIo; // tests only
@@ -107,6 +118,8 @@ export type RunCommand =
   // push/QA decision of a run without checks for the tree and commit they saw
   | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
   | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
+  // A1.1 (§2.6): a lead's check the sandbox refused — run it without the sandbox (no line) or as the person's line
+  | { kind: "check.amend"; checkId: string; line?: string }
   | { kind: "permission"; requestId: string; decision: PermissionDecision; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string };
 // What the person can answer: the CLI's own options, plus remembering exactly this action for the run or the project.
 export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project";
@@ -132,6 +145,8 @@ export interface RunView {
   // journal v2, on the pause awaiting_finish_confirmation: what the person confirms push/QA for (the payload of
   // finish.confirm) and which steps the goal asked for
   confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
+  // A1.1, on the pause check_needs_permissions: the lead's check the sandbox refused (journal-v2-format.md §2.6)
+  refused?: { checkId: string; command: string } | null;
 }
 
 // Facts from the journal (and the goal), never from an agent's own report.
@@ -171,7 +186,7 @@ export interface RunHandle {
 
 // The view of a run from its journal state; also for a run nobody has open (halted false, nothing active).
 export function runView(st: RunState, halted = false, active: RunView["active"] = null,
-  extra: Pick<RunView, "permission" | "pendingPermissions" | "workMode" | "workDir" | "progress" | "proposal" | "confirm"> = {}): RunView {
+  extra: Pick<RunView, "permission" | "pendingPermissions" | "workMode" | "workDir" | "progress" | "proposal" | "confirm" | "refused"> = {}): RunView {
   const accepted = Object.keys(st.orch.accepted).length;
   const total = st.orch.plan ? st.orch.plan.firstStage - 1 + st.orch.plan.stageCount : 0;
   return {
@@ -366,21 +381,29 @@ function checkFinish(f: GoalFinish, bad: (m: string) => never): GoalFinish {
   };
 }
 
-function registryFor(deps: OrchestrationDeps, commands: readonly string[] | null): CheckRegistry {
+function registryFor(deps: OrchestrationDeps, commands: readonly string[] | null, sandboxed: readonly string[] = []): CheckRegistry {
   if (!commands) return deps.checks.registry;
   if (!deps.checks.shell) throw new OrchestrationError("environment_error", "no login shell for the project's check commands");
-  return shellRegistry(deps.checks.shell.shell, commands);
+  return shellRegistry(deps.checks.shell.shell, commands, sandboxed);
 }
 
 // The goal with the check commands decided for it (journal v2: checks.decided of a goal without commands); any other
 // goal as recorded.
+// A1.1 (§2.6): with the person's amendments, and which of them run in the check profile.
 export async function decidedGoal(root: string, runId: string, st: RunState, goal: Goal): Promise<Goal> {
   const d = st.orch.checksDecision;
   if (!d) return goal;
-  const text = JSON.parse((await readText(root, runId, d.ref)).toString("utf8")) as { checks: { id: string; command: string }[] };
-  return withCommands(goal, text.checks.map((c) => c.command));
+  const text = JSON.parse((await readText(root, runId, d.ref)).toString("utf8")) as { checks: DecidedCheck[] };
+  const amended: Record<string, string | null> = {};
+  for (const [id, a] of Object.entries(st.orch.amended)) amended[id] = a.line ? JSON.parse((await readText(root, runId, a.line)).toString("utf8")) as string : null;
+  return decided(goal, text.checks, amended, st.orch.checksProposal?.sandboxNetwork === "denied");
 }
-const withCommands = (goal: Goal, commands: string[]): Goal => ({ ...goal, commands, checks: commands.map((_, i) => `cmd-${i + 1}`) });
+interface DecidedCheck { id: string; command: string; origin: "lead" | "person" }
+// the effective lines (an amendment's line replaces the decided one) and the lead's lines still in the profile
+const decided = (goal: Goal, checks: readonly DecidedCheck[], amended: Readonly<Record<string, string | null>>, profile: boolean): Goal =>
+  withCommands(goal, checks.map((c) => amended[c.id] ?? c.command),
+    profile ? checks.filter((c) => c.origin === "lead" && !Object.hasOwn(amended, c.id)).map((c) => c.id) : []);
+const withCommands = (goal: Goal, commands: string[], sandboxed: string[] = []): Goal => ({ ...goal, commands, checks: commands.map((_, i) => `cmd-${i + 1}`), sandboxed });
 
 // ---------- service ----------
 
@@ -419,7 +442,7 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
         const goal = await decidedGoal(deps.root, runId, writer.state(), JSON.parse((await readText(deps.root, runId, writer.state().goal)).toString("utf8")) as Goal);
         const ws = await openWorkspace({ root: deps.root, runId, gitPath: deps.gitPath });
         const o = writer.state().orch;
-        const decidedBy = new Set([o.checksDecision?.commandId, ...o.confirmations.map((c) => c.commandId)]);
+        const decidedBy = new Set([o.checksDecision?.commandId, ...o.confirmations.map((c) => c.commandId), ...Object.values(o.amended).map((a) => a.commandId)]);
         for (const [id, c] of Object.entries(writer.state().commands)) {
           // journal-v2-format.md §2.5: a decision already in the journal stands — its command was accepted
           if (c.status === "unfinished") await writer.completeCommand(id, decidedBy.has(id) ? { status: "accepted", code: null } : { status: "rejected", code: "interrupted" });
@@ -442,14 +465,16 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   const { root } = deps;
   const runId = writer.runId;
   const stopGraceMs = deps.stopGraceMs ?? DEFAULT_STOP_GRACE_MS;
-  let registry = registryFor(deps, goal.commands ?? null);
+  let registry = registryFor(deps, goal.commands ?? null, goal.sandboxed);
   let commands = goal.checks.map((id) => resolveCheck(registry, id));
-  // journal v2: the decided check commands become the run's own (checks.decided)
-  const adoptCommands = (lines: string[]) => {
-    goal = withCommands(goal, lines);
-    registry = registryFor(deps, lines);
+  // journal v2: the decided check commands become the run's own (checks.decided, A1.1: checks.amended)
+  const adoptGoal = (next: Goal) => {
+    goal = next;
+    registry = registryFor(deps, goal.commands ?? [], goal.sandboxed);
     commands = goal.checks.map((id) => resolveCheck(registry, id));
   };
+  // A1.1: where Seatbelt is, the lead's commands run in the check profile (journal-v2-format.md §2.6)
+  const leadSandbox = deps.checks.leadSandbox ?? (sandboxSupport().supported ? {} : false);
   // Check definitions as they are now: the executable's content is hashed again at every decision (§10), so a
   // replaced program makes earlier results and the reviews that saw them stale.
   let checkDefs: CheckDef[] = [];
@@ -557,12 +582,21 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       });
     };
   }
+  // A1.1 (§2.6): the lead's check the sandbox refused last, still in the profile — what check.amend is about
+  const refusedCheck = (st: RunState): { checkId: string; command: string } | null => {
+    for (const id of goal.sandboxed ?? []) {
+      const last = Object.entries(st.checks).filter(([, c]) => c.checkId === id && c.status !== "in_flight").at(-1)?.[0];
+      if (last && st.orch.classified[last] === "sandbox") return { checkId: id, command: goal.commands?.[Number(id.slice(4)) - 1] ?? "" };
+    }
+    return null;
+  };
   const viewExtra = () => {
     const first = permissions.values().next().value;
     const st = state();
     return {
       permission: first?.view ?? null, pendingPermissions: permissions.size, workMode: ws.mode, workDir: ws.repo, progress: progressOf(st, goal, ws.branch),
       ...(st.pausedReason === "awaiting_checks_decision" ? { proposal: proposalText } : {}),
+      ...(st.pausedReason === "check_needs_permissions" ? { refused: refusedCheck(st) } : {}),
       ...(st.pausedReason === "awaiting_finish_confirmation" ? {
         confirm: { tree: latest?.tree ?? null, commit: latest ? currentCommit(st, latest.tree)?.commit ?? null : null, push: !!goal.finish?.push, qa: !!goal.finish?.qa }
       } : {})
@@ -901,9 +935,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const text: ChecksProposalText = { checks: c.checks.map((x, i) => ({ id: `cmd-${i + 1}`, command: x.command.trim(), why: x.why, source: x.source })), none: c.none };
     const ref = await j(() => writer.putText(canonical(text)));
     proposalText = text;
-    // A native run's checks run in the user's login shell without a sandbox (userCheck.ts): the network is open, so
-    // the autopilot too waits for the person (owner's decision 5i §7 p. 5).
-    const sandboxNetwork: SandboxNetwork = "open";
+    // A1.1: the lead's commands run in the check profile, which denies the network (but this machine's): the
+    // autopilot may accept them itself. Without Seatbelt they would run in the user's shell: the person decides (A1).
+    const sandboxNetwork: SandboxNetwork = leadSandbox ? "denied" : "open";
     await j(() => writer.recordEvent("checks.proposed", { turnId, proposal: ref, count: text.checks.length, sandboxNetwork }));
   }
   let proposalText: ChecksProposalText | null = null;
@@ -918,10 +952,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const p = state().orch.checksProposal!;
     const proposed = (await loadProposal())!.checks.map((x) => x.command);
     const lines = decision === "accept" ? proposed : edited!;
-    const text = { checks: lines.map((command, i) => ({ id: `cmd-${i + 1}`, command, origin: proposed.includes(command) ? "lead" : "person" })) };
+    const text = { checks: lines.map((command, i): DecidedCheck => ({ id: `cmd-${i + 1}`, command, origin: proposed.includes(command) ? "lead" : "person" })) };
     const ref = await j(() => writer.putText(canonical(text)));
     await j(() => writer.recordEvent("checks.decided", { proposalTurnId: p.turnId, decision, by: commandId ? "person" : "autopilot", commandId, checks: ref, count: lines.length }));
-    adoptCommands(lines);
+    adoptGoal(decided(goal, text.checks, {}, p.sandboxNetwork === "denied"));
   }
 
   // The plan of the turn whose proposal was accepted: its report without the proposal.
@@ -973,7 +1007,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     try {
       const shell = deps.checks.shell;
       handle = goal.commands && shell
-        ? startShellCheck({ ws, command: resolveCheck(registry, action.checkId), env: shell.env, writer, launch: deps.checks.launch, state: state(), clock })
+        ? startShellCheck({
+          ws, command: resolveCheck(registry, action.checkId), env: shell.env, writer, launch: deps.checks.launch, state: state(), clock,
+          ...(leadSandbox && goal.sandboxed?.includes(action.checkId) ? { sandbox: { root, realHome: leadSandbox.realHome } } : {})
+        })
         : startProjectCheck({
           ws, registry, id: action.checkId, deps: deps.checks.deps!, writer,
           launch: deps.checks.launch, state: state(), sandbox: deps.checks.sandbox
@@ -1020,9 +1057,11 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (res.status === "failed" && goal.commands) {
       const out = state().checks[res.checkRunId]?.output;
       const text = out ? (await readText(root, runId, out).catch(() => Buffer.from(""))).toString("utf8") : `${res.output.head}\n${res.output.tail}`;
-      const cls = classifyFailure(text, state().checks[res.checkRunId]?.exitCode ?? null);
+      // A1.1 (§2.6): a check in the profile that failed the way the sandbox refuses is not the code's failure
+      const inProfile = state().checks[res.checkRunId]?.profileSha256 !== NO_SANDBOX_SHA256;
+      const cls = inProfile && sandboxRefused(text) ? "sandbox" : classifyFailure(text, state().checks[res.checkRunId]?.exitCode ?? null);
       await j(() => writer.recordEvent("check.classified", { checkRunId: res.checkRunId, class: cls }));
-      if (cls !== "code") observe((a) => a.check("check_output", `${action.checkId}: ${cls === "external" ? "outside failure (network or a remote service)" : "environment not ready"}`, { checkId: action.checkId, class: cls }));
+      if (cls !== "code") observe((a) => a.check("check_output", `${action.checkId}: ${cls === "sandbox" ? "refused by the sandbox (the network or a write outside the work folder)" : cls === "external" ? "outside failure (network or a remote service)" : "environment not ready"}`, { checkId: action.checkId, class: cls }));
     }
   }
 
@@ -1621,7 +1660,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     }
     // v2 decisions: the run goes on only after its command.completed (journal-v2-format.md §2.4); a failure here leaves
     // the decision recorded and the run paused, which reopen() turns into paused(recovered)
-    if (result.status === "accepted" && (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm")) {
+    if (result.status === "accepted" && (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm" || cmd.kind === "check.amend")) {
       try {
         await setStatus("running");
       } catch {
@@ -1668,7 +1707,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       case "clarify": {
         // on the person's decisions of journal v2 only that decision and Stop (journal-v2-format.md §2.1)
-        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation"].includes(reason)) return reject("invalid_state");
+        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions"].includes(reason)) return reject("invalid_state");
         if (typeof cmd.text !== "string" || cmd.text.trim() === "" || cmd.text.length > 8000) return reject("invalid_command");
         const ref = await j(() => writer.putText(cmd.text));
         await j(() => writer.recordClarification({ version: st.orch.clarifications + 1, commandId, text: ref }));
@@ -1715,6 +1754,19 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         } else if (cmd.decision !== "accept" || cmd.checks !== undefined) return reject("invalid_command");
         await decideChecks(commandId, cmd.decision, lines);
         return ok; // run.status(running) follows command.completed (journal-v2-format.md §2.4), in command()
+      }
+      case "check.amend": {
+        // A1.1 (§2.6): only the person, only for a lead's check the sandbox refused, once per check
+        if (status !== "paused" || reason !== "check_needs_permissions") return reject("invalid_state");
+        const refused = refusedCheck(st);
+        if (typeof cmd.checkId !== "string" || cmd.checkId !== refused?.checkId) return reject("invalid_state");
+        if (cmd.line !== undefined && (typeof cmd.line !== "string" || !LINE(cmd.line.trim()))) return reject("invalid_command");
+        const line = cmd.line === undefined ? null : cmd.line.trim();
+        const ref = line === null ? null : await j(() => writer.putText(canonical(line)));
+        await j(() => writer.recordEvent("checks.amended", { commandId, checkId: cmd.checkId, line: ref }));
+        adoptGoal(withCommands(goal, (goal.commands ?? []).map((c, i) => (`cmd-${i + 1}` === cmd.checkId && line !== null ? line : c)),
+          (goal.sandboxed ?? []).filter((id) => id !== cmd.checkId)));
+        return ok;
       }
       case "finish.confirm": {
         if (status !== "paused" || reason !== "awaiting_finish_confirmation" || !withoutChecks(st)) return reject("invalid_state");
@@ -1791,7 +1843,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       return;
     }
     if (cmd.kind === "step") stepBudget = 1;
-    if (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm") stepBudget = null;
+    if (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm" || cmd.kind === "check.amend") stepBudget = null;
     if (cmd.kind === "resume") stepBudget = null;
     if (state().status === "running") schedule();
   }
@@ -1838,7 +1890,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     async reopen() {
       const st = state();
       const decided = (st.pausedReason === "awaiting_checks_decision" && st.orch.checksDecision !== null)
-        || (st.pausedReason === "awaiting_finish_confirmation" && (st.orch.confirmations.at(-1)?.seq ?? -1) > (st.orch.lastPausedSeq.awaiting_finish_confirmation ?? -1));
+        || (st.pausedReason === "awaiting_finish_confirmation" && (st.orch.confirmations.at(-1)?.seq ?? -1) > (st.orch.lastPausedSeq.awaiting_finish_confirmation ?? -1))
+        || (st.pausedReason === "check_needs_permissions" && Math.max(-1, ...Object.values(st.orch.amended).map((a) => a.seq)) > (st.orch.lastPausedSeq.check_needs_permissions ?? -1));
       if (decided) await setStatus("paused", "recovered");
       if (state().pausedReason === "awaiting_checks_decision") await loadProposal();
       if (state().pausedReason === "awaiting_finish_confirmation") latest = { tree: await snapshotCopyTree(ws, st.workspace!.current.tree), at: new Date(clock()).toISOString() };

@@ -411,3 +411,110 @@ async function runProbe(launch: SupervisorLaunch, args: string[],
   const results = parseProbe(out);
   return { results, detail: results !== null ? "" : `no probe output (exit ${done.code}, signal ${done.signal}): ${err.slice(0, 600)}` };
 }
+
+// ---------- A1.1: the profile of the lead's proposed checks (journal-v2-format.md §2.6) ----------
+//
+// Owner's decision A1.1 Q2: a command the lead proposed runs in the user's environment (their shell and its
+// environment, the project's own tools), but it writes only to the work folder of the run (the copy, the worktree or
+// the project folder, by the work mode) and to a temporary folder of its own, and it reaches no network but this
+// machine's (localhost; Unix sockets in those two folders). Reading is as in the project-check profile above: allowed
+// by default (nothing runs without /usr, /System and the dyld cache), the credential stores denied, and the
+// orchestration data denied except the work folder of a copy. Confidentiality of the home directory is not claimed.
+export interface CheckSandboxPaths {
+  work: string; // the run's work folder (Workspace.repo) — read/write, the check's cwd
+  tmp: string; // a temporary folder of this check run — read/write, its TMPDIR
+  root: string; // the orchestration data — denied, except `work` when the copy lives there
+  realHome?: string; // the home the credential deny list is relative to; os.homedir() by default
+}
+
+export function buildCheckProfile(paths: CheckSandboxPaths): { text: string; sha256: string } {
+  const work = canonical(paths.work, "work");
+  const tmp = canonical(paths.tmp, "tmp");
+  const root = canonical(paths.root, "root");
+  const home = canonical(paths.realHome ?? homedir(), "realHome");
+  const creds = [...CRED_DIRS.map((d) => subpath(join(home, d))), ...CRED_FILES.map((f) => `(literal ${sbString(join(home, f))})`)];
+  const text = `(version 1)
+; CanvasTTY: a check command the lead proposed — journal-v2-format.md §2.6 (owner's decision A1.1 Q2).
+; Seatbelt keeps the LAST matching rule, so every broad deny stands before the narrow allows that carve out of it.
+(deny default)
+(import "system.sb")
+(allow process-fork process-exec)
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
+(allow sysctl-read)
+(allow file-read*)
+; Known credential stores of the user: defence in depth, not a confidentiality guarantee.
+(deny file-read* file-write*
+  ${creds.join("\n  ")})
+; Orchestration data: journals, texts, other runs.
+(deny file-read* file-write* ${subpath(root)})
+; Written: the work folder of the run and this check's temporary folder, nothing else.
+(allow file-read* file-write* ${subpath(work)} ${subpath(tmp)})
+(allow file-read-metadata ${ancestors(work)} ${ancestors(tmp)})
+(allow file-write* (literal "/dev/null"))
+; Network: this machine only (any port of localhost), Unix sockets in the two folders above.
+(allow network-bind network-inbound (local ip "localhost:*"))
+(allow network-outbound (remote ip "localhost:*"))
+(allow network-bind network-inbound (local unix-socket ${subpath(work)}) (local unix-socket ${subpath(tmp)}))
+(allow network-outbound (remote unix-socket ${subpath(work)}) (remote unix-socket ${subpath(tmp)}))
+`;
+  return { text, sha256: createHash("sha256").update(text, "utf8").digest("hex") };
+}
+
+// The self-test before every sandboxed check (as the project check's, without its supervisor): the same profile, run
+// by the application's own Node. Allowed operations must succeed; a denied one must fail with EPERM — the sandbox's
+// refusal, not a missing path or a closed port. Nothing is left behind (a write that should have been refused and was
+// not is removed at once). Failure: the check does not run.
+const CHECK_SELFTEST = String.raw`
+const fs = require("node:fs"), net = require("node:net");
+const [work, tmp, home, ext, port] = JSON.parse(process.argv[1]);
+const id = ".canvastty-selftest-" + process.pid;
+const out = {};
+const sync = (name, f) => { try { f(); out[name] = "ok"; } catch (e) { out[name] = e.code || String(e.message); } };
+sync("allow.write-work", () => { fs.writeFileSync(work + "/" + id, "x"); fs.unlinkSync(work + "/" + id); });
+sync("allow.write-tmp", () => { fs.writeFileSync(tmp + "/" + id, "x"); fs.unlinkSync(tmp + "/" + id); });
+sync("deny.write-home", () => { fs.writeFileSync(home + "/" + id, "x"); fs.unlinkSync(home + "/" + id); });
+sync("deny.read-secrets", () => fs.readdirSync(home + "/Library/Keychains"));
+const tcp = (host, p) => new Promise((res) => { const c = net.connect(p, host); const t = setTimeout(() => { c.destroy(); res("ETIMEDOUT"); }, 5000);
+  c.on("connect", () => { clearTimeout(t); c.destroy(); res("ok"); }); c.on("error", (e) => { clearTimeout(t); res(e.code || "error"); }); });
+(async () => {
+  out["allow.tcp-localhost"] = await tcp("127.0.0.1", port);
+  out["deny.tcp-external"] = await tcp(ext.host, ext.port);
+  process.stdout.write(JSON.stringify(out) + "\n");
+})();
+`;
+
+export async function checkSelftest(opts: { profilePath: string; work: string; tmp: string; realHome?: string; launch: SupervisorLaunch }): Promise<SelftestResult> {
+  const bail = (name: string, detail: string): SelftestResult => ({ passed: false, checks: 0, failed: [{ name, detail }] });
+  if (!sandboxSupport().supported) return bail("sandbox.support", `${SANDBOX_EXEC} is not available on ${process.platform}`);
+  const home = canonical(opts.realHome ?? homedir(), "realHome");
+  const quiet = (c: net.Socket) => { c.on("error", () => {}); c.end(); };
+  const server = net.createServer(quiet).on("error", () => {});
+  try {
+    await new Promise<void>((res, rej) => { server.once("error", rej); server.listen({ host: "0.0.0.0", port: 0 }, res); });
+    const port = (server.address() as net.AddressInfo).port;
+    // an outside address: Seatbelt's "localhost" covers every address of this host (its LAN address too), so only a
+    // foreign one proves the refusal; the sandbox refuses it before any route, internet or not (EPERM)
+    const ext = { host: "1.1.1.1", port: 443 };
+    const child = spawn(SANDBOX_EXEC, ["-f", opts.profilePath, "--", opts.launch.command, "-e", CHECK_SELFTEST, JSON.stringify([opts.work, opts.tmp, home, ext, port])], {
+      cwd: opts.work, env: { ELECTRON_RUN_AS_NODE: "1", PATH: "/usr/bin:/bin", HOME: home, TMPDIR: opts.tmp, LANG: "C" }, stdio: ["ignore", "pipe", "pipe"]
+    });
+    let text = "";
+    let err = "";
+    child.stdout.setEncoding("utf8").on("data", (d: string) => { text += d; });
+    child.stderr.setEncoding("utf8").on("data", (d: string) => { err += d; });
+    const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+    const code = await new Promise<number | null>((res) => { child.once("error", () => res(null)); child.once("close", (c) => res(c)); });
+    clearTimeout(timer);
+    let got: Record<string, string>;
+    try { got = JSON.parse(text.trim().split("\n").at(-1) ?? ""); } catch { return bail("sandbox.selftest", `no result (exit ${code}): ${err.slice(0, 400)}`); }
+    const want = ["allow.write-work", "allow.write-tmp", "allow.tcp-localhost", "deny.write-home", "deny.read-secrets", "deny.tcp-external"];
+    const failed = want.filter((n) => got[n] !== (n.startsWith("allow.") ? "ok" : "EPERM"))
+      .map((n) => ({ name: n, detail: got[n] === undefined ? "not run" : n.startsWith("allow.") ? `refused: ${got[n]}` : `not refused by the sandbox: ${got[n]}` }));
+    return { passed: failed.length === 0, checks: want.length, failed };
+  } catch (error) {
+    return bail("sandbox.selftest", String((error as Error)?.message ?? error));
+  } finally {
+    server.close();
+  }
+}

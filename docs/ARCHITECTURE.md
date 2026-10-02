@@ -203,6 +203,17 @@ git cherry-pick refs/canvastty/<runId>/baseline..refs/canvastty/<runId>/stage-<n
 
 Diff against `baseline`, not `HEAD`. If you had uncommitted work at start, the baseline contains it.
 
+### Check sandbox of the lead's proposed commands (journal v2, development flag only)
+
+With `CANVASTTY_JOURNAL_V2=1` a goal may leave its check commands empty: the lead proposes them, and the person accepts or edits them ([journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.6, §7а). Where Seatbelt is, a command the lead proposed runs in its own profile (`sandbox.ts` `buildCheckProfile`):
+
+- writes: the run's work folder (the copy, the worktree or the project folder, by the work mode) and a temporary folder of the check (its `TMPDIR`), nothing else;
+- reads: as the project-check profile — allowed by default, the user's credential stores and the orchestration data denied;
+- network: this machine only (`localhost`, any port; Unix sockets in those two folders); no outside connection, no DNS;
+- run as `sandbox-exec -f <profile> -- <shell> -c <line>` under the supervisor, with the measured login-shell environment.
+
+A self-test of the profile runs before every such check (a write to the work folder works; a write to `$HOME`, a read of `~/Library/Keychains` and an outside connection fail with EPERM; 127.0.0.1 works). If it fails, the check does not run and the run pauses with `sandbox_unavailable`. Because the profile denies the outside network, the autopilot accepts the lead's commands itself. A check the sandbox refuses (EPERM, a failed name lookup) is not a code failure: the run pauses with "A check needs more permissions", and only the person can run that command without the sandbox or change it; the decision is journaled (`checks.amended`) and holds for that command in that run. Commands the person entered run as before, in their login shell without a sandbox.
+
 ### Requirements and limits
 
 - **Platforms.**

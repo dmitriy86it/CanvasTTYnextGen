@@ -88,8 +88,10 @@ test("the version is the first record's: another v later, a head key on a later 
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null }, { v: 1 }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null, completion: null }, { minReaderVersion: 2 }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 2, formatPreview: true, extra: 1 } })), ["corrupt", 1, "invalid_event"]);
-  // v2 with minReaderVersion 1 is not a journal of this format: read as a newer journal would be, never written
-  assert.equal(parseJournal(lines(runId, [created, RUNNING], { head: { minReaderVersion: 1 } }), runId).integrity.status, "newer_version_compatible");
+  // v2 without formatPreview (A4's final form) is not a journal of this build: read only, the records as they are and no
+  // computed state, whatever minReaderVersion it declares (owner's decision A1.1 Q3)
+  const finalForm = parseJournal(lines(runId, [created, RUNNING], { head: { minReaderVersion: 1 } }), runId);
+  assert.deepEqual([finalForm.integrity.status, finalForm.state, finalForm.records.length], ["newer_version", null, 2]);
   // run.status of v1 shape in v2 (no completion), and v2 shape in v1
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, RUNNING], { version: 1, head: null })), ["corrupt", 2, "invalid_event"]);
@@ -138,15 +140,7 @@ test("A1 replay rules on the records: a proposal belongs to the last plan turn, 
   assert.deepEqual(at([created, RUNNING, ["run.status", { status: "completed", reason: null, completion: { kind: "no_checks", basis: GOAL } }]]), ["corrupt", "replay_conflict", 3]);
 });
 
-// What this build shows of each fixture (v2-fixtures/README.md): 03 and 04 hold only A1's records — the state the
-// README expects; the rest fall back at the first turn of the reviewer (A3) or a pause of A4.
-const EXPECTED = {
-  "01": { line: 18, code: "invalid_event" }, "02": { line: 20, code: "invalid_event" },
-  "03": ["paused", "plan_review", "accept", "person", 1, 1], "04": ["paused", "plan_review", "edit", "person", 2, 1],
-  "05": { line: 15, code: "invalid_event" }, "06": { line: 18, code: "invalid_event" }, "07": { line: 18, code: "invalid_event" },
-  "08": { line: 12, code: "invalid_event" }
-};
-test("the fixtures of the format (A4's final form, no formatPreview): read only — the expected state of A1's ones, the raw view of the rest, never a failure", () => {
+test("the fixtures of the format (A4's final form, no formatPreview): read only — the records as they are, never a computed state or a failure (A1.1 Q3)", () => {
   const dirs = fs.readdirSync(FIXTURES);
   assert.equal(dirs.length, 8);
   for (const id of dirs) {
@@ -155,18 +149,9 @@ test("the fixtures of the format (A4's final form, no formatPreview): read only 
     const p = parseJournal(buf, id);
     assert.equal(p.integrity.detail.chain.status, "ok", name);
     assert.deepEqual(newerGoal(p.records), JSON.parse(buf.toString().split("\n")[0]).data.goal, name);
-    const expected = EXPECTED[name.slice(0, 2)];
-    if (Array.isArray(expected)) {
-      // only A1's records: its minReaderVersion 2 is this reader's, so the whole state is shown, still read only
-      assert.equal(p.integrity.status, "newer_version_compatible", name);
-      const s = p.state;
-      assert.deepEqual([s.status, s.pausedReason, s.orch.checksDecision.decision, s.orch.checksDecision.by, s.orch.checksDecision.count, s.orch.plan.version], expected, name);
-    } else {
-      // a reviewer's turn (A3) or a record of A2–A4: back to the raw view at that line, never a crash or a damaged journal
-      assert.equal(p.integrity.status, "newer_version", name);
-      assert.equal(p.state, null, name);
-      assert.deepEqual(p.integrity.detail.fallback, expected, name);
-    }
+    // A4's final form: never replayed by A1's rules, even where only A1's records are in it (03, 04) — a state cut to
+    // what this build knows is never shown
+    assert.deepEqual([p.integrity.status, p.state, p.integrity.detail.fallback, p.records.length], ["newer_version", null, undefined, buf.toString().trim().split("\n").length], name);
     // the reader of 1.5.7: the same read-only view, no fallback (minReaderVersion 2 is above it)
     assert.deepEqual(parseJournal(buf, id, A0).integrity, { status: "newer_version", detail: { version: 2, chain: { status: "ok" } } }, name);
     // A1's records in them match A1's schemas (the document and the code agree)

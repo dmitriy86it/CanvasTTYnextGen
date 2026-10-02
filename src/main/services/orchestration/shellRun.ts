@@ -22,6 +22,7 @@ export interface ShellRunResult {
 export interface ShellRunOptions {
   shell: string; // the user's login shell (absolute)
   line: string; // run as `<shell> -ilc <line>`
+  argv?: readonly string[]; // instead: the whole command under the supervisor (A1.1: sandbox-exec … <shell> -c <line>)
   cwd: string;
   env: Readonly<Record<string, string>>;
   launch: SupervisorLaunch;
@@ -36,7 +37,7 @@ export function runShell(opts: ShellRunOptions): { stop(): void; result: Promise
   const clock = opts.clock ?? (() => Date.now());
   const startedAt = clock();
   let stopCause: ShellStopCause | null = null;
-  const sup = spawn(opts.launch.command, [...opts.launch.args, opts.shell, "-ilc", opts.line], {
+  const sup = spawn(opts.launch.command, [...opts.launch.args, ...(opts.argv ?? [opts.shell, "-ilc", opts.line])], {
     cwd: opts.cwd, env: { ...opts.launch.env, SUP_CHILD_ENV: JSON.stringify(opts.env) }, stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"]
   });
   const control = sup.stdio[0] as Writable;

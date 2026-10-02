@@ -16,9 +16,9 @@ import { findGit } from "../src/main/services/orchestration/git.ts";
 import { NO_SANDBOX_SHA256, buildRecord, parseJournal } from "../src/main/services/orchestration/journal.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
-import { buildProfile } from "../src/main/services/orchestration/sandbox.ts";
+import { buildCheckProfile, buildProfile, checkSelftest } from "../src/main/services/orchestration/sandbox.ts";
 import { openRun, readRun } from "../src/main/services/orchestration/store.ts";
-import { agentState, availableActions, historyLines, runStatusKey } from "../src/renderer/src/features/orchestration/runModel.ts";
+import { agentState, availableActions, historyLines, runHeadline, runStatusKey } from "../src/renderer/src/features/orchestration/runModel.ts";
 import { outcomeKey, roleStatus, runStatus, stateLabel } from "../src/renderer/src/features/orchestration/runStatus.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -53,9 +53,9 @@ function wrapper(name, mock) {
 }
 const CODEX = wrapper("codex", "mock-codex.mjs");
 const CLAUDE = wrapper("claude", "mock-claude.mjs");
-// the login shell as the checks call it (-ilc <line>), without the machine's profile files
+// the login shell as the checks call it (-ilc <line>; in the check profile -c <line>), without the machine's profile files
 const SHELL = path.join(TMP, "test-shell");
-fs.writeFileSync(SHELL, `#!/bin/sh\n[ "$1" = "-ilc" ] && shift\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
+fs.writeFileSync(SHELL, `#!/bin/sh\ncase "$1" in -ilc|-c) shift ;; esac\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 
 function providersFile(env) {
   const file = path.join(TMP, `providers-${++n}.json`);
@@ -80,12 +80,13 @@ const REVIEW = { answer: { verdict: "accept", findings: [], question: null } };
 const FINAL = { answer: { verdict: "complete", findings: [], question: null } };
 const EXEC = { answer: { summary: "done", done: true }, writes: [{ rel: "a.txt", base64: Buffer.from("2\n").toString("base64") }] };
 
-function manager(env, { v2 = true } = {}) {
+// leadSandbox false: as without Seatbelt (A1) — the lead's commands would run in the user's shell, the person decides
+function manager(env, { v2 = true, leadSandbox } = {}) {
   const root = path.join(TMP, `root-${++n}`);
   const m = createRunManager({
     platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH),
-    ...(v2 ? { journalV2: true } : {})
+    ...(v2 ? { journalV2: true } : {}), ...(leadSandbox !== undefined ? { leadSandbox } : {})
   });
   m.root = root;
   return m;
@@ -115,11 +116,11 @@ const shown = (v) => ({
   outcome: outcomeKey(v, "complete")
 });
 
-// ---------------- the lead proposes; the autopilot waits while the network is open ----------------
+// ---------------- the lead proposes; without the check profile the autopilot waits ----------------
 
-test("empty commands, autopilot, the lead proposes: the network of native checks is open, so it waits for «Принять»; then the checks run and confirm", OPTS, async () => {
+test("empty commands, autopilot, the lead proposes; no check profile (no Seatbelt): the network is open, so it waits for «Принять»; then the checks run and confirm", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
-  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" });
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" }, { leadSandbox: false });
   const runId = await start(m, src, { commands: [] });
   const v = await settled(m, runId, "the proposal");
   assert.deepEqual([v.status, v.reason], ["paused", "awaiting_checks_decision"]);
@@ -186,14 +187,17 @@ test("the lead proposes none: completed without checks — never «Completed»; 
   g(TMP, "init", "-q", "--bare", remote);
   g(src, "remote", "add", "qa", remote);
   const qaLog = path.join(TMP, `qa-${++n}.log`);
-  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "none" });
+  // no check profile: the network rule alone would make the autopilot wait — Q1 is what lets it go on
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "none" }, { leadSandbox: false });
   const runId = await start(m, src, { commands: [], finish: { commit: true, push: true, qa: true } }, {
     workMode: "worktree", finish: { commit: true, push: { remote: "qa", branch: "qa-branch", remoteUrl: remote }, qa: { environment: "qa", command: `echo run >> ${qaLog}`, verify: "true" } }
   });
-  let v = await settled(m, runId, "the proposal");
-  assert.deepEqual([v.reason, v.proposal.checks.length, typeof v.proposal.none], ["awaiting_checks_decision", 0, "string"]);
-  assert.equal((await send(m, v, { kind: "checks.decide", decision: "accept" })).status, "accepted");
-  v = await settled(m, runId, "the push/QA confirmation");
+  // A1.1 Q1: none proposed — the autopilot goes on by itself, the network rule does not apply (no pause)
+  let v = await settled(m, runId, "the push/QA confirmation");
+  const early = await records(m, runId);
+  assert.equal(early.some((r) => r.type === "run.status" && r.data.reason === "awaiting_checks_decision"), false, "no pause for the decision");
+  const auto = early.find((r) => r.type === "checks.decided").data;
+  assert.deepEqual([auto.by, auto.commandId, auto.count, early.find((r) => r.type === "checks.proposed").data.count], ["autopilot", null, 0, 0]);
   assert.deepEqual([v.status, v.reason], ["paused", "awaiting_finish_confirmation"]);
   assert.deepEqual(v.progress.finish.map((f) => [f.step, f.status]), [["commit", "done"], ["push", "not_started"], ["qa", "not_started"]]);
   assert.throws(() => g(remote, "rev-parse", "--verify", "-q", "refs/heads/qa-branch"), "nothing pushed without the person");
@@ -240,7 +244,7 @@ test("the lead proposes none: completed without checks — never «Completed»; 
   assert.equal(act.at(-1).detail.status, "completed_no_checks");
   assert.equal(act.some((e) => e.detail.status === "completed"), false);
   // each decision: its record, command.completed, then the run goes on (journal-v2-format.md §2.4)
-  for (const t of ["checks.decided", "finish.confirmed"]) {
+  for (const t of ["finish.confirmed"]) {
     const at = all.findIndex((r) => r.type === t);
     assert.deepEqual(all.slice(at, at + 3).map((r) => [r.type, r.data.status ?? null]), [[t, null], ["command.completed", null], ["run.status", "running"]], t);
   }
@@ -328,7 +332,7 @@ for (const completed of [false, true]) test(`a decision recorded before the end$
   const src = project({ "a.txt": "1\n" });
   // one MOCK_STATE for both processes: the lead's session is resumed after the restart
   const env = { MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt", MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")) };
-  const m = manager(env);
+  const m = manager(env, { leadSandbox: false });
   const runId = await start(m, src, { commands: [] });
   const v = await settled(m, runId, "the proposal");
   assert.equal(v.reason, "awaiting_checks_decision");
@@ -342,7 +346,7 @@ for (const completed of [false, true]) test(`a decision recorded before the end$
   if (completed) await w.completeCommand(commandId, { status: "accepted", code: null });
   await w.close();
   const again = createRunManager({ platform: "darwin", root: m.root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
-    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH), journalV2: true });
+    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH), journalV2: true, leadSandbox: false });
   // any command opens it: the opening decides the pause first, so the stale revision says so
   const first = await send(again, await view(again, runId), { kind: "resume" });
   assert.deepEqual(first, { status: "rejected", code: "stale_revision" }, "opening wrote the pause");
@@ -379,7 +383,7 @@ const corrupt = (buf, runId) => { const p = parseJournal(buf, runId); return p.i
 
 test("a completed run the completion function does not allow, and an autopilot acceptance while the network is open: replay_conflict", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
-  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" });
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" }, { leadSandbox: false });
   const runId = await start(m, src, { commands: [] });
   await send(m, await settled(m, runId, "the proposal"), { kind: "checks.decide", decision: "accept" });
   assert.equal((await settled(m, runId)).status, "completed");
@@ -434,7 +438,7 @@ test("a completed run the completion function does not allow, and an autopilot a
 test("the cycle: the autopilot accepts by itself only when the network is denied; steps and an open network wait for the person", OPTS, async () => {
   assert.deepEqual([autoAccepts({}, "denied"), autoAccepts({ mode: "autopilot" }, "denied"), autoAccepts({}, "open"), autoAccepts({ mode: "steps" }, "denied")], [true, true, false, false]);
   const src = project({ "a.txt": "1\n" });
-  const m = manager({ MOCK_SCRIPT: script([PLAN]), MOCK_CHECKS: "proposed" });
+  const m = manager({ MOCK_SCRIPT: script([PLAN]), MOCK_CHECKS: "proposed" }, { leadSandbox: false });
   const runId = await start(m, src, { commands: [] });
   await settled(m, runId, "the proposal");
   await m.shutdown();
@@ -454,6 +458,8 @@ test("the cycle: the autopilot accepts by itself only when the network is denied
   assert.equal(decide(at("denied"), goal("autopilot")), "accept_checks");
   assert.equal(decide(at("open"), goal()), "pause");
   assert.equal(decide(at("denied"), goal("steps")), "pause");
+  // A1.1 Q1: none proposed — the autopilot goes on whatever the network; step by step the person decides
+  assert.deepEqual([autoAccepts({}, "open", 0), autoAccepts({ mode: "steps" }, "open", 0), autoAccepts({}, "open", 1)], [true, false, false]);
 });
 
 // ---------------- the premise of §7 p. 5 on the real Seatbelt ----------------
@@ -477,4 +483,204 @@ test("the Seatbelt profile of the checks denies the network: outside TCP, localh
   const dns = run(true, `require("dns").lookup("example.com",(e)=>{console.log(e?e.code:"ok");process.exit(e?3:0)})`);
   assert.equal(dns.status, 3, "no name resolution inside");
   server.close();
+});
+
+// =============== A1.1: the lead's proposed checks in the check profile (journal-v2-format.md §2.6) ===============
+
+const DARWIN = { ...OPTS, skip: process.platform !== "darwin" && "Seatbelt is macOS only" };
+const startedOf = async (m, runId) => (await records(m, runId)).filter((r) => r.type === "check.started").map((r) => [r.data.checkId, r.data.profileSha256 === NO_SANDBOX_SHA256 ? "shell" : "profile"]);
+
+test("A1.1 Q1 step by step: none proposed — «Лид не нашёл команд проверки» with «Продолжить без проверок» and «Добавить команды»", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "none" });
+  const a = await start(m, src, { commands: [], mode: "steps" });
+  let v = await settled(m, a, "the pause");
+  assert.deepEqual([v.reason, v.proposal.checks.length, runHeadline(v).headline, availableActions(v)], ["awaiting_checks_decision", 0, "awaiting_checks_none", ["checks_decide", "stop"]]);
+  assert.equal((await send(m, v, { kind: "checks.decide", decision: "accept" })).status, "accepted", "«Продолжить без проверок»");
+  for (;;) {
+    v = await settled(m, a);
+    if (v.status !== "paused") break;
+    assert.equal((await send(m, v, { kind: "resume" })).status, "accepted", JSON.stringify(v));
+  }
+  assert.deepEqual([v.status, v.progress.completion], ["completed", "no_checks"]);
+  // «Добавить команды»: the person's lines, run in their shell
+  const src2 = project({ "a.txt": "1\n" });
+  const m2 = manager({ MOCK_SCRIPT: script([PLAN, PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "none" });
+  const b = await start(m2, src2, { commands: [], mode: "steps" });
+  assert.equal((await send(m2, await settled(m2, b, "the pause"), { kind: "checks.decide", decision: "edit", checks: ["grep -qx 2 a.txt"] })).status, "accepted");
+  for (;;) {
+    v = await settled(m2, b);
+    if (v.status !== "paused") break;
+    assert.equal((await send(m2, v, { kind: "resume" })).status, "accepted", JSON.stringify(v));
+  }
+  assert.deepEqual([v.status, v.progress.completion, v.progress.checksFrom], ["completed", "confirmed", "edited"]);
+  assert.deepEqual(await startedOf(m2, b), [["cmd-1", "shell"]], "a person's command: their shell, as before");
+  await m.shutdown();
+  await m2.shutdown();
+});
+
+test("A1.1: the autopilot accepts the lead's commands itself and they run in the check profile — under sandbox-exec (a write outside is refused)", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const outside = path.join(TMP, `outside-${++n}`);
+  // passes only where a write outside the work folder is refused: the proof that it ran in the profile
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && ! touch ${outside} 2>/dev/null` });
+  const runId = await start(m, src, { commands: [] });
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify(v));
+  assert.equal(fs.existsSync(outside), false, "nothing written outside the work folder");
+  const all = await records(m, runId);
+  assert.equal(all.some((r) => r.type === "run.status" && r.data.reason === "awaiting_checks_decision"), false, "no pause for the decision");
+  assert.deepEqual([all.find((r) => r.type === "checks.proposed").data.sandboxNetwork, all.find((r) => r.type === "checks.decided").data.by], ["denied", "autopilot"]);
+  assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"]]);
+  assert.deepEqual([v.progress.completion, v.progress.checksFrom], ["confirmed", "proposal"]);
+  await m.shutdown();
+});
+
+test("A1.1: the person's commands run in their shell as before — the goal's own, and the person's lines of an edited set next to the lead's in the profile", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const outside = path.join(TMP, `outside-${++n}`);
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]) });
+  const runId = await start(m, src, { commands: [`grep -qx 2 a.txt && touch ${outside}`] });
+  assert.equal((await settled(m, runId)).status, "completed");
+  assert.equal(fs.existsSync(outside), true, "the goal's own command wrote outside: no sandbox");
+  assert.deepEqual(await startedOf(m, runId), [["cmd-1", "shell"]]);
+  await m.shutdown();
+  // mixed: the lead's line stays in the profile, the person's runs in the shell; a person decided, so no autopilot rule
+  const src2 = project({ "a.txt": "1\n" });
+  const m2 = manager({ MOCK_SCRIPT: script([PLAN, PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" });
+  const b = await start(m2, src2, { commands: [], mode: "steps" });
+  assert.equal((await send(m2, await settled(m2, b, "the proposal"), { kind: "checks.decide", decision: "edit", checks: ["grep -qx 2 a.txt", "test -f a.txt"] })).status, "accepted");
+  let v;
+  for (;;) {
+    v = await settled(m2, b);
+    if (v.status !== "paused") break;
+    assert.equal((await send(m2, v, { kind: "resume" })).status, "accepted", JSON.stringify(v));
+  }
+  assert.equal(v.status, "completed", JSON.stringify(v));
+  assert.deepEqual(await startedOf(m2, b), [["cmd-1", "profile"], ["cmd-2", "shell"]]);
+  await m2.shutdown();
+  // second stage: the lead's line of the edited set run without the profile and without an amendment — corrupt, texts
+  const buf = journalOf(m2, b);
+  const file = path.join(m2.root, "runs", b, "journal.jsonl");
+  fs.writeFileSync(file, rewrite(buf, b, (r) => { r.find((x) => x.type === "check.started" && x.data.checkId === "cmd-1").data.profileSha256 = NO_SANDBOX_SHA256; return r; }));
+  const read = await readRun(m2.root, b);
+  assert.deepEqual([read.integrity.status, read.integrity.detail?.phase], ["corrupt", "texts"]);
+});
+
+test("A1.1: a lead's check the sandbox refuses pauses «Проверке нужно больше прав» — even the autopilot; only the person lets it out or changes it", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const outside = path.join(TMP, `outside-${++n}`);
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && touch ${outside}` });
+  const runId = await start(m, src, { commands: [] });
+  let v = await settled(m, runId, "the refusal");
+  assert.deepEqual([v.status, v.reason, runHeadline(v).headline], ["paused", "check_needs_permissions", "check_needs_permissions"]);
+  assert.deepEqual(v.refused, { checkId: "cmd-1", command: `grep -qx 2 a.txt && touch ${outside}` });
+  assert.deepEqual(v.progress.checks.map((c) => [c.status, c.class]), [["failed", "sandbox"]], "not the code's failure");
+  assert.deepEqual(availableActions(v), ["check_amend", "stop"]);
+  for (const command of [{ kind: "resume" }, { kind: "step" }, { kind: "clarify", text: "x" }]) {
+    assert.deepEqual(await send(m, v, command), { status: "rejected", code: "invalid_state" }, command.kind);
+  }
+  assert.equal((await send(m, v, { kind: "check.amend", checkId: "cmd-2" })).code, "invalid_state", "not the refused check");
+  assert.equal((await send(m, v, { kind: "check.amend", checkId: "cmd-1", line: "a\nb" })).code, "invalid_command");
+  // the autopilot never lets it out by itself
+  await sleep(500);
+  assert.equal((await view(m, runId)).reason, "check_needs_permissions");
+  // «Запустить без песочницы»: this command in this run, in the person's shell
+  assert.equal((await send(m, await view(m, runId), { kind: "check.amend", checkId: "cmd-1" })).status, "accepted");
+  v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify(v));
+  assert.equal(fs.existsSync(outside), true);
+  assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"], ["cmd-1", "shell"]]);
+  const all = await records(m, runId);
+  const amended = all.find((r) => r.type === "checks.amended");
+  assert.deepEqual([amended.data.checkId, amended.data.line], ["cmd-1", null]);
+  const at = all.indexOf(amended);
+  assert.deepEqual(all.slice(at + 1, at + 3).map((r) => [r.type, r.data.status ?? null]), [["command.completed", null], ["run.status", "running"]]);
+  await m.shutdown();
+
+  // the network: refused in the profile → the same pause; «Изменить команду» → the person's line, in their shell
+  const src2 = project({ "a.txt": "1\n" });
+  const net1 = `grep -qx 2 a.txt && "${NODE}" -e 'require("net").connect(443,"1.1.1.1").on("connect",()=>process.exit(0)).on("error",(e)=>{console.error(e.code);process.exit(1)})'`;
+  const m2 = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: net1 });
+  const b = await start(m2, src2, { commands: [] });
+  v = await settled(m2, b, "the refusal");
+  assert.deepEqual([v.reason, v.progress.checks[0].class], ["check_needs_permissions", "sandbox"]);
+  assert.equal((await send(m2, v, { kind: "check.amend", checkId: "cmd-1", line: "grep -qx 2 a.txt" })).status, "accepted");
+  v = await settled(m2, b);
+  assert.deepEqual([v.status, v.progress.checks[0].title], ["completed", "grep -qx 2 a.txt"]);
+  assert.deepEqual(await startedOf(m2, b), [["cmd-1", "profile"], ["cmd-1", "shell"]]);
+  await m2.shutdown();
+});
+
+test("A1.1: the profile's self-test fails — the check does not run, the run pauses with the cause", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  // a home without the credential stores: the refusal to read them cannot be proven (ENOENT, not EPERM)
+  const home = fs.mkdtempSync(path.join(TMP, "home-"));
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "grep -qx 2 a.txt" }, { leadSandbox: { realHome: home } });
+  const runId = await start(m, src, { commands: [] });
+  const v = await settled(m, runId);
+  assert.deepEqual([v.status, v.reason], ["paused", "sandbox_unavailable"]);
+  assert.deepEqual(await startedOf(m, runId), [], "nothing ran");
+  await m.shutdown();
+  // the self-test itself: the real profile passes; a profile that allows everything does not
+  const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cst-")));
+  for (const x of ["work", "tmp", "root"]) fs.mkdirSync(path.join(d, x));
+  const paths = { work: path.join(d, "work"), tmp: path.join(d, "tmp") };
+  fs.writeFileSync(path.join(d, "p.sb"), buildCheckProfile({ ...paths, root: path.join(d, "root") }).text);
+  fs.writeFileSync(path.join(d, "open.sb"), "(version 1)\n(allow default)\n");
+  assert.deepEqual(await checkSelftest({ profilePath: path.join(d, "p.sb"), ...paths, launch: LAUNCH }), { passed: true, checks: 6, failed: [] });
+  const open = await checkSelftest({ profilePath: path.join(d, "open.sb"), ...paths, launch: LAUNCH });
+  assert.deepEqual(open.failed.map((f) => f.name).sort(), ["deny.read-secrets", "deny.tcp-external", "deny.write-home"]);
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
+test("A1.1 in the profile, as a project's tests do: node --test and npm test with local node_modules, a server on localhost the test starts", DARWIN, async () => {
+  const test = `import test from "node:test"; import assert from "node:assert"; import dep from "dep"; import http from "node:http";
+test("dep", () => assert.equal(dep, 2));
+test("localhost", async () => { const s = http.createServer((q, r) => r.end("hi")).listen(0, "127.0.0.1"); await new Promise((r) => s.once("listening", r));
+  assert.equal(await (await fetch("http://127.0.0.1:" + s.address().port)).text(), "hi"); s.close(); });
+test("a.txt", async () => assert.equal((await import("node:fs")).readFileSync("a.txt", "utf8"), "2\\n"));
+`;
+  const src = project({ "a.txt": "1\n", "package.json": JSON.stringify({ name: "x", type: "module", scripts: { test: "node --test" } }), "a.test.js": test });
+  fs.mkdirSync(path.join(src, "node_modules", "dep"), { recursive: true });
+  fs.writeFileSync(path.join(src, "node_modules", "dep", "package.json"), JSON.stringify({ name: "dep", type: "module", main: "index.js" }));
+  fs.writeFileSync(path.join(src, "node_modules", "dep", "index.js"), "export default 2;\n");
+  const npm = path.join(path.dirname(NODE), "npm");
+  const line = `PATH="${path.dirname(NODE)}:$PATH" "${NODE}" --test && PATH="${path.dirname(NODE)}:$PATH" "${npm}" test`;
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: line });
+  const runId = await start(m, src, { commands: [] });
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify(v.progress?.checks ?? v));
+  assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"]]);
+  await m.shutdown();
+});
+
+// ---------------- A1.1 replay: the amendment and the profile of the lead's checks ----------------
+
+test("A1.1 replay: a lead's check of a denied run without the profile and without the person's amendment, an amendment without a refusal — replay_conflict", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const outside = path.join(TMP, `outside-${++n}`);
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && touch ${outside}` });
+  const runId = await start(m, src, { commands: [] });
+  await send(m, await settled(m, runId, "the refusal"), { kind: "check.amend", checkId: "cmd-1" });
+  assert.equal((await settled(m, runId)).status, "completed");
+  await m.shutdown();
+  const buf = journalOf(m, runId);
+  assert.equal(parseJournal(buf, runId).integrity.status, "ok");
+  // without the amendment, the run in the shell is one the profile should have had
+  const dropAmend = (r) => {
+    const i = r.findIndex((x) => x.type === "checks.amended");
+    const id = r[i].data.commandId;
+    return r.filter((x) => x.data.commandId !== id);
+  };
+  assert.deepEqual(corrupt(rewrite(buf, runId, dropAmend), runId), ["replay_conflict", "check.started"]);
+  // an amendment of a check the sandbox did not refuse (classified as the code's)
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { r.find((x) => x.type === "check.classified").data.class = "code"; return r; }), runId), ["replay_conflict", "checks.amended"]);
+  // "refused by the sandbox" said of a check that ran in the shell (the run after the amendment, made a failure)
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => {
+    const fin = r.filter((x) => x.type === "check.finished").at(-1);
+    Object.assign(fin.data, { status: "failed", exitCode: 1 });
+    r.splice(r.indexOf(fin) + 1, 0, { ts: fin.ts, type: "check.classified", data: { checkRunId: fin.data.checkRunId, class: "sandbox" } });
+    return r;
+  }), runId), ["replay_conflict", "check.classified"]);
 });

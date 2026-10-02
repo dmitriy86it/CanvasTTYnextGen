@@ -34,6 +34,9 @@ export interface Goal {
   prepare?: { steps: PrepareStep[] }; // run by CanvasTTY when needed; absent or empty: nothing is prepared
   finish?: GoalFinish;
   access?: AgentAccess;
+  // A1.1, the service's own (never in the goal text): the decided checks that run in the check profile — the lead's
+  // lines the person did not let out of it (journal-v2-format.md §2.6)
+  sandboxed?: string[];
 }
 export interface GoalFinish {
   commit: { message: string } | null;
@@ -144,7 +147,7 @@ function decide(input: CycleInput): Action {
   // Journal v2, a goal without check commands (journal-v2-format.md §2.4): the first plan turn proposes them and nothing
   // else runs until they are decided. After «Изменить» that turn's plan is dropped and a new plan turn follows.
   const p = orch.checksProposal;
-  if (p && !orch.checksDecision) return autoAccepts(goal, p.sandboxNetwork) ? { kind: "accept_checks" } : pause("awaiting_checks_decision", p.turnId);
+  if (p && !orch.checksDecision) return autoAccepts(goal, p.sandboxNetwork, p.count) ? { kind: "accept_checks" } : pause("awaiting_checks_decision", p.turnId);
   if (p && orch.checksDecision?.decision === "accept" && !orch.plan) return { kind: "record_plan", turnId: p.turnId };
   if (!orch.plan || leadReviews.at(-1)?.verdict === "replan") return replan();
   if (goal.reviewPlan && planVersion === 1 && !orch.planReviewPaused) return pause("plan_review", "plan version 1");
@@ -221,12 +224,14 @@ function decide(input: CycleInput): Action {
   return turn("final_review", null, null); // replan and an open question were handled above
 }
 
-const pauseFor = (cls: FailureClass): PausedReason => (cls === "external" ? "external_failure" : "needs_user_action");
+const pauseFor = (cls: FailureClass): PausedReason => (cls === "external" ? "external_failure" : cls === "sandbox" ? "check_needs_permissions" : "needs_user_action");
 
 // Owner's decision 5i §7 p. 5: the autopilot accepts proposed check commands by itself only when the sandbox the checks
-// run in denies the network. Otherwise — and always step by step — the person decides.
-export function autoAccepts(goal: Pick<Goal, "mode">, sandboxNetwork: "denied" | "open"): boolean {
-  return (goal.mode ?? "autopilot") === "autopilot" && sandboxNetwork === "denied";
+// run in denies the network (A1.1: the lead's commands run in the check profile). Decision A1.1 Q1: no command
+// proposed — nothing would run, the rule does not apply: the autopilot goes on to the result without checks. Step by
+// step the person always decides.
+export function autoAccepts(goal: Pick<Goal, "mode">, sandboxNetwork: "denied" | "open", count = 1): boolean {
+  return (goal.mode ?? "autopilot") === "autopilot" && (sandboxNetwork === "denied" || count === 0);
 }
 
 // Journal v2: the plan turn proposes check commands — the first one of a goal without commands, before any proposal.

@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Journal v2 (stage A, A1.1, development flag only): check commands the lead proposes run in a Seatbelt profile of their own — network to this machine only, writes to the run's work folder and a temporary folder — after a self-test of the profile, so the autopilot accepts them itself. A check the sandbox refuses pauses with "A check needs more permissions": only the person can run it without the sandbox or change it. When the lead finds no command the autopilot goes on without checks (step by step: "Add commands" or "Go on without checks"). A v2 journal of the final form is shown read only, records as they are. Commands the person enters run as before.
 - Run journal v2 (stage A, A1), only behind the development flag `CANVASTTY_JOURNAL_V2=1` (a packaged build ignores it; user runs are still written in v1): the check commands of a goal may be left empty, the lead then proposes them with a reason for each (or says why there are none), and the person accepts or edits them before any work starts — the autopilot too, since native checks run without a sandbox. A run without checks ends as "Completed without checks" on the panel, cards, link chip, activity widget and workspace history, never as completed; its commit is made, push and QA wait for the person's decision on the tree and commit shown. A v2 journal is shown read only by 1.5.7; v1 journals and how they are written are unchanged.
 
 ## 1.5.7 — 2026-10-01
