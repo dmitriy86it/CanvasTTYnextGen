@@ -127,8 +127,9 @@ const change = (text, covers) => ({ keep: null, text, covers, evidence: { kind: 
 const byCheck = (text, covers, check) => ({ keep: null, text, covers, evidence: { kind: "check", check } });
 const plan = (...stages) => ({ answer: { stages: stages.map(([title, conditions]) => ({ title, task: title, conditions })), dropped: [], dropRequirements: [], question: null } });
 const mark = (id, status, paths = []) => ({ id, status, paths, note: `${id} ${status}` });
-const review = (...marks) => ({ answer: { verdict: "accept", findings: [], question: null, conditions: marks } });
-const final = (...marks) => ({ answer: { verdict: "complete", findings: [], question: null, requirements: marks.map(([id, status]) => ({ id, status, note: id })) } });
+// A3: the reviewer answers the reviews (no verdict: the application decides the stage by the marks)
+const review = (...marks) => ({ answer: { conditions: marks, findings: [], request: "none", question: null } });
+const final = (...marks) => ({ answer: { conditions: [], findings: [], request: "none", question: null, requirements: marks.map(([id, status]) => ({ id, status, note: id })) } });
 
 // ---------------- the ids (5h §2.3) ----------------
 
@@ -205,7 +206,7 @@ test("the lead's marks: met only with a file the run changed; a mark missing or 
     const runId = await start(m, src, {});
     const v = await settled(m, runId);
     assert.deepEqual([v.status, v.reason], ["paused", "invalid_report"], why);
-    assert.equal((await records(m, runId)).some((r) => r.type === "review.recorded"), false, why);
+    assert.equal((await records(m, runId)).some((r) => r.type === "review.assessed"), false, why);
     await m.shutdown();
   }
   // a plan that leaves a requirement uncovered: invalid_report, no plan recorded
@@ -322,11 +323,10 @@ test("an executor breaks a met condition: the old tree's pass is no evidence (no
 
 test("a tree seen before (A → B → A): the run completes on A's check run, and its journal reads back intact", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
-  const fix = (...marks) => ({ answer: { ...review(...marks).answer, verdict: "fix" } });
   const m = manager({ MOCK_SCRIPT: script([
     plan(["a", [byCheck("a.txt not empty", ["R1"], "cmd-1")]], ["b", [change("a.txt touched", ["R1"])]]),
     exec({ "a.txt": "2\n" }), review(),
-    exec({ "a.txt": "3\n" }), fix(mark("C2", "not_met")), // the check passes on B
+    exec({ "a.txt": "3\n" }), review(mark("C2", "not_met")), // the check passes on B
     exec({ "a.txt": "2\n" }), review(mark("C2", "met", ["a.txt"])), // back on A: not rerun
     final(["R1", "met"])
   ]) });
@@ -383,14 +383,23 @@ test("a forged completion: a requirement or a condition without evidence in the 
     const r = await readRun(m.root, runId);
     return [r.integrity.status, r.integrity.detail?.phase ?? null, r.canContinue];
   };
+  // A3: the reviewer's result names the report and applies it (applied.report, conditionsMet): forged along with it
+  const textOf = (ref) => JSON.parse(fs.readFileSync(path.join(m.root, "runs", runId, "texts", ref.sha256), "utf8"));
   const answerOf = (turnId, value) => (r) => {
-    for (const x of r) if (x.type === "turn.finished" && x.data.turnId === turnId) x.data.report = { ...x.data.report, ref: putText(m, runId, value) };
+    const ref = putText(m, runId, value);
+    for (const x of r) {
+      if (x.type === "turn.finished" && x.data.turnId === turnId) x.data.report = { ...x.data.report, ref };
+      if (x.type === "review.assessed" && x.data.turnId === turnId) {
+        x.data.report = ref;
+        x.data.applied = putText(m, runId, { ...textOf(x.data.applied), report: ref, conditionsMet: value.conditions.filter((c) => c.status === "met").map((c) => c.id) });
+      }
+    }
     return r;
   };
   assert.deepEqual(await outcome((r) => r), ["ok", null, true], "as written");
-  const finalAnswer = { verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "not_met", note: "no" }] };
+  const finalAnswer = { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "not_met", note: "no" }] };
   assert.deepEqual(await outcome(answerOf(turnOf("final_review"), finalAnswer)), ["corrupt", "texts", false], "the final review: R1 not met");
-  const reviewAnswer = { verdict: "accept", findings: [], question: null, conditions: [{ id: "C1", status: "not_met", paths: [], note: "no" }] };
+  const reviewAnswer = { conditions: [{ id: "C1", status: "not_met", paths: [], note: "no" }], findings: [], request: "none", question: null };
   assert.deepEqual(await outcome(answerOf(turnOf("review"), reviewAnswer)), ["corrupt", "texts", false], "the accepting review: C1 not met");
   // the same before the run completed (the journal up to the acceptance): the acceptance alone is checked
   const upToAccepted = (fn) => (r) => fn(r.slice(0, r.findIndex((x) => x.type === "stage.accepted") + 1));

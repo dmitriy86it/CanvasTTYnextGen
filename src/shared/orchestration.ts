@@ -158,7 +158,7 @@ export type OrchestrationForm =
   | { mode: "unsupported"; reason: string };
 export interface OrchestrationPermissionRequest {
   requestId: string;
-  role: "lead" | "executor";
+  role: "lead" | "executor" | "reviewer";
   provider: "codex" | "claude";
   // permission: command, file_change, permissions, tool; a question of the task: question, plan; a form: elicitation
   kind: "command" | "file_change" | "permissions" | "tool" | "question" | "elicitation" | "plan";
@@ -243,6 +243,20 @@ export interface OrchestrationRunProgress {
   // journal v2, A2 (journal-v2-format.md §2.7): requirements and readiness conditions with their evidence; null — the run
   // has none (v1, or a plan of A1's form)
   conditions?: OrchestrationConditions | null;
+  // journal v2, A3 (journal-v2-format.md §2.8): the reviewer's findings; null — the lead reviews (v1, A1–A2 journals)
+  findings?: OrchestrationFindings | null;
+}
+
+// F<n>: a finding of the reviewer, numbered by the application, never renumbered. stage: the stage that owns an open
+// one now (null: the next plan's, or a closed one). history: what each review did with it, on which state and tree.
+export interface OrchestrationFindings {
+  items: {
+    id: string; severity: "blocking" | "wish"; status: "open" | "closed"; condition: string | null; stage: number | null;
+    problem: string; evidence: string; closeWhen: string; paths: string[]; possibleRepeatOf: string | null;
+    history: { kind: "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged"; reviewTurnId: string; index: number; runKey: string; tree: string; reason: string | null }[];
+  }[];
+  disputed: { reviewTurnId: string; index: number; problem: string; candidates: string[] }[]; // waiting for the person (A4 decides)
+  openBlocking: number;
 }
 
 export type OrchestrationConditionStatus = "met" | "not_met" | "not_checked";
@@ -308,7 +322,7 @@ export interface OrchestrationParticipantInfo {
 // Built in main from the CLIs' structured events, sanitized (no environment, auth or argv; paths relative to the
 // working copy), bounded and persisted separately from the journal. Never the model's hidden reasoning: a reasoning
 // event is only a marker without its text.
-export type OrchestrationActivityRole = "lead" | "executor" | "check" | "run";
+export type OrchestrationActivityRole = "lead" | "executor" | "reviewer" | "check" | "run";
 export type OrchestrationActivityKind =
   | "task_sent" | "process_started" | "process_exited" | "session" | "thinking" | "message" | "tool_started" | "tool_finished"
   | "file_read" | "file_changed" | "subagent" | "usage" | "refusal" | "error" | "stderr" | "turn_finished"

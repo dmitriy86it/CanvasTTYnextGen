@@ -15,7 +15,7 @@ import type { AnswerSchema, SupervisorLaunch, TurnObserver, TurnOutcome, TurnRes
 import type { AskPerson } from "./sessions.ts";
 
 export type TurnPurpose = "plan" | "execute" | "review" | "final_review";
-export type AgentRole = "lead" | "executor";
+export type AgentRole = "lead" | "executor" | "reviewer"; // reviewer: journal v2, A3 — the lead's CLI in a new session
 
 export interface AgentTurnRequest {
   purpose: TurnPurpose;
@@ -143,7 +143,7 @@ export interface NativeAgentsConfig {
 export function createNativeAgents(cfg: NativeAgentsConfig): AgentAdapter {
   return {
     prepare(req) {
-      const provider = cfg.roles[req.role];
+      const provider = cfg.roles[req.role === "reviewer" ? "lead" : req.role];
       if (!req.ask) return { ok: false, reason: "unavailable", detail: "no one to ask the CLI's permission prompts" };
       const input: NativeTurnInput = {
         cli: cfg.clis[provider].cli, cliVersion: cfg.clis[provider].cliVersion, cwd: req.cwd, env: cfg.env[provider],

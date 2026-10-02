@@ -235,6 +235,8 @@ async function appServer(args) {
         await emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", items: [], error: { message } } } });
         continue;
       }
+      // MOCK_SCRIPT <n>.writes.json: files the turn writes in its folder (a reviewer that changes the tree, A3)
+      for (const w of script?.writes ?? []) { const f = path.resolve(process.cwd(), w.rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, Buffer.from(w.base64, "base64")); }
       const text = JSON.stringify(script ? withProposal(script.answer, p.outputSchema ?? null) : reportFor(st, p.outputSchema ?? null, prev !== null && st.turns.length > 1));
       await emit({ method: "item/completed", params: { threadId, turnId, item: { type: "agentMessage", id: "msg_0", text } } });
       await emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", items: [], error: null } } });

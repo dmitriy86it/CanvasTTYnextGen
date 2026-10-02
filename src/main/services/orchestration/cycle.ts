@@ -5,7 +5,8 @@ import { checksPassed } from "./journal.ts";
 import type { CompletionKind, FailureClass, FinishStep, PausedReason, RunState } from "./journal.ts";
 import type { AgentAccess } from "./access.ts";
 import type { PrepareStep } from "./prepare.ts";
-import { detectLoop, normalizeFinding } from "./progress.ts";
+import { detectLoop, findingsKey, normalizeFinding } from "./progress.ts";
+import { reviewKey } from "./journal.ts";
 import { conditionBlockers } from "./conditions.ts";
 import type { ConditionBlocker, ConditionFacts } from "./conditions.ts";
 import type { RoundFacts } from "./progress.ts";
@@ -67,7 +68,9 @@ export type Action =
   // journal v2 (journal-v2-format.md §2.4): the autopilot accepts the proposed check commands; the plan of the turn
   // that proposed them is recorded after they are accepted
   | { kind: "accept_checks" }
-  | { kind: "record_plan"; turnId: string };
+  | { kind: "record_plan"; turnId: string }
+  // A3 (5h §3.1.1): the reviewer's last turn has no result and the tree is no longer the one it reviewed
+  | { kind: "discard"; turnId: string };
 
 export interface CycleInput {
   state: RunState;
@@ -79,6 +82,9 @@ export interface CycleInput {
   // journal v2, A2 (journal-v2-format.md §2.7), from the texts: whether a review left a "change" condition of its stage
   // unmet, and whether the conditions and requirements block completion now. Absent: no condition rule applies.
   conditions?: { stageUnmet(stage: number, reviewTurnId: string): boolean; finalUnmet: boolean };
+  // journal v2, A3 (journal-v2-format.md §2.8), from the applied texts: an open blocking finding the stage owns, any
+  // open blocking finding, a disputed item waiting for the person. Absent: the lead reviews (v1, A1–A2 journals).
+  findings?: { stageHeld(stage: number): boolean; anyHeld: boolean; disputed: boolean };
 }
 
 // A result that says nothing about the state: the operation itself did not complete, so the check runs again.
@@ -110,7 +116,21 @@ function decide(input: CycleInput): Action {
   if (state.status !== "running") return { kind: "none" };
   const pause = (reason: PausedReason, detail: string): Action => ({ kind: "pause", reason, detail });
 
-  const turn = (purpose: TurnPurpose, stage: number | null, round: number | null): Action => ({ kind: "turn", purpose, stage, round });
+  const turn = (purpose: TurnPurpose, stage: number | null, round: number | null): Action => {
+    // A3 (5h §3.1.1): one automatic retry after a discarded review of a key; then — and after each turn the person
+    // allowed — the person decides. Only the discards in a row count: a reviewer's turn of the key that was not
+    // discarded (applied, or ended otherwise) starts the count again.
+    if (input.findings && (purpose === "review" || purpose === "final_review")) {
+      const key = reviewKey({ planVersion: orch.plan?.version ?? null, purpose, stage });
+      const ofKey = Object.keys(orch.turns).filter((id) => state.turns[id]?.role === "reviewer" && reviewKey(orch.turns[id]) === key);
+      const kept = Math.max(-1, ...ofKey.filter((id) => !Object.hasOwn(orch.discarded, id)).map((id) => orch.turns[id].seq));
+      const permit = Math.max(kept, ...orch.reviewPermits.filter((x) => x.key === key).map((x) => x.seq));
+      const permitted = orch.reviewPermits.some((x) => x.key === key && x.seq === permit);
+      const dropped = ofKey.filter((id) => Object.hasOwn(orch.discarded, id) && orch.turns[id].seq > permit).length;
+      if (dropped >= (permitted ? 1 : 2)) return pause("tree_changed_during_review", key);
+    }
+    return { kind: "turn", purpose, stage, round };
+  };
 
   if (orch.pendingCheckpoint !== null) {
     return { kind: "checkpoint", stage: orch.pendingCheckpoint, tree: orch.accepted[String(orch.pendingCheckpoint)].tree };
@@ -154,6 +174,14 @@ function decide(input: CycleInput): Action {
   const p = orch.checksProposal;
   if (p && !orch.checksDecision) return autoAccepts(goal, p.sandboxNetwork, p.count) ? { kind: "accept_checks" } : pause("awaiting_checks_decision", p.turnId);
   if (p && orch.checksDecision?.decision === "accept" && !orch.plan) return { kind: "record_plan", turnId: p.turnId };
+  // A3 (§2.8): a disputed finding is the person's decision (A4); until then nothing goes on
+  if (input.findings?.disputed) return pause("awaiting_person_decision", "disputed finding");
+  // A3 (5h §3.1.1): a review of a tree that changed under it is dropped before anything is decided on it
+  const lastId = orch.lastOrchTurn;
+  if (input.findings && lastId && state.turns[lastId]?.role === "reviewer" && !["in_flight", "outcome_unknown"].includes(state.turns[lastId].status)
+    && !orch.reviews.some((r) => r.turnId === lastId) && !Object.hasOwn(orch.discarded, lastId) && orch.turns[lastId].tree !== snapshot.tree) {
+    return { kind: "discard", turnId: lastId };
+  }
   if (!orch.plan || leadReviews.at(-1)?.verdict === "replan") return replan();
   if (goal.reviewPlan && planVersion === 1 && !orch.planReviewPaused) return pause("plan_review", "plan version 1");
 
@@ -206,7 +234,8 @@ function decide(input: CycleInput): Action {
     const reviewFresh = lastReview !== undefined && lastReview.runKey === snapshot.runKey && !answeredAfter(lastReview);
 
     const needExecute = lastExec === undefined || !execDone(lastExec)
-      || (reviewFresh && (lastReview.verdict === "fix" || (lastReview.verdict === "accept" && (!allPassed || !!input.conditions?.stageUnmet(s, lastReview.turnId)))));
+      || (reviewFresh && (lastReview.verdict === "fix" || (lastReview.verdict === "accept"
+        && (!allPassed || !!input.conditions?.stageUnmet(s, lastReview.turnId) || !!input.findings?.stageHeld(s)))));
     if (needExecute) {
       if (round + 1 > limits.roundsPerStage) return pause("limit_reached", "roundsPerStage");
       const loop = round >= 1 ? loopOf(input, reviews) : null;
@@ -226,7 +255,7 @@ function decide(input: CycleInput): Action {
     && last.clarificationVersion === orch.clarifications && !answeredAfter(last);
   if (!fresh) return turn("final_review", null, null);
   // the lead cannot waive a check, nor a condition or a requirement without its evidence (A2): a new plan says why
-  if (last.verdict === "complete") return allPassed && !input.conditions?.finalUnmet ? finishOrComplete(input) : replan();
+  if (last.verdict === "complete") return allPassed && !input.conditions?.finalUnmet && !input.findings?.anyHeld ? finishOrComplete(input) : replan();
   return turn("final_review", null, null); // replan and an open question were handled above
 }
 
@@ -256,13 +285,16 @@ export function confirmationFor(state: RunState, tree: string, commit: string | 
 }
 
 export type CompletionBlocker = "checks_undecided" | "stage_not_accepted" | "check_not_passed" | "final_report_stale" | "finish_pending" | "finish_awaiting_person"
-  | ConditionBlocker;
+  | ConditionBlocker | "blocking_open" | "disputed_pending";
 // The completion function, its A1 part (journal-v2-format.md §2.3): the run may be completed only when its checks
 // passed — or it has none by decision (no_checks) — every stage is accepted, the final review completes it, and every
 // action after success the goal asked for is done for the current commit or declined by the person.
 // A2: and every condition in force has its evidence and every requirement is met (conditions: the facts from the texts,
 // null when no condition rule applies — v1 or a plan of A1's form).
-export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot, "tree" | "runKey">, conditions: ConditionFacts | null = null):
+// A3: and no blocking finding is open, nor a disputed item waits (findings: from the applied texts, null when the lead
+// reviews).
+export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot, "tree" | "runKey">, conditions: ConditionFacts | null = null,
+  findings: { open: number; disputed: number } | null = null):
   { allowed: true; kind: CompletionKind } | { allowed: false; blockers: CompletionBlocker[] } {
   const o = state.orch;
   const blockers: CompletionBlocker[] = [];
@@ -272,6 +304,8 @@ export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot,
   if (byConditions.includes("condition_unmet")) blockers.push("condition_unmet");
   if (!checksPassed(state, goal.checks)) blockers.push("check_not_passed");
   if (byConditions.includes("requirement_unmet")) blockers.push("requirement_unmet");
+  if (findings && findings.open > 0) blockers.push("blocking_open");
+  if (findings && findings.disputed > 0) blockers.push("disputed_pending");
   const final = o.reviews.filter((r) => r.stage === null && o.turns[r.turnId]?.planVersion === o.plan?.version).at(-1);
   if (final?.verdict !== "complete" || final.runKey !== snapshot.runKey || final.clarificationVersion !== o.clarifications) blockers.push("final_report_stale");
   const commit = currentCommit(state, snapshot.tree);
@@ -359,7 +393,8 @@ function loopOf(input: CycleInput, reviews: readonly Review[]): string | null {
       return best?.status !== "passed";
     });
     return {
-      runKey: r.runKey, failing, findings: input.findingsOf(r.turnId).map(normalizeFinding), findingsKey: r.findingsKey,
+      // A3: a reviewer's round is keyed by the open blocking findings of the stage (5h §3.3)
+      runKey: r.runKey, failing, findings: input.findingsOf(r.turnId).map(normalizeFinding), findingsKey: r.assessed ? findingsKey(input.findingsOf(r.turnId)) : r.findingsKey,
       userInput: inputs.some((q) => q > prevSeq && q < r.seq), accepted: false
     };
   });

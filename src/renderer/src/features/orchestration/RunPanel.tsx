@@ -9,6 +9,7 @@ import type {
   OrchestrationChanges,
   OrchestrationConditions,
   OrchestrationConditionStatus,
+  OrchestrationFindings,
   OrchestrationFormField,
   OrchestrationHistoryRecord,
   OrchestrationLimitKind,
@@ -20,6 +21,8 @@ import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
 import {
   ACTIVE_STATUSES,
+  activeRole,
+  byReviewer,
   actionEnabled,
   availableActions,
   TERMINAL_STATUSES,
@@ -53,7 +56,7 @@ import {
   type RunAction,
   type RunDigest
 } from "./runModel";
-import { duration, finishText, isServiceEntry, outcomeKey, readJournal, reportParts, summaryModel, type ReportParts, type RunJournalState, type TextRef } from "./runStatus";
+import { duration, findingsLine, finishText, isServiceEntry, outcomeKey, readJournal, reportParts, summaryModel, type ReportParts, type RunJournalState, type TextRef } from "./runStatus";
 import type { PanelRole, PanelState, PanelTab } from "./useAgentCanvasUi";
 import { outcomeText, type Orchestration, type RunActivityState } from "./useOrchestration";
 
@@ -71,6 +74,9 @@ export function Differences({ locale }: { locale: LocaleId }): React.JSX.Element
 const SILENCE_MS = 15_000;
 const api = () => window.canvasTTY.orchestration;
 const tr = (locale: LocaleId, key: string): string => t(locale, key as TranslationKey) ?? key;
+// The result's words that name the lead as the one who accepts and concludes; a run the reviewer reviews has its own (A3)
+const REVIEWER_WORDS = ["orchSumOutcome_completed", "orchSumOutcome_completed_no_checks", "orchSumStages_count", "orchSumStages_countPartial", "orchSumStage_done",
+  "orchSumStage_not_done", "orchSumStage_not_checked", "orchSum_lead", "orchSumRemarksNone", "orchSumCurrentReview", "orchSumCurrentReviewPartial"];
 const time = (locale: LocaleId, ts: string | null) => (ts ? new Date(ts).toLocaleTimeString(locale) : "—");
 // A key the dictionary has (dynamic keys built from main's values may be missing).
 const known = (locale: LocaleId, key: string): boolean => (t(locale, key as TranslationKey) as string | undefined) !== undefined;
@@ -220,7 +226,8 @@ function LineDetails({ runId, text, dropped, locale }: { runId: string; text: Li
 }
 
 const roleName = (locale: LocaleId, role: PanelRole) =>
-  role === "lead" ? `Codex · ${t(locale, "orchRoleLead")}` : role === "executor" ? `Claude · ${t(locale, "orchRoleExecutor")}` : t(locale, "orchObserveChecks");
+  role === "lead" ? `Codex · ${t(locale, "orchRoleLead")}` : role === "executor" ? `Claude · ${t(locale, "orchRoleExecutor")}`
+    : role === "reviewer" ? `Codex · ${t(locale, "orchRoleReviewer")}` : t(locale, "orchObserveChecks");
 
 function phaseText(locale: LocaleId, p: ParticipantState, now: number): string {
   const since = p.since ? ` · ${duration(locale, now - Date.parse(p.since))}` : "";
@@ -665,6 +672,45 @@ function Conditions({ orch, runId, c, locale, incomplete }: {
   );
 }
 
+// Journal v2, A3 (journal-v2-format.md §2.8): the reviewer's findings — number, severity, status, the stage that owns an
+// open one, and what each review did with it on which tree. "Open blocking: N" is findingsLine, as the cards say it.
+function Findings({ f, locale }: { f: OrchestrationFindings; locale: LocaleId }): React.JSX.Element {
+  const item = (x: OrchestrationFindings["items"][number]) => (
+    <li key={x.id} data-finding={x.id} data-finding-severity={x.severity} data-finding-status={x.status}>
+      <b>{x.id}</b> · {t(locale, `orchFinding_${x.severity}`)} · <b className={`orch-cond orch-cond--${x.status === "closed" ? "met" : "not_met"}`}>{t(locale, `orchFinding_${x.status}`)}</b>
+      {x.status === "open" && <> · {x.stage !== null ? fill(t(locale, "orchFindingStage"), { n: x.stage }) : t(locale, "orchFindingNextPlan")}</>}
+      {x.condition && <> · {x.condition}</>}
+      {x.possibleRepeatOf && <> · <span className="orch-hint" data-finding-repeat={x.possibleRepeatOf}>{fill(t(locale, "orchFindingRepeat"), { id: x.possibleRepeatOf })}</span></>}
+      <p className="orch-panel__text">{x.problem}</p>
+      {x.paths.length > 0 && <p className="orch-hint">{x.paths.join(", ")}</p>}
+      <p className="orch-hint">{fill(t(locale, "orchFindingCloseWhen"), { text: x.closeWhen })}</p>
+      <details data-finding-history>
+        <summary>{t(locale, "orchFindingHistory")}</summary>
+        <ol>{x.history.map((h) => (
+          <li key={`${h.kind}:${h.reviewTurnId}:${h.index}`} data-finding-event={h.kind} data-finding-review={h.reviewTurnId} data-finding-tree={h.tree}>
+            {fill(t(locale, `orchFindingHist_${h.kind}`), { turn: h.reviewTurnId.slice(0, 8) })} · <code>{fill(t(locale, "orchFindingTree"), { tree: h.tree.slice(0, 12) })} · {fill(t(locale, "orchFindingState"), { key: h.runKey.slice(0, 12) })}</code>
+            {h.reason && <> — {t(locale, `orchFindingRefused_${h.reason}` as TranslationKey)}</>}
+          </li>
+        ))}</ol>
+      </details>
+    </li>
+  );
+  const blocking = f.items.filter((x) => x.severity === "blocking");
+  const wishes = f.items.filter((x) => x.severity === "wish");
+  return (
+    // a finding is the reviewer's word; what the application did with it is the journal's (history)
+    <Section id="findings" title={t(locale, "orchSum_findings")} locale={locale}>
+      <p data-sum-findings-open={f.openBlocking}><b>{findingsLine(locale, { progress: { findings: f } as OrchestrationRunView["progress"] })}</b></p>
+      {f.items.length === 0 && <p>{t(locale, "orchFindingsNone")}</p>}
+      {blocking.length > 0 && <ul className="orch-sum__findings" data-findings="blocking">{blocking.map(item)}</ul>}
+      {f.disputed.length > 0 && <><b>{t(locale, "orchFindingsDisputed")}</b><ul data-findings="disputed">{f.disputed.map((d) => (
+        <li key={`${d.reviewTurnId}:${d.index}`}>{d.problem} · <span className="orch-hint">{d.candidates.join(", ")}</span></li>
+      ))}</ul></>}
+      {wishes.length > 0 && <><b>{t(locale, "orchFindingsWishes")}</b><ul className="orch-sum__findings" data-findings="wish">{wishes.map(item)}</ul></>}
+    </Section>
+  );
+}
+
 type GoalJson = { text?: unknown; criteria?: unknown; commands?: unknown };
 function parseGoal(text: string): GoalJson | null {
   try { const v = JSON.parse(text) as unknown; return v && typeof v === "object" ? v as GoalJson : null; } catch { return null; }
@@ -692,7 +738,9 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
   const next = (finalText ? reportParts(finalText).next : null) ?? (lastText ? reportParts(lastText).next : null);
   const outcome = outcomeKey(view, m.finalVerdict, m.complete);
   // Read only in part: what was read stands, but nothing is concluded from what was not read yet.
-  const stageStateText = (st: { state: string }) => tr(locale, !m.complete && st.state !== "done" ? "orchSumStage_unloaded" : `orchSumStage_${st.state}`);
+  // A3: a run the reviewer reviews says so — the application accepts its stages, the reviewer concludes
+  const said = (key: string) => tr(locale, byReviewer(view) && REVIEWER_WORDS.includes(key) ? `${key}_rv` : key);
+  const stageStateText = (st: { state: string }) => said(!m.complete && st.state !== "done" ? "orchSumStage_unloaded" : `orchSumStage_${st.state}`);
   const progress = view.progress ?? null;
   const verdictText = (v: string | null) => (v ? tr(locale, `orchVerdict_${v}`) : "—");
   const missing = <NotSpecified locale={locale} incomplete={incomplete} />;
@@ -701,7 +749,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
   const findingsList = (ref: TextRef | null, attr: string) => (
     <Stored orch={orch} runId={runId} textRef={ref} locale={locale} incomplete={incomplete}>{(text) => {
       const f = reportParts(text).findings;
-      return f.length ? <ul {...{ [attr]: "" }}>{f.map((x, i) => <li key={i}>{x}</li>)}</ul> : <p>{t(locale, "orchSumRemarksNone")}</p>;
+      return f.length ? <ul {...{ [attr]: "" }}>{f.map((x, i) => <li key={i}>{x}</li>)}</ul> : <p>{said("orchSumRemarksNone")}</p>;
     }}</Stored>
   );
   const problems = [
@@ -729,7 +777,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
       {/* without checks nothing confirmed the result: its outcome and checks carry no "confirmed by the journal" mark */}
       <Section id="outcome" title={t(locale, "orchSum_outcome")} src={outcome === "completed_no_checks" ? undefined : "journal"} locale={locale}>
         <p className={`orch-sum__outcome orch-sum__outcome--${outcome}`} data-sum-outcome={outcome}>
-          <b>{headlineText(locale, view, orch.activity[runId]?.entries ?? [])}</b> — {tr(locale, `orchSumOutcome_${outcome}`)}
+          <b>{headlineText(locale, view, orch.activity[runId]?.entries ?? [])}</b> — {said(`orchSumOutcome_${outcome}`)}
         </p>
         {outcome === "completed_no_checks" && <p className="dialog-error" data-sum-no-checks>{t(locale, "orchNoChecksRan")}</p>}
         {view.reason && <p><b>{t(locale, "orchSum_reason")}:</b> {reasonText(locale, view, orch.activity[runId]?.entries ?? [])}</p>}
@@ -738,10 +786,11 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
       </Section>
 
       {progress?.conditions && <Conditions orch={orch} runId={runId} c={progress.conditions} locale={locale} incomplete={incomplete} />}
+      {progress?.findings && <Findings f={progress.findings} locale={locale} />}
 
       <Section id="stages" title={t(locale, "orchSum_stages")} src="journal" locale={locale}>
         {!m.stages ? missing : <>
-          {m.stageCounts && <p data-sum-stage-count data-partial={m.complete ? undefined : "yes"}><b>{fill(t(locale, m.complete ? "orchSumStages_count" : "orchSumStages_countPartial"), { done: m.stageCounts.done, total: m.stageCounts.total })}</b></p>}
+          {m.stageCounts && <p data-sum-stage-count data-partial={m.complete ? undefined : "yes"}><b>{fill(said(m.complete ? "orchSumStages_count" : "orchSumStages_countPartial"), { done: m.stageCounts.done, total: m.stageCounts.total })}</b></p>}
           <ol className="orch-sum__stages">{m.stages.map((st) => (
             <li key={st.n} data-stage-state={st.state} data-stage-n={st.n} value={st.n}>
               <strong>{st.title ?? `${t(locale, "orchStage")} ${st.n}`}</strong>
@@ -752,7 +801,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
             <details className="orch-sum__superseded" data-sum-superseded>
               <summary>{t(locale, "orchSumSuperseded")} ({m.superseded.length})</summary>
               <ul>{m.superseded.map((st, i) => (
-                <li key={i}>{stageLabel(st.n, st.title, st.plan)} — {st.verdict ? tr(locale, `orchVerdict_${st.verdict}`) : tr(locale, `orchSumStage_${st.state}`)}</li>
+                <li key={i}>{stageLabel(st.n, st.title, st.plan)} — {st.verdict ? tr(locale, `orchVerdict_${st.verdict}`) : said(`orchSumStage_${st.state}`)}</li>
               ))}</ul>
             </details>
           )}
@@ -771,13 +820,13 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
           ))}
       </Section>
 
-      <Section id="lead" title={t(locale, "orchSum_lead")} src="agent" locale={locale}>
+      <Section id="lead" title={said("orchSum_lead")} src="agent" locale={locale}>
         {m.finalReport
           ? <Stored orch={orch} runId={runId} textRef={m.finalReport} locale={locale} incomplete={incomplete}>{(text) => <ReportView locale={locale} parts={{ ...reportParts(text), findings: [], next: null }} />}</Stored>
           : m.finalVerdict ? <p><b>{t(locale, "orchSumVerdict")}:</b> {tr(locale, `orchVerdict_${m.finalVerdict}`)}</p>
             : current ? (
               <div data-sum-current-review={current.verdict ?? ""}>
-                <p><b>{fill(t(locale, m.complete ? "orchSumCurrentReview" : "orchSumCurrentReviewPartial"), { stage: stageLabel(current.stage, current.title) })}</b></p>
+                <p><b>{fill(said(m.complete ? "orchSumCurrentReview" : "orchSumCurrentReviewPartial"), { stage: stageLabel(current.stage, current.title) })}</b></p>
                 {current.report
                   ? <Stored orch={orch} runId={runId} textRef={current.report} locale={locale} incomplete={incomplete}>{(text) => <ReportView locale={locale} parts={{ ...reportParts(text), findings: [] }} />}</Stored>
                   : <p><b>{t(locale, "orchSumVerdict")}:</b> {verdictText(current.verdict)}</p>}
@@ -798,10 +847,10 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
       <Section id="remarks" title={t(locale, "orchSum_remarks")} locale={locale}>
         <b>{t(locale, "orchSumFindingsCurrent")} <Src locale={locale} kind="agent" /></b>
         {m.finalFindings ? findingsList(m.finalFindings, "data-sum-findings")
-          : m.finalVerdict ? <p>{t(locale, "orchSumRemarksNone")}</p>
+          : m.finalVerdict ? <p>{said("orchSumRemarksNone")}</p>
             : current ? <>
               <p className="orch-hint">{stageLabel(current.stage, current.title)} · {verdictText(current.verdict)}{m.complete ? "" : ` — ${t(locale, "orchSumFindingsPartial")}`}</p>
-              {current.findings ? findingsList(current.findings, "data-sum-findings") : <p>{t(locale, "orchSumRemarksNone")}</p>}
+              {current.findings ? findingsList(current.findings, "data-sum-findings") : <p>{said("orchSumRemarksNone")}</p>}
             </> : missing}
         {m.openQuestion && (
           <div data-sum-question>
@@ -1076,11 +1125,12 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const open = state?.open ?? true;
   const lead = participantState("lead", view, activity.entries, open);
   const executor = participantState("executor", view, activity.entries, open);
+  const reviewer = participantState("reviewer", view, activity.entries, open);
   const facts = resultFacts(view, d, changedFiles, reportedDone);
   const head = view ? runHeadline(view) : null;
   const active = view?.active ?? null;
-  const workingRole: PanelRole | null = !active ? null : active.kind !== "turn" ? "check" : active.purpose === "execute" ? "executor" : "lead";
-  const workingState = workingRole === "lead" ? lead : workingRole === "executor" ? executor : null;
+  const workingRole: PanelRole | null = !active ? null : activeRole(view) as PanelRole;
+  const workingState = workingRole === "lead" ? lead : workingRole === "executor" ? executor : workingRole === "reviewer" ? reviewer : null;
   const stageText = view?.stage ? `${t(locale, "orchStage")} ${view.stage}${planTotal ? ` / ${planTotal}` : ""}` : null;
   const who = !active ? t(locale, "orchNobodyNow")
     : active.kind === "check" ? `${t(locale, "orchCheckRunning")} (${active.checkId})${stageText ? ` · ${stageText}` : ""}`
@@ -1106,7 +1156,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
     : (e.role === panel.role && FEED_KINDS.has(e.kind)) || (e.role === "run" && e.kind === "status"), [panel.role]);
   const logFilter = useCallback((e: OrchestrationActivityEntry) => (panel.role === "check" ? e.role === "check" : e.role === panel.role)
     && (LOG_KINDS.has(e.kind) || (e.kind === "tool_finished" && typeof e.detail?.output === "string")), [panel.role]);
-  const selected = panel.role === "lead" ? lead : panel.role === "executor" ? executor : null;
+  const selected = panel.role === "lead" ? lead : panel.role === "executor" ? executor : panel.role === "reviewer" ? reviewer : null;
 
   return (
     <aside className={`orch-panel${panel.tab === "summary" ? " orch-panel--wide" : ""}${expanded ? " orch-panel--full" : ""}`}
@@ -1323,9 +1373,9 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <section className="orch-panel__section" data-orch-participants>
                   <h4>{t(locale, "orchParticipants")}</h4>
                   <ul className="orch-people">
-                    {(["lead", "executor"] as const).map((role) => {
-                      const info = orch.catalog.providers?.[role];
-                      const p = role === "lead" ? lead : executor;
+                    {(byReviewer(view) ? ["lead", "executor", "reviewer"] as const : ["lead", "executor"] as const).map((role) => {
+                      const info = orch.catalog.providers?.[role === "reviewer" ? "lead" : role];
+                      const p = role === "lead" ? lead : role === "executor" ? executor : reviewer;
                       return (
                         <li key={role} data-participant={role} data-phase={p.phase}>
                           <strong>{roleName(locale, role)}</strong>

@@ -19,6 +19,7 @@ interface AgentCardProps {
   status: StatusLine | null; // what it does now, from the shared display rules (runStatus.ts)
   statusTime: string | null; // the last event's time or the silence, already in words
   conditions?: string | null; // A2: "N of M conditions met" (runStatus.ts conditionsLine)
+  findings?: string | null; // A3: "open blocking: N" (runStatus.ts findingsLine)
   ended: boolean; // its link's latest run has ended: the summary is offered
   message: string | null;
   linking: "source" | "target" | null; // keyboard/click linking mode
@@ -118,6 +119,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
         </div>
         {status && (status.wait || status.now) && <div className="agent-card__line" data-agent-now>{status.wait ?? status.now}</div>}
         {props.conditions && <div className="agent-card__line" data-agent-conditions>{props.conditions}</div>}
+        {props.findings && <div className="agent-card__line" data-agent-findings>{props.findings}</div>}
         {props.statusTime && <div className="agent-card__line agent-card__line--time" data-agent-time>{props.statusTime}</div>}
         {message && <div className="agent-card__message" role="alert">{message}</div>}
         {confirming && (

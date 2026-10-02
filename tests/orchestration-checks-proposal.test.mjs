@@ -77,11 +77,12 @@ function script(answers) {
   return dir;
 }
 // journal v2 answers (A2, journal-v2-format.md §2.7): the plan's one condition C1 (a change) covers R1, the goal's one
-// criterion; the review marks it met on a.txt, which the executor changes; the final review marks R1 met
+// criterion; the review marks it met on a.txt, which the executor changes; the final review marks R1 met. A3: the
+// reviewer answers them (no verdict: request none, no findings)
 const C1 = { keep: null, text: "a.txt says 2", covers: ["R1"], evidence: { kind: "change", check: null } };
 const PLAN = { answer: { stages: [{ title: "fix", task: "make a.txt say 2", conditions: [C1] }], dropped: [], dropRequirements: [], question: null } };
-const REVIEW = { answer: { verdict: "accept", findings: [], question: null, conditions: [{ id: "C1", status: "met", paths: ["a.txt"], note: "a.txt says 2" }] } };
-const FINAL = { answer: { verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "met", note: "a.txt says 2" }] } };
+const REVIEW = { answer: { conditions: [{ id: "C1", status: "met", paths: ["a.txt"], note: "a.txt says 2" }], findings: [], request: "none", question: null } };
+const FINAL = { answer: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "a.txt says 2" }] } };
 // v1 answers (no conditions: the v1 schemas forbid the keys)
 const PLAN_V1 = { answer: { stages: [{ title: "fix", task: "make a.txt say 2" }], question: null } };
 const REVIEW_V1 = { answer: { verdict: "accept", findings: [], question: null } };
@@ -400,7 +401,7 @@ test("a completed run the completion function does not allow, and an autopilot a
   const last = (recs) => recs.at(-1);
   // completed "without checks" while it had checks; completed without the final review that completes it
   assert.deepEqual(corrupt(rewrite(buf, runId, (r) => { last(r).data.completion.kind = "no_checks"; return r; }), runId), ["replay_conflict", "run.status"]);
-  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => r.filter((x) => !(x.type === "review.recorded" && x.data.stage === null))), runId), ["replay_conflict", "run.status"]);
+  assert.deepEqual(corrupt(rewrite(buf, runId, (r) => r.filter((x) => !(x.type === "review.assessed" && x.data.stage === null))), runId), ["replay_conflict", "run.status"]);
   // completed with a stage of the plan not accepted (I1-4)
   assert.deepEqual(corrupt(rewrite(buf, runId, (r) => r.filter((x) => x.type !== "stage.accepted")), runId), ["replay_conflict", "run.status"]);
   // between the proposal and the decision only the commands' records and run.status (I1-7): a clarification is not

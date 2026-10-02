@@ -4,6 +4,8 @@
 import { createHash } from "node:crypto";
 import type { ReportStatus, TurnOutcome } from "./types.ts";
 import { applyPlan, changeIdsOf, emptyBook, factsOf, planProblems } from "./conditions.ts";
+import { replayFindings } from "./findings.ts";
+import type { Applied } from "./findings.ts";
 import type { ConditionMark, PlanText, RequirementMark, Status } from "./conditions.ts";
 
 export const JOURNAL_VERSION = 1; // new runs, unless the run asks for v2 (journal-v2-format.md, behind a dev flag in A1)
@@ -36,7 +38,9 @@ export const PAUSED_REASONS = [
 ] as const;
 // v2 only (journal-v2-format.md §2.1): waiting for the decision on the lead's proposed check commands, and for the
 // person's confirmation of push/QA of a run without checks; A1.1: a lead's check the sandbox refused (§2.6).
-export const PAUSED_REASONS_V2 = [...PAUSED_REASONS, "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions"] as const;
+// A3 (§2.8): the tree changed during two reviews in a row; a disputed finding waits for the person (A4 decides it).
+export const PAUSED_REASONS_V2 = [...PAUSED_REASONS, "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions",
+  "tree_changed_during_review", "awaiting_person_decision"] as const;
 const TURN_OUTCOMES: readonly string[] = ["completed", "invalid_report", "delivery_failed", "failed", "stopped", "timeout",
   "protocol_error", "cleanup_unverified", "harness_error"];
 const REPORT_STATUSES: readonly string[] = ["valid", "invalid_json", "schema_mismatch", "missing", "too_large", "not_checked"];
@@ -85,12 +89,14 @@ export type EventType =
   | "checks.proposed"
   | "checks.decided"
   | "checks.amended" // A1.1
-  | "finish.confirmed";
+  | "finish.confirmed"
+  | "review.assessed" // A3
+  | "review.discarded";
 
 export const STAGE13_EVENTS = ["prepare.started", "prepare.finished", "check.classified", "permission.granted",
   "permission.applied", "finish.intent", "finish.result"] as const;
 export type Stage13Event = (typeof STAGE13_EVENTS)[number];
-export const V2_EVENTS = ["checks.proposed", "checks.decided", "finish.confirmed", "checks.amended"] as const;
+export const V2_EVENTS = ["checks.proposed", "checks.decided", "finish.confirmed", "checks.amended", "review.assessed", "review.discarded"] as const;
 export type V2Event = (typeof V2_EVENTS)[number];
 
 export type CommandResult = { status: "accepted" | "rejected"; code: string | null };
@@ -111,7 +117,7 @@ export interface JournalRecord {
 export interface TurnState {
   status: "in_flight" | "outcome_unknown" | ProviderOutcome;
   commandId: string | null;
-  role: "lead" | "executor";
+  role: "lead" | "executor" | "reviewer"; // reviewer: v2 only (A3)
   provider: "codex" | "claude";
   mode: string;
   sessionId: string | null; // from turn.intent, replaced by turn.finished
@@ -199,6 +205,7 @@ export type RecoveryAction = "accept" | "retry_turn" | "reset_to_checkpoint";
 export interface OrchTurnData {
   turnId: string; purpose: TurnPurpose; stage: number | null; round: number | null;
   planVersion: number | null; clarificationVersion: number;
+  tree?: string | null; // v2, A3 (§2.8): the tree before a reviewer's turn, null for any other turn; absent in A1–A2
 }
 export interface PlanRecordedData { turnId: string; version: number; plan: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number }
 // conditionsAssigned absent: a plan of A1's form or of v1 (no conditions; journal-v2-format.md §2.7)
@@ -207,6 +214,14 @@ export interface ReviewRecordedData {
   turnId: string; stage: number | null; verdict: ReviewVerdict; findings: TextRef | null; findingsKey: string;
   findingsCount: number; clarificationVersion: number; runKey: string;
 }
+// A3 (5h §2.4): the reviewer's result — its report and what the application did with it. Replayed into orch.reviews
+// with the verdict it amounts to (request none: accept / complete) and these refs; the application, not a verdict,
+// decides the stage (§2.8).
+export type ReviewRequest = "none" | "replan" | "question";
+export interface ReviewAssessedData {
+  turnId: string; stage: number | null; request: ReviewRequest; report: TextRef; applied: TextRef; clarificationVersion: number; runKey: string;
+}
+export interface ReviewDiscardedData { turnId: string; treeBefore: string; treeAfter: string }
 export interface QuestionAskedData { questionId: string; turnId: string; text: TextRef }
 export interface QuestionAnsweredData { questionId: string; commandId: string; text: TextRef }
 export interface CheckAssessedData { checkRunId: string; stage: number | null; round: number | null; checkKey: string; runKey: string }
@@ -245,7 +260,7 @@ export interface OrchState {
   plan: PlanState | null;
   plans: PlanState[]; // every plan.recorded, in order (A2: the conditions of accepted stages come from earlier plans)
   planReviewPaused: boolean; // a run.status paused(plan_review) was applied while the plan was version 1; never reset
-  reviews: (ReviewRecordedData & { seq: number })[]; // in journal order; findings kept so a fix task can quote them
+  reviews: (ReviewRecordedData & { seq: number; assessed?: { request: ReviewRequest; report: TextRef; applied: TextRef } })[]; // in journal order; findings kept so a fix task can quote them
   accepted: Record<string, { reviewTurnId: string; tree: string; seq: number }>; // key: stage number as a string
   pendingCheckpoint: number | null; // the accepted stage whose checkpoint.created is not in the journal yet
   clarifications: number; // version of the clarifications
@@ -274,6 +289,10 @@ export interface OrchState {
   confirmations: FinishConfirmation[];
   // A1.1 (§2.6): the checks the person let run without the sandbox, or changed (line: the new command line)
   amended: Record<string, { commandId: string; line: TextRef; seq: number }>;
+  // A3 (§2.8, 5h §3.1.1): reviews dropped because the tree changed during them, and the person's leave for one more
+  // reviewer turn of a key (resume/step from tree_changed_during_review, recovery.decided of a reviewer's turn)
+  discarded: Record<string, { treeBefore: string; treeAfter: string; seq: number }>;
+  reviewPermits: { key: string; seq: number }[];
 }
 export type SandboxNetwork = "denied" | "open";
 export type FinishDecision = "confirm" | "decline";
@@ -528,7 +547,20 @@ const DATA_SCHEMAS_V2: Record<string, (d: Record<string, unknown>) => boolean> =
   // person's command, without the sandbox
   "checks.amended": (d) => exactKeys(d, ["commandId", "checkId", "line"]) && isUuid(d.commandId) && isCheckId(d.checkId)
     && isTextRef(d.line),
-  "check.classified": (d) => exactKeys(d, ["checkRunId", "class"]) && isUuid(d.checkRunId) && oneOf(d.class, [...FAILURE_CLASSES, "sandbox"])
+  "check.classified": (d) => exactKeys(d, ["checkRunId", "class"]) && isUuid(d.checkRunId) && oneOf(d.class, [...FAILURE_CLASSES, "sandbox"]),
+  // A3 (§2.8): the reviewer's role; the tree before a turn
+  "turn.intent": (d) => exactKeys(d, ["turnId", "commandId", "role", "provider", "mode", "sessionId", "task"])
+    && isUuid(d.turnId) && (d.commandId === null || isUuid(d.commandId)) && oneOf(d.role, ["lead", "executor", "reviewer"])
+    && oneOf(d.provider, ["codex", "claude"]) && str(d.mode, 64) && strOrNull(d.sessionId, 128) && isTextRef(d.task),
+  "orch.turn": (d) => keysWithin(d, ["turnId", "purpose", "stage", "round", "planVersion", "clarificationVersion"], ["tree"])
+    && isUuid(d.turnId) && oneOf(d.purpose, TURN_PURPOSES)
+    && (d.purpose === "plan" || d.purpose === "final_review" ? d.stage === null && d.round === null : isPos(d.stage) && isPos(d.round))
+    && (d.planVersion === null || isPos(d.planVersion)) && isNonNeg(d.clarificationVersion)
+    && (d.tree === undefined || d.tree === null || isGitOid(d.tree)),
+  "review.assessed": (d) => exactKeys(d, ["turnId", "stage", "request", "report", "applied", "clarificationVersion", "runKey"]) && isUuid(d.turnId)
+    && (d.stage === null || isPos(d.stage)) && oneOf(d.request, ["none", "replan", "question"]) && isTextRef(d.report) && isTextRef(d.applied)
+    && isNonNeg(d.clarificationVersion) && isSha256(d.runKey),
+  "review.discarded": (d) => exactKeys(d, ["turnId", "treeBefore", "treeAfter"]) && isUuid(d.turnId) && isGitOid(d.treeBefore) && isGitOid(d.treeAfter)
 };
 const schemasOf = (version: number): Record<string, (d: Record<string, unknown>) => boolean> => version === 2 ? DATA_SCHEMAS_V2 : DATA_SCHEMAS;
 
@@ -566,7 +598,7 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
         clarifications: 0, clarificationRefs: [], clarificationSeqs: [], question: null, answers: 0, answerSeqs: [],
         lastPausedSeq: {}, assessed: {}, limitOverrides: {}, recoveryDecisions: {},
         prepares: [], classified: {}, grants: {}, applied: 0, finish: [],
-        lastOrchTurn: null, checksProposal: null, checksDecision: null, confirmations: [], amended: {}
+        lastOrchTurn: null, checksProposal: null, checksDecision: null, confirmations: [], amended: {}, discarded: {}, reviewPermits: []
       }
     };
   }
@@ -578,6 +610,11 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
       if (TERMINAL_STATUSES.includes(state.status)) throw new JournalError("invalid_transition", `run is ${state.status}`);
       if (state.version === 2 && d.status === "completed") completedAllowed(state, d.completion as { kind: CompletionKind });
       if (state.version === 2) state.completion = d.status === "completed" ? { ...(d.completion as { kind: CompletionKind; basis: TextRef }) } : null;
+      // A3 (5h §3.1.1): continuing from tree_changed_during_review is the person's leave for one more reviewer turn
+      if (d.status === "running" && state.status === "paused" && state.pausedReason === "tree_changed_during_review") {
+        const last = lastReviewerTurn(state);
+        if (last) state.orch.reviewPermits.push({ key: reviewKey(state.orch.turns[last]), seq: rec.seq });
+      }
       state.status = d.status as RunStatus;
       state.pausedReason = d.reason as PausedReason | null;
       state.orch.revision++;
@@ -602,6 +639,7 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
       const id = d.turnId as string;
       if (Object.hasOwn(state.turns, id)) conflict(`turn ${id} started twice`);
       if (proposalWaits(state)) conflict("a turn while the proposed check commands wait for a decision");
+      if (d.role === "reviewer") reviewerTurnAllowed(state, id);
       state.turns[id] = {
         status: "in_flight", commandId: d.commandId as string | null, role: d.role as TurnState["role"],
         provider: d.provider as TurnState["provider"], mode: d.mode as string, sessionId: d.sessionId as string | null,
@@ -771,7 +809,8 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       o.lastOrchTurn = id;
       o.turns[id] = {
         purpose: d.purpose as TurnPurpose, stage: d.stage as number | null, round: d.round as number | null,
-        planVersion: d.planVersion as number | null, clarificationVersion: d.clarificationVersion as number, seq: rec.seq
+        planVersion: d.planVersion as number | null, clarificationVersion: d.clarificationVersion as number, seq: rec.seq,
+        ...(d.tree === undefined ? {} : { tree: d.tree as string | null })
       };
       break;
     }
@@ -797,6 +836,8 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       break;
     }
     case "review.recorded": {
+      // A3 (§2.8): a journal is reviewed by the lead (A1–A2) or by the reviewer, never both
+      if (Object.values(state.turns).some((x) => x.role === "reviewer")) conflict("a lead's review in a journal the reviewer reviews");
       const t = completedTurn(d.turnId as string, d.stage === null ? ["final_review"] : ["review"]);
       if (t.stage !== d.stage) conflict(`review stage ${String(d.stage)} is not the turn's stage`);
       if (o.reviews.some((r) => r.turnId === d.turnId)) conflict(`turn ${String(d.turnId)} already recorded a review`);
@@ -869,6 +910,8 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (Object.hasOwn(o.recoveryDecisions, id)) conflict(`turn ${id} already has a recovery decision`);
       openCommand();
       o.recoveryDecisions[id] = d.action as RecoveryAction;
+      // A3 (5h §3.1.1): retrying a reviewer's turn of unknown outcome is leave for exactly one more turn of its key
+      if (state.turns[id].role === "reviewer" && d.action !== "accept" && o.turns[id]) o.reviewPermits.push({ key: reviewKey(o.turns[id]), seq: rec.seq });
       break;
     }
     case "prepare.started": {
@@ -984,7 +1027,55 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       o.confirmations.push({ commandId: d.commandId as string, tree: d.tree as string, commit: d.commit as string | null,
         push: d.push as FinishDecision | null, qa: d.qa as FinishDecision | null, seq: rec.seq });
       break;
+    // A3 (5h §3.10, journal-v2-format.md §2.8): one result record per reviewer's turn, only for the last orch.turn
+    case "review.assessed": {
+      const id = d.turnId as string;
+      const t = reviewerResultOf(state, id);
+      if (state.turns[id].status !== "completed") conflict(`turn ${id} did not complete`);
+      if (t.stage !== d.stage) conflict(`review stage ${String(d.stage)} is not the turn's stage`);
+      const ref = state.turns[id].report?.ref;
+      if (!ref || ref.sha256 !== (d.report as TextRef).sha256 || ref.bytes !== (d.report as TextRef).bytes) conflict(`the assessed report is not turn ${id}'s report`);
+      if (d.clarificationVersion !== t.clarificationVersion) conflict("the assessed clarification version is not the turn's");
+      const request = d.request as ReviewRequest;
+      o.reviews.push({
+        turnId: id, stage: d.stage as number | null, verdict: request === "none" ? (d.stage === null ? "complete" : "accept") : request,
+        findings: null, findingsKey: "", findingsCount: 0, clarificationVersion: d.clarificationVersion as number, runKey: d.runKey as string, seq: rec.seq,
+        assessed: { request, report: d.report as TextRef, applied: d.applied as TextRef }
+      });
+      break;
+    }
+    case "review.discarded": {
+      const id = d.turnId as string;
+      const t = reviewerResultOf(state, id);
+      const status = state.turns[id].status;
+      if (status === "in_flight" || status === "outcome_unknown") conflict(`turn ${id} has not finished`);
+      if (d.treeBefore !== t.tree || d.treeAfter === d.treeBefore) conflict("a discarded review whose tree did not change");
+      o.discarded[id] = { treeBefore: d.treeBefore as string, treeAfter: d.treeAfter as string, seq: rec.seq };
+      break;
+    }
   }
+}
+
+// A3: the key of a reviewer's turn for the count of discarded reviews (5h §3.1.1): plan version, purpose, stage.
+export const reviewKey = (t: { planVersion: number | null; purpose: TurnPurpose; stage: number | null }): string => `${t.planVersion ?? 0}:${t.purpose}:${t.stage ?? "final"}`;
+const lastReviewerTurn = (state: RunState): string | null =>
+  Object.keys(state.orch.turns).filter((id) => state.turns[id]?.role === "reviewer").sort((a, b) => state.orch.turns[a].seq - state.orch.turns[b].seq).at(-1) ?? null;
+// A reviewer's turn (A3): v2 only, a review purpose with the tree before it, and not in a journal the lead reviewed.
+function reviewerTurnAllowed(state: RunState, id: string): void {
+  if (state.version !== 2) conflict("a reviewer's turn in a v1 journal");
+  const t = state.orch.turns[id];
+  if (!t || (t.purpose !== "review" && t.purpose !== "final_review")) conflict(`turn ${id} of the reviewer is not a review`);
+  if (typeof t.tree !== "string") conflict(`the reviewer's turn ${id} has no tree`);
+  if (state.orch.reviews.some((r) => !r.assessed)) conflict("a reviewer's turn in a journal the lead reviews");
+}
+// The reviewer's turn a result record is about: the last orch.turn, with no result yet.
+function reviewerResultOf(state: RunState, id: string): RunState["orch"]["turns"][string] {
+  const o = state.orch;
+  const t = o.turns[id];
+  if (!t || state.turns[id]?.role !== "reviewer") conflict(`turn ${id} is not a reviewer's turn`);
+  if (o.lastOrchTurn !== id) conflict(`turn ${id} is not the last turn`);
+  if (o.reviews.some((r) => r.turnId === id) || Object.hasOwn(o.discarded, id)) conflict(`turn ${id} already has a result`);
+  return t;
 }
 
 // v2: proposed check commands without a decision: no turn, no check and no plan until it (journal-v2-format.md §2.1).
@@ -1045,6 +1136,7 @@ export interface V2Texts {
   plans?: PlanText[];
   reports?: Record<string, unknown>;
   basis?: CompletionBasis | null;
+  applied?: Record<string, Applied>; // A3 (§2.8): the applied texts of review.assessed, by turn
 }
 export interface CompletionBasis {
   checks: { id: string; checkRunId: string | null }[]; runKey: string; checkKeys: Record<string, string>;
@@ -1073,6 +1165,12 @@ export function textsConflict(state: RunState, t: V2Texts): string | null {
   }
   const why = t.plans ? conditionsConflict(state, t, d ? d.count : own?.length ?? 0) : null;
   if (why) return why;
+  // A3 (§2.8): the reviewer's results applied by the rules; no stage accepted and no completion past an open blocking
+  // finding or a disputed item
+  if (t.plans && t.applied && o.reviews.some((r) => r.assessed)) {
+    const f = replayFindings(state, { plans: t.plans, reports: t.reports ?? {}, applied: t.applied });
+    if (f.problem) return f.problem;
+  }
   if (state.completion) {
     const n = d ? d.count : own?.length ?? 0;
     if ((state.completion.kind === "no_checks") !== (n === 0)) return `completed ${state.completion.kind} with ${n} check commands`;

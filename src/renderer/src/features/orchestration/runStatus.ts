@@ -10,16 +10,16 @@ import type {
 } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
-import { causeText, finishStatus, headlineKey, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
+import { activeRole, byReviewer, causeText, finishStatus, headlineKey, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
 
 // read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
 export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "completed_no_checks" | "stopped" | "failed" | "read_only";
-export type Role = "lead" | "executor";
+export type Role = "lead" | "executor" | "reviewer";
 export const QUIET_MS = 30_000;
 
 const tr = (locale: LocaleId, key: string, vars: Record<string, string | number> = {}): string =>
   Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, String(v)), t(locale, key as TranslationKey) ?? key);
-const who = (role: Role | "check"): string => (role === "lead" ? "Codex" : role === "executor" ? "Claude" : "");
+const who = (role: Role | "check"): string => (role === "lead" || role === "reviewer" ? "Codex" : role === "executor" ? "Claude" : "");
 // One line, bounded: full commands and output stay in the run's details.
 export const short = (s: string, max = 80): string => {
   const one = s.replace(/\s+/g, " ").trim();
@@ -71,7 +71,7 @@ function activeDoing(locale: LocaleId, view: OrchestrationRunView, titles: Statu
   if (a.kind === "check") return { actor: "check", doing: tr(locale, "orchNow_check", { stage: stage ? ` · ${stage}` : "" }), checking: true };
   if (a.kind === "prepare") return { actor: "prepare", doing: t(locale, "orchCanvasPrepare"), checking: false };
   if (a.kind === "finish") return { actor: "finish", doing: `${t(locale, "orchCanvasFinish")}: ${tr(locale, `orchFinishStep_${a.step}`)}`, checking: false };
-  const role: Role = a.purpose === "execute" ? "executor" : "lead";
+  const role = activeRole(view) as Role;
   return { actor: role, doing: tr(locale, `orchNow_${a.purpose}`, { who: who(role), stage }).trim(), checking: a.purpose === "review" || a.purpose === "final_review" };
 }
 
@@ -148,7 +148,7 @@ export function runStatus(locale: LocaleId, input: StatusInput): StatusLine {
   }
   let state: ActivityState = act.checking ? "checking" : "working";
   let nowText: string | null = null;
-  if (act.actor === "lead" || act.actor === "executor") {
+  if (act.actor === "lead" || act.actor === "executor" || act.actor === "reviewer") {
     const p = participantState(act.actor, view, entries, input.open);
     // starting: the new turn has no events of its own yet — the newest ones belong to the previous turn
     if (p.phase === "starting") state = "starting";
@@ -185,6 +185,13 @@ export function roleStatus(locale: LocaleId, role: Role, input: StatusInput): St
       ? tr(locale, "orchNow_doneAwaitReview", { who: who(role) })
       : tr(locale, "orchNow_doneTurn", { who: who(role) });
   return { ...base, state: "waiting_agent", doing, now: null, wait: act ? act.doing : t(locale, "orchNow_between"), quiet: null };
+}
+
+// Journal v2, A3 (journal-v2-format.md §2.8): "open blocking: N" — the one line the result, the cards and the activity
+// feed show; null when the lead reviews (no findings).
+export function findingsLine(locale: LocaleId, view: Pick<OrchestrationRunView, "progress">): string | null {
+  const f = view.progress?.findings;
+  return f ? tr(locale, "orchFindingsOpenBlocking", { n: f.openBlocking }) : null;
 }
 
 // Journal v2, A2 (journal-v2-format.md §2.7): "N of M conditions met" — the one line the result, the cards and the
@@ -336,26 +343,30 @@ export function summaryModel(view: OrchestrationRunView | null, records: readonl
         if (turn.purpose === "final_review") { if (finalRv) dropFinal("replaced"); out.finalReport = ref; }
         break;
       }
+      // A3: the reviewer's result has no verdict — the application decides the stage; the final review with request none
+      // is the run's "complete" (its findings are the Findings section's)
+      case "review.assessed":
       case "review.recorded": {
+        const verdict: string | null = r.type === "review.assessed" ? (d.request === "none" ? (typeof d.stage === "number" ? "assessed" : "complete") : d.request) : d.verdict ?? null;
         const report = (typeof d.turnId === "string" ? turnReports.get(d.turnId) : undefined) ?? lastReviewReport;
         const findings = isRef(d.findings) ? d.findings : null;
         if (typeof d.stage === "number") {
           const s = stageOf(d.stage);
-          s.verdict = d.verdict ?? null;
+          s.verdict = verdict;
           s.findings = findings;
           if (s.state !== "done") s.state = "not_done";
           if (finalRv) dropFinal("replaced"); // a stage reviewed after the final review: the newer word stands
           const list = reviewsOf.get(s) ?? [];
           for (const rv of list) if (rv.state === "current") rv.state = "replaced";
-          const rv: SummaryReview = { seq: r.seq, stage: d.stage, plan: s.plan, title: s.title, verdict: d.verdict ?? null, findings, report, state: "current" };
+          const rv: SummaryReview = { seq: r.seq, stage: d.stage, plan: s.plan, title: s.title, verdict, findings, report, state: "current" };
           list.push(rv);
           reviewsOf.set(s, list);
           reviews.push(rv);
         } else {
           if (finalRv) { finalRv.state = "replaced"; out.finalReport = report; }
-          out.finalVerdict = d.verdict ?? null;
+          out.finalVerdict = verdict;
           out.finalFindings = findings;
-          finalRv = { seq: r.seq, stage: null, plan: planVersion, title: null, verdict: d.verdict ?? null, findings, report, state: "final" };
+          finalRv = { seq: r.seq, stage: null, plan: planVersion, title: null, verdict, findings, report, state: "final" };
           reviews.push(finalRv);
         }
         break;
@@ -408,11 +419,12 @@ export function reportParts(text: string): ReportParts {
     if (k === "summary" && typeof x === "string") out.summary = x;
     else if (k === "done" && typeof x === "boolean") out.done = x;
     else if (k === "verdict" && typeof x === "string") out.verdict = x;
-    else if (k === "findings" && Array.isArray(x)) out.findings = x.map(str);
+    // A3: a reviewer's finding is said by its problem
+    else if (k === "findings" && Array.isArray(x)) out.findings = x.map((f) => (f && typeof f === "object" && "problem" in f ? str((f as { problem: unknown }).problem) : str(f)));
     else if (k === "question") out.question = str(x);
     else if (["next", "nextStep", "next_step", "nextSteps", "next_steps"].includes(k)) out.next = Array.isArray(x) ? x.map(str).join("\n") : str(x);
     // the plan's stages and the lead's marks of conditions and requirements are shown by their own sections (A2)
-    else if (!["stages", "conditions", "requirements", "dropped", "dropRequirements"].includes(k)) out.other.push([k, str(x)]);
+    else if (!["stages", "conditions", "requirements", "dropped", "dropRequirements", "request"].includes(k)) out.other.push([k, str(x)]);
   }
   return out;
 }
@@ -461,6 +473,7 @@ export interface ActivityRunRow {
   load: "loading" | "error" | "ready";
   line: StatusLine | null; // null while the run's state is not loaded
   conditions: string | null; // A2: conditionsLine
+  findings: string | null; // A3: findingsLine
   roles: { role: Role; line: StatusLine }[];
   ended: boolean;
   at: string | null; // the newest known event, for the order
@@ -490,14 +503,14 @@ export function activityRuns(locale: LocaleId, input: ActivityRunsInput, recentL
     const run = input.runs[runId];
     const base = { linkId: link.linkId, runId, project, projectPath };
     if (!run) {
-      rows.push({ ...base, load: input.runErrors[runId] ? "error" : "loading", line: null, conditions: null, roles: [], ended: false, at: null });
+      rows.push({ ...base, load: input.runErrors[runId] ? "error" : "loading", line: null, conditions: null, findings: null, roles: [], ended: false, at: null });
       continue;
     }
     const s: StatusInput = { view: run.view, entries: input.entries(runId), open: run.open, stageTitles: input.stageTitles(runId), now: input.now };
     const line = runStatus(locale, s);
     rows.push({
-      ...base, load: "ready", line, conditions: conditionsLine(locale, run.view), ended: TERMINAL_STATUSES.includes(run.view.status),
-      roles: (["lead", "executor"] as const).map((role) => ({ role, line: roleStatus(locale, role, s) })),
+      ...base, load: "ready", line, conditions: conditionsLine(locale, run.view), findings: findingsLine(locale, run.view), ended: TERMINAL_STATUSES.includes(run.view.status),
+      roles: (byReviewer(run.view) ? ["lead", "executor", "reviewer"] as const : ["lead", "executor"] as const).map((role) => ({ role, line: roleStatus(locale, role, s) })),
       at: [line.lastEventAt, input.lastRecordAt(runId)].filter((x): x is string => !!x).sort().at(-1) ?? null
     });
   }

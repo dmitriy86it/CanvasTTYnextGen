@@ -11,7 +11,11 @@
 //            saved unchanged, it runs in the person's shell and the run completes, confirmed.
 //   A2:      both plans state readiness conditions over the goal's criteria R1, R2 — the cards say «N из M условий
 //            выполнено», the result's «Условия» lists each requirement with its conditions, their status and evidence
-//            (the lead's review with the files, or the check run with its output).
+//            (the reviewer's marks with the files, or the check run with its output).
+//   A3:      the reviewer (Codex, a new session per review) opens a blocking finding and a wish; the executor fixes; a
+//            repeated review closes the blocking one on the changed tree — the cards and the result say «Открыто
+//            блокирующих: 0», the result's «Замечания» lists F1 closed with its history and F2 an open wish, the
+//            participants list the reviewer.
 // Needs `npm run build` first; macOS (Seatbelt). Starts no real model. Usage: node scripts/smoke-v2-checks-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
@@ -30,8 +34,11 @@ const expect = (ok, what, got) => { (ok ? passed : failures).push(ok ? what : `$
 const change = (text, covers) => ({ keep: null, text, covers, evidence: { kind: "change", check: null } });
 const byCheck = (text, covers, check) => ({ keep: null, text, covers, evidence: { kind: "check", check } });
 const plan = (conditions) => ({ report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant", conditions }], dropped: [], dropRequirements: [], question: null } });
-const review = (ids) => ({ report: { verdict: "accept", findings: [], question: null, conditions: ids.map((id) => ({ id, status: "met", paths: ["src/note.mjs"], note: "src/note.mjs exports note" })) } });
-const final = { report: { verdict: "complete", findings: [], question: null, requirements: ["R1", "R2"].map((id) => ({ id, status: "met", note: "done" })) } };
+// A3: the reviewer answers the reviews (journal-v2-format.md §2.8)
+const review = (ids, findings = []) => ({ report: { conditions: ids.map((id) => ({ id, status: "met", paths: ["src/note.mjs"], note: "src/note.mjs exports note" })), findings, request: "none", question: null } });
+const final = { report: { conditions: [], findings: [], request: "none", question: null, requirements: ["R1", "R2"].map((id) => ({ id, status: "met", note: "done" })) } };
+const finding = (over) => ({ id: null, severity: "blocking", condition: null, problem: "note is not documented", evidence: "src/note.mjs has no comment", closeWhen: "the note is explained",
+  status: "open", paths: ["src/note.mjs"], relation: null, ...over });
 const wrap = (p) => {
   const f = D(`${p}-mock`);
   if (!fs.existsSync(f)) fs.writeFileSync(f, `#!/bin/sh\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
@@ -41,13 +48,13 @@ const chip = (linkId) => q(`[data-agent-link-id="${linkId}"]`);
 const NO_CHECKS = "Завершён без проверок";
 
 // One scenario: its own user data, project, scripts and fake CLIs (MOCK_CHECKS, tests/fixtures/orchestration/mock-common.mjs).
-async function scenario(name, port, checks, conditions, body) {
+async function scenario(name, port, checks, conditions, body, scripts = null) {
   const dir = D(name);
   fs.mkdirSync(path.join(dir, "mock-state", ".codex"), { recursive: true });
   const projectA = project(`${name}-project`);
   const changes = conditions.map((c, i) => (c.evidence.kind === "change" ? `C${i + 1}` : null)).filter(Boolean);
-  const codexScript = script(`${name}-codex`, [plan(conditions), review(changes), final]);
-  const claudeScript = script(`${name}-claude`, [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] }]);
+  const codexScript = script(`${name}-codex`, scripts?.codex ?? [plan(conditions), review(changes), final]);
+  const claudeScript = script(`${name}-claude`, scripts?.claude ?? [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] }]);
   const env = (extra) => ({ HOME: path.join(dir, "mock-state"), MOCK_STATE: path.join(dir, "mock-state"), ...extra });
   const providers = path.join(dir, "providers.json");
   fs.writeFileSync(providers, JSON.stringify({
@@ -158,6 +165,38 @@ try {
     await app.ev(`${q('[data-condition-proof="run"]')}.open = true; ${q('[data-sum="conditions"]')}.scrollIntoView()`);
     await app.shot("v2-06-conditions-check-evidence");
     await app.shot("v2-05-completed-as-person-command");
+  });
+
+  // =============== A3: findings of the reviewer ===============
+  const C = [change("src/note.mjs exists", ["R1", "R2"])];
+  await scenario("findings", 9700 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "none" }, C, async (app, ids) => {
+    await startGoal(app, ids.link, { onDialog: () => app.type(q("[data-orch-commands]"), "") });
+    const runId = (await runs(app))[0].runId;
+    await app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.status === "completed")`, "completed", 120_000);
+    const cardLines = await app.ev(`[...document.querySelectorAll("[data-agent-findings]")].map((e) => e.textContent)`);
+    expect(cardLines.length === 2 && cardLines.every((c) => c === "Открыто блокирующих: 0"), "findings (A3): both cards say «Открыто блокирующих: 0»", cardLines);
+    await app.clickEl(`[...document.querySelectorAll('[data-agent-link-id="${ids.link}"] button')].find((b) => b.textContent.trim() === "Открыть запуск")`);
+    await app.waitFor(`${q(".orch-panel")} && true`, "the run panel");
+    await openTab(app, "summary");
+    await app.waitFor(`${q("[data-sum-findings-open]")} && true`, "«Замечания»");
+    const f = await app.ev(`({ line: ${q("[data-sum-findings-open]")}.textContent,
+      items: [...document.querySelectorAll("[data-finding]")].map((e) => [e.dataset.finding, e.dataset.findingSeverity, e.dataset.findingStatus].join(":")),
+      history: [...document.querySelectorAll('[data-finding="F1"] [data-finding-event]')].map((e) => e.dataset.findingEvent + ":" + (e.dataset.findingTree.length === 40) + ":" + /состояние [0-9a-f]{12}/.test(e.textContent)) })`);
+    expect(f.line === "Открыто блокирующих: 0" && f.items.join() === "F1:blocking:closed,F2:wish:open" && f.history.join() === "opened:true:true,closed:true:true",
+      "findings (A3): «Замечания» — F1 closed with its history (opened, closed, each on its tree), F2 an open wish", f);
+    const words = await app.ev(`({ stages: ${q("[data-sum-stage-count]")}?.textContent ?? null, text: ${q(".orch-summary-view")}.textContent })`);
+    expect(words.stages === "1 из 1 приняты" && words.text.includes("Заключение проверяющего") && !/лидом|Заключение лида/.test(words.text),
+      "findings (A3): the result names the reviewer, not the lead, as the one who reviews", words.stages);
+    await app.ev(`document.querySelectorAll("[data-finding-history]").forEach((d) => { d.open = true; }); ${q('[data-sum="findings"]')}?.scrollIntoView()`);
+    await app.shot("v2-07-findings");
+    await openTab(app, "overview");
+    const people = await app.ev(`[...document.querySelectorAll("[data-participant]")].map((e) => e.dataset.participant + ":" + e.querySelector("strong").textContent)`);
+    expect(people.join() === "lead:Codex · Лид,executor:Claude · Исполнитель,reviewer:Codex · Проверяющий", "findings (A3): the reviewer is its own participant", people);
+  }, {
+    codex: [plan(C), review(["C1"], [finding(), finding({ severity: "wish", paths: [], problem: "name the constant better" })]),
+      review(["C1"], [finding({ id: "F1", status: "closed", paths: ["src/note.md"] }), finding({ id: "F2", severity: "wish", paths: [], problem: "name the constant better" })]), final],
+    claude: [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] },
+      { report: { summary: "documented", done: true }, writes: [["src/note.md", "The note.\n"]] }]
   });
 } catch (error) {
   failures.push(`exception: ${error?.stack ?? error}`);
