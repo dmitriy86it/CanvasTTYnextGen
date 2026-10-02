@@ -201,8 +201,8 @@ export interface OrchTurnData {
   planVersion: number | null; clarificationVersion: number;
 }
 export interface PlanRecordedData { turnId: string; version: number; plan: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number }
-// conditionsAssigned null: a plan of A1's form (no conditions; journal-v2-format.md §2.7)
-export interface PlanState { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; conditionsAssigned: number | null; seq: number }
+// conditionsAssigned absent: a plan of A1's form or of v1 (no conditions; journal-v2-format.md §2.7)
+export interface PlanState { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number; seq: number }
 export interface ReviewRecordedData {
   turnId: string; stage: number | null; verdict: ReviewVerdict; findings: TextRef | null; findingsKey: string;
   findingsCount: number; clarificationVersion: number; runKey: string;
@@ -787,11 +787,11 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (d.version !== (o.plan?.version ?? 0) + 1) conflict(`plan version ${String(d.version)} out of order`);
       if (d.firstStage !== Object.keys(o.accepted).length + 1) conflict("plan firstStage is not the next stage");
       // A2 (journal-v2-format.md §2.7): once a plan has conditions, a plan without them would drop them unseen
-      if (o.plans.some((x) => x.conditionsAssigned !== null) && d.conditionsAssigned === undefined) conflict("a plan without conditions after a plan with them");
+      if (o.plans.some((x) => x.conditionsAssigned !== undefined) && d.conditionsAssigned === undefined) conflict("a plan without conditions after a plan with them");
       o.plan = {
         version: d.version as number, turnId: d.turnId as string, ref: d.plan as TextRef,
         firstStage: d.firstStage as number, stageCount: d.stageCount as number,
-        conditionsAssigned: d.conditionsAssigned === undefined ? null : d.conditionsAssigned as number, seq: rec.seq
+        ...(d.conditionsAssigned === undefined ? {} : { conditionsAssigned: d.conditionsAssigned as number }), seq: rec.seq
       };
       o.plans.push(o.plan);
       break;
@@ -1094,15 +1094,15 @@ function conditionsConflict(state: RunState, t: V2Texts, commands: number): stri
   for (const [i, p] of o.plans.entries()) {
     const text = plans[i];
     // a plan without conditionsAssigned has no conditions: applyPlan below refuses any it numbers
-    if (p.conditionsAssigned !== null) {
+    if (p.conditionsAssigned !== undefined) {
       if (text.stages.some((s) => !s.conditions)) return `plan v${p.version}: a stage without conditions`;
       const stages = text.stages.map((s) => ({ conditions: s.conditions!.map((c) => ("keep" in c ? { keep: c.keep } : { text: c.text, covers: c.covers, evidence: c.evidence })) }));
       const problems = planProblems(stages, { dropped: text.dropped ?? [], dropRequirements: text.dropRequirements ?? [] }, book, p.firstStage, criteria, checkIds);
       if (problems.length) return `plan v${p.version}: ${problems[0]}`;
     }
-    try { applyPlan(book, { firstStage: p.firstStage, text, conditionsAssigned: p.conditionsAssigned }); } catch (e) { return `plan v${p.version}: ${(e as Error).message}`; }
+    try { applyPlan(book, { firstStage: p.firstStage, text, conditionsAssigned: p.conditionsAssigned ?? null }); } catch (e) { return `plan v${p.version}: ${(e as Error).message}`; }
   }
-  if (!o.plans.some((p) => p.conditionsAssigned !== null)) return null;
+  if (!o.plans.some((p) => p.conditionsAssigned !== undefined)) return null;
   const marksOf = (turnId: string): ConditionMark[] => {
     const c = (t.reports?.[turnId] as { conditions?: unknown } | undefined)?.conditions;
     return Array.isArray(c) ? c as ConditionMark[] : [];

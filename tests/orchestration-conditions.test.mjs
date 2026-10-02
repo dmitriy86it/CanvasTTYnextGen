@@ -418,7 +418,7 @@ test("no_checks (A1) with conditions; a journal of A1's plan form (no conditions
     return r;
   }));
   const r = await readRun(m.root, runId);
-  assert.deepEqual([r.integrity.status, r.state.orch.plans[0].conditionsAssigned], ["ok", null]);
+  assert.deepEqual([r.integrity.status, r.state.orch.plans[0].conditionsAssigned], ["ok", undefined]);
   const m2 = manager({}, { root: m.root });
   const v2 = (await m2.get(runId)).value.view;
   assert.deepEqual([v2.status, v2.progress.completion, v2.progress.conditions], ["completed", "no_checks", null], "no conditions shown for a plan of A1's form");

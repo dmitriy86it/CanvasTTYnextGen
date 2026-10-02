@@ -2160,7 +2160,7 @@ export interface ConditionTexts { book: ConditionsBook; reports: Record<string, 
 // The plans' conditions and the lead's review answers of a run, from its texts (the same reading as the store's check).
 export async function loadConditions(st: RunState, read: ReadJson): Promise<ConditionTexts> {
   const t = await conditionTexts(st, read);
-  return { book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned }))), reports: t.reports! };
+  return { book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned ?? null }))), reports: t.reports! };
 }
 const marksIn = (reports: Record<string, unknown>, turnId: string | null): ConditionMark[] => {
   const c = turnId ? (reports[turnId] as { conditions?: unknown } | undefined)?.conditions : undefined;
