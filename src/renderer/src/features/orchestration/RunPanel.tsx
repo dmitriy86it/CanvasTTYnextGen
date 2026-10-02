@@ -688,7 +688,7 @@ function Findings({ f, locale }: { f: OrchestrationFindings; locale: LocaleId })
         <summary>{t(locale, "orchFindingHistory")}</summary>
         <ol>{x.history.map((h) => (
           <li key={`${h.kind}:${h.reviewTurnId}`} data-finding-event={h.kind} data-finding-review={h.reviewTurnId} data-finding-tree={h.tree}>
-            {fill(t(locale, `orchFindingHist_${h.kind}`), { turn: h.reviewTurnId.slice(0, 8) })} · <code>{fill(t(locale, "orchFindingTree"), { tree: h.tree.slice(0, 12) })}</code>
+            {fill(t(locale, `orchFindingHist_${h.kind}`), { turn: h.reviewTurnId.slice(0, 8) })} · <code>{fill(t(locale, "orchFindingTree"), { tree: h.tree.slice(0, 12) })} · {fill(t(locale, "orchFindingState"), { key: h.runKey.slice(0, 12) })}</code>
             {h.reason && <> — {t(locale, `orchFindingRefused_${h.reason}` as TranslationKey)}</>}
           </li>
         ))}</ol>
@@ -704,7 +704,7 @@ function Findings({ f, locale }: { f: OrchestrationFindings; locale: LocaleId })
       {f.items.length === 0 && <p>{t(locale, "orchFindingsNone")}</p>}
       {blocking.length > 0 && <ul className="orch-sum__findings" data-findings="blocking">{blocking.map(item)}</ul>}
       {f.disputed.length > 0 && <><b>{t(locale, "orchFindingsDisputed")}</b><ul data-findings="disputed">{f.disputed.map((d) => (
-        <li key={`${d.reviewTurnId}:${d.problem}`}>{d.problem} · <span className="orch-hint">{d.candidates.join(", ")}</span></li>
+        <li key={`${d.reviewTurnId}:${d.index}`}>{d.problem} · <span className="orch-hint">{d.candidates.join(", ")}</span></li>
       ))}</ul></>}
       {wishes.length > 0 && <><b>{t(locale, "orchFindingsWishes")}</b><ul className="orch-sum__findings" data-findings="wish">{wishes.map(item)}</ul></>}
     </Section>

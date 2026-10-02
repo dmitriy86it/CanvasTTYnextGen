@@ -125,8 +125,12 @@ export function planReview(book: FindingsBook, findings: readonly ReportFinding[
     if (candidates.length === 0) { open(null); continue; }
     const r = relationOf(f.relation);
     const exhausted = candidates.some((id) => book.list.get(id)!.distinctCount >= 1);
-    if (r?.repeatOf && candidates.includes(r.repeatOf)) {
+    // a candidate whose one distinctFrom is spent: disputed, whatever the relation says (5h §3.4 p. 3–4)
+    if (!exhausted && r?.repeatOf && candidates.includes(r.repeatOf)) {
       const target = book.list.get(r.repeatOf)!;
+      // one finding is named once per report: by its id, or as the repeat of one new finding
+      if (seen.has(target.id)) { problems.push(`findings[${index}]: ${target.id} is named twice`); continue; }
+      seen.add(target.id);
       if (reopenable(target) === null) applied.reopened.push({ id: target.id, index });
       else applied.refused.push({ index, finding: target.id, reason: "declared_repeat" });
       continue;
@@ -135,12 +139,14 @@ export function planReview(book: FindingsBook, findings: readonly ReportFinding[
     applied.disputed.push({ index, candidates });
   }
   applied.nextFinding = next;
-  return { problems, applied };
+  return { problems, applied: problems.length ? { opened: [], closed: [], reopened: [], refused: [], disputed: [], unchanged: [], nextFinding: book.next } : applied };
 }
 
 // The applied text against the report and the findings before it: the structure 5h §3.10 checks on replay (the second
 // stage). null: consistent.
-export function appliedProblem(book: FindingsBook, applied: Applied, findings: readonly ReportFinding[], conditionsMet: readonly string[]): string | null {
+// ctx: the review's stage and runKey (the paths changed between trees are the live rule's; replay has no trees).
+export function appliedProblem(book: FindingsBook, applied: Applied, findings: readonly ReportFinding[], conditionsMet: readonly string[],
+  ctx: { stage: number | null; runKey: string }): string | null {
   const indexes = [...applied.opened, ...applied.closed, ...applied.reopened, ...applied.refused, ...applied.disputed, ...applied.unchanged].map((x) => x.index);
   if (indexes.length !== findings.length || new Set(indexes).size !== findings.length || indexes.some((i) => !Number.isInteger(i) || i < 0 || i >= findings.length)) {
     return "not every finding of the report is accounted for exactly once";
@@ -150,7 +156,17 @@ export function appliedProblem(book: FindingsBook, applied: Applied, findings: r
     if (o.id !== fid(next++)) return `${o.id} is not the next finding number`;
     const f = findings[o.index];
     if (f.id !== null || f.severity !== o.severity || JSON.stringify(f.paths) !== JSON.stringify(o.paths)) return `${o.id} is not the report's finding ${o.index}`;
+    if (o.stage !== ctx.stage || (o.condition !== null && o.condition !== f.condition)) return `${o.id} is not bound as the review opened it`;
   }
+  for (const f of findings) {
+    const known = f.id === null ? null : book.list.get(f.id);
+    if (f.id !== null && (!known || known.severity !== f.severity || known.condition !== f.condition)) return `${f.id} changed its severity or condition, or is not a finding`;
+    if (known && known.severity === "blocking" && known.status === "open" && f.status === "closed" && (f.paths.length === 0 || ctx.runKey === known.openRunKey)) {
+      return `${f.id} is closed on the state it was opened on, or without paths`;
+    }
+  }
+  const ids = [...applied.closed, ...applied.reopened, ...applied.unchanged].map((x) => x.id);
+  if (new Set(ids).size !== ids.length) return "a finding is named twice";
   if (applied.nextFinding !== next) return "nextFinding does not follow the opened findings";
   const state = (id: string) => book.list.get(id)?.status ?? null;
   for (const c of applied.closed) if (state(c.id) !== "open" || findings[c.index].id !== c.id || findings[c.index].status !== "closed") return `${c.id} is not an open finding the report closes`;
@@ -196,12 +212,14 @@ export function applyApplied(book: FindingsBook, applied: Applied, findings: rea
 }
 
 // The stage that owns an open finding now (5h §3.4 «Привязка к этапу»): a bound one, the stage of its condition in the
-// plans in force (an accepted one: none until the next plan); an unbound one, the stage it was opened on unless a later
-// plan replaced that stage — then the first stage of that plan. null: no unaccepted stage owns it yet (the next action
-// is a plan turn).
+// plans in force while that stage is not accepted; otherwise (unbound, or its condition's stage accepted) the stage it
+// was opened on (or opened again) while that one is not accepted and no later plan replaced it — then the first
+// unaccepted stage of that plan. null: no unaccepted stage owns it yet (the next action is a plan turn). An open blocking
+// finding never stays with an accepted stage (its own stage is not accepted while it is open; one opened again is the
+// reviewing stage's): it always reaches an executor.
 export function ownerOf(f: Finding, plans: { stages: ReadonlyMap<number, readonly string[]>; accepted: number; recorded: readonly { firstStage: number; seq: number }[] }): number | null {
   if (f.condition !== null) {
-    for (const [s, ids] of plans.stages) if (ids.includes(f.condition)) return s > plans.accepted ? s : null;
+    for (const [s, ids] of plans.stages) if (ids.includes(f.condition) && s > plans.accepted) return s;
   }
   const later = plans.recorded.find((p) => p.seq > f.ownedSince);
   if (f.stage !== null && (!later || later.firstStage > f.stage)) return f.stage;
@@ -257,7 +275,8 @@ export function replayFindings(state: RunState, t: FindingsTexts): FindingsRepla
       if (!applied || !report) return `the texts of review ${r.turnId} are missing`;
       if (applied.report?.sha256 !== r.assessed!.report.sha256) return `the applied text of review ${r.turnId} is about another report`;
       const findings = reportFindings(report);
-      const why = appliedProblem(book, applied, findings, metIn(report));
+      if ((report as { request?: unknown }).request !== r.assessed!.request) return `review ${r.turnId}: the request is not the report's`;
+      const why = appliedProblem(book, applied, findings, metIn(report), { stage: r.stage, runKey: r.runKey });
       if (why) return `review ${r.turnId}: ${why}`;
       applyApplied(book, applied, findings, { turnId: r.turnId, seq: r.seq, runKey: r.runKey, tree: o.turns[r.turnId]?.tree ?? "", stage: r.stage });
       openAfter.set(r.turnId, openBlocking(book).filter((f) => ownerOf(f, owners()) === r.stage).map((f) => f.id).sort());

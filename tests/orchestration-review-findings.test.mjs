@@ -152,6 +152,12 @@ test("numbering: new findings take the next numbers and keep them; naming a numb
   assert.match(planReview(book, [finding({ id: "F3" })], ctx("t2", "k2")).problems.join(), /F3 is not a finding of this run/);
   assert.match(planReview(book, [finding({ id: "F2", severity: "blocking", paths: [] })], ctx("t2", "k2")).problems.join(), /severity cannot change/);
   assert.match(planReview(book, [finding({ id: "F1" }), finding({ id: "F1" })], ctx("t2", "k2")).problems.join(), /named twice/);
+  // by its id and as the repeat of a new one in the same report: named twice as well
+  const closed = [finding({ id: "F1", status: "closed", paths: ["b.txt"] })];
+  applyApplied(book, { ...planReview(book, closed, ctx("t2", "k2")).applied, report: { sha256: "0".repeat(64), bytes: 1 }, conditionsMet: [] }, closed, ctx("t2", "k2"));
+  const twice = [finding({ id: "F1", paths: ["a.txt"] }), finding({ paths: ["a.txt"], relation: { repeatOf: "F1", distinctFrom: null, why: null } })];
+  const sameTree = { ...ctx("t2", "k3"), changedSince: () => new Set() };
+  assert.match(planReview(book, twice, sameTree).problems.join(), /F1 is named twice/);
   assert.match(planReview(book, [finding({ paths: [] })], ctx("t2", "k2")).problems.join(), /new blocking finding names its paths/);
 });
 
@@ -182,14 +188,15 @@ test("a possible repeat: a new blocking finding on the unchanged files of a clos
   };
   step([finding()], []);
   step([finding({ id: "F1", status: "closed", paths: ["a.txt"] })], ["a.txt"]);
+  // declared a repeat on unchanged files: refused (no new evidence)
+  assert.deepEqual(step([finding({ relation: { repeatOf: "F1", distinctFrom: null, why: null } })], []).refused.map((x) => x.reason), ["declared_repeat"]);
   assert.deepEqual(step([finding({ problem: "again" })], []).disputed, [{ index: 0, candidates: ["F1"] }]);
   assert.equal(book.disputed.length, 1);
   const relation = { repeatOf: null, distinctFrom: "F1", why: "another problem" };
   assert.deepEqual(step([finding({ problem: "other", relation })], []).opened.map((o) => [o.id, o.possibleRepeatOf]), [["F2", "F1"]]);
-  // one distinctFrom per closed finding on its unchanged files: the next one is disputed again
+  // one distinctFrom per closed finding on its unchanged files: then any new one on them is disputed, whatever its relation
   assert.equal(step([finding({ problem: "third", relation })], []).disputed.length, 1);
-  // declared a repeat on unchanged files: refused (no new evidence)
-  assert.deepEqual(step([finding({ relation: { repeatOf: "F1", distinctFrom: null, why: null } })], []).refused.map((x) => x.reason), ["declared_repeat"]);
+  assert.equal(step([finding({ relation: { repeatOf: "F1", distinctFrom: null, why: null } })], []).disputed.length, 1);
 });
 
 // ---------------- a run ----------------
@@ -320,6 +327,20 @@ test("replay: a stage accepted or a run completed with an open blocking finding 
   assert.deepEqual(await outcome(openAtEnd), ["corrupt", "texts", false], "completed with F2 open");
   // the same without the completion (the journal before run.status completed): it may go on
   assert.deepEqual(await outcome((r) => openAtEnd(r).filter((x) => !(x.type === "run.status" && x.data.status === "completed"))), ["ok", null, true]);
+  // the closing report forged against the live rules: closed without paths, its severity changed, on the opening state,
+  // a request other than recorded, an opened finding of another stage
+  const closingApplied = appliedOf(closing);
+  const closeWith = (over) => forge(closing.turnId, review([finding({ id: "F1", status: "closed", paths: ["b.txt"], ...over })]).answer, closingApplied);
+  assert.deepEqual(await outcome(closeWith({ paths: [] })), ["corrupt", "texts", false], "closed without paths");
+  assert.deepEqual(await outcome(closeWith({ severity: "wish" })), ["corrupt", "texts", false], "severity changed");
+  const opening = all.find((r) => r.type === "review.assessed").data;
+  assert.deepEqual(await outcome((r) => { for (const x of r) if (x.type === "review.assessed" && x.data.turnId === closing.turnId) x.data.runKey = opening.runKey; return r; }),
+    ["corrupt", "texts", false], "closed on the opening state");
+  assert.deepEqual(await outcome(forge(closing.turnId, review([finding({ id: "F1", status: "closed", paths: ["b.txt"] })], met("a.txt"), "replan").answer, closingApplied)),
+    ["corrupt", "texts", false], "request replan recorded as none");
+  const openingApplied = appliedOf(opening);
+  assert.deepEqual(await outcome(forge(opening.turnId, review([finding()]).answer, { ...openingApplied, opened: openingApplied.opened.map((o) => ({ ...o, stage: 99 })) })),
+    ["corrupt", "texts", false], "opened for another stage");
   // renumbered in the applied text, or a result for a turn that is not the last
   assert.deepEqual(await outcome(forge(closing.turnId, review([finding({ id: "F1", status: "closed", paths: ["b.txt"] })]).answer, { ...appliedOf(closing), nextFinding: 5 })), ["corrupt", "texts", false]);
   const moved = (recs) => { const i = recs.findIndex((x) => x.type === "review.assessed"); const [x] = recs.splice(i, 1); recs.splice(recs.length - 2, 0, x); return recs; };
@@ -354,7 +375,46 @@ test("the final review opens a blocking finding: the run is not completed — a 
   const v = await settled(m, runId); // the plan turn has no scripted answer: it fails, and the run pauses
   assert.equal(v.status, "paused");
   assert.equal(v.progress.findings.openBlocking, 1);
-  assert.deepEqual(turnsOf(await records(m, runId)), ["plan", "execute", "review", "final_review", "plan"]);
+  const all = await records(m, runId);
+  assert.deepEqual(turnsOf(all), ["plan", "execute", "review", "final_review", "plan"]);
+  const planTask = textOf(m, runId, all.filter((r) => r.type === "turn.intent").at(-1).data.task);
+  assert.ok(planTask.includes("Why a new plan is needed: the reviewer's last review of plan v1 (the final review) left the goal unmet.") && planTask.includes("b.txt is stale"), planTask);
+  await m.shutdown();
+});
+
+test("a blocking finding bound to a condition of an accepted stage reaches the next plan's executor; its stage is not accepted while it is open", OPTS, async () => {
+  const src = project({ "a.txt": "1\n", "b.txt": "1\n", "c.txt": "1\n" });
+  const C2 = { keep: null, text: "b.txt says 2", covers: ["R1"], evidence: { kind: "change", check: null } };
+  const PLAN2 = { answer: { stages: [{ title: "b", task: "make b.txt say 2", conditions: [C2] }], dropped: [], dropRequirements: [], question: null } };
+  const m = manager({ MOCK_SCRIPT: script([
+    PLAN, exec({ "a.txt": "2\n" }), review([]),
+    final([finding({ condition: "C1", problem: "C1-IS-WRONG" })]), // bound to C1, whose stage 1 is accepted
+    PLAN2, exec({ "b.txt": "2\n" }, "first try"), review([], [{ id: "C2", status: "met", paths: ["b.txt"], note: "C2" }]),
+    exec({ "c.txt": "2\n" }), review([finding({ id: "F1", condition: "C1", status: "closed", paths: ["c.txt"] })], [{ id: "C2", status: "met", paths: ["b.txt"], note: "C2" }]),
+    final()
+  ]) });
+  const runId = await start(m, src);
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify(v));
+  const all = await records(m, runId);
+  assert.deepEqual(turnsOf(all), ["plan", "execute", "review", "final_review", "plan", "execute", "review", "execute", "review", "final_review"]);
+  const execs = tasksOf(m, runId, all, "executor");
+  assert.ok(execs[1].includes("C1-IS-WRONG") && execs[2].includes("C1-IS-WRONG"), execs[1]);
+  assert.equal(all.filter((r) => r.type === "stage.accepted").length, 2);
+  await m.shutdown();
+});
+
+test("discarded reviews count only in a row: a review applied between two discards starts the count again", OPTS, async () => {
+  const src = project({ "a.txt": "1\n", "b.txt": "1\n", "c.txt": "1\n" });
+  const touching = (r, text) => ({ ...r, writes: writes({ "c.txt": text }) });
+  const m = manager({ MOCK_SCRIPT: script([
+    PLAN, exec({ "a.txt": "2\n" }), touching(review([]), "x\n"), review([finding()]), exec({ "b.txt": "2\n" }),
+    touching(review([]), "y\n"), review([finding({ id: "F1", status: "closed", paths: ["b.txt"] })]), final()
+  ]) });
+  const runId = await start(m, src);
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify([v.status, v.reason]));
+  assert.equal((await records(m, runId)).filter((r) => r.type === "review.discarded").length, 2);
   await m.shutdown();
 });
 
@@ -372,6 +432,7 @@ test("a disputed finding: the run waits for the person (A4 decides) — only Sto
   const all = await records(m, runId);
   assert.deepEqual([all.some((r) => r.type === "stage.accepted"), v.progress.completion], [true, null]);
   assert.equal((await m.command(runId, { commandId: randomUUID(), expectedRevision: v.revision, command: { kind: "resume" } })).value?.status, "rejected");
+  assert.equal((await m.command(runId, { commandId: randomUUID(), expectedRevision: v.revision, command: { kind: "clarify", text: "go on" } })).value?.status, "rejected");
   await m.shutdown();
 });
 

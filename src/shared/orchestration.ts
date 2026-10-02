@@ -255,7 +255,7 @@ export interface OrchestrationFindings {
     problem: string; evidence: string; closeWhen: string; paths: string[]; possibleRepeatOf: string | null;
     history: { kind: "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged"; reviewTurnId: string; runKey: string; tree: string; reason: string | null }[];
   }[];
-  disputed: { reviewTurnId: string; problem: string; candidates: string[] }[]; // waiting for the person (A4 decides)
+  disputed: { reviewTurnId: string; index: number; problem: string; candidates: string[] }[]; // waiting for the person (A4 decides)
   openBlocking: number;
 }
 

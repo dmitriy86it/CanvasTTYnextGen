@@ -181,8 +181,8 @@ try {
     await app.waitFor(`${q("[data-sum-findings-open]")} && true`, "«Замечания»");
     const f = await app.ev(`({ line: ${q("[data-sum-findings-open]")}.textContent,
       items: [...document.querySelectorAll("[data-finding]")].map((e) => [e.dataset.finding, e.dataset.findingSeverity, e.dataset.findingStatus].join(":")),
-      history: [...document.querySelectorAll('[data-finding="F1"] [data-finding-event]')].map((e) => e.dataset.findingEvent + ":" + (e.dataset.findingTree.length === 40)) })`);
-    expect(f.line === "Открыто блокирующих: 0" && f.items.join() === "F1:blocking:closed,F2:wish:open" && f.history.join() === "opened:true,closed:true",
+      history: [...document.querySelectorAll('[data-finding="F1"] [data-finding-event]')].map((e) => e.dataset.findingEvent + ":" + (e.dataset.findingTree.length === 40) + ":" + /состояние [0-9a-f]{12}/.test(e.textContent)) })`);
+    expect(f.line === "Открыто блокирующих: 0" && f.items.join() === "F1:blocking:closed,F2:wish:open" && f.history.join() === "opened:true:true,closed:true:true",
       "findings (A3): «Замечания» — F1 closed with its history (opened, closed, each on its tree), F2 an open wish", f);
     const words = await app.ev(`({ stages: ${q("[data-sum-stage-count]")}?.textContent ?? null, text: ${q(".orch-summary-view")}.textContent })`);
     expect(words.stages === "1 из 1 приняты" && words.text.includes("Заключение проверяющего") && !/лидом|Заключение лида/.test(words.text),

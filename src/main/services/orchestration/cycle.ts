@@ -118,12 +118,16 @@ function decide(input: CycleInput): Action {
 
   const turn = (purpose: TurnPurpose, stage: number | null, round: number | null): Action => {
     // A3 (5h §3.1.1): one automatic retry after a discarded review of a key; then — and after each turn the person
-    // allowed — the person decides
+    // allowed — the person decides. Only the discards in a row count: a reviewer's turn of the key that was not
+    // discarded (applied, or ended otherwise) starts the count again.
     if (input.findings && (purpose === "review" || purpose === "final_review")) {
       const key = reviewKey({ planVersion: orch.plan?.version ?? null, purpose, stage });
-      const permit = Math.max(-1, ...orch.reviewPermits.filter((x) => x.key === key).map((x) => x.seq));
-      const dropped = Object.entries(orch.discarded).filter(([id, d]) => d.seq > permit && orch.turns[id] && reviewKey(orch.turns[id]) === key).length;
-      if (dropped >= (permit >= 0 ? 1 : 2)) return pause("tree_changed_during_review", key);
+      const ofKey = Object.keys(orch.turns).filter((id) => state.turns[id]?.role === "reviewer" && reviewKey(orch.turns[id]) === key);
+      const kept = Math.max(-1, ...ofKey.filter((id) => !Object.hasOwn(orch.discarded, id)).map((id) => orch.turns[id].seq));
+      const permit = Math.max(kept, ...orch.reviewPermits.filter((x) => x.key === key).map((x) => x.seq));
+      const permitted = orch.reviewPermits.some((x) => x.key === key && x.seq === permit);
+      const dropped = ofKey.filter((id) => Object.hasOwn(orch.discarded, id) && orch.turns[id].seq > permit).length;
+      if (dropped >= (permitted ? 1 : 2)) return pause("tree_changed_during_review", key);
     }
     return { kind: "turn", purpose, stage, round };
   };

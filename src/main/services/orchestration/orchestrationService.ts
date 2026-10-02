@@ -1754,6 +1754,11 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       const findings = findingsOf(lastReview);
       if (findings) parts.push(`Findings of the last review (verdict ${lastReview.verdict}):\n${findings}`);
     }
+    // A3: the reviewer's request says why (its open blocking findings come with findingLines)
+    if (isReplan && lastReview?.assessed) {
+      parts.push(`Why a new plan is needed: the reviewer's last review of plan v${st.orch.plan!.version}`
+        + `${lastReview.stage === null ? " (the final review)" : ` (stage ${lastReview.stage})`} ${lastReview.assessed.request === "replan" ? "asked for a new plan" : "left the goal unmet"}.`);
+    }
     if (isReplan && lastReview && !lastReview.assessed) {
       parts.push(`Why a new plan is needed: the last review of plan v${st.orch.plan!.version} returned ${lastReview.verdict}` +
         `${lastReview.stage === null ? " in the final review" : ` on stage ${lastReview.stage}`}.` +
@@ -2057,7 +2062,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       case "clarify": {
         // on the person's decisions of journal v2 only that decision and Stop (journal-v2-format.md §2.1)
-        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions"].includes(reason)) return reject("invalid_state");
+        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions", "awaiting_person_decision"].includes(reason)) return reject("invalid_state");
         if (typeof cmd.text !== "string" || cmd.text.trim() === "" || cmd.text.length > 8000) return reject("invalid_command");
         const ref = await j(() => writer.putText(cmd.text));
         await j(() => writer.recordClarification({ version: st.orch.clarifications + 1, commandId, text: ref }));
@@ -2344,7 +2349,7 @@ export function findingsView(st: RunState, c: ConditionTexts | null): Orchestrat
       problem: f.problem, evidence: f.evidence, closeWhen: f.closeWhen, paths: f.paths, possibleRepeatOf: f.possibleRepeatOf,
       history: f.history.map((h) => ({ kind: h.kind, reviewTurnId: h.turnId, runKey: h.runKey, tree: h.tree, reason: h.reason ?? null }))
     })),
-    disputed: book.disputed.map((d) => ({ reviewTurnId: d.turnId, problem: d.problem, candidates: d.candidates })),
+    disputed: book.disputed.map((d) => ({ reviewTurnId: d.turnId, index: d.index, problem: d.problem, candidates: d.candidates })),
     openBlocking: openBlocking(book).length
   };
 }
