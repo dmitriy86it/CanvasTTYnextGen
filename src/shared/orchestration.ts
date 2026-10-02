@@ -124,7 +124,7 @@ export type OrchestrationRunCommand =
   // person's push/QA decision of a run completed without checks, for the tree and commit shown in the dialog
   | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
   | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
-  | { kind: "check.amend"; checkId: string; line?: string }
+  | { kind: "check.amend"; checkId: string; line: string }
   | {
     kind: "permission"; requestId: string; decision: OrchestrationPermissionOption; answers?: Record<string, string[]>;
     content?: Record<string, unknown>; // an MCP form's values (accept)

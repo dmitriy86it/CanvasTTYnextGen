@@ -1157,7 +1157,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
             )}
             {has("check_amend") && view.refused && (
               <CheckRefused key={view.revision} locale={locale} refused={view.refused} sending={sending || off("check_amend")}
-                onAmend={(line) => void send("check_amend", { checkId: view.refused!.checkId, ...(line !== null ? { line } : {}) })} />
+                onAmend={(line) => void send("check_amend", { checkId: view.refused!.checkId, line })} />
             )}
             {has("finish_confirm") && view.confirm && (
               <FinishConfirm key={view.revision} locale={locale} confirm={view.confirm} sending={sending || off("finish_confirm")}
@@ -1406,7 +1406,7 @@ function ChecksDecision({ locale, proposal, sending, onDecide }: {
 // A1.1 (§2.6): a lead's check the sandbox refused — run it without the sandbox, or change it (the person's command
 // runs without the sandbox too). Never the autopilot's: only these two buttons and Stop.
 function CheckRefused({ locale, refused, sending, onAmend }: {
-  locale: LocaleId; refused: NonNullable<OrchestrationRunView["refused"]>; sending: boolean; onAmend(line: string | null): void;
+  locale: LocaleId; refused: NonNullable<OrchestrationRunView["refused"]>; sending: boolean; onAmend(line: string): void;
 }): React.JSX.Element {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(refused.command);
@@ -1415,15 +1415,13 @@ function CheckRefused({ locale, refused, sending, onAmend }: {
       <h4>{t(locale, "orchCheckRefusedTitle")}</h4>
       <p><code>{refused.command}</code></p>
       <p className="orch-hint">{t(locale, "orchCheckRefusedText")}</p>
-      {editing
-        ? <label className="orch-field">
-          <input type="text" value={text} onChange={(e) => setText(e.target.value)} data-orch-check-refused-line />
-          <small className="orch-hint">{t(locale, "orchCheckRefusedEditHint")}</small>
-        </label>
-        : <p className="orch-hint">{t(locale, "orchCheckRefusedUnsandboxHint")}</p>}
+      {/* the whole command, never shortened; saving it unchanged is the person's decision too (S1-4) */}
+      {editing && <label className="orch-field">
+        <textarea rows={Math.min(8, refused.command.split("\n").length + 2)} value={text} onChange={(e) => setText(e.target.value)} data-orch-check-refused-line />
+        <small className="orch-hint">{t(locale, "orchCheckRefusedEditHint")}</small>
+      </label>}
       <div className="orch-panel__row">
-        {!editing && <button type="button" className="orch-primary" disabled={sending} data-orch-check-unsandbox onClick={() => onAmend(null)}>{t(locale, "orchCheckRefusedUnsandbox")}</button>}
-        {!editing && <button type="button" disabled={sending} data-orch-check-edit-open onClick={() => setEditing(true)}>{t(locale, "orchCheckRefusedEdit")}</button>}
+        {!editing && <button type="button" className="orch-primary" disabled={sending} data-orch-check-edit-open onClick={() => setEditing(true)}>{t(locale, "orchCheckRefusedEdit")}</button>}
         {editing && <button type="button" className="orch-primary" disabled={sending || text.trim() === ""} data-orch-check-edit-save onClick={() => onAmend(text.trim())}>{t(locale, "orchCheckRefusedSave")}</button>}
       </div>
     </div>

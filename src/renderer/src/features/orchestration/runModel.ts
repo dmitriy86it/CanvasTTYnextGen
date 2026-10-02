@@ -23,7 +23,7 @@ export const TERMINAL_STATUSES = ["stopped", "completed", "failed"];
 
 export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission"
   | "checks_decide" | "finish_confirm" // journal v2: the person's decisions, with Stop the only actions on their pauses
-  | "check_amend"; // A1.1: a lead's check the sandbox refused — without the sandbox, or another command
+  | "check_amend"; // A1.1: a lead's check the sandbox refused — the person's line in its place (edited or not)
 
 // Where orchestration is unavailable (orchestrationAvailable() false, main refuses with unsupported_platform) its entry
 // points stay visible but inactive, with this hint: new agent cards, linking, a new goal (and so autopilot).
@@ -325,7 +325,7 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
     case "recover": return { kind: "recover", action: input.recover ?? "accept", ...(input.confirm ? { confirm: true } : {}) };
     case "checks_decide": return { kind: "checks.decide", decision: input.checks ? "edit" : "accept", ...(input.checks ? { checks: input.checks } : {}) };
     case "finish_confirm": return { kind: "finish.confirm", tree: input.tree ?? "", commit: input.commit ?? null, push: input.push ?? null, qa: input.qa ?? null };
-    case "check_amend": return { kind: "check.amend", checkId: input.checkId ?? "", ...(input.line !== undefined ? { line: input.line } : {}) };
+    case "check_amend": return { kind: "check.amend", checkId: input.checkId ?? "", line: input.line ?? "" };
     case "permission": return {
       kind: "permission", requestId: input.requestId ?? "", decision: input.decision ?? "deny", ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}), ...(input.feedback !== undefined ? { feedback: input.feedback } : {})
