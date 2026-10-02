@@ -1009,7 +1009,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       handle = goal.commands && shell
         ? startShellCheck({
           ws, command: resolveCheck(registry, action.checkId), env: shell.env, writer, launch: deps.checks.launch, state: state(), clock,
-          ...(leadSandbox && goal.sandboxed?.includes(action.checkId) ? { sandbox: { root, realHome: leadSandbox.realHome } } : {})
+          // a lead's line of a denied run runs in the profile whatever this opening's leadSandbox says (review S1-2): with
+          // no Seatbelt the self-test fails and nothing runs
+          ...(goal.sandboxed?.includes(action.checkId) ? { sandbox: { root, realHome: leadSandbox ? leadSandbox.realHome : undefined } } : {})
         })
         : startProjectCheck({
           ws, registry, id: action.checkId, deps: deps.checks.deps!, writer,

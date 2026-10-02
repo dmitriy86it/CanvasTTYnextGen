@@ -207,12 +207,13 @@ Diff against `baseline`, not `HEAD`. If you had uncommitted work at start, the b
 
 With `CANVASTTY_JOURNAL_V2=1` a goal may leave its check commands empty: the lead proposes them, and the person accepts or edits them ([journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.6, §7а). Where Seatbelt is, a command the lead proposed runs in its own profile (`sandbox.ts` `buildCheckProfile`):
 
-- writes: the run's work folder (the copy, the worktree or the project folder, by the work mode) and a temporary folder of the check (its `TMPDIR`), nothing else;
+- writes: the run's work folder (the copy, the worktree or the project folder, by the work mode) and a temporary folder of the check (its `TMPDIR`), nothing else — and not the work folder's `.git` (a hook written there would run later by the person's own git);
 - reads: as the project-check profile — allowed by default, the user's credential stores and the orchestration data denied;
 - network: this machine only (`localhost`, any port; Unix sockets in those two folders); no outside connection, no DNS;
-- run as `sandbox-exec -f <profile> -- <shell> -c <line>` under the supervisor, with the measured login-shell environment.
+- network: anything listening on this machine is reachable, a local tunnel or VM included — a known residual of the owner's decision;
+- run as `sandbox-exec -f <profile> -- <supervisor> <shell> -c <line>` with the measured login-shell environment; the supervisor inside the sandbox kills whatever the command leaves behind before the tree is taken.
 
-A self-test of the profile runs before every such check (a write to the work folder works; a write to `$HOME`, a read of `~/Library/Keychains` and an outside connection fail with EPERM; 127.0.0.1 works). If it fails, the check does not run and the run pauses with `sandbox_unavailable`. Because the profile denies the outside network, the autopilot accepts the lead's commands itself. A check the sandbox refuses (EPERM, a failed name lookup) is not a code failure: the run pauses with "A check needs more permissions", and only the person can run that command without the sandbox or change it; the decision is journaled (`checks.amended`) and holds for that command in that run. Commands the person entered run as before, in their login shell without a sandbox.
+A self-test of the profile runs before every such check (a write to the work folder works; a write to `$HOME` or `.git`, a read of `~/Library/Keychains` or of the orchestration data and an outside connection fail with EPERM; 127.0.0.1 works). If it fails, the check does not run and the run pauses with `sandbox_unavailable`. Because the profile denies the outside network, the autopilot accepts the lead's commands itself. A check whose output reports a refusal (EPERM, a failed name lookup — the output, not the kernel, so the command can print it itself) is not a code failure: the run pauses with "A check needs more permissions", and only the person can run that command without the sandbox or change it; the decision is journaled (`checks.amended`) and holds for that command in that run. Commands the person entered run as before, in their login shell without a sandbox.
 
 ### Requirements and limits
 

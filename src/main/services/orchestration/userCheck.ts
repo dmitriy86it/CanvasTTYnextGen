@@ -7,7 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SANDBOX_EXEC, buildCheckProfile, checkSelftest } from "./sandbox.ts";
+import { buildCheckProfile, checkSelftest } from "./sandbox.ts";
 import { runShell } from "./shellRun.ts";
 import { commandSha256 } from "./checks.ts";
 import { canonical } from "./journal.ts";
@@ -70,7 +70,7 @@ export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; 
         const profile = buildCheckProfile({ work: opts.ws.repo, tmp, root: opts.sandbox.root, realHome: opts.sandbox.realHome });
         const profilePath = join(tmp, ".canvastty-profile.sb");
         await writeFile(profilePath, profile.text, { mode: 0o400 });
-        const st = await checkSelftest({ profilePath, work: opts.ws.repo, tmp, realHome: opts.sandbox.realHome, launch: opts.launch });
+        const st = await checkSelftest({ profilePath, work: opts.ws.repo, tmp, root: opts.sandbox.root, realHome: opts.sandbox.realHome, launch: opts.launch });
         if (!st.passed) throw new Error(`the sandbox self-test failed: ${st.failed.map((f) => `${f.name} (${f.detail})`).join("; ")}`);
         sandboxed = { tmp, profilePath, sha256: profile.sha256 };
       } catch (e) {
@@ -90,7 +90,7 @@ export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; 
     const line = c.argv.at(-1) ?? "";
     const run = runShell({
       shell: c.executable, line, cwd: opts.ws.repo, env: sandboxed ? { ...opts.env, TMPDIR: sandboxed.tmp } : opts.env, launch: opts.launch,
-      ...(sandboxed ? { argv: [SANDBOX_EXEC, "-f", sandboxed.profilePath, "--", c.executable, "-c", line] } : {}),
+      ...(sandboxed ? { profile: sandboxed.profilePath } : {}),
       timeoutMs: c.timeoutMs, maxOutputBytes: c.maxOutputBytes, clock
     });
     requestStop = (cause) => { if (stopCause) return; stopCause = cause; run.stop(); };
@@ -98,7 +98,9 @@ export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; 
     const sr = await run.result;
     await cleanTmp();
     if (sr.stopCause === "timeout") stopCause ??= "timeout";
-    const { exitCode, signal, groupCleared } = sr;
+    const { exitCode, signal } = sr;
+    // in the profile: cleared only when the sandbox is empty as well (a detached process could change the tree later)
+    const groupCleared = sr.groupCleared && sr.sandboxCleared !== false;
     const supExit = sr.supervisorExitCode;
     const { bytes, dropped } = sr.output;
     let ref = null;
@@ -118,7 +120,7 @@ export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; 
     const evidenceFingerprint = sha({ checkRunId, command: c.id, argv: [...c.argv], treeBefore, treeAfter, exitCode, signal, groupCleared, envNames: Object.keys(opts.env).length });
     const r = make(status, reason, null, {
       process: { exitCode, signal, supervisorExitCode: supExit, stopCause },
-      cleanup: { groupCleared, sandboxCleared: false, killed: null, observed: "process_group_and_sandbox_scan" },
+      cleanup: { groupCleared, sandboxCleared: sr.sandboxCleared === true, killed: null, observed: "process_group_and_sandbox_scan" },
       output: { ref, bytes, dropped, head: sr.output.head, tail: sr.output.tail },
       copy: { treeBefore, treeAfter, base }, evidenceFingerprint, durationMs: clock() - startedAt
     });

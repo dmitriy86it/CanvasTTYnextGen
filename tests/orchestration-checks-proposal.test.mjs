@@ -81,8 +81,7 @@ const FINAL = { answer: { verdict: "complete", findings: [], question: null } };
 const EXEC = { answer: { summary: "done", done: true }, writes: [{ rel: "a.txt", base64: Buffer.from("2\n").toString("base64") }] };
 
 // leadSandbox false: as without Seatbelt (A1) — the lead's commands would run in the user's shell, the person decides
-function manager(env, { v2 = true, leadSandbox } = {}) {
-  const root = path.join(TMP, `root-${++n}`);
+function manager(env, { v2 = true, leadSandbox, root = path.join(TMP, `root-${++n}`) } = {}) {
   const m = createRunManager({
     platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH),
@@ -523,7 +522,9 @@ test("A1.1: the autopilot accepts the lead's commands itself and they run in the
   const src = project({ "a.txt": "1\n" });
   const outside = path.join(TMP, `outside-${++n}`);
   // passes only where a write outside the work folder is refused: the proof that it ran in the profile
-  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && ! touch ${outside} 2>/dev/null` });
+  // and where the work folder's git directory is not written (a hook would run later by the person's git: review S1-1)
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed",
+    MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && ! touch ${outside} 2>/dev/null && ! (mkdir -p .git/hooks && echo exit > .git/hooks/pre-commit) 2>/dev/null` });
   const runId = await start(m, src, { commands: [] });
   const v = await settled(m, runId);
   assert.equal(v.status, "completed", JSON.stringify(v));
@@ -533,6 +534,18 @@ test("A1.1: the autopilot accepts the lead's commands itself and they run in the
   assert.deepEqual([all.find((r) => r.type === "checks.proposed").data.sandboxNetwork, all.find((r) => r.type === "checks.decided").data.by], ["denied", "autopilot"]);
   assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"]]);
   assert.deepEqual([v.progress.completion, v.progress.checksFrom], ["confirmed", "proposal"]);
+  await m.shutdown();
+});
+
+test("A1.1 (review S1-3): a detached process the lead's check leaves behind is killed with the check — the tree it passed on stays", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const late = `"${NODE}" -e 'require("child_process").spawn(process.execPath, ["-e", "setTimeout(() => require(\\"fs\\").writeFileSync(\\"a.txt\\", \\"late\\"), 3000)"], { detached: true, stdio: "ignore" }).unref()'`;
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && ${late}` });
+  const runId = await start(m, src, { commands: [] });
+  const v = await settled(m, runId);
+  assert.deepEqual([v.status, v.progress.completion], ["completed", "confirmed"], JSON.stringify(v));
+  await sleep(5000);
+  assert.equal(fs.readFileSync(path.join(v.workDir, "a.txt"), "utf8"), "2\n", "nothing outlived the check");
   await m.shutdown();
 });
 
@@ -565,6 +578,29 @@ test("A1.1: the person's commands run in their shell as before — the goal's ow
   fs.writeFileSync(file, rewrite(buf, b, (r) => { r.find((x) => x.type === "check.started" && x.data.checkId === "cmd-1").data.profileSha256 = NO_SANDBOX_SHA256; return r; }));
   const read = await readRun(m2.root, b);
   assert.deepEqual([read.integrity.status, read.integrity.detail?.phase], ["corrupt", "texts"]);
+});
+
+test("A1.1 (review S1-2): a lead's line of a denied run reopened where the profile is not offered (leadSandbox false) still runs only in the profile", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const outside = path.join(TMP, `outside-${++n}`);
+  const env = { MOCK_SCRIPT: script([PLAN, PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `grep -qx 2 a.txt && touch ${outside}` };
+  const m = manager(env);
+  const runId = await start(m, src, { commands: [], mode: "steps" });
+  // «Изменить» keeps the lead's line next to the person's: the decision is "edit", not "accept"
+  assert.equal((await send(m, await settled(m, runId, "the proposal"), { kind: "checks.decide", decision: "edit", checks: [`grep -qx 2 a.txt && touch ${outside}`, "test -f a.txt"] })).status, "accepted");
+  await settled(m, runId, "the new plan");
+  await m.shutdown();
+  const again = manager(env, { leadSandbox: false, root: m.root });
+  let v;
+  for (;;) {
+    v = await settled(again, runId);
+    if (v.status !== "paused" || v.reason === "check_needs_permissions") break;
+    assert.equal((await send(again, v, { kind: "resume" })).status, "accepted", JSON.stringify(v));
+  }
+  assert.equal(v.reason, "check_needs_permissions", JSON.stringify(v));
+  assert.equal(fs.existsSync(outside), false, "nothing written outside the work folder");
+  assert.deepEqual(await startedOf(again, runId), [["cmd-1", "profile"]]);
+  await again.shutdown();
 });
 
 test("A1.1: a lead's check the sandbox refuses pauses «Проверке нужно больше прав» — even the autopilot; only the person lets it out or changes it", DARWIN, async () => {
@@ -625,12 +661,17 @@ test("A1.1: the profile's self-test fails — the check does not run, the run pa
   // the self-test itself: the real profile passes; a profile that allows everything does not
   const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "cst-")));
   for (const x of ["work", "tmp", "root"]) fs.mkdirSync(path.join(d, x));
-  const paths = { work: path.join(d, "work"), tmp: path.join(d, "tmp") };
-  fs.writeFileSync(path.join(d, "p.sb"), buildCheckProfile({ ...paths, root: path.join(d, "root") }).text);
+  const paths = { work: path.join(d, "work"), tmp: path.join(d, "tmp"), root: path.join(d, "root") };
+  fs.writeFileSync(path.join(d, "p.sb"), buildCheckProfile(paths).text);
   fs.writeFileSync(path.join(d, "open.sb"), "(version 1)\n(allow default)\n");
-  assert.deepEqual(await checkSelftest({ profilePath: path.join(d, "p.sb"), ...paths, launch: LAUNCH }), { passed: true, checks: 6, failed: [] });
+  assert.deepEqual(await checkSelftest({ profilePath: path.join(d, "p.sb"), ...paths, launch: LAUNCH }), { passed: true, checks: 8, failed: [] });
   const open = await checkSelftest({ profilePath: path.join(d, "open.sb"), ...paths, launch: LAUNCH });
-  assert.deepEqual(open.failed.map((f) => f.name).sort(), ["deny.read-secrets", "deny.tcp-external", "deny.write-home"]);
+  assert.deepEqual(open.failed.map((f) => f.name).sort(), ["deny.read-root", "deny.read-secrets", "deny.tcp-external", "deny.write-git", "deny.write-home"]);
+  assert.equal(fs.existsSync(path.join(paths.work, ".git")), false, "the open profile's self-test left nothing behind");
+  // a work folder that covers the home or a credential store is refused before any profile (review S1-6)
+  assert.throws(() => buildCheckProfile({ ...paths, work: os.homedir() }), /covers/);
+  fs.mkdirSync(path.join(d, "home", ".ssh", "x"), { recursive: true });
+  assert.throws(() => buildCheckProfile({ ...paths, realHome: path.join(d, "home"), work: path.join(d, "home", ".ssh", "x") }), /covers/);
   fs.rmSync(d, { recursive: true, force: true });
 });
 

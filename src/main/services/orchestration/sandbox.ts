@@ -427,12 +427,21 @@ export interface CheckSandboxPaths {
   realHome?: string; // the home the credential deny list is relative to; os.homedir() by default
 }
 
+// Only in this profile (the project-check profile keeps its list): stores of local VMs and containers whose keys log
+// into a machine on this host — reachable on localhost (review S1-5).
+const CHECK_CRED_DIRS = [".orbstack", ".colima", ".lima", ".vagrant.d"];
+
 export function buildCheckProfile(paths: CheckSandboxPaths): { text: string; sha256: string } {
   const work = canonical(paths.work, "work");
   const tmp = canonical(paths.tmp, "tmp");
   const root = canonical(paths.root, "root");
   const home = canonical(paths.realHome ?? homedir(), "realHome");
-  const creds = [...CRED_DIRS.map((d) => subpath(join(home, d))), ...CRED_FILES.map((f) => `(literal ${sbString(join(home, f))})`)];
+  const dirs = [...CRED_DIRS, ...CHECK_CRED_DIRS].map((d) => join(home, d));
+  // the work folder must not cover what the profile denies: an allow of it would win (review S1-6)
+  const within = (a: string, b: string) => a === b || a.startsWith(b.endsWith("/") ? b : `${b}/`);
+  const clash = [home, ...dirs].find((d) => within(d, work) || (d !== home && within(work, d)));
+  if (clash) throw new Error(`the work folder ${work} covers ${clash}`);
+  const creds = [...dirs.map((d) => subpath(d)), ...CRED_FILES.map((f) => `(literal ${sbString(join(home, f))})`)];
   const text = `(version 1)
 ; CanvasTTY: a check command the lead proposed — journal-v2-format.md §2.6 (owner's decision A1.1 Q2).
 ; Seatbelt keeps the LAST matching rule, so every broad deny stands before the narrow allows that carve out of it.
@@ -452,6 +461,9 @@ export function buildCheckProfile(paths: CheckSandboxPaths): { text: string; sha
 (allow file-read* file-write* ${subpath(work)} ${subpath(tmp)})
 (allow file-read-metadata ${ancestors(work)} ${ancestors(tmp)})
 (allow file-write* (literal "/dev/null"))
+; The work folder's git directory: a hook or core.fsmonitor written there would run later, outside, by the person's
+; own git (review S1-1). A gitdir elsewhere (a worktree's) is not written at all.
+(deny file-write* ${subpath(join(work, ".git"))})
 ; Network: this machine only (any port of localhost), Unix sockets in the two folders above.
 (allow network-bind network-inbound (local ip "localhost:*"))
 (allow network-outbound (remote ip "localhost:*"))
@@ -467,7 +479,7 @@ export function buildCheckProfile(paths: CheckSandboxPaths): { text: string; sha
 // not is removed at once). Failure: the check does not run.
 const CHECK_SELFTEST = String.raw`
 const fs = require("node:fs"), net = require("node:net");
-const [work, tmp, home, ext, port] = JSON.parse(process.argv[1]);
+const [work, tmp, home, root, ext, port] = JSON.parse(process.argv[1]);
 const id = ".canvastty-selftest-" + process.pid;
 const out = {};
 const sync = (name, f) => { try { f(); out[name] = "ok"; } catch (e) { out[name] = e.code || String(e.message); } };
@@ -475,6 +487,10 @@ sync("allow.write-work", () => { fs.writeFileSync(work + "/" + id, "x"); fs.unli
 sync("allow.write-tmp", () => { fs.writeFileSync(tmp + "/" + id, "x"); fs.unlinkSync(tmp + "/" + id); });
 sync("deny.write-home", () => { fs.writeFileSync(home + "/" + id, "x"); fs.unlinkSync(home + "/" + id); });
 sync("deny.read-secrets", () => fs.readdirSync(home + "/Library/Keychains"));
+sync("deny.read-root", () => fs.readdirSync(root));
+// .git itself when the folder has none: recursive mkdir creates it first, and that is refused as well
+const git = work + "/.git", hadGit = fs.existsSync(git);
+sync("deny.write-git", () => { fs.mkdirSync(git + "/" + id, { recursive: true }); fs.rmSync(hadGit ? git + "/" + id : git, { recursive: true }); });
 const tcp = (host, p) => new Promise((res) => { const c = net.connect(p, host); const t = setTimeout(() => { c.destroy(); res("ETIMEDOUT"); }, 5000);
   c.on("connect", () => { clearTimeout(t); c.destroy(); res("ok"); }); c.on("error", (e) => { clearTimeout(t); res(e.code || "error"); }); });
 (async () => {
@@ -484,7 +500,7 @@ const tcp = (host, p) => new Promise((res) => { const c = net.connect(p, host); 
 })();
 `;
 
-export async function checkSelftest(opts: { profilePath: string; work: string; tmp: string; realHome?: string; launch: SupervisorLaunch }): Promise<SelftestResult> {
+export async function checkSelftest(opts: { profilePath: string; work: string; tmp: string; root: string; realHome?: string; launch: SupervisorLaunch }): Promise<SelftestResult> {
   const bail = (name: string, detail: string): SelftestResult => ({ passed: false, checks: 0, failed: [{ name, detail }] });
   if (!sandboxSupport().supported) return bail("sandbox.support", `${SANDBOX_EXEC} is not available on ${process.platform}`);
   const home = canonical(opts.realHome ?? homedir(), "realHome");
@@ -496,7 +512,7 @@ export async function checkSelftest(opts: { profilePath: string; work: string; t
     // an outside address: Seatbelt's "localhost" covers every address of this host (its LAN address too), so only a
     // foreign one proves the refusal; the sandbox refuses it before any route, internet or not (EPERM)
     const ext = { host: "1.1.1.1", port: 443 };
-    const child = spawn(SANDBOX_EXEC, ["-f", opts.profilePath, "--", opts.launch.command, "-e", CHECK_SELFTEST, JSON.stringify([opts.work, opts.tmp, home, ext, port])], {
+    const child = spawn(SANDBOX_EXEC, ["-f", opts.profilePath, "--", opts.launch.command, "-e", CHECK_SELFTEST, JSON.stringify([opts.work, opts.tmp, home, opts.root, ext, port])], {
       cwd: opts.work, env: { ELECTRON_RUN_AS_NODE: "1", PATH: "/usr/bin:/bin", HOME: home, TMPDIR: opts.tmp, LANG: "C" }, stdio: ["ignore", "pipe", "pipe"]
     });
     let text = "";
@@ -508,7 +524,7 @@ export async function checkSelftest(opts: { profilePath: string; work: string; t
     clearTimeout(timer);
     let got: Record<string, string>;
     try { got = JSON.parse(text.trim().split("\n").at(-1) ?? ""); } catch { return bail("sandbox.selftest", `no result (exit ${code}): ${err.slice(0, 400)}`); }
-    const want = ["allow.write-work", "allow.write-tmp", "allow.tcp-localhost", "deny.write-home", "deny.read-secrets", "deny.tcp-external"];
+    const want = ["allow.write-work", "allow.write-tmp", "allow.tcp-localhost", "deny.write-home", "deny.read-secrets", "deny.read-root", "deny.write-git", "deny.tcp-external"];
     const failed = want.filter((n) => got[n] !== (n.startsWith("allow.") ? "ok" : "EPERM"))
       .map((n) => ({ name: n, detail: got[n] === undefined ? "not run" : n.startsWith("allow.") ? `refused: ${got[n]}` : `not refused by the sandbox: ${got[n]}` }));
     return { passed: failed.length === 0, checks: want.length, failed };
