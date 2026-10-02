@@ -41,7 +41,7 @@ interface AgentCardProps {
 
 const STATE_KEY: Record<AgentState, TranslationKey> = {
   idle: "orchAgentIdle", starting: "orchAgentStarting", working: "orchAgentWorking", waiting: "orchAgentWaiting", needs_you: "orchAgentNeedsYou", paused: "orchAgentPaused",
-  stopping: "orchAgentStopping", completed: "orchAgentCompleted", stopped: "orchAgentStopped", failed: "orchAgentFailed", read_only: "orchReadOnly"
+  stopping: "orchAgentStopping", completed: "orchAgentCompleted", completed_no_checks: "orchAgentCompletedNoChecks", stopped: "orchAgentStopped", failed: "orchAgentFailed", read_only: "orchReadOnly"
 };
 
 const MOVING = ["starting", "working", "checking", "waiting_agent"];

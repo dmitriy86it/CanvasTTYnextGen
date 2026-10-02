@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · [Русский](CHANGELOG.ru.md)
 
+## Unreleased
+
+- Run journal v2 (stage A, A1), only behind the development flag `CANVASTTY_JOURNAL_V2=1` (a packaged build ignores it; user runs are still written in v1): the check commands of a goal may be left empty, the lead then proposes them with a reason for each (or says why there are none), and the person accepts or edits them before any work starts — the autopilot too, since native checks run without a sandbox. A run without checks ends as "Completed without checks" on the panel, cards, link chip, activity widget and workspace history, never as completed; its commit is made, push and QA wait for the person's decision on the tree and commit shown. A v2 journal is shown read only by 1.5.7; v1 journals and how they are written are unchanged.
+
 ## 1.5.7 — 2026-10-01
 
 - Electron smoke runs are hermetic: the development app gets a PATH of refusing fake CLIs and system folders, looks for provider CLIs in PATH only and polls no provider for limits (CANVASTTY_SMOKE_HERMETIC, ignored by a packaged build); a smoke fails when the app starts a program outside the fakes and the allowed list. Every smoke window stays painted while covered (logged, the covered-window case stays open), and a screenshot that gets no answer in 15 s is retried once and then fails by name instead of hanging.

@@ -1045,6 +1045,7 @@ button { border: 0; }
 .agent-card:has(.agent-card__state--needs_you) { outline: 3px solid var(--yellow); outline-offset: 2px; }
 .agent-card__state--failed { color: white; background: var(--danger); }
 .agent-card__state--completed { background: var(--primary); }
+.agent-card__state--completed_no_checks { background: var(--yellow); } /* a warning, never the completed mark */
 @keyframes agent-pulse { 50% { opacity: .62; } }
 .agent-card__message { padding: .4em .6em; border-radius: 8px; color: white; background: var(--danger); font-size: .88em; }
 .agent-card__confirm { position: absolute; inset: 3.15em 0 0; z-index: 2; padding: .8em; display: flex; flex-direction: column; gap: .5em; border-radius: 0 0 13px 13px; background: var(--surface); }
@@ -1116,7 +1117,7 @@ button { border: 0; }
 /* Pinned run summary: always above the tabs; on short windows it scrolls by itself so the tabs stay reachable. */
 .orch-summary { flex: 0 0 auto; max-height: 46vh; overflow: auto; margin: 12px 12px 0; padding: 12px; display: flex; flex-direction: column; gap: 8px; border-radius: 12px; background: var(--surface-soft); box-shadow: inset 4px 0 0 var(--secondary); outline: none; transition: box-shadow .25s; }
 .orch-summary--working, .orch-summary--stopping_after_turn { box-shadow: inset 4px 0 0 var(--primary); }
-.orch-summary--awaiting_answer, .orch-summary--awaiting_plan_review, .orch-summary--needs_decision, .orch-summary--needs_action, .orch-summary--paused { box-shadow: inset 4px 0 0 var(--yellow); }
+.orch-summary--awaiting_answer, .orch-summary--awaiting_plan_review, .orch-summary--awaiting_checks, .orch-summary--awaiting_finish_confirmation, .orch-summary--completed_no_checks, .orch-summary--needs_decision, .orch-summary--needs_action, .orch-summary--paused { box-shadow: inset 4px 0 0 var(--yellow); }
 .orch-summary--needs_setup, .orch-summary--failed, .orch-summary--halted { box-shadow: inset 4px 0 0 var(--danger); }
 .orch-summary--completed { box-shadow: inset 4px 0 0 var(--success); }
 .orch-summary--flash { box-shadow: inset 4px 0 0 var(--primary), 0 0 0 3px var(--primary); }
@@ -1270,7 +1271,7 @@ button { border: 0; }
 .orch-sum p { margin: 0; }
 .orch-sum__outcome { padding: 8px 10px; border-radius: 10px; background: var(--surface-soft); }
 .orch-sum__outcome--completed { box-shadow: inset 4px 0 0 var(--success); }
-.orch-sum__outcome--completed_unconfirmed, .orch-sum__outcome--paused, .orch-sum__outcome--active { box-shadow: inset 4px 0 0 var(--yellow); }
+.orch-sum__outcome--completed_unconfirmed, .orch-sum__outcome--completed_no_checks, .orch-sum__outcome--paused, .orch-sum__outcome--active { box-shadow: inset 4px 0 0 var(--yellow); }
 .orch-sum__outcome--stopped, .orch-sum__outcome--failed { box-shadow: inset 4px 0 0 var(--danger); }
 .orch-sum__stages [data-stage-state="done"] span { color: var(--success); }
 .orch-sum__stages [data-stage-state="not_done"] span { color: var(--danger); }

@@ -41,7 +41,8 @@ const RUN = (goal) => [
   ["run.status", { status: "running", reason: null, note: "v2 field" }, { origin: "v2" }],
   ["run.status", { status: "completed", reason: null }]
 ];
-function writeRun(root, { version = 2, first = {}, events = RUN, text = "compatible goal" } = {}) {
+// version 3: above this build's own v1 and v2 (journal-v2-format.md), so the A0 rules apply as they did in 1.5.7
+function writeRun(root, { version = 3, first = {}, events = RUN, text = "compatible goal" } = {}) {
   const runId = randomUUID();
   const dir = path.join(root, "runs", runId);
   fs.mkdirSync(path.join(dir, "texts"), { recursive: true, mode: 0o700 });
@@ -175,12 +176,12 @@ test("store.deleteRun refuses a newer version's run before the lock; a v1 run is
 // ---------- 4. minReaderVersion ----------
 
 test("minReaderVersion 1: replayed by v1 rules (unknown fields ignored), shown whole, and nothing may act on it", async () => {
-  assert.equal(READER_VERSION, 1);
+  assert.equal(READER_VERSION, 2);
   const root = path.join(TMP, "compat");
   const r = writeRun(root, { first: { minReaderVersion: 1 } });
   const buf = fs.readFileSync(path.join(r.dir, "journal.jsonl"));
   const p = parseJournal(buf, r.runId);
-  assert.deepEqual(p.integrity, { status: "newer_version_compatible", detail: { version: 2, minReaderVersion: 1, chain: { status: "ok" }, skipped: 0 } });
+  assert.deepEqual(p.integrity, { status: "newer_version_compatible", detail: { version: 3, minReaderVersion: 1, chain: { status: "ok" }, skipped: 0 } });
   assert.equal(p.state.status, "completed");
   assert.equal(p.records.length, 3);
   const before = footprint(r.dir);
@@ -201,9 +202,9 @@ test("minReaderVersion 1: replayed by v1 rules (unknown fields ignored), shown w
   assert.deepEqual(footprint(r.dir), before, "no lock, recovery, truncation or record");
 });
 
-test("minReaderVersion 2, absent, or not an integer: the A0 view as before", () => {
+test("minReaderVersion above the reader's, absent, or not an integer: the A0 view as before", () => {
   const root = path.join(TMP, "notcompat");
-  for (const first of [{ minReaderVersion: 2 }, {}, { minReaderVersion: "1" }, { minReaderVersion: 1.5 }, { minReaderVersion: 0 }]) {
+  for (const first of [{ minReaderVersion: 3 }, {}, { minReaderVersion: "1" }, { minReaderVersion: 1.5 }, { minReaderVersion: 0 }]) {
     const r = writeRun(root, { first });
     const p = parseJournal(fs.readFileSync(path.join(r.dir, "journal.jsonl")), r.runId);
     assert.deepEqual([p.integrity.status, p.state, p.integrity.detail.fallback], ["newer_version", null, undefined], JSON.stringify(first));
@@ -357,7 +358,7 @@ test("the version is the first record's: a record of another v falls back to the
   const { p } = compat(path.join(TMP, "v-change"), (ref) => [
     ["run.created", { goal: ref, planVersion: 2 }],
     ["run.status", { status: "running", reason: null }],
-    ["run.status", { status: "completed", reason: null }, { v: 3 }]
+    ["run.status", { status: "completed", reason: null }, { v: 4 }]
   ]);
   assert.equal(p.integrity.status, "newer_version");
   assert.deepEqual(p.integrity.detail.fallback, { line: 3, code: "version_changed" });

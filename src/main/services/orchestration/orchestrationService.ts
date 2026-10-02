@@ -14,10 +14,10 @@ import type { CheckRegistry, PreparedDeps } from "./checks.ts";
 import type { SandboxApi } from "./checkRunner.ts";
 import { currentExecutableSha256, inspectPreparedDeps, startProjectCheck } from "./checkService.ts";
 import type { ProjectCheckResult } from "./checkService.ts";
-import { DEFAULT_LIMITS, currentCommit, effectiveLimits, nextAction } from "./cycle.ts";
+import { DEFAULT_LIMITS, completion, confirmationFor, currentCommit, effectiveLimits, nextAction, proposesChecks, withoutChecks } from "./cycle.ts";
 import type { Action, Goal, LimitKind, RunLimits, Snapshot } from "./cycle.ts";
 import { canonical } from "./journal.ts";
-import type { CommandResult, PausedReason, RunState, RunStatus, TextRef } from "./journal.ts";
+import type { CommandResult, CompletionKind, PausedReason, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
 import { checkKey, findingsKey, runKey } from "./progress.ts";
 import type { CheckDef, DepsFacts } from "./progress.ts";
 import type { ProviderTurnResult } from "./providers.ts";
@@ -66,6 +66,7 @@ export interface GoalInput {
 // Stage 12: the checks of a goal with commands are those command lines, run by the user's login shell.
 const CHECK_TIMEOUT_MS = 30 * 60_000;
 export function shellRegistry(shell: string, commands: readonly string[]): CheckRegistry {
+  if (commands.length === 0) return Object.freeze({ commands: Object.freeze([]) }); // journal v2: no commands (yet), nothing to run
   return createRegistry(commands.map((line, i) => ({
     id: `cmd-${i + 1}`, title: line.slice(0, 200), executable: shell, argv: ["-ilc", line], timeoutMs: CHECK_TIMEOUT_MS, maxOutputBytes: 65_536
   })));
@@ -73,6 +74,9 @@ export function shellRegistry(shell: string, commands: readonly string[]): Check
 
 export interface OrchestrationDeps {
   root: string;
+  // Journal v2 for new native runs (journal-v2-format.md §3.4): until A4 only behind the development flag
+  // CANVASTTY_JOURNAL_V2; it allows a goal without check commands, whose lead proposes them.
+  journalV2?: boolean;
   gitPath: string;
   agents: AgentAdapter;
   // registry/deps/sandbox: the node-test check of stages 4–11. shell (stage 12): the user's login shell (its real path)
@@ -99,6 +103,10 @@ export type RunCommand =
   | { kind: "recover"; action: "accept" | "retry_turn" | "reset_to_checkpoint"; confirm?: boolean }
   | { kind: "raise_limit"; limit: LimitKind; value: number }
   | { kind: "dismiss" }
+  // journal v2 (journal-v2-format.md §2.1): «Принять» / «Изменить» of the proposed check commands, and the person's
+  // push/QA decision of a run without checks for the tree and commit they saw
+  | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
+  | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   | { kind: "permission"; requestId: string; decision: PermissionDecision; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string };
 // What the person can answer: the CLI's own options, plus remembering exactly this action for the run or the project.
 export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project";
@@ -119,6 +127,11 @@ export interface RunView {
   workMode?: "project" | "copy" | "worktree";
   workDir?: string;
   progress?: RunProgress; // stage 13: what is done and confirmed, for the top of the panel and the result
+  // journal v2, on the pause awaiting_checks_decision: the lead's proposal the person accepts or edits
+  proposal?: ChecksProposalText | null;
+  // journal v2, on the pause awaiting_finish_confirmation: what the person confirms push/QA for (the payload of
+  // finish.confirm) and which steps the goal asked for
+  confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
 }
 
 // Facts from the journal (and the goal), never from an agent's own report.
@@ -128,8 +141,12 @@ export interface RunProgress {
   access: AgentAccess | null;
   checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: FailureClass | null }[]; // the latest result of each
   prepare: { status: string; failed: string | null; class: FailureClass | null; command: string | null; output: TextRef | null } | null;
-  finish: { step: FinishStep; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null }[];
+  finish: { step: FinishStep; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null; declined?: boolean }[];
   grantsApplied: number;
+  // journal v2 (journal-v2-format.md §2.3): the completed run's kind — no_checks is never shown as confirmed
+  completion?: CompletionKind | null;
+  // journal v2: where the run's check commands came from — the goal, or the lead's proposal (accepted / edited)
+  checksFrom?: "goal" | "proposal" | "edited" | null;
 }
 
 export interface RunHandle {
@@ -154,7 +171,7 @@ export interface RunHandle {
 
 // The view of a run from its journal state; also for a run nobody has open (halted false, nothing active).
 export function runView(st: RunState, halted = false, active: RunView["active"] = null,
-  extra: Pick<RunView, "permission" | "pendingPermissions" | "workMode" | "workDir" | "progress"> = {}): RunView {
+  extra: Pick<RunView, "permission" | "pendingPermissions" | "workMode" | "workDir" | "progress" | "proposal" | "confirm"> = {}): RunView {
   const accepted = Object.keys(st.orch.accepted).length;
   const total = st.orch.plan ? st.orch.plan.firstStage - 1 + st.orch.plan.stageCount : 0;
   return {
@@ -215,19 +232,62 @@ export const REPORT_SCHEMAS: Readonly<Record<TurnPurpose, AnswerSchema>> = Objec
   review: findingsSchema(["accept", "fix", "replan", "question"]),
   final_review: findingsSchema(["complete", "replan", "question"])
 });
-for (const s of Object.values(REPORT_SCHEMAS)) compileSchema(s); // a schema the engine would refuse fails at load
+// Journal v2: the first plan turn of a goal without check commands also proposes them — or says why there are none
+// (journal-v2-format.md §2.1, «Поле checks отчёта плана»). Every other plan turn of a v2 journal answers checks: null
+// (PLAN_V2_SCHEMA): a proposal there is an invalid report. v1 journals keep the plan schema above.
+export const PLAN_PROPOSAL_SCHEMA: AnswerSchema = {
+  ...REPORT_SCHEMAS.plan,
+  required: ["stages", "question", "checks"],
+  properties: {
+    ...REPORT_SCHEMAS.plan.properties,
+    checks: {
+      type: ["object", "null"], additionalProperties: false, required: ["checks", "none"],
+      properties: {
+        checks: {
+          type: "array",
+          items: { type: "object", additionalProperties: false, required: ["command", "why", "source"], properties: { command: str(1, 1000), why: str(1, 500), source: { type: "array", items: str(1, 500) } } }
+        },
+        none: { type: ["string", "null"], maxLength: 500 }
+      }
+    }
+  }
+};
+export const PLAN_V2_SCHEMA: AnswerSchema = {
+  ...REPORT_SCHEMAS.plan, required: ["stages", "question", "checks"], properties: { ...REPORT_SCHEMAS.plan.properties, checks: { type: "null" } }
+};
+const schemaOf = (purpose: TurnPurpose, st: RunState, goal: Goal): AnswerSchema => purpose !== "plan" ? REPORT_SCHEMAS[purpose]
+  : proposesChecks(st, goal) ? PLAN_PROPOSAL_SCHEMA : st.version === 2 ? PLAN_V2_SCHEMA : REPORT_SCHEMAS.plan;
+for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
 
 interface PlanReport { stages: { title: string; task: string }[]; question: string | null }
+interface ProposedCheck { command: string; why: string; source: string[] }
+// checks.proposed.proposal (journal-v2-format.md §2.1)
+export interface ChecksProposalText { checks: (ProposedCheck & { id: string })[]; none: string | null }
+interface PlanProposalReport extends PlanReport { checks: { checks: ProposedCheck[]; none: string | null } | null }
 interface ReviewReport { verdict: string; findings: string[]; question: string | null }
 
 // What the Р1 schema subset cannot say: counts and "question iff verdict question".
-function reportProblem(purpose: TurnPurpose, value: unknown): string | null {
-  const errors = validateAnswer(REPORT_SCHEMAS[purpose], value);
+function reportProblem(purpose: TurnPurpose, value: unknown, schema: AnswerSchema = REPORT_SCHEMAS[purpose]): string | null {
+  const proposal = schema === PLAN_PROPOSAL_SCHEMA;
+  const errors = validateAnswer(schema, value);
   if (errors.length) return errors.slice(0, 3).join("; ");
   if (purpose === "plan") {
     const p = value as PlanReport;
     if (p.question !== null && p.question.trim() === "") return "question must be null or non-empty";
     if (p.question === null && (p.stages.length < 1 || p.stages.length > 50)) return "a plan has 1..50 stages";
+  }
+  if (proposal) {
+    // a proposal with the plan, never with a question: the answer first, then a plan turn that proposes
+    const c = (value as PlanProposalReport).checks;
+    if ((c === null) !== ((value as PlanReport).question !== null)) return "checks are proposed with the plan, and only without a question";
+    if (c) {
+      const lines = c.checks.map((x) => x.command.trim());
+      if (lines.length > 16) return "at most 16 check commands";
+      if (lines.some((l) => !LINE(l)) || new Set(lines).size !== lines.length) return "check commands: distinct lines of 1..1000 characters";
+      if (c.checks.some((x) => x.why.trim() === "")) return "every proposed command says why";
+      if (c.checks.some((x) => x.source.length > 16 || x.source.some((f) => f.startsWith("/") || f.split("/").includes("..")))) return "source: up to 16 relative paths";
+      if ((c.none !== null && c.none.trim() !== "") !== (lines.length === 0)) return "none says why exactly when no command is proposed";
+    }
   }
   if (purpose === "review" || purpose === "final_review") {
     const r = value as ReviewReport;
@@ -239,11 +299,12 @@ function reportProblem(purpose: TurnPurpose, value: unknown): string | null {
 
 // ---------- goal (§2) ----------
 
-function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => CheckRegistry, now: number): Goal {
+// v2: a journal v2 run, where the check commands may be left empty for the lead to propose (journal-v2-format.md §0).
+function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => CheckRegistry, now: number, v2 = false): Goal {
   const bad = (m: string): never => { throw new OrchestrationError("invalid_goal", m); };
   let commands: string[] | null = null;
   if (input?.commands !== undefined) {
-    if (!Array.isArray(input.commands) || input.commands.length < 1 || input.commands.length > 16
+    if (!Array.isArray(input.commands) || input.commands.length < (v2 ? 0 : 1) || input.commands.length > 16
       || input.commands.some((c) => typeof c !== "string" || c.trim() === "" || c.length > 1000 || c.includes("\0"))) bad("commands: 1..16 command lines of 1..1000 characters");
     if (Array.isArray(input.checks) && input.checks.length > 0) bad("checks and commands exclude each other");
     commands = input.commands.map((c) => c.trim());
@@ -261,7 +322,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
   if (typeof input?.text !== "string" || input.text.trim() === "" || input.text.length > 8000) bad("text must be 1..8000 characters");
   if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 32
     || input.criteria.some((c) => typeof c !== "string" || c.trim() === "" || c.length > 500)) bad("criteria: 1..32 strings of 1..500");
-  if (!Array.isArray(input.checks) || input.checks.length < 1 || input.checks.length > 16 || new Set(input.checks).size !== input.checks.length) {
+  if (!Array.isArray(input.checks) || input.checks.length < (commands?.length === 0 ? 0 : 1) || input.checks.length > 16 || new Set(input.checks).size !== input.checks.length) {
     bad("checks: 1..16 distinct check ids");
   }
   for (const id of input.checks) resolveCheck(registry, id); // unknown_check
@@ -311,6 +372,16 @@ function registryFor(deps: OrchestrationDeps, commands: readonly string[] | null
   return shellRegistry(deps.checks.shell.shell, commands);
 }
 
+// The goal with the check commands decided for it (journal v2: checks.decided of a goal without commands); any other
+// goal as recorded.
+export async function decidedGoal(root: string, runId: string, st: RunState, goal: Goal): Promise<Goal> {
+  const d = st.orch.checksDecision;
+  if (!d) return goal;
+  const text = JSON.parse((await readText(root, runId, d.ref)).toString("utf8")) as { checks: { id: string; command: string }[] };
+  return withCommands(goal, text.checks.map((c) => c.command));
+}
+const withCommands = (goal: Goal, commands: string[]): Goal => ({ ...goal, commands, checks: commands.map((_, i) => `cmd-${i + 1}`) });
+
 // ---------- service ----------
 
 export function createOrchestrationService(deps: OrchestrationDeps) {
@@ -318,10 +389,12 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
   return {
     // prepareAuto: the profile's automatic preparation (only what the dependency line says; not part of the goal)
     async createRun(input: { source: string; goal: GoalInput; runId?: string; requestKey?: string; prepareAuto?: boolean }): Promise<RunHandle> {
-      const goal = checkGoal(input.goal, (commands) => registryFor(deps, commands), clock());
+      // journal v2: native runs only (structured modes stay v1, 5h §2.1)
+      const v2 = deps.journalV2 === true && Array.isArray(input.goal?.commands);
+      const goal = checkGoal(input.goal, (commands) => registryFor(deps, commands), clock(), v2);
       if (input.requestKey !== undefined) goal.requestKey = input.requestKey;
       const runId = input.runId ?? randomUUID();
-      const writer = await storeCreateRun(deps.root, runId, { goal: canonical(goal), io: deps.storeIo });
+      const writer = await storeCreateRun(deps.root, runId, { goal: canonical(goal), version: v2 ? 2 : 1, io: deps.storeIo });
       let ws: Workspace;
       try {
         ws = await createWorkspace({ root: deps.root, runId, source: input.source, gitPath: deps.gitPath, mode: goal.workMode ?? "copy" });
@@ -343,12 +416,17 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
     async openRun(runId: string): Promise<RunHandle> {
       const writer = await storeOpenRun(deps.root, runId, { io: deps.storeIo });
       try {
-        const goal = JSON.parse((await readText(deps.root, runId, writer.state().goal)).toString("utf8")) as Goal;
+        const goal = await decidedGoal(deps.root, runId, writer.state(), JSON.parse((await readText(deps.root, runId, writer.state().goal)).toString("utf8")) as Goal);
         const ws = await openWorkspace({ root: deps.root, runId, gitPath: deps.gitPath });
+        const o = writer.state().orch;
+        const decidedBy = new Set([o.checksDecision?.commandId, ...o.confirmations.map((c) => c.commandId)]);
         for (const [id, c] of Object.entries(writer.state().commands)) {
-          if (c.status === "unfinished") await writer.completeCommand(id, { status: "rejected", code: "interrupted" });
+          // journal-v2-format.md §2.5: a decision already in the journal stands — its command was accepted
+          if (c.status === "unfinished") await writer.completeCommand(id, decidedBy.has(id) ? { status: "accepted", code: null } : { status: "rejected", code: "interrupted" });
         }
-        return controller(deps, clock, writer, ws, goal).handle;
+        const run = controller(deps, clock, writer, ws, goal);
+        await run.reopen();
+        return run.handle;
       } catch (error) {
         await writer.close().catch(() => {});
         throw error;
@@ -364,8 +442,14 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   const { root } = deps;
   const runId = writer.runId;
   const stopGraceMs = deps.stopGraceMs ?? DEFAULT_STOP_GRACE_MS;
-  const registry = registryFor(deps, goal.commands ?? null);
-  const commands = goal.checks.map((id) => resolveCheck(registry, id));
+  let registry = registryFor(deps, goal.commands ?? null);
+  let commands = goal.checks.map((id) => resolveCheck(registry, id));
+  // journal v2: the decided check commands become the run's own (checks.decided)
+  const adoptCommands = (lines: string[]) => {
+    goal = withCommands(goal, lines);
+    registry = registryFor(deps, lines);
+    commands = goal.checks.map((id) => resolveCheck(registry, id));
+  };
   // Check definitions as they are now: the executable's content is hashed again at every decision (§10), so a
   // replaced program makes earlier results and the reviews that saw them stale.
   let checkDefs: CheckDef[] = [];
@@ -406,7 +490,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   const emit = () => {
     const st = state();
     const key = `${st.status}:${st.pausedReason ?? ""}`;
-    if (key !== shownStatus) { shownStatus = key; observe((a) => a.status(st.status, st.pausedReason)); }
+    // journal v2: a run completed without checks never says just "completed" (journal-v2-format.md §2.3)
+    if (key !== shownStatus) { shownStatus = key; observe((a) => a.status(st.completion?.kind === "no_checks" ? "completed_no_checks" : st.status, st.pausedReason)); }
     for (const l of changeListeners) { try { l(st.lastSeq); } catch { /* a listener's failure is its own */ } }
   };
   writer.onAppend(() => { tick = 0; emit(); });
@@ -474,7 +559,14 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   }
   const viewExtra = () => {
     const first = permissions.values().next().value;
-    return { permission: first?.view ?? null, pendingPermissions: permissions.size, workMode: ws.mode, workDir: ws.repo, progress: progressOf(state(), goal, ws.branch) };
+    const st = state();
+    return {
+      permission: first?.view ?? null, pendingPermissions: permissions.size, workMode: ws.mode, workDir: ws.repo, progress: progressOf(st, goal, ws.branch),
+      ...(st.pausedReason === "awaiting_checks_decision" ? { proposal: proposalText } : {}),
+      ...(st.pausedReason === "awaiting_finish_confirmation" ? {
+        confirm: { tree: latest?.tree ?? null, commit: latest ? currentCommit(st, latest.tree)?.commit ?? null : null, push: !!goal.finish?.push, qa: !!goal.finish?.qa }
+      } : {})
+    };
   };
 
   // setTimeout fires at once for a delay above 2^31-1 ms; a longer wait is capped (no operation lasts 24 days).
@@ -565,8 +657,14 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
             await setStatus("paused", action.reason);
             return;
           case "complete":
-            await setStatus("completed");
+            await complete(decided.snapshot!);
             return;
+          case "accept_checks":
+            await decideChecks(null, "accept", null);
+            continue;
+          case "record_plan":
+            await recordProposedPlan(action.turnId);
+            continue;
           case "checkpoint":
             await doCheckpoint(action.stage, action.tree);
             continue;
@@ -681,9 +779,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const st = state();
     const role: AgentRole = action.purpose === "execute" ? "executor" : "lead";
     const limits = effectiveLimits(goal, st);
+    const schema = schemaOf(action.purpose, st, goal);
     const request = {
       purpose: action.purpose, role, cwd: ws.repo, task: await buildTask(action, snapshot),
-      schema: REPORT_SCHEMAS[action.purpose], sessionId: sessionFor(st, role),
+      schema, sessionId: sessionFor(st, role),
       // the role's own limit, cut to what is left of the run: the deadline is not extended by a long turn
       timeoutMs: Math.max(1, Math.min(role === "lead" ? limits.leadTurnMs : limits.executorTurnMs, deadline() - clock())),
       ask: askPerson(role), ...(goal.access ? { access: goal.access } : {})
@@ -762,12 +861,13 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (outcomePause) { await setStatus("paused", outcomePause); return; }
     if (!reportStored) { await setStatus("paused", "invalid_report"); return; }
     const value = result.report.value;
-    if (reportProblem(action.purpose, value) !== null) { await setStatus("paused", "invalid_report"); return; }
+    if (reportProblem(action.purpose, value, schema) !== null) { await setStatus("paused", "invalid_report"); return; }
 
     if (action.purpose === "plan") {
       const p = value as PlanReport;
       if (p.question !== null) return askQuestion(turnId, p.question);
-      const ref = await j(() => writer.putText(canonical(p)));
+      if (schema === PLAN_PROPOSAL_SCHEMA) return proposeChecks(turnId, (value as PlanProposalReport).checks!);
+      const ref = await j(() => writer.putText(canonical({ stages: p.stages, question: p.question }))); // v2: without checks: null
       await j(() => writer.recordPlan({
         turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
         firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: p.stages.length
@@ -792,6 +892,66 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   async function askQuestion(turnId: string, text: string): Promise<void> {
     const ref = await j(() => writer.putText(text));
     await j(() => writer.recordQuestion({ questionId: randomUUID(), turnId, text: ref }));
+  }
+
+  // ---------- journal v2: proposed check commands, completion (journal-v2-format.md §2) ----------
+
+  // The proposal with the numbers the application gives its lines; the plan of the turn waits for the decision.
+  async function proposeChecks(turnId: string, c: NonNullable<PlanProposalReport["checks"]>): Promise<void> {
+    const text: ChecksProposalText = { checks: c.checks.map((x, i) => ({ id: `cmd-${i + 1}`, command: x.command.trim(), why: x.why, source: x.source })), none: c.none };
+    const ref = await j(() => writer.putText(canonical(text)));
+    proposalText = text;
+    // A native run's checks run in the user's login shell without a sandbox (userCheck.ts): the network is open, so
+    // the autopilot too waits for the person (owner's decision 5i §7 p. 5).
+    const sandboxNetwork: SandboxNetwork = "open";
+    await j(() => writer.recordEvent("checks.proposed", { turnId, proposal: ref, count: text.checks.length, sandboxNetwork }));
+  }
+  let proposalText: ChecksProposalText | null = null;
+  const loadProposal = async (): Promise<ChecksProposalText | null> => {
+    const p = state().orch.checksProposal;
+    if (p && !proposalText) proposalText = JSON.parse((await readText(root, runId, p.ref)).toString("utf8")) as ChecksProposalText;
+    return proposalText;
+  };
+
+  // «Принять» (the proposal as it is) or «Изменить» (the person's lines); commandId null: the autopilot's acceptance.
+  async function decideChecks(commandId: string | null, decision: "accept" | "edit", edited: string[] | null): Promise<void> {
+    const p = state().orch.checksProposal!;
+    const proposed = (await loadProposal())!.checks.map((x) => x.command);
+    const lines = decision === "accept" ? proposed : edited!;
+    const text = { checks: lines.map((command, i) => ({ id: `cmd-${i + 1}`, command, origin: proposed.includes(command) ? "lead" : "person" })) };
+    const ref = await j(() => writer.putText(canonical(text)));
+    await j(() => writer.recordEvent("checks.decided", { proposalTurnId: p.turnId, decision, by: commandId ? "person" : "autopilot", commandId, checks: ref, count: lines.length }));
+    adoptCommands(lines);
+  }
+
+  // The plan of the turn whose proposal was accepted: its report without the proposal.
+  async function recordProposedPlan(turnId: string): Promise<void> {
+    const report = JSON.parse((await readText(root, runId, state().turns[turnId].report!.ref!)).toString("utf8")) as PlanProposalReport;
+    const ref = await j(() => writer.putText(canonical({ stages: report.stages, question: null })));
+    await j(() => writer.recordPlan({
+      turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
+      firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: report.stages.length
+    }));
+  }
+
+  // run.status(completed) of a v2 journal: only as the completion function allows, with its kind and what it was
+  // decided on (journal-v2-format.md §2.3). A cycle that disagrees with it never completes the run.
+  async function complete(snapshot: Snapshot): Promise<void> {
+    const st = state();
+    if (st.version !== 2) return setStatus("completed");
+    const c = completion(st, goal, snapshot);
+    if (!c.allowed) { await setStatus("paused", "environment_error"); return; }
+    const progress = progressOf(st, goal, ws.branch);
+    const passed = (id: string) => Object.entries(st.orch.assessed).filter(([crid]) => st.checks[crid]?.checkId === id)
+      .sort((a, b) => b[1].seq - a[1].seq)[0]?.[0] ?? null;
+    const basis = {
+      kind: c.kind, checks: goal.checks.map((id, i) => ({ id, command: goal.commands?.[i] ?? id, checkRunId: passed(id) })),
+      runKey: snapshot.runKey, checkKeys: snapshot.checkKeys, tree: snapshot.tree,
+      finalTurnId: st.orch.reviews.filter((r) => r.stage === null).at(-1)?.turnId ?? null,
+      finish: progress.finish.filter((f) => f.asked).map((f) => ({ step: f.step, status: f.status, declined: f.declined ?? false, commit: f.commit }))
+    };
+    const ref = await j(() => writer.putText(canonical(basis)));
+    await j(() => writer.setRunStatus("completed", null, { kind: c.kind as CompletionKind, basis: ref }));
   }
 
   // §11: a session is resumed from the role's last completed turn; after a turn of unknown outcome a new one starts.
@@ -1275,9 +1435,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       `Role: ${action.purpose === "execute" ? "executor" : "lead"}. Purpose: ${action.purpose}.`,
       `Goal:\n${goal.text}`,
       `Acceptance criteria (fixed; you cannot change them):\n${goal.criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
-      goal.commands
-        ? `Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):\n${goal.commands.map((c, i) => `${goal.checks[i]}: ${c}`).join("\n")}`
-        : `Required checks (run by CanvasTTY in a sandbox; your own statements do not count): ${goal.checks.join(", ")}`,
+      goal.commands?.length === 0
+        ? (st.orch.checksProposal ? "This run has no check commands: the person accepted none. Your review alone accepts a stage; the result is shown as completed without checks."
+          : "No check commands are set for this run yet: in this plan you propose them (see below).")
+        : goal.commands
+          ? `Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):\n${goal.commands.map((c, i) => `${goal.checks[i]}: ${c}`).join("\n")}`
+          : `Required checks (run by CanvasTTY in a sandbox; your own statements do not count): ${goal.checks.join(", ")}`,
       ...(inPlace(ws.mode) ? [[
         ws.mode === "worktree"
           ? `Work place: a Git worktree of the user's project on branch ${ws.branch} (your working directory), exactly as in their terminal. `
@@ -1293,6 +1456,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       budgetLine(action)
     ];
     if (st.orch.clarifications > 0) parts.push(`User clarifications (${st.orch.clarifications}):\n${await clarificationTexts()}`);
+    if (action.purpose === "plan" && proposesChecks(st, goal)) {
+      parts.push(["Check commands to propose (the checks field of your report):",
+        "- Inspect the project and propose the commands that verify this goal: its own test, build, lint or type-check commands, "
+          + "one shell command line each, as the person runs them in a terminal of the project (at most 16).",
+        "- For every command say why it verifies the goal (why) and which files show it exists (source: relative paths, e.g. package.json, composer.json, Makefile).",
+        "- If the project has no command that can verify this goal, propose none: checks: [] and say why in none.",
+        "- The person accepts or edits your proposal before any work starts; nothing runs until then. Do not ask a question in the same report: "
+          + "if you need an answer first, ask it with checks: null and propose in the next plan."].join("\n"));
+    }
     if (st.orch.question?.answered) parts.push(`Answer to your question: ${await text(st.orch.question.answerRef)}`);
     if (st.orch.plan) {
       const plan = JSON.parse(await text(st.orch.plan.ref)) as PlanReport;
@@ -1351,7 +1523,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   // The rules the service applies, stated to the agent that has to live with them (stage-6-contract.md §5.3).
   function rulesFor(purpose: TurnPurpose): string {
     const checks = goal.checks.join(", ");
-    const stage = `A stage is accepted only when every required check (${checks}) passes on the copy after that stage, `
+    const stage = goal.checks.length === 0 ? "A stage is accepted when the lead's review accepts it: this run has no check commands."
+      : `A stage is accepted only when every required check (${checks}) passes on the copy after that stage, `
       + "and the lead's review accepts it. An accept while a required check fails does not advance the stage: it goes back to the executor.";
     const final = "After the last stage a final review is mandatory: it is a separate lead turn, and the run completes only when "
       + "it answers complete with every required check passing.";
@@ -1446,6 +1619,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     } catch {
       return { status: "rejected", code: "store_failed" };
     }
+    // v2 decisions: the run goes on only after its command.completed (journal-v2-format.md §2.4); a failure here leaves
+    // the decision recorded and the run paused, which reopen() turns into paused(recovered)
+    if (result.status === "accepted" && (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm")) {
+      try {
+        await setStatus("running");
+      } catch {
+        return result; // accepted, as the journal says; the store halted the run (I2-5)
+      }
+    }
     if (result.status === "accepted") after(cmd);
     return result;
   }
@@ -1485,7 +1667,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         return ok;
       }
       case "clarify": {
-        if (!ACTIVE.includes(status) || reason === "journal_corrupt") return reject("invalid_state");
+        // on the person's decisions of journal v2 only that decision and Stop (journal-v2-format.md §2.1)
+        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation"].includes(reason)) return reject("invalid_state");
         if (typeof cmd.text !== "string" || cmd.text.trim() === "" || cmd.text.length > 8000) return reject("invalid_command");
         const ref = await j(() => writer.putText(cmd.text));
         await j(() => writer.recordClarification({ version: st.orch.clarifications + 1, commandId, text: ref }));
@@ -1522,6 +1705,35 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       case "dismiss":
         return ["stopped", "completed", "failed"].includes(status) ? ok : reject("invalid_state");
+      case "checks.decide": {
+        if (status !== "paused" || reason !== "awaiting_checks_decision" || !st.orch.checksProposal || st.orch.checksDecision) return reject("invalid_state");
+        let lines: string[] | null = null;
+        if (cmd.decision === "edit") {
+          if (!Array.isArray(cmd.checks) || cmd.checks.length > 16 || cmd.checks.some((c) => typeof c !== "string" || !LINE(c.trim()))) return reject("invalid_command");
+          lines = cmd.checks.map((c) => c.trim());
+          if (new Set(lines).size !== lines.length) return reject("invalid_command");
+        } else if (cmd.decision !== "accept" || cmd.checks !== undefined) return reject("invalid_command");
+        await decideChecks(commandId, cmd.decision, lines);
+        return ok; // run.status(running) follows command.completed (journal-v2-format.md §2.4), in command()
+      }
+      case "finish.confirm": {
+        if (status !== "paused" || reason !== "awaiting_finish_confirmation" || !withoutChecks(st)) return reject("invalid_state");
+        const asked = (step: "push" | "qa") => !!goal.finish?.[step];
+        const valid = (step: "push" | "qa", v: unknown) => asked(step) ? v === "confirm" || v === "decline" : v === null;
+        if (!valid("push", cmd.push) || !valid("qa", cmd.qa) || typeof cmd.tree !== "string" || (cmd.commit !== null && typeof cmd.commit !== "string")) return reject("invalid_command");
+        // what the person saw must be what is here now: the tree of the work and its commit
+        const tree = await snapshotCopyTree(ws, st.workspace!.current.tree);
+        const commit = currentCommit(st, tree)?.commit ?? null;
+        if (confirmationFor(st, tree, commit)) return reject("invalid_state");
+        if (cmd.tree !== tree || cmd.commit !== commit) {
+          // the work changed during the pause: the view shows it now and the person decides again (§2.5)
+          latest = { tree, at: new Date(clock()).toISOString() };
+          touch();
+          return reject("stale_revision");
+        }
+        await j(() => writer.recordEvent("finish.confirmed", { commandId, tree, commit, push: cmd.push, qa: cmd.qa }));
+        return ok;
+      }
       case "permission": {
         const p = permissions.get(cmd.requestId);
         if (!p) return reject("unknown_request");
@@ -1579,6 +1791,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       return;
     }
     if (cmd.kind === "step") stepBudget = 1;
+    if (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm") stepBudget = null;
     if (cmd.kind === "resume") stepBudget = null;
     if (state().status === "running") schedule();
   }
@@ -1619,6 +1832,18 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
 
   return {
     handle,
+    // After a restart (journal-v2-format.md §2.5): a decision recorded before the end, its run still paused on the
+    // question, goes back to the person as recovered (opening never continues a run); a question still open gets what
+    // it is about into the view.
+    async reopen() {
+      const st = state();
+      const decided = (st.pausedReason === "awaiting_checks_decision" && st.orch.checksDecision !== null)
+        || (st.pausedReason === "awaiting_finish_confirmation" && (st.orch.confirmations.at(-1)?.seq ?? -1) > (st.orch.lastPausedSeq.awaiting_finish_confirmation ?? -1));
+      if (decided) await setStatus("paused", "recovered");
+      if (state().pausedReason === "awaiting_checks_decision") await loadProposal();
+      if (state().pausedReason === "awaiting_finish_confirmation") latest = { tree: await snapshotCopyTree(ws, st.workspace!.current.tree), at: new Date(clock()).toISOString() };
+      touch();
+    },
     async start() {
       await setStatus("running");
       // A copy or a worktree of a native run: the project's dependency folders, before any preparation (stages 4–11
@@ -1662,6 +1887,9 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
     };
   });
   const p = st.orch.prepares.at(-1);
+  // a decline stands for the commit it was given on: a new commit asks again (journal-v2-format.md §2.1)
+  const commitSeq = Math.max(-1, ...st.orch.finish.filter((f) => f.step === "commit" && f.status === "done").map((f) => f.resultSeq ?? -1));
+  const confirmed = st.orch.confirmations.filter((c) => c.seq > commitSeq).at(-1);
   return {
     mode: goal.mode ?? "autopilot", branch, access: goal.access ?? null, checks,
     // the failed step's command (the goal's steps) and the preparation's output, for the run panel to say why
@@ -1671,12 +1899,17 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
       const last = st.orch.finish.filter((f) => f.step === step).at(-1);
       return {
         step, asked: !!goal.finish?.[step], status: last?.status ?? "not_started", established: last?.established ?? false, commit: last?.commit ?? null,
+        ...(step !== "commit" && confirmed?.[step] === "decline" ? { declined: true } : {}),
         evidence: last?.evidence?.sha256 ?? null,
         // an older QA result that passed without the contract (bound included) never confirmed a version
         ...(step === "qa" && last ? { version: last.version ?? (last.status === "done" ? "not_checked" : null), observed: last.observed ?? null } : {})
       };
     }),
-    grantsApplied: st.orch.applied
+    grantsApplied: st.orch.applied,
+    ...(st.version === 2 ? {
+      completion: st.completion?.kind ?? null,
+      checksFrom: st.orch.checksDecision ? (st.orch.checksDecision.decision === "edit" ? "edited" as const : "proposal" as const) : st.orch.checksProposal ? null : "goal" as const
+    } : {})
   };
 }
 

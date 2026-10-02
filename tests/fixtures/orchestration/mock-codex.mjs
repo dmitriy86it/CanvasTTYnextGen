@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { MODE, SIZES, ledger, emit, readTask, loadState, saveTurn, reportFor, holdStdout, stderrFlood, hold, readSchema, scriptedTurn, lineReader, recordDecision, mcpToolCall, mcpConnect } from "./mock-common.mjs";
+import { MODE, SIZES, ledger, emit, readTask, loadState, saveTurn, reportFor, holdStdout, stderrFlood, hold, readSchema, scriptedTurn, lineReader, recordDecision, mcpToolCall, mcpConnect, withProposal } from "./mock-common.mjs";
 // [mcp_servers.<name>] tables of <dir>/.codex/config.toml, as the series driver writes them (JSON-quoted values).
 function projectMcp(dir) {
   let toml = "";
@@ -76,7 +76,7 @@ async function main() {
     return;
   }
   const schema = readSchema(flags["--output-schema"] ? fs.readFileSync(flags["--output-schema"], "utf8") : "null");
-  const text = MODE === "not_json" ? "this is not json {" : JSON.stringify(script ? script.answer : reportFor(st, schema, resumeId !== null));
+  const text = MODE === "not_json" ? "this is not json {" : JSON.stringify(script ? withProposal(script.answer, schema) : reportFor(st, schema, resumeId !== null));
   await emit({ type: "item.completed", item: { id: "item_0", type: "agent_message", text } });
   if (MODE !== "no_report_file") fs.writeFileSync(reportFile, text);
   await emit({ type: "turn.completed", usage: { input_tokens: task.length, cached_input_tokens: 0, output_tokens: text.length } });
@@ -235,7 +235,7 @@ async function appServer(args) {
         await emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", items: [], error: { message } } } });
         continue;
       }
-      const text = JSON.stringify(script ? script.answer : reportFor(st, p.outputSchema ?? null, prev !== null && st.turns.length > 1));
+      const text = JSON.stringify(script ? withProposal(script.answer, p.outputSchema ?? null) : reportFor(st, p.outputSchema ?? null, prev !== null && st.turns.length > 1));
       await emit({ method: "item/completed", params: { threadId, turnId, item: { type: "agentMessage", id: "msg_0", text } } });
       await emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "completed", items: [], error: null } } });
       await emit({ method: "thread/tokenUsage/updated", params: { threadId, turnId, tokenUsage: { last: { inputTokens: task.length, outputTokens: text.length } } } });

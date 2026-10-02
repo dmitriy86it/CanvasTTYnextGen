@@ -5,7 +5,7 @@ import type { AppSettings, LocaleId, SessionSnapshot, TerminalStopResult, Worksp
 import { t, type TranslationKey } from "../../lib/i18n";
 import { UiIcon } from "../../components/UiIcon";
 import { Dialog } from "../orchestration/OrchestrationDialogs";
-import { outcomeOf, TERMINAL_STATUSES } from "../orchestration/runModel";
+import { outcomeOf, runStatusKey, TERMINAL_STATUSES } from "../orchestration/runModel";
 import { outcomeText, type Orchestration } from "../orchestration/useOrchestration";
 import {
   arrangeGroups, closeCountsRun, closeRunStatus, folderName, isCommon, knownWorkspaces, linkedGroup, NO_COUNTS, roomFor, runOwners, UNFINISHED, workspaceOf,
@@ -387,7 +387,7 @@ function HistoryDialog({ controls, orch, locale, id, onClose, onOpenRun }: {
     void window.canvasTTY.orchestration.list().then((r) => {
       if (!r.ok) return setFailed(true);
       const owner = runOwners(orch.canvas, known);
-      setRuns(r.value.filter((s) => owner(s.view.runId) === id).map((s) => ({ runId: s.view.runId, status: s.view.newer ? "newer" : s.view.status, project: folderName(s.view.workDir ?? "") })).reverse());
+      setRuns(r.value.filter((s) => owner(s.view.runId) === id).map((s) => ({ runId: s.view.runId, status: s.view.newer ? "newer" : runStatusKey(s.view), project: folderName(s.view.workDir ?? "") })).reverse());
     }, () => setFailed(true));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -403,8 +403,8 @@ function HistoryDialog({ controls, orch, locale, id, onClose, onOpenRun }: {
           {runs?.map((r) => (
             <li key={r.runId} data-ws-history-run={r.runId}>
               <span>{r.project || r.runId.slice(0, 8)}</span>
-              <span className="ws-list__state">{r.status === "newer" ? tk(locale, "orchReadOnly") : tk(locale, `orchStatus_${r.status}`)}</span>
-              <button type="button" data-ws-history-open onClick={() => { onOpenRun(r.runId); onClose(); }}>{t(locale, TERMINAL_STATUSES.includes(r.status) ? "orchTab_summary" : "orchOpenRun")}</button>
+              <span className="ws-list__state" data-ws-history-state={r.status}>{r.status === "newer" ? tk(locale, "orchReadOnly") : tk(locale, `orchStatus_${r.status}`)}</span>
+              <button type="button" data-ws-history-open onClick={() => { onOpenRun(r.runId); onClose(); }}>{t(locale, TERMINAL_STATUSES.includes(r.status) || r.status === "completed_no_checks" ? "orchTab_summary" : "orchOpenRun")}</button>
             </li>
           ))}
         </ul>

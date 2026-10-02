@@ -21,7 +21,8 @@ const STOP_ONLY = ["lead_modified_tree", "shared_git_tampered", "journal_corrupt
 export const ACTIVE_STATUSES = ["preparing", "running", "pausing", "paused", "stopping"];
 export const TERMINAL_STATUSES = ["stopped", "completed", "failed"];
 
-export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission";
+export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission"
+  | "checks_decide" | "finish_confirm"; // journal v2: the person's decisions, with Stop the only actions on their pauses
 
 // Where orchestration is unavailable (orchestrationAvailable() false, main refuses with unsupported_platform) its entry
 // points stay visible but inactive, with this hint: new agent cards, linking, a new goal (and so autopilot).
@@ -48,6 +49,8 @@ export function availableActions(view: OrchestrationRunView): RunAction[] {
     case "paused": {
       const r = view.reason ?? "";
       if (r === "awaiting_answer") return ["answer", "stop", ...clarify];
+      if (r === "awaiting_checks_decision") return ["checks_decide", "stop"];
+      if (r === "awaiting_finish_confirmation") return ["finish_confirm", "stop"];
       if (r === "limit_reached") return ["raise_limit", "stop", ...clarify];
       if (r === "outcome_unknown") return ["recover", "stop", ...clarify];
       if (STOP_ONLY.includes(r)) return ["stop", ...clarify];
@@ -68,13 +71,21 @@ export function activeRole(view: OrchestrationRunView | null): "lead" | "executo
   return a.purpose === "execute" ? "executor" : "lead";
 }
 
-export type AgentState = "idle" | "starting" | "working" | "waiting" | "needs_you" | "paused" | "stopping" | "completed" | "stopped" | "failed" | "read_only";
+// The run's status as every place names it (panel, cards, link chip, widget, workspace history): a run of journal v2
+// completed without checks is "completed_no_checks", never "completed" (journal-v2-format.md §2.3).
+export type RunStatusKey = OrchestrationRunView["status"] | "completed_no_checks";
+export function runStatusKey(view: OrchestrationRunView): RunStatusKey {
+  return view.status === "completed" && view.progress?.completion === "no_checks" ? "completed_no_checks" : view.status;
+}
+
+export type AgentState = "idle" | "starting" | "working" | "waiting" | "needs_you" | "paused" | "stopping" | "completed" | "completed_no_checks" | "stopped" | "failed" | "read_only";
 // A card's state from its link's latest run: working only while its own role holds the turn; "needs_you" while its CLI
 // waits for the person's decision (the panel may be closed, so the card says it).
 export function agentState(role: "lead" | "executor", view: OrchestrationRunView | null): AgentState {
   if (!view) return "idle";
   if (view.newer) return "read_only"; // a newer version's run, whatever its journaled status: only viewed here
-  if (view.status === "completed" || view.status === "stopped" || view.status === "failed" || view.status === "stopping") return view.status;
+  if (view.status === "completed") return runStatusKey(view) as AgentState;
+  if (view.status === "stopped" || view.status === "failed" || view.status === "stopping") return view.status;
   if (view.permission?.role === role) return "needs_you";
   if (view.status === "paused") return "paused";
   return activeRole(view) === role ? "working" : "waiting";
@@ -106,7 +117,7 @@ export function historyLines(records: readonly OrchestrationHistoryRecord[]): Hi
     switch (r.type) {
       case "run.status":
         // the turn whose end this status may be (pauseCause): kept only while the run does not go on
-        line("status", { ...pick(d, "status", "reason"), turnId: endedTurn });
+        line("status", { ...pick(d, "status", "reason"), ...((d.completion as { kind?: string } | null | undefined)?.kind === "no_checks" ? { status: "completed_no_checks" } : {}), turnId: endedTurn });
         if (d.status !== "paused" && d.status !== "pausing") endedTurn = null;
         break;
       case "orch.turn": purposes.set(d.turnId, d.purpose); line("turn", pick(d, "purpose", "stage", "round")); break;
@@ -297,7 +308,8 @@ export type CommandSender = ReturnType<typeof createCommandSender>;
 export function commandOf(action: RunAction, input: { text?: string; questionId?: string; limit?: string; value?: number;
   recover?: "accept" | "retry_turn" | "reset_to_checkpoint"; confirm?: boolean;
   requestId?: string; decision?: OrchestrationPermissionOption; answers?: Record<string, string[]>;
-  content?: Record<string, unknown>; feedback?: string } = {}): OrchestrationRunCommand {
+  content?: Record<string, unknown>; feedback?: string;
+  checks?: string[]; tree?: string; commit?: string | null; push?: "confirm" | "decline" | null; qa?: "confirm" | "decline" | null } = {}): OrchestrationRunCommand {
   switch (action) {
     case "pause": return { kind: "pause_after_turn", on: true };
     case "keep_running": return { kind: "pause_after_turn", on: false };
@@ -308,6 +320,8 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
     case "clarify": return { kind: "clarify", text: input.text ?? "" };
     case "raise_limit": return { kind: "raise_limit", limit: (input.limit ?? "turns") as "turns", value: input.value ?? 0 };
     case "recover": return { kind: "recover", action: input.recover ?? "accept", ...(input.confirm ? { confirm: true } : {}) };
+    case "checks_decide": return { kind: "checks.decide", decision: input.checks ? "edit" : "accept", ...(input.checks ? { checks: input.checks } : {}) };
+    case "finish_confirm": return { kind: "finish.confirm", tree: input.tree ?? "", commit: input.commit ?? null, push: input.push ?? null, qa: input.qa ?? null };
     case "permission": return {
       kind: "permission", requestId: input.requestId ?? "", decision: input.decision ?? "deny", ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}), ...(input.feedback !== undefined ? { feedback: input.feedback } : {})
@@ -325,7 +339,8 @@ export const newerStamp = (a: { seq: number; tick: number }, b: { seq: number; t
 
 // One plain headline for the state, the reason it is in, and the one next step to offer.
 export type Headline = "working" | "awaiting_permission" | "stopping_after_turn" | "awaiting_answer" | "awaiting_plan_review" | "needs_setup"
-  | "needs_decision" | "needs_action" | "paused" | "stopping" | "stopped" | "completed" | "failed" | "halted";
+  | "needs_decision" | "needs_action" | "paused" | "stopping" | "stopped" | "completed" | "completed_no_checks" | "failed" | "halted"
+  | "awaiting_checks" | "awaiting_finish_confirmation";
 const NEEDS_SETUP = ["environment_error", "sandbox_unavailable", "permission_denied", "external_failure"];
 const NEEDS_DECISION = ["outcome_unknown", "limit_reached", "loop_suspected", "invalid_report", "protocol_error", "lead_modified_tree", "shared_git_tampered", "journal_corrupt",
   "finish_unconfirmed"];
@@ -340,7 +355,7 @@ export function runHeadline(view: OrchestrationRunView): { headline: Headline; n
     case "stopping": return { headline: "stopping", next: "wait" };
     case "stopped": return { headline: "stopped", next: "new_goal" };
     case "completed": return {
-      headline: "completed",
+      headline: runStatusKey(view) === "completed_no_checks" ? "completed_no_checks" : "completed",
       next: view.progress?.finish.some((f) => f.step === "qa" && f.asked && finishStatus(f) === "qa_unverified") ? "review_qa_unverified"
         : view.progress?.finish.some((f) => f.step === "commit" && f.status === "done") ? "review_committed"
         : view.workMode === "project" ? "review_in_place" : view.workMode === "worktree" ? "review_worktree" : "take_result"
@@ -350,6 +365,8 @@ export function runHeadline(view: OrchestrationRunView): { headline: Headline; n
       const r = view.reason ?? "";
       if (r === "awaiting_answer") return { headline: "awaiting_answer", next: "answer" };
       if (r === "plan_review") return { headline: "awaiting_plan_review", next: "review_plan" };
+      if (r === "awaiting_checks_decision") return { headline: "awaiting_checks", next: "decide_checks" };
+      if (r === "awaiting_finish_confirmation") return { headline: "awaiting_finish_confirmation", next: "confirm_finish" };
       if (NEEDS_SETUP.includes(r)) return { headline: "needs_setup", next: r };
       // failed: "resume" runs the action again; unknown: it only checks what happened (finishOrComplete in main)
       if (r === "finish_unconfirmed") return { headline: "needs_decision", next: finishPending(view)?.status === "failed" ? "finish_retry" : "finish_check" };
@@ -366,7 +383,8 @@ export function runHeadline(view: OrchestrationRunView): { headline: Headline; n
 // different facts: only a verification that follows the version contract and reported the expected commit confirms
 // the version (version "confirmed"). A passing verification without the contract — or a journal from before it — is
 // "the check passed; the version is not confirmed". A reported other, missing or malformed version is said as such.
-export function finishStatus(f: { step: string; status: string; version?: OrchestrationQaVersion | null }): string {
+export function finishStatus(f: { step: string; status: string; version?: OrchestrationQaVersion | null; declined?: boolean }): string {
+  if (f.declined) return "declined"; // journal v2: the person declined push/QA of a run without checks
   if (f.step !== "qa") return f.status;
   if (f.status === "done") return f.version === "confirmed" ? "qa_confirmed" : "qa_unverified";
   if (f.version === "mismatch" || f.version === "not_reported" || f.version === "invalid") return `qa_${f.version}`;
@@ -375,7 +393,7 @@ export function finishStatus(f: { step: string; status: string; version?: Orches
 
 // The first asked action after success that is not confirmed done (commit, push, QA order), for the finish pause.
 export function finishPending(view: OrchestrationRunView): { step: "commit" | "push" | "qa"; status: string } | null {
-  const f = view.progress?.finish.find((x) => x.asked && x.status !== "done");
+  const f = view.progress?.finish.find((x) => x.asked && x.status !== "done" && !x.declined);
   return f ? { step: f.step, status: f.status } : null;
 }
 
@@ -642,7 +660,7 @@ export function board(view: OrchestrationRunView): Board {
       failed: checks.filter((c) => c.status === "failed").map((c) => ({ title: c.title, class: c.class }))
     },
     prepare: view.progress?.prepare?.status ?? null,
-    action: !!view.permission || ["awaiting_answer", "awaiting_plan_review", "needs_setup", "needs_decision", "needs_action"].includes(head)
+    action: !!view.permission || ["awaiting_answer", "awaiting_plan_review", "needs_setup", "needs_decision", "needs_action", "awaiting_checks", "awaiting_finish_confirmation"].includes(head)
       || (view.status === "paused" && view.reason === "stage_done"),
     grantsApplied: view.progress?.grantsApplied ?? 0
   };

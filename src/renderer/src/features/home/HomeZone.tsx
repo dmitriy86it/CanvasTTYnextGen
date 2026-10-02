@@ -686,10 +686,11 @@ export function HomeZone({
 
 const RUN_TONE: Record<ActivityState, "working" | "waiting" | "idle"> = {
   starting: "working", working: "working", checking: "working", waiting_agent: "working", waiting_user: "waiting",
-  paused: "waiting", stopping: "idle", completed: "idle", stopped: "idle", failed: "idle", read_only: "idle"
+  paused: "waiting", stopping: "idle", completed: "idle", completed_no_checks: "idle", stopped: "idle", failed: "idle", read_only: "idle"
 };
 const RUN_ICON: Partial<Record<ActivityState, "working" | "attention" | "error" | "done">> = {
-  starting: "working", working: "working", checking: "working", waiting_user: "attention", failed: "error", completed: "done"
+  starting: "working", working: "working", checking: "working", waiting_user: "attention", failed: "error", completed: "done",
+  completed_no_checks: "attention" // a warning, never the done mark: no check ran
 };
 const clockTime = (locale: LocaleId, iso: string): string =>
   new Date(iso).toLocaleTimeString(locale === "ru" ? "ru-RU" : "en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });

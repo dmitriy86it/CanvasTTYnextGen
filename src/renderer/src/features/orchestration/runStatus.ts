@@ -10,10 +10,10 @@ import type {
 } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
-import { causeText, finishStatus, headlineKey, participantState, runHeadline, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
+import { causeText, finishStatus, headlineKey, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
 
 // read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
-export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "stopped" | "failed" | "read_only";
+export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "completed_no_checks" | "stopped" | "failed" | "read_only";
 export type Role = "lead" | "executor";
 export const QUIET_MS = 30_000;
 
@@ -122,7 +122,8 @@ function heldState(locale: LocaleId, view: OrchestrationRunView, entries: readon
     return { state: "waiting_user", doing: tr(locale, "orchNow_needsYou", { who: who(view.permission.role) }), wait: permissionReason(locale, view.permission) };
   }
   if (TERMINAL_STATUSES.includes(view.status)) {
-    return { state: view.status as ActivityState, doing: t(locale, `orchHeadline_${view.status}` as TranslationKey), wait: reasonText(locale, view, entries) };
+    const key = runStatusKey(view);
+    return { state: key as ActivityState, doing: t(locale, `orchHeadline_${key}` as TranslationKey), wait: key === "completed_no_checks" ? t(locale, "orchNoChecksRan") : reasonText(locale, view, entries) };
   }
   if (view.status === "stopping") return { state: "stopping", doing: t(locale, "orchHeadline_stopping"), wait: null };
   if (view.status === "paused") {
@@ -412,6 +413,7 @@ export function reportParts(text: string): ReportParts {
 // complete: the whole journal was read. A completed run whose final review is not read yet is said as such — never as
 // a final review that did not confirm the goal.
 export function outcomeKey(view: OrchestrationRunView, finalVerdict: string | null, complete = true): string {
+  if (runStatusKey(view) === "completed_no_checks") return "completed_no_checks"; // never "completed": no check ran
   if (view.status === "completed") return finalVerdict === "complete" ? "completed" : complete ? "completed_unconfirmed" : "completed_unloaded";
   if (view.status === "stopped" || view.status === "failed") return view.status;
   if (view.status === "paused" || view.halted) return "paused";

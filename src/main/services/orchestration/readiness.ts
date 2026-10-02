@@ -107,6 +107,7 @@ export function testDbItem(db: LaravelTestDb): OrchestrationReadinessItem {
 export interface ReadinessInput {
   project: string; // the lead card's project (absolute, real)
   commands: readonly string[]; // the check commands the user entered
+  optionalChecks?: boolean; // journal v2 (development flag): no command — the lead proposes them, the person decides
   workMode: "project" | "copy" | "worktree";
   // Stage 13: the profile's preparation (steps the autopilot runs itself when auto).
   prepare?: { steps: readonly PrepareStep[]; auto: boolean };
@@ -189,7 +190,10 @@ export async function assessReadiness(input: ReadinessInput): Promise<Orchestrat
     add(testDbItem(await laravelTestDb(root, input.dbProbe, { env: rt.ok ? rt.env : undefined, worktree: input.workMode === "worktree" })));
   }
 
-  if (input.commands.length === 0) add({ id: "commands", level: "blocker", detail: "no check command: nothing would verify the result" });
+  if (input.commands.length === 0) {
+    add(input.optionalChecks ? { id: "commands", level: "info", detail: "no check command: the lead proposes them, you accept or edit them" }
+      : { id: "commands", level: "blocker", detail: "no check command: nothing would verify the result" });
+  }
   else if (rt.ok) {
     for (const [i, line] of input.commands.entries()) {
       const word = line.trim().split(/\s+/)[0] ?? "";

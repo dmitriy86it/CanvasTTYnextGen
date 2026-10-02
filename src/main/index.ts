@@ -528,6 +528,8 @@ function buildRunManager(): RunManager {
     workspaceOpen: (id) => workspaceStore?.isOpen(id) ?? false,
     workspaceKnown: (id) => workspaceStore?.get().workspaces.some((w) => w.id === id) ?? false,
     appVersion: () => app.getVersion(),
+    // journal v2 and optional check commands (journal-v2-format.md §3.4): a development flag until A4
+    journalV2: developmentEnv("CANVASTTY_JOURNAL_V2") === "1",
     gitPath: () => found("git"),
     // a hermetic smoke names its node explicitly: the lookup would fall back to Homebrew's
     nodePath: () => (hermeticSmoke() && developmentEnv("CANVASTTY_SMOKE_NODE")) || found("node"),
