@@ -170,11 +170,15 @@ test("the fixtures of the format (A4's final form, no formatPreview): read only 
 test("the plan report of v2: checks null in every plan turn but the proposing one; a proposal there is invalid", async () => {
   const { PLAN_V2_SCHEMA, PLAN_PROPOSAL_SCHEMA, REPORT_SCHEMAS } = await import("../src/main/services/orchestration/orchestrationService.ts");
   const { validateAnswer } = await import("../src/main/services/orchestration/schema.ts");
-  const plan = { stages: [{ title: "t", task: "x" }], question: null };
+  // A2 (§2.7): a v2 plan states its conditions, and its dropped and dropRequirements
+  const v1 = { stages: [{ title: "t", task: "x" }], question: null };
+  const plan = { stages: [{ ...v1.stages[0], conditions: [{ keep: null, text: "t", covers: ["R1"], evidence: { kind: "change", check: null } }] }], dropped: [], dropRequirements: [], question: null };
   assert.deepEqual(validateAnswer(PLAN_V2_SCHEMA, { ...plan, checks: null }), []);
+  assert.notDeepEqual(validateAnswer(PLAN_V2_SCHEMA, { ...v1, checks: null }), [], "a v2 plan without conditions");
   assert.notDeepEqual(validateAnswer(PLAN_V2_SCHEMA, plan), [], "checks is required");
   assert.notDeepEqual(validateAnswer(PLAN_V2_SCHEMA, { ...plan, checks: { checks: [], none: "x" } }), [], "a proposal outside the proposing turn");
   assert.deepEqual(validateAnswer(PLAN_PROPOSAL_SCHEMA, { ...plan, checks: { checks: [], none: "x" } }), []);
-  assert.deepEqual(validateAnswer(REPORT_SCHEMAS.plan, plan), [], "v1 unchanged");
-  assert.notDeepEqual(validateAnswer(REPORT_SCHEMAS.plan, { ...plan, checks: null }), []);
+  assert.deepEqual(validateAnswer(REPORT_SCHEMAS.plan, v1), [], "v1 unchanged");
+  assert.notDeepEqual(validateAnswer(REPORT_SCHEMAS.plan, { ...v1, checks: null }), []);
+  assert.notDeepEqual(validateAnswer(REPORT_SCHEMAS.plan, plan), [], "no conditions in v1");
 });

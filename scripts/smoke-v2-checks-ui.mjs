@@ -1,4 +1,4 @@
-// Electron UI smoke for stage A, A1 and A1.1 (docs/agent-orchestration/implementation/journal-v2-format.md): journal v2
+// Electron UI smoke for stage A, A1, A1.1 and A2 (docs/agent-orchestration/implementation/journal-v2-format.md): journal v2
 // behind the development flag CANVASTTY_JOURNAL_V2=1, on temporary profiles with fake Codex/Claude CLIs.
 //   none:    the goal dialog leaves the check commands empty (a hint says the lead proposes them), readiness does not
 //            block; the lead proposes none and the autopilot goes on by itself (A1.1 Q1) — the run completes without
@@ -9,6 +9,9 @@
 //            «Изменить команду» only (no «Запустить без песочницы» for a lead's command, owner's decision on S1-4), no
 //            Resume; the autopilot waits; the editor holds the whole command and says it will run as the person's;
 //            saved unchanged, it runs in the person's shell and the run completes, confirmed.
+//   A2:      both plans state readiness conditions over the goal's criteria R1, R2 — the cards say «N из M условий
+//            выполнено», the result's «Условия» lists each requirement with its conditions, their status and evidence
+//            (the lead's review with the files, or the check run with its output).
 // Needs `npm run build` first; macOS (Seatbelt). Starts no real model. Usage: node scripts/smoke-v2-checks-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
@@ -22,7 +25,13 @@ const failures = [];
 const passed = [];
 const expect = (ok, what, got) => { (ok ? passed : failures).push(ok ? what : `${what}: ${JSON.stringify(got)?.slice(0, 400)}`); };
 
-const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
+// A2 (journal-v2-format.md §2.7): the goal's two criteria are R1, R2; the plan's conditions cover them, the review marks
+// the "change" ones met on src/note.mjs, the final review marks both requirements met
+const change = (text, covers) => ({ keep: null, text, covers, evidence: { kind: "change", check: null } });
+const byCheck = (text, covers, check) => ({ keep: null, text, covers, evidence: { kind: "check", check } });
+const plan = (conditions) => ({ report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant", conditions }], dropped: [], dropRequirements: [], question: null } });
+const review = (ids) => ({ report: { verdict: "accept", findings: [], question: null, conditions: ids.map((id) => ({ id, status: "met", paths: ["src/note.mjs"], note: "src/note.mjs exports note" })) } });
+const final = { report: { verdict: "complete", findings: [], question: null, requirements: ["R1", "R2"].map((id) => ({ id, status: "met", note: "done" })) } };
 const wrap = (p) => {
   const f = D(`${p}-mock`);
   if (!fs.existsSync(f)) fs.writeFileSync(f, `#!/bin/sh\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
@@ -32,11 +41,12 @@ const chip = (linkId) => q(`[data-agent-link-id="${linkId}"]`);
 const NO_CHECKS = "Завершён без проверок";
 
 // One scenario: its own user data, project, scripts and fake CLIs (MOCK_CHECKS, tests/fixtures/orchestration/mock-common.mjs).
-async function scenario(name, port, checks, body) {
+async function scenario(name, port, checks, conditions, body) {
   const dir = D(name);
   fs.mkdirSync(path.join(dir, "mock-state", ".codex"), { recursive: true });
   const projectA = project(`${name}-project`);
-  const codexScript = script(`${name}-codex`, [{ report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant" }], question: null } }, verdict("accept"), verdict("complete")]);
+  const changes = conditions.map((c, i) => (c.evidence.kind === "change" ? `C${i + 1}` : null)).filter(Boolean);
+  const codexScript = script(`${name}-codex`, [plan(conditions), review(changes), final]);
   const claudeScript = script(`${name}-claude`, [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] }]);
   const env = (extra) => ({ HOME: path.join(dir, "mock-state"), MOCK_STATE: path.join(dir, "mock-state"), ...extra });
   const providers = path.join(dir, "providers.json");
@@ -67,7 +77,7 @@ async function scenario(name, port, checks, body) {
 
 try {
   // =============== none: the autopilot goes on without checks ===============
-  await scenario("none", 9800 + Math.floor(Math.random() * 100), { MOCK_CHECKS: "none" }, async (app, ids, root) => {
+  await scenario("none", 9800 + Math.floor(Math.random() * 100), { MOCK_CHECKS: "none" }, [change("src/note.mjs exists", ["R1", "R2"])], async (app, ids, root) => {
     let dialog = null;
     await startGoal(app, ids.link, {
       onDialog: async () => {
@@ -82,6 +92,8 @@ try {
     await app.waitFor(`${chip(ids.link)}?.querySelector(".agent-link__state")?.textContent === ${JSON.stringify(NO_CHECKS)}`, "the chip says completed without checks");
     const cards = await app.ev(`[${JSON.stringify(ids.lead)}, ${JSON.stringify(ids.exec)}].map((id) => document.querySelector('[data-agent-id="' + id + '"] .agent-card__state')?.textContent ?? null)`);
     expect(cards.every((c) => c === NO_CHECKS), "none: both cards say completed without checks", cards);
+    const cardConds = await app.ev(`[...document.querySelectorAll("[data-agent-conditions]")].map((e) => e.textContent)`);
+    expect(cardConds.length === 2 && cardConds.every((c) => c === "1 из 1 условий выполнено"), "none (A2): both cards say 1 of 1 conditions met", cardConds);
     await app.clickEl(`[...document.querySelectorAll('[data-agent-link-id="${ids.link}"] button')].find((b) => b.textContent.trim() === "Открыть запуск")`);
     await app.waitFor(`${q(".orch-panel")} && true`, "the run panel");
     await openTab(app, "summary");
@@ -94,6 +106,14 @@ try {
     // «ничем не подтверждён» is the warning itself; «Завершён в <time>» is when it ended
     expect(!/(?<!не )подтвержд/i.test(result.text) && !/Завершён(?! без проверок| в )/.test(result.text), "none: nowhere «Подтверждено» or plain «Завершён»", result.text.slice(0, 600));
     await app.shot("v2-02-completed-without-checks");
+    const conds = await app.ev(`({ count: ${q("[data-sum-conditions-count]")}?.textContent ?? null,
+      reqs: [...document.querySelectorAll("[data-requirement]")].map((e) => e.dataset.requirement + ":" + e.dataset.requirementStatus),
+      conds: [...document.querySelectorAll('[data-requirement="R1"] [data-condition]')].map((e) => e.dataset.condition + ":" + e.dataset.conditionStatus),
+      proof: ${q('[data-condition-proof="review"]')}?.textContent ?? null })`);
+    expect(conds.count === "1 из 1 условий выполнено" && conds.reqs.join() === "R1:met,R2:met" && conds.conds.join() === "C1:met" && /src\/note\.mjs/.test(conds.proof ?? ""),
+      "none (A2): «Условия» — R1, R2 met by C1, its evidence the lead's review on src/note.mjs", conds);
+    await app.ev(`${q('[data-sum="conditions"]')}?.scrollIntoView()`);
+    await app.shot("v2-02b-conditions");
     const lines = fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(lines.every((l) => l.v === 2) && lines[0].minReaderVersion === 2 && lines[0].formatPreview === true, "none: the journal is v 2, minReaderVersion 2 and formatPreview in its first record", lines[0]);
     expect(!lines.some((l) => l.type === "run.status" && l.data.reason === "awaiting_checks_decision"), "none: the autopilot did not wait (A1.1 Q1)", null);
@@ -103,7 +123,8 @@ try {
 
   // =============== refused: a lead's check the sandbox refuses ===============
   const outside = D("outside-marker");
-  await scenario("refused", 9900 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `test -f src/note.mjs && touch ${outside}` }, async (app, ids) => {
+  await scenario("refused", 9900 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: `test -f src/note.mjs && touch ${outside}` },
+    [change("src/note.mjs exists", ["R1"]), byCheck("the proposed check passes", ["R2"], "cmd-1")], async (app, ids) => {
     await startGoal(app, ids.link, { onDialog: () => app.type(q("[data-orch-commands]"), "") });
     await app.waitFor(`${q("[data-orch-check-refused]")} && true`, "«Проверке нужно больше прав»", 120_000);
     const panel = await app.ev(`(() => { const p = ${q("[data-orch-check-refused]")}; return { id: p.dataset.orchCheckRefused, title: p.querySelector("h4").textContent,
@@ -128,6 +149,14 @@ try {
     await app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.status === "completed")`, "completed", 120_000);
     const done = await app.ev(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.progress.completion)`);
     expect(done === "confirmed" && fs.existsSync(outside), "refused: saved unchanged — run as the person's, without the sandbox; the run completed, confirmed", done);
+    await openTab(app, "summary");
+    await app.waitFor(`${q("[data-sum-conditions-count]")} && true`, "«Условия»");
+    const conds = await app.ev(`({ count: ${q("[data-sum-conditions-count]")}.textContent,
+      c2: (() => { const e = ${q('[data-condition="C2"]')}; return e ? { status: e.dataset.conditionStatus, proof: !!e.querySelector('[data-condition-proof="run"]'), text: e.textContent } : null; })() })`);
+    expect(conds.count === "2 из 2 условий выполнено" && conds.c2?.status === "met" && conds.c2.proof && conds.c2.text.includes("test -f src/note.mjs"),
+      "refused (A2): 2 of 2 conditions met; C2's evidence is the check run of the command as saved", conds);
+    await app.ev(`${q('[data-condition-proof="run"]')}.open = true; ${q('[data-sum="conditions"]')}.scrollIntoView()`);
+    await app.shot("v2-06-conditions-check-evidence");
     await app.shot("v2-05-completed-as-person-command");
   });
 } catch (error) {

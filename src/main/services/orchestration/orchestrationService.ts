@@ -18,22 +18,24 @@ import type { ProjectCheckResult } from "./checkService.ts";
 import { DEFAULT_LIMITS, completion, confirmationFor, currentCommit, effectiveLimits, nextAction, proposesChecks, withoutChecks } from "./cycle.ts";
 import type { Action, Goal, LimitKind, RunLimits, Snapshot } from "./cycle.ts";
 import { canonical } from "./journal.ts";
-import type { CommandResult, CompletionKind, PausedReason, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
+import type { CommandResult, CompletionBasis, CompletionKind, PausedReason, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
 import { checkKey, findingsKey, runKey } from "./progress.ts";
 import type { CheckDef, DepsFacts } from "./progress.ts";
 import type { ProviderTurnResult } from "./providers.ts";
 import { compileSchema, validateAnswer } from "./schema.ts";
 import { applyRestore, inspectWorkspaceRefs, matchesCheckpointIntent, prepareRestore } from "./snapshots.ts";
 import { createCheckpoint } from "./snapshots.ts";
-import { StoreError, createRun as storeCreateRun, openRun as storeOpenRun, readText } from "./store.ts";
+import { StoreError, conditionTexts, createRun as storeCreateRun, openRun as storeOpenRun, readText } from "./store.ts";
 import type { RunWriter, StoreIo } from "./store.ts";
 import type { AnswerSchema, SupervisorLaunch } from "./types.ts";
 import { endingDetail, sanitize } from "./activity.ts";
 import type { AskPerson, PermissionAsk, PermissionReply } from "./sessions.ts";
 import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
-import type { OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
-import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
+import type { OrchestrationConditions, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
+import { bookOf, changeIdsOf, conditionBlockers, factsOf, finalMarksProblems, numberPlan, planProblems, reportConditions, stageMarksProblems } from "./conditions.ts";
+import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, RequirementMark, Status } from "./conditions.ts";
+import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, diffTreeNames, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
 import type { CloneDir } from "./workspace.ts";
 import type { AgentAccess } from "./access.ts";
 import { isClaudeAccess, isCodexAccess } from "./access.ts";
@@ -162,6 +164,7 @@ export interface RunProgress {
   completion?: CompletionKind | null;
   // journal v2: where the run's check commands came from — the goal, or the lead's proposal (accepted / edited)
   checksFrom?: "goal" | "proposal" | "edited" | null;
+  conditions?: OrchestrationConditions | null; // A2 (journal-v2-format.md §2.7)
 }
 
 export interface RunHandle {
@@ -247,14 +250,58 @@ export const REPORT_SCHEMAS: Readonly<Record<TurnPurpose, AnswerSchema>> = Objec
   review: findingsSchema(["accept", "fix", "replan", "question"]),
   final_review: findingsSchema(["complete", "replan", "question"])
 });
+// Journal v2, A2 (journal-v2-format.md §2.7): every stage of a plan states its readiness conditions — new ones or the
+// plan in force's carried over (keep) — flat, as the schema subset has no anyOf. dropped and dropRequirements are part
+// of the form (5h §2.3) and must stay empty until the person decides them (A4).
+const CONDITION_ITEM: AnswerSchema = {
+  type: "object", additionalProperties: false, required: ["keep", "text", "covers", "evidence"],
+  properties: {
+    keep: { type: ["string", "null"], maxLength: 16 },
+    text: { type: ["string", "null"], maxLength: 500 },
+    covers: { type: ["array", "null"], items: str(1, 16) },
+    evidence: {
+      type: ["object", "null"], additionalProperties: false, required: ["kind", "check"],
+      properties: { kind: { type: "string", enum: ["check", "change"] }, check: { type: ["string", "null"], maxLength: 16 } }
+    }
+  }
+};
+const PLAN_V2_BASE: AnswerSchema = {
+  type: "object", additionalProperties: false, required: ["stages", "dropped", "dropRequirements", "question"],
+  properties: {
+    stages: {
+      type: "array",
+      items: { type: "object", additionalProperties: false, required: ["title", "task", "conditions"], properties: { title: str(1, 200), task: str(1, 4000), conditions: { type: "array", items: CONDITION_ITEM } } }
+    },
+    dropped: { type: "array", items: { type: "object", additionalProperties: false, required: ["condition", "why"], properties: { condition: str(1, 16), why: str(1, 500) } } },
+    dropRequirements: { type: "array", items: { type: "object", additionalProperties: false, required: ["requirement", "why"], properties: { requirement: str(1, 16), why: str(1, 500) } } },
+    question: { type: ["string", "null"], maxLength: 2000 }
+  }
+};
+// The lead's review in A1–A2 journals (it still reviews): the marks of the stage's "change" conditions, and in the
+// final review one for every requirement (journal-v2-format.md §2.7).
+const MARK = (status: string[]): AnswerSchema["properties"] => ({ id: str(1, 16), status: { type: "string", enum: status }, note: { type: "string", maxLength: 1000 } });
+export const REVIEW_V2_SCHEMA: AnswerSchema = {
+  ...REPORT_SCHEMAS.review, required: ["verdict", "findings", "question", "conditions"],
+  properties: {
+    ...REPORT_SCHEMAS.review.properties,
+    conditions: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "status", "paths", "note"], properties: { ...MARK(["met", "not_met"]), paths: { type: "array", items: str(1, 500) } } } }
+  }
+};
+export const FINAL_V2_SCHEMA: AnswerSchema = {
+  ...REPORT_SCHEMAS.final_review, required: ["verdict", "findings", "question", "requirements"],
+  properties: {
+    ...REPORT_SCHEMAS.final_review.properties,
+    requirements: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "status", "note"], properties: MARK(["met", "not_met"]) } }
+  }
+};
 // Journal v2: the first plan turn of a goal without check commands also proposes them — or says why there are none
 // (journal-v2-format.md §2.1, «Поле checks отчёта плана»). Every other plan turn of a v2 journal answers checks: null
 // (PLAN_V2_SCHEMA): a proposal there is an invalid report. v1 journals keep the plan schema above.
 export const PLAN_PROPOSAL_SCHEMA: AnswerSchema = {
-  ...REPORT_SCHEMAS.plan,
-  required: ["stages", "question", "checks"],
+  ...PLAN_V2_BASE,
+  required: ["stages", "dropped", "dropRequirements", "question", "checks"],
   properties: {
-    ...REPORT_SCHEMAS.plan.properties,
+    ...PLAN_V2_BASE.properties,
     checks: {
       type: ["object", "null"], additionalProperties: false, required: ["checks", "none"],
       properties: {
@@ -268,11 +315,12 @@ export const PLAN_PROPOSAL_SCHEMA: AnswerSchema = {
   }
 };
 export const PLAN_V2_SCHEMA: AnswerSchema = {
-  ...REPORT_SCHEMAS.plan, required: ["stages", "question", "checks"], properties: { ...REPORT_SCHEMAS.plan.properties, checks: { type: "null" } }
+  ...PLAN_V2_BASE, required: ["stages", "dropped", "dropRequirements", "question", "checks"], properties: { ...PLAN_V2_BASE.properties, checks: { type: "null" } }
 };
-const schemaOf = (purpose: TurnPurpose, st: RunState, goal: Goal): AnswerSchema => purpose !== "plan" ? REPORT_SCHEMAS[purpose]
-  : proposesChecks(st, goal) ? PLAN_PROPOSAL_SCHEMA : st.version === 2 ? PLAN_V2_SCHEMA : REPORT_SCHEMAS.plan;
-for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
+const schemaOf = (purpose: TurnPurpose, st: RunState, goal: Goal): AnswerSchema => st.version !== 2 ? REPORT_SCHEMAS[purpose]
+  : purpose === "plan" ? (proposesChecks(st, goal) ? PLAN_PROPOSAL_SCHEMA : PLAN_V2_SCHEMA)
+    : purpose === "review" ? REVIEW_V2_SCHEMA : purpose === "final_review" ? FINAL_V2_SCHEMA : REPORT_SCHEMAS[purpose];
+for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA, REVIEW_V2_SCHEMA, FINAL_V2_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
 
 interface PlanReport { stages: { title: string; task: string }[]; question: string | null }
 interface ProposedCheck { command: string; why: string; source: string[] }
@@ -594,7 +642,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const first = permissions.values().next().value;
     const st = state();
     return {
-      permission: first?.view ?? null, pendingPermissions: permissions.size, workMode: ws.mode, workDir: ws.repo, progress: progressOf(st, goal, ws.branch),
+      permission: first?.view ?? null, pendingPermissions: permissions.size, workMode: ws.mode, workDir: ws.repo,
+      progress: { ...progressOf(st, goal, ws.branch), ...(st.version === 2 ? { conditions: shownConditions } : {}) },
       ...(st.pausedReason === "awaiting_checks_decision" ? { proposal: proposalText } : {}),
       ...(st.pausedReason === "check_needs_permissions" ? { refused: refusedCheck(st) } : {}),
       ...(st.pausedReason === "awaiting_finish_confirmation" ? {
@@ -707,6 +756,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
             continue;
           case "turn":
             await runTurn(action, decided.snapshot!);
+            // A2: the conditions as shown, after the turn (a pause in it does not reach decide())
+            shownConditions = conditionsView(state(), goal, await conds(), null);
+            touch();
             break;
           case "check":
             await runCheck(action);
@@ -774,9 +826,20 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (unjournaled.length || refs.missing.length) return pause("shared_git_tampered", "source refs differ from the journal");
     const snapshot = await takeSnapshot(st);
     await loadFindings();
+    const c = await conds();
+    const facts = conditionFacts(st, goal, c, snapshot.checkKeys);
+    shownConditions = conditionsView(st, goal, c, snapshot.checkKeys);
     const action = nextAction({
       state: st, goal, limits: effectiveLimits(goal, st), snapshot, now: clock(),
-      findingsOf: (turnId) => findingsCache.get(turnId) ?? []
+      findingsOf: (turnId) => findingsCache.get(turnId) ?? [],
+      // A2: a stage is accepted only with each of its "change" conditions met in that review; the final review completes
+      // only with no condition blocker (journal-v2-format.md §2.7)
+      ...(facts && c ? {
+        conditions: {
+          stageUnmet: (stage: number, turnId: string) => changeIdsOf(c.book, stage).some((id) => marksIn(c.reports, turnId).find((m) => m.id === id)?.status !== "met"),
+          finalUnmet: conditionBlockers(facts).length > 0
+        }
+      } : {})
     });
     return { action, snapshot };
   }
@@ -796,6 +859,16 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     for (const c of checkDefs) checkKeys[c.id] = checkKey(tree, c, facts);
     return { tree, runKey: runKey(tree, checkDefs, facts), checkKeys };
   }
+
+  // A2 (journal-v2-format.md §2.7): the plans' conditions and the lead's review answers, from texts/ (content-addressed:
+  // each read once). shownConditions: as the last decision saw them, for the view.
+  const jsonCache = new Map<string, unknown>();
+  const readJson: ReadJson = async <T>(ref: TextRef): Promise<T> => {
+    if (!jsonCache.has(ref.sha256)) jsonCache.set(ref.sha256, JSON.parse((await readText(root, runId, ref)).toString("utf8")));
+    return jsonCache.get(ref.sha256) as T;
+  };
+  const conds = async (): Promise<ConditionTexts | null> => (state().version === 2 ? loadConditions(state(), readJson) : null);
+  let shownConditions: OrchestrationConditions | null = null;
 
   // Findings of past reviews, read once from texts/ (the journal holds only the reference).
   const findingsCache = new Map<string, string[]>();
@@ -900,14 +973,21 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (action.purpose === "plan") {
       const p = value as PlanReport;
       if (p.question !== null) return askQuestion(turnId, p.question);
+      // A2: the plan's conditions by their rules (journal-v2-format.md §2.7); a violation records nothing, and the next
+      // plan turn is told what was wrong
+      if (st.version === 2 && (await planViolations(value as PlanReportV2, schema)).length) { await setStatus("paused", "invalid_report"); return; }
       if (schema === PLAN_PROPOSAL_SCHEMA) return proposeChecks(turnId, (value as PlanProposalReport).checks!);
-      const ref = await j(() => writer.putText(canonical({ stages: p.stages, question: p.question }))); // v2: without checks: null
+      if (st.version === 2) return recordPlanV2(turnId, value as PlanReportV2);
+      const ref = await j(() => writer.putText(canonical({ stages: p.stages, question: p.question })));
       await j(() => writer.recordPlan({
         turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
         firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: p.stages.length
       }));
     } else if (action.purpose === "review" || action.purpose === "final_review") {
       const r = value as ReviewReport;
+      // A2: the lead's marks — each "change" condition of the stage with paths the run changed, each requirement in the
+      // final review — before anything of the review is recorded (journal-v2-format.md §2.7)
+      if (st.version === 2 && (await reviewViolations(action, value, latest?.tree ?? snapshot.tree)).length) { await setStatus("paused", "invalid_report"); return; }
       const findings = [...new Set(r.findings.map((f) => f.trim()))];
       const ref = findings.length ? await j(() => writer.putText(canonical(findings))) : null;
       findingsCache.set(turnId, findings);
@@ -960,12 +1040,48 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
 
   // The plan of the turn whose proposal was accepted: its report without the proposal.
   async function recordProposedPlan(turnId: string): Promise<void> {
-    const report = JSON.parse((await readText(root, runId, state().turns[turnId].report!.ref!)).toString("utf8")) as PlanProposalReport;
-    const ref = await j(() => writer.putText(canonical({ stages: report.stages, question: null })));
+    const report = JSON.parse((await readText(root, runId, state().turns[turnId].report!.ref!)).toString("utf8")) as PlanReportV2;
+    await recordPlanV2(turnId, report);
+  }
+
+  // ---------- A2: the plan's conditions and the lead's marks (journal-v2-format.md §2.7) ----------
+
+  // What is wrong with a v2 plan: the shape of its conditions, then 5h §2.3 against the plans in force. A proposal's
+  // "check" conditions name the proposed commands; any other plan's, the run's own.
+  async function planViolations(report: PlanReportV2, schema: AnswerSchema): Promise<string[]> {
+    const c = (await conds())!;
+    const { stages, problems } = reportConditions(report);
+    const checkIds = schema === PLAN_PROPOSAL_SCHEMA ? ((report as unknown as PlanProposalReport).checks?.checks ?? []).map((_, i) => `cmd-${i + 1}`) : goal.checks;
+    return [...problems, ...planProblems(stages, report, c.book, Object.keys(state().orch.accepted).length + 1, goal.criteria.length, checkIds)];
+  }
+  // The plan with the numbers the application gives its new conditions.
+  async function recordPlanV2(turnId: string, report: PlanReportV2): Promise<void> {
+    // a proposal of A1's form accepted before this version: its plan has no conditions, and is recorded so (§2.7)
+    if (report.stages.some((x) => !Array.isArray(x.conditions))) {
+      const ref = await j(() => writer.putText(canonical({ stages: report.stages.map(({ title, task }) => ({ title, task })), question: null })));
+      await j(() => writer.recordPlan({ turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref, firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: report.stages.length }));
+      return;
+    }
+    const c = (await conds())!;
+    const { text, assigned } = numberPlan(report, reportConditions(report).stages, c.book.next);
+    const ref = await j(() => writer.putText(canonical(text)));
     await j(() => writer.recordPlan({
       turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
-      firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: report.stages.length
+      firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: text.stages.length, conditionsAssigned: assigned
     }));
+  }
+  // The lead's marks of a review it answered with a verdict about the work (accept, fix; complete in the final review).
+  async function reviewViolations(action: Extract<Action, { kind: "turn" }>, value: unknown, tree: string): Promise<string[]> {
+    const c = (await conds())!;
+    if (action.purpose === "final_review") {
+      const r = value as ReviewReport & { requirements: RequirementMark[] };
+      // a plan of A1's form has no conditions: the condition rules do not apply to it (§2.7)
+      return r.verdict === "complete" && c.book.conditioned ? finalMarksProblems(r.requirements, goal.criteria.length) : [];
+    }
+    const r = value as ReviewReport & { conditions: ConditionMark[] };
+    if (r.verdict !== "accept" && r.verdict !== "fix") return [];
+    const changed = new Set((await diffTreeNames(ws, state().workspace!.baseline.tree, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
+    return stageMarksProblems(r.conditions, changeIdsOf(c.book, action.stage!), changed);
   }
 
   // run.status(completed) of a v2 journal: only as the completion function allows, with its kind and what it was
@@ -973,15 +1089,18 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   async function complete(snapshot: Snapshot): Promise<void> {
     const st = state();
     if (st.version !== 2) return setStatus("completed");
-    const c = completion(st, goal, snapshot);
+    const facts = conditionFacts(st, goal, await conds(), snapshot.checkKeys);
+    const c = completion(st, goal, snapshot, facts);
     if (!c.allowed) { await setStatus("paused", "environment_error"); return; }
     const progress = progressOf(st, goal, ws.branch);
-    const passed = (id: string) => Object.entries(st.orch.assessed).filter(([crid]) => st.checks[crid]?.checkId === id)
-      .sort((a, b) => b[1].seq - a[1].seq)[0]?.[0] ?? null;
+    // the run on the tree it completes on (A2: the evidence the facts above counted, never one of another tree)
+    const passed = (id: string) => checkOn(st, id, snapshot.checkKeys).checkRunId;
     const basis = {
       kind: c.kind, checks: goal.checks.map((id, i) => ({ id, command: goal.commands?.[i] ?? id, checkRunId: passed(id) })),
       runKey: snapshot.runKey, checkKeys: snapshot.checkKeys, tree: snapshot.tree,
       finalTurnId: st.orch.reviews.filter((r) => r.stage === null).at(-1)?.turnId ?? null,
+      // A2: R → C → evidence (the checks above, the reviews in the journal)
+      ...(facts ? { requirements: facts.requirements.map((r) => ({ id: r.id, conditions: r.conditions, met: r.status === "met" })) } : {}),
       finish: progress.finish.filter((f) => f.asked).map((f) => ({ step: f.step, status: f.status, declined: f.declined ?? false, commit: f.commit }))
     };
     const ref = await j(() => writer.putText(canonical(basis)));
@@ -1535,8 +1654,71 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (action.purpose === "review" || action.purpose === "final_review" || repeat || isReplan) {
       parts.push(`Check results on the current state of the copy (results of other states are not shown):\n${await checkLines(snapshot)}`);
     }
+    if (st.version === 2) parts.push(...await conditionLines(action, snapshot));
     parts.push(`Answer only with the JSON object the schema describes.`);
     return parts.join("\n\n");
+  }
+
+  // A2 (journal-v2-format.md §2.7): requirements and readiness conditions, as each role needs them.
+  async function conditionLines(action: Extract<Action, { kind: "turn" }>, snapshot: Snapshot): Promise<string[]> {
+    const st = state();
+    const c = (await conds())!;
+    const facts = conditionFacts(st, goal, c, snapshot.checkKeys);
+    const said: Record<Status, string> = { met: "met", not_met: "not met", not_checked: "not checked yet" };
+    const line = (id: string) => {
+      const d = c.book.defs.get(id)!;
+      return `- ${id} [covers ${d.covers.join(", ") || "nothing"}; ${d.evidence.kind === "check" ? `check ${d.evidence.check}` : "change"}]: ${d.text} — ${said[facts?.conditions.find((x) => x.id === id)?.status ?? "not_checked"]}`;
+    };
+    const reqs = `Requirements (R<n> is acceptance criterion n, fixed):\n${goal.criteria.map((t, i) => `R${i + 1}: ${t}`).join("\n")}`;
+    const stages = [...c.book.stages.entries()].sort((a, b) => a[0] - b[0]);
+    if (action.purpose === "plan") {
+      const first = Object.keys(st.orch.accepted).length + 1;
+      const accepted = stages.filter(([n]) => n < first).flatMap(([, ids]) => ids);
+      const open = stages.filter(([n]) => n >= first).flatMap(([, ids]) => ids);
+      const out = [[reqs,
+        "Readiness conditions: every stage of your plan lists 1..12 of them in conditions; the application numbers new ones C<n>.",
+        "- A new condition: {keep: null, text, covers: [the requirement ids it proves], evidence}. evidence {kind: \"check\", check: \"cmd-<n>\"} is met when "
+          + "that check command passes on the work; {kind: \"change\", check: null} is met when the review marks it met, naming the files changed for it.",
+        "- Every requirement is covered by at least one condition: of an accepted stage, kept, or new.",
+        "- dropped and dropRequirements stay empty: dropping a condition or a requirement is the person's decision, not available yet.",
+        ...(accepted.length ? ["Conditions of accepted stages (in force; they count for coverage):", ...accepted.map(line)] : []),
+        ...(open.length ? ["Conditions still to be met: keep each one in a stage of your plan as {keep: \"C<n>\", text: null, covers: null, evidence: null}:", ...open.map(line)] : [])
+      ].join("\n")];
+      const rejected = await rejectedPlan();
+      if (rejected.length) out.push(`Your previous plan was not accepted by the application:\n${rejected.map((x) => `- ${x}`).join("\n")}`);
+      const unmet = facts?.requirements.filter((r) => r.status !== "met").map((r) => r.id) ?? [];
+      if (st.orch.plan && finalReview(st) && unmet.length) out.push(`The run could not complete: no evidence yet for ${unmet.join(", ")}. Plan the work that gives it.`);
+      return out;
+    }
+    if (action.stage !== null) {
+      const own = c.book.stages.get(action.stage) ?? [];
+      const out = [[reqs, `Readiness conditions of stage ${action.stage}:`, ...own.map(line)].join("\n")];
+      const last = stageReview(st, action.stage);
+      const notes = marksIn(c.reports, last).filter((m) => m.status === "not_met");
+      if (action.purpose === "execute" && notes.length) out.push(`Not met in the last review:\n${notes.map((m) => `- ${m.id}: ${m.note}`).join("\n")}`);
+      if (action.purpose === "review") {
+        out.push("In conditions give one mark for every change condition of this stage: {id, status: met | not_met, paths, note}; met names the files "
+          + "this run changed that show it (paths are checked against the changes since the run started). The stage is accepted only when every "
+          + "condition of it is met and every check passes.");
+      }
+      return out;
+    }
+    return [[reqs, "Readiness conditions in force:", ...stages.flatMap(([, ids]) => ids).map(line)].join("\n"),
+      "In requirements give one mark for every requirement: {id, status: met | not_met, note}. The run completes only when every requirement "
+        + "is met and covered by a met condition."];
+  }
+
+  // The last plan turn the application did not accept for its plan (invalid_report): what was wrong, recomputed from its
+  // report and the plans now (5h §2.3, «Перечень нарушений»).
+  async function rejectedPlan(): Promise<string[]> {
+    const st = state();
+    const lastPlan = Object.entries(st.orch.turns).filter(([, t]) => t.purpose === "plan").sort((a, b) => b[1].seq - a[1].seq)[0]?.[0];
+    const ref = lastPlan ? st.turns[lastPlan]?.report?.ref : null;
+    if (!lastPlan || !ref || st.orch.plans.some((p) => p.turnId === lastPlan) || st.orch.checksProposal?.turnId === lastPlan || st.orch.question?.turnId === lastPlan) return [];
+    const report = await readJson<PlanReportV2 & { checks?: unknown }>(ref);
+    const schema = report.checks ? PLAN_PROPOSAL_SCHEMA : PLAN_V2_SCHEMA;
+    const shape = reportProblem("plan", report, schema);
+    return shape ? [shape] : planViolations(report, schema);
   }
 
   // Stage 13: how independently to work, what CanvasTTY itself prepares and does after success.
@@ -1899,6 +2081,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       if (decided) await setStatus("paused", "recovered");
       if (state().pausedReason === "awaiting_checks_decision") await loadProposal();
       if (state().pausedReason === "awaiting_finish_confirmation") latest = { tree: await snapshotCopyTree(ws, st.workspace!.current.tree), at: new Date(clock()).toISOString() };
+      shownConditions = conditionsView(state(), goal, await conds(), await shownCheckKeys(state(), readJson).catch(() => null));
       touch();
     },
     async start() {
@@ -1967,6 +2150,77 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
       completion: st.completion?.kind ?? null,
       checksFrom: st.orch.checksDecision ? (st.orch.checksDecision.decision === "edit" ? "edited" as const : "proposal" as const) : st.orch.checksProposal ? null : "goal" as const
     } : {})
+  };
+}
+
+// ---------- A2: requirements and readiness conditions (journal-v2-format.md §2.7) ----------
+
+type ReadJson = <T>(ref: TextRef) => Promise<T>;
+export interface ConditionTexts { book: ConditionsBook; reports: Record<string, unknown> }
+// The plans' conditions and the lead's review answers of a run, from its texts (the same reading as the store's check).
+export async function loadConditions(st: RunState, read: ReadJson): Promise<ConditionTexts> {
+  const t = await conditionTexts(st, read);
+  return { book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned ?? null }))), reports: t.reports! };
+}
+const marksIn = (reports: Record<string, unknown>, turnId: string | null): ConditionMark[] => {
+  const c = turnId ? (reports[turnId] as { conditions?: unknown } | undefined)?.conditions : undefined;
+  return Array.isArray(c) ? c as ConditionMark[] : [];
+};
+// The latest result of a command on the tree a decision is about. checkKeys null (the tree is not known here): the latest
+// result, unless an executor turn came after it — then it may be of an older tree, and nothing is concluded from it.
+function checkOn(st: RunState, cmd: string, checkKeys: Readonly<Record<string, string>> | null): { status: Status; checkRunId: string | null } {
+  let best: { id: string; seq: number } | null = null;
+  for (const [id, a] of Object.entries(st.orch.assessed)) {
+    if (st.checks[id]?.checkId !== cmd || (checkKeys && a.checkKey !== checkKeys[cmd])) continue;
+    if (!best || a.seq > best.seq) best = { id, seq: a.seq };
+  }
+  if (!best || (!checkKeys && Object.values(st.orch.turns).some((t) => t.purpose === "execute" && t.seq > best!.seq))) return { status: "not_checked", checkRunId: null };
+  return { status: st.checks[best.id].status === "passed" ? "met" : "not_met", checkRunId: best.id };
+}
+const inForce = (st: RunState) => (r: { turnId: string }) => st.orch.turns[r.turnId]?.planVersion === st.orch.plan?.version;
+// The review a stage's "change" conditions are judged by: the one it was accepted on, otherwise its latest under the plan.
+const stageReview = (st: RunState, stage: number): string | null =>
+  st.orch.accepted[String(stage)]?.reviewTurnId ?? st.orch.reviews.filter((r) => r.stage === stage && inForce(st)(r)).at(-1)?.turnId ?? null;
+const finalReview = (st: RunState): string | null => st.orch.reviews.filter((r) => r.stage === null && inForce(st)(r)).at(-1)?.turnId ?? null;
+
+// The tree a run nobody decides on is shown on: a completed run's, from its basis; otherwise null (the latest result).
+export async function shownCheckKeys(st: RunState, read: ReadJson): Promise<Readonly<Record<string, string>> | null> {
+  return st.completion ? (await read<CompletionBasis>(st.completion.basis)).checkKeys : null;
+}
+
+// The facts the cycle and the completion function decide on; null: no condition rule applies (v1, A1's plan form).
+export function conditionFacts(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null): ConditionFacts | null {
+  if (st.version !== 2 || !c?.book.conditioned) return null;
+  const final = (c.reports[finalReview(st) ?? ""] as { requirements?: unknown } | undefined)?.requirements;
+  return factsOf(c.book, goal.criteria.length, {
+    check: (cmd) => checkOn(st, cmd, checkKeys).status,
+    marks: (stage) => { const id = stageReview(st, stage); return id ? marksIn(c.reports, id) : null; },
+    finalMarks: Array.isArray(final) ? final as RequirementMark[] : null
+  });
+}
+
+// The same facts as shown: every requirement and condition with its proof (journal-v2-format.md §2.7, «Показ»).
+export function conditionsView(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null): OrchestrationConditions | null {
+  const f = conditionFacts(st, goal, c, checkKeys);
+  if (!f || !c) return null;
+  const conditions = f.conditions.map((x): OrchestrationConditions["conditions"][number] => {
+    const d = c.book.defs.get(x.id)!;
+    let proof: OrchestrationConditions["conditions"][number]["proof"] = null;
+    if (d.evidence.kind === "check") {
+      const run = checkOn(st, d.evidence.check, checkKeys).checkRunId;
+      if (run) proof = { checkRunId: run, output: st.checks[run]?.output ?? null };
+    } else {
+      const review = stageReview(st, x.stage);
+      const m = marksIn(c.reports, review).find((y) => y.id === x.id);
+      if (review && m) proof = { reviewTurnId: review, paths: [...m.paths], note: m.note };
+    }
+    const evidence = d.evidence.kind === "check"
+      ? { kind: "check" as const, check: d.evidence.check, command: goal.commands?.[Number(d.evidence.check.slice(4)) - 1] ?? null } : { kind: "change" as const };
+    return { id: x.id, text: d.text, covers: [...d.covers], stage: x.stage, status: x.status, evidence, proof };
+  });
+  return {
+    requirements: f.requirements.map((r, i) => ({ id: r.id, text: goal.criteria[i], conditions: r.conditions, status: r.status })),
+    conditions, met: conditions.filter((x) => x.status === "met").length, total: conditions.length
   };
 }
 

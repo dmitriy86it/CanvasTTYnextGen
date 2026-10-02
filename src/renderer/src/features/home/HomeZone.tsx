@@ -517,7 +517,7 @@ export function HomeZone({
                 <div className="activity-recent__row" key={row.runId} data-activity-recent={row.runId} data-run-state={row.line?.state}>
                   <button type="button" className="activity-recent__open" onClick={() => onOpenRun(row.linkId)} title={row.projectPath}>
                     <strong>{row.project}</strong>
-                    <span>{row.line ? stateLabel(locale, row.line.state) : ""}{row.at ? ` · ${clockTime(locale, row.at)}` : ""}</span>
+                    <span>{row.line ? stateLabel(locale, row.line.state) : ""}{row.conditions ? ` · ${row.conditions}` : ""}{row.at ? ` · ${clockTime(locale, row.at)}` : ""}</span>
                   </button>
                   <button type="button" className="activity-recent__summary" onClick={() => onOpenRunSummary(row.linkId)}>{t(locale, "orchSummaryButton")}</button>
                 </div>
@@ -727,6 +727,7 @@ function RunActivityRow({ row, locale, onOpen }: { row: ActivityRunRow; locale: 
           <strong>{stateLabel(locale, line.state)} · {row.project}</strong>
           <span>{kind} {line.doing}</span>
           {extra && <span className="activity-run__extra" data-activity-extra>{extra}</span>}
+          {row.conditions && <span className="activity-run__extra" data-activity-conditions>{row.conditions}</span>}
           {(line.quiet || last) && <span className="activity-run__time">{line.quiet ?? last}</span>}
         </span>
         {icon && <UiIcon name={icon} size={24} />}

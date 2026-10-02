@@ -3,6 +3,8 @@
 // Nothing here touches the file system; store.ts owns files, locks and the writer.
 import { createHash } from "node:crypto";
 import type { ReportStatus, TurnOutcome } from "./types.ts";
+import { applyPlan, changeIdsOf, emptyBook, factsOf, planProblems } from "./conditions.ts";
+import type { ConditionMark, PlanText, RequirementMark, Status } from "./conditions.ts";
 
 export const JOURNAL_VERSION = 1; // new runs, unless the run asks for v2 (journal-v2-format.md, behind a dev flag in A1)
 // The highest journal version this build reads and writes as its own: above it a journal is a newer version's (A0).
@@ -198,7 +200,9 @@ export interface OrchTurnData {
   turnId: string; purpose: TurnPurpose; stage: number | null; round: number | null;
   planVersion: number | null; clarificationVersion: number;
 }
-export interface PlanRecordedData { turnId: string; version: number; plan: TextRef; firstStage: number; stageCount: number }
+export interface PlanRecordedData { turnId: string; version: number; plan: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number }
+// conditionsAssigned absent: a plan of A1's form or of v1 (no conditions; journal-v2-format.md §2.7)
+export interface PlanState { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number; seq: number }
 export interface ReviewRecordedData {
   turnId: string; stage: number | null; verdict: ReviewVerdict; findings: TextRef | null; findingsKey: string;
   findingsCount: number; clarificationVersion: number; runKey: string;
@@ -238,7 +242,8 @@ export interface OrchState {
   // it is not a run.status record, and counting it would make revision depend on how often the run was reopened.
   revision: number;
   turns: Record<string, Omit<OrchTurnData, "turnId"> & { seq: number }>; // from orch.turn
-  plan: { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; seq: number } | null;
+  plan: PlanState | null;
+  plans: PlanState[]; // every plan.recorded, in order (A2: the conditions of accepted stages come from earlier plans)
   planReviewPaused: boolean; // a run.status paused(plan_review) was applied while the plan was version 1; never reset
   reviews: (ReviewRecordedData & { seq: number })[]; // in journal order; findings kept so a fix task can quote them
   accepted: Record<string, { reviewTurnId: string; tree: string; seq: number }>; // key: stage number as a string
@@ -507,6 +512,10 @@ const DATA_SCHEMAS_V2: Record<string, (d: Record<string, unknown>) => boolean> =
     && (d.status === "paused" ? oneOf(d.reason, PAUSED_REASONS_V2) : d.reason === null)
     && (d.status === "completed" ? exactKeys(d.completion, ["kind", "basis"]) && oneOf(d.completion.kind, ["confirmed", "no_checks"]) && isTextRef(d.completion.basis)
       : d.completion === null),
+  // A2 (§2.7): conditionsAssigned, absent only in a plan of A1's form
+  "plan.recorded": (d) => exactKeys(d, Object.hasOwn(d, "conditionsAssigned") ? ["turnId", "version", "plan", "firstStage", "stageCount", "conditionsAssigned"] : ["turnId", "version", "plan", "firstStage", "stageCount"])
+    && isUuid(d.turnId) && isPos(d.version) && isTextRef(d.plan) && isPos(d.firstStage) && isInt(d.stageCount) && d.stageCount >= 1 && d.stageCount <= 50
+    && (d.conditionsAssigned === undefined || (isInt(d.conditionsAssigned) && d.conditionsAssigned >= 0 && d.conditionsAssigned <= 600)),
   "checks.proposed": (d) => exactKeys(d, ["turnId", "proposal", "count", "sandboxNetwork"]) && isUuid(d.turnId) && isTextRef(d.proposal)
     && isInt(d.count) && d.count >= 0 && d.count <= 16 && oneOf(d.sandboxNetwork, ["denied", "open"]),
   "checks.decided": (d) => exactKeys(d, ["proposalTurnId", "decision", "by", "commandId", "checks", "count"]) && isUuid(d.proposalTurnId)
@@ -553,7 +562,7 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
       status: "preparing", pausedReason: null, lastSeq: rec.seq, lastHash: rec.hash,
       goal: d.goal as TextRef, turns: {}, commands: {}, workspace: null, checks: {},
       orch: {
-        revision: 0, turns: {}, plan: null, planReviewPaused: false, reviews: [], accepted: {}, pendingCheckpoint: null,
+        revision: 0, turns: {}, plan: null, plans: [], planReviewPaused: false, reviews: [], accepted: {}, pendingCheckpoint: null,
         clarifications: 0, clarificationRefs: [], clarificationSeqs: [], question: null, answers: 0, answerSeqs: [],
         lastPausedSeq: {}, assessed: {}, limitOverrides: {}, recoveryDecisions: {},
         prepares: [], classified: {}, grants: {}, applied: 0, finish: [],
@@ -777,10 +786,14 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (o.plan?.turnId === d.turnId) conflict(`turn ${String(d.turnId)} already recorded a plan`);
       if (d.version !== (o.plan?.version ?? 0) + 1) conflict(`plan version ${String(d.version)} out of order`);
       if (d.firstStage !== Object.keys(o.accepted).length + 1) conflict("plan firstStage is not the next stage");
+      // A2 (journal-v2-format.md §2.7): once a plan has conditions, a plan without them would drop them unseen
+      if (o.plans.some((x) => x.conditionsAssigned !== undefined) && d.conditionsAssigned === undefined) conflict("a plan without conditions after a plan with them");
       o.plan = {
         version: d.version as number, turnId: d.turnId as string, ref: d.plan as TextRef,
-        firstStage: d.firstStage as number, stageCount: d.stageCount as number, seq: rec.seq
+        firstStage: d.firstStage as number, stageCount: d.stageCount as number,
+        ...(d.conditionsAssigned === undefined ? {} : { conditionsAssigned: d.conditionsAssigned as number }), seq: rec.seq
       };
+      o.plans.push(o.plan);
       break;
     }
     case "review.recorded": {
@@ -1024,9 +1037,18 @@ function completedAllowed(state: RunState, completion: { kind: CompletionKind })
 // the goal's commands, the proposal, the decision and the completion's kind and checks). A violation: corrupt with
 // phase "texts". ponytail: finish.intent params against the confirmation and the A2–A4 rules come with their records.
 export interface V2Texts {
-  goal: { commands?: unknown; mode?: unknown };
+  goal: { commands?: unknown; mode?: unknown; criteria?: unknown };
   proposal: { checks: { id: string; command: string }[] } | null;
   decision: { checks: { id: string; command: string; origin: string }[] } | null;
+  // A2 (§2.7): the texts of o.plans in their order, the lead's review answers (turn.finished.report) by turn, and the
+  // completed status' basis
+  plans?: PlanText[];
+  reports?: Record<string, unknown>;
+  basis?: CompletionBasis | null;
+}
+export interface CompletionBasis {
+  checks: { id: string; checkRunId: string | null }[]; runKey: string; checkKeys: Record<string, string>;
+  requirements?: { id: string; conditions: string[]; met: boolean }[];
 }
 export function textsConflict(state: RunState, t: V2Texts): string | null {
   const o = state.orch;
@@ -1049,12 +1071,68 @@ export function textsConflict(state: RunState, t: V2Texts): string | null {
       return "a lead's check without the sandbox";
     }
   }
+  const why = t.plans ? conditionsConflict(state, t, d ? d.count : own?.length ?? 0) : null;
+  if (why) return why;
   if (state.completion) {
     const n = d ? d.count : own?.length ?? 0;
     if ((state.completion.kind === "no_checks") !== (n === 0)) return `completed ${state.completion.kind} with ${n} check commands`;
     if (state.completion.kind === "confirmed" && !checksPassed(state, Array.from({ length: n }, (_, i) => `cmd-${i + 1}`))) return "completed confirmed with a command that did not pass";
   }
   return null;
+}
+
+// A2 (journal-v2-format.md §2.7): the plans number and carry over their conditions by the rules, a stage with "change"
+// conditions was accepted on a review that marked each met, and a completed run with conditions has evidence of each
+// condition on the tree it completed on and the final review's met for each requirement.
+function conditionsConflict(state: RunState, t: V2Texts, commands: number): string | null {
+  const o = state.orch;
+  const plans = t.plans!;
+  if (plans.length !== o.plans.length) return "the plans' texts are missing";
+  const criteria = Array.isArray(t.goal.criteria) ? t.goal.criteria.length : 0;
+  const checkIds = Array.from({ length: commands }, (_, i) => `cmd-${i + 1}`);
+  const book = emptyBook();
+  for (const [i, p] of o.plans.entries()) {
+    const text = plans[i];
+    // a plan without conditionsAssigned has no conditions: applyPlan below refuses any it numbers
+    if (p.conditionsAssigned !== undefined) {
+      if (text.stages.some((s) => !s.conditions)) return `plan v${p.version}: a stage without conditions`;
+      const stages = text.stages.map((s) => ({ conditions: s.conditions!.map((c) => ("keep" in c ? { keep: c.keep } : { text: c.text, covers: c.covers, evidence: c.evidence })) }));
+      const problems = planProblems(stages, { dropped: text.dropped ?? [], dropRequirements: text.dropRequirements ?? [] }, book, p.firstStage, criteria, checkIds);
+      if (problems.length) return `plan v${p.version}: ${problems[0]}`;
+    }
+    try { applyPlan(book, { firstStage: p.firstStage, text, conditionsAssigned: p.conditionsAssigned ?? null }); } catch (e) { return `plan v${p.version}: ${(e as Error).message}`; }
+  }
+  if (!o.plans.some((p) => p.conditionsAssigned !== undefined)) return null;
+  const marksOf = (turnId: string): ConditionMark[] => {
+    const c = (t.reports?.[turnId] as { conditions?: unknown } | undefined)?.conditions;
+    return Array.isArray(c) ? c as ConditionMark[] : [];
+  };
+  for (const [stage, a] of Object.entries(o.accepted)) {
+    const marks = marksOf(a.reviewTurnId);
+    for (const id of changeIdsOf(book, Number(stage))) {
+      const m = marks.find((x) => x.id === id);
+      if (m?.status !== "met" || !m.paths?.length) return `stage ${stage} accepted while its review did not mark ${id} met`;
+    }
+  }
+  if (!state.completion || !book.conditioned) return null;
+  const basis = t.basis;
+  if (!basis) return "completed without its basis";
+  const final = o.reviews.filter((r) => r.stage === null).at(-1);
+  if (!final || final.runKey !== basis.runKey) return "completed on another tree than its final review";
+  // a condition's check counts only for the tree the run completed on (a stale result is no evidence); its runKey may be
+  // older — a tree seen before (A → B → A) or another command's change keeps the checkKey and is not rerun
+  const check = (cmd: string): Status => {
+    const id = basis.checks.find((c) => c.id === cmd)?.checkRunId ?? null;
+    const a = id ? o.assessed[id] : undefined;
+    return id && a && state.checks[id]?.status === "passed" && state.checks[id].checkId === cmd && a.checkKey === basis.checkKeys[cmd] ? "met" : "not_met";
+  };
+  const finalMarks = (t.reports?.[final.turnId] as { requirements?: unknown } | undefined)?.requirements;
+  const facts = factsOf(book, criteria, {
+    check, marks: (stage) => (o.accepted[String(stage)] ? marksOf(o.accepted[String(stage)].reviewTurnId) : null),
+    finalMarks: Array.isArray(finalMarks) ? finalMarks as RequirementMark[] : null
+  });
+  const unmet = facts.conditions.find((c) => c.status !== "met") ?? facts.requirements.find((r) => r.status !== "met");
+  return unmet ? `completed while ${unmet.id} has no evidence` : null;
 }
 
 // In-flight turns and received-but-not-completed commands, in journal order.

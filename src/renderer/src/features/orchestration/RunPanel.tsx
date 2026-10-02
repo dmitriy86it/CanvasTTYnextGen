@@ -7,6 +7,8 @@ import type { LocaleId } from "../../../../shared/contracts";
 import type {
   OrchestrationActivityEntry,
   OrchestrationChanges,
+  OrchestrationConditions,
+  OrchestrationConditionStatus,
   OrchestrationFormField,
   OrchestrationHistoryRecord,
   OrchestrationLimitKind,
@@ -624,6 +626,45 @@ function Section({ id, title, src, locale, children }: { id: string; title: stri
   );
 }
 
+// Journal v2, A2 (journal-v2-format.md §2.7): each requirement with the conditions that prove it, the status of each and
+// its proof — the check run (its output) or the lead's review (paths, note). The same facts the completion decides on.
+function Conditions({ orch, runId, c, locale, incomplete }: {
+  orch: Orchestration; runId: string; c: OrchestrationConditions; locale: LocaleId; incomplete: boolean;
+}): React.JSX.Element {
+  const status = (s: OrchestrationConditionStatus) => <b className={`orch-cond orch-cond--${s}`}>{t(locale, `orchCond_${s}`)}</b>;
+  const item = (x: OrchestrationConditions["conditions"][number]) => (
+    <li key={x.id} data-condition={x.id} data-condition-status={x.status}>
+      <b>{x.id}</b> {x.text} · <span className="orch-hint">{x.evidence.kind === "check"
+        ? fill(t(locale, "orchCondEvidence_check"), { cmd: x.evidence.command ?? x.evidence.check }) : t(locale, "orchCondEvidence_change")}</span> — {status(x.status)}
+      {x.proof && "checkRunId" in x.proof && (
+        <details data-condition-proof="run">
+          <summary>{fill(t(locale, "orchCondProofRun"), { run: x.proof.checkRunId.slice(0, 8) })}</summary>
+          {x.proof.output
+            ? <Stored orch={orch} runId={runId} textRef={x.proof.output} locale={locale} incomplete={incomplete}>{(text) => <pre className="orch-panel__text">{text.slice(-4000)}</pre>}</Stored>
+            : <p className="orch-hint">{t(locale, "orchCondNoOutput")}</p>}
+        </details>
+      )}
+      {x.proof && "reviewTurnId" in x.proof && (
+        <p className="orch-hint" data-condition-proof="review">{fill(t(locale, "orchCondProofReview"), { paths: x.proof.paths.join(", ") || "—" })}{x.proof.note ? ` — ${x.proof.note}` : ""}</p>
+      )}
+    </li>
+  );
+  const loose = c.conditions.filter((x) => x.covers.length === 0);
+  return (
+    // no "confirmed by the journal" mark: a "change" condition's evidence is the lead's word (each line says which)
+    <Section id="conditions" title={t(locale, "orchSum_conditions")} locale={locale}>
+      <p data-sum-conditions-count><b>{fill(t(locale, "orchConditionsCount"), { met: c.met, total: c.total })}</b></p>
+      <ul className="orch-sum__requirements">{c.requirements.map((r) => (
+        <li key={r.id} data-requirement={r.id} data-requirement-status={r.status}>
+          <b>{r.id}</b> {r.text} — {status(r.status)}
+          <ul>{r.conditions.map((id) => item(c.conditions.find((x) => x.id === id)!))}</ul>
+        </li>
+      ))}</ul>
+      {loose.length > 0 && <><b>{t(locale, "orchCondLoose")}</b><ul>{loose.map(item)}</ul></>}
+    </Section>
+  );
+}
+
 type GoalJson = { text?: unknown; criteria?: unknown; commands?: unknown };
 function parseGoal(text: string): GoalJson | null {
   try { const v = JSON.parse(text) as unknown; return v && typeof v === "object" ? v as GoalJson : null; } catch { return null; }
@@ -695,6 +736,8 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
         {outcome === "completed" && <p className="orch-hint" data-sum-scope>{t(locale, "orchSumScope")}</p>}
         {m.endedAt && <p className="orch-hint">{t(locale, "orchSumEnded").replace("{time}", new Date(m.endedAt).toLocaleString(locale))}</p>}
       </Section>
+
+      {progress?.conditions && <Conditions orch={orch} runId={runId} c={progress.conditions} locale={locale} incomplete={incomplete} />}
 
       <Section id="stages" title={t(locale, "orchSum_stages")} src="journal" locale={locale}>
         {!m.stages ? missing : <>
