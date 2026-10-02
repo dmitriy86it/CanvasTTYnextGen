@@ -1119,11 +1119,12 @@ function conditionsConflict(state: RunState, t: V2Texts, commands: number): stri
   if (!basis) return "completed without its basis";
   const final = o.reviews.filter((r) => r.stage === null).at(-1);
   if (!final || final.runKey !== basis.runKey) return "completed on another tree than its final review";
-  // a condition's check counts only for the tree the run completed on (a stale result is no evidence)
+  // a condition's check counts only for the tree the run completed on (a stale result is no evidence); its runKey may be
+  // older — a tree seen before (A → B → A) or another command's change keeps the checkKey and is not rerun
   const check = (cmd: string): Status => {
     const id = basis.checks.find((c) => c.id === cmd)?.checkRunId ?? null;
     const a = id ? o.assessed[id] : undefined;
-    return id && a && state.checks[id]?.status === "passed" && state.checks[id].checkId === cmd && a.checkKey === basis.checkKeys[cmd] && a.runKey === basis.runKey ? "met" : "not_met";
+    return id && a && state.checks[id]?.status === "passed" && state.checks[id].checkId === cmd && a.checkKey === basis.checkKeys[cmd] ? "met" : "not_met";
   };
   const finalMarks = (t.reports?.[final.turnId] as { requirements?: unknown } | undefined)?.requirements;
   const facts = factsOf(book, criteria, {

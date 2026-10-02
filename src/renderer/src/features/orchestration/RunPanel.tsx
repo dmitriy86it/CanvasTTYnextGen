@@ -651,7 +651,8 @@ function Conditions({ orch, runId, c, locale, incomplete }: {
   );
   const loose = c.conditions.filter((x) => x.covers.length === 0);
   return (
-    <Section id="conditions" title={t(locale, "orchSum_conditions")} src="journal" locale={locale}>
+    // no "confirmed by the journal" mark: a "change" condition's evidence is the lead's word (each line says which)
+    <Section id="conditions" title={t(locale, "orchSum_conditions")} locale={locale}>
       <p data-sum-conditions-count><b>{fill(t(locale, "orchConditionsCount"), { met: c.met, total: c.total })}</b></p>
       <ul className="orch-sum__requirements">{c.requirements.map((r) => (
         <li key={r.id} data-requirement={r.id} data-requirement-status={r.status}>

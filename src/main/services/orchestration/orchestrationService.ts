@@ -18,7 +18,7 @@ import type { ProjectCheckResult } from "./checkService.ts";
 import { DEFAULT_LIMITS, completion, confirmationFor, currentCommit, effectiveLimits, nextAction, proposesChecks, withoutChecks } from "./cycle.ts";
 import type { Action, Goal, LimitKind, RunLimits, Snapshot } from "./cycle.ts";
 import { canonical } from "./journal.ts";
-import type { CommandResult, CompletionKind, PausedReason, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
+import type { CommandResult, CompletionBasis, CompletionKind, PausedReason, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
 import { checkKey, findingsKey, runKey } from "./progress.ts";
 import type { CheckDef, DepsFacts } from "./progress.ts";
 import type { ProviderTurnResult } from "./providers.ts";
@@ -756,6 +756,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
             continue;
           case "turn":
             await runTurn(action, decided.snapshot!);
+            // A2: the conditions as shown, after the turn (a pause in it does not reach decide())
+            shownConditions = conditionsView(state(), goal, await conds(), null);
+            touch();
             break;
           case "check":
             await runCheck(action);
@@ -1072,7 +1075,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const c = (await conds())!;
     if (action.purpose === "final_review") {
       const r = value as ReviewReport & { requirements: RequirementMark[] };
-      return r.verdict === "complete" ? finalMarksProblems(r.requirements, goal.criteria.length) : [];
+      // a plan of A1's form has no conditions: the condition rules do not apply to it (§2.7)
+      return r.verdict === "complete" && c.book.conditioned ? finalMarksProblems(r.requirements, goal.criteria.length) : [];
     }
     const r = value as ReviewReport & { conditions: ConditionMark[] };
     if (r.verdict !== "accept" && r.verdict !== "fix") return [];
@@ -1089,8 +1093,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const c = completion(st, goal, snapshot, facts);
     if (!c.allowed) { await setStatus("paused", "environment_error"); return; }
     const progress = progressOf(st, goal, ws.branch);
-    const passed = (id: string) => Object.entries(st.orch.assessed).filter(([crid]) => st.checks[crid]?.checkId === id)
-      .sort((a, b) => b[1].seq - a[1].seq)[0]?.[0] ?? null;
+    // the run on the tree it completes on (A2: the evidence the facts above counted, never one of another tree)
+    const passed = (id: string) => checkOn(st, id, snapshot.checkKeys).checkRunId;
     const basis = {
       kind: c.kind, checks: goal.checks.map((id, i) => ({ id, command: goal.commands?.[i] ?? id, checkRunId: passed(id) })),
       runKey: snapshot.runKey, checkKeys: snapshot.checkKeys, tree: snapshot.tree,
@@ -2077,7 +2081,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       if (decided) await setStatus("paused", "recovered");
       if (state().pausedReason === "awaiting_checks_decision") await loadProposal();
       if (state().pausedReason === "awaiting_finish_confirmation") latest = { tree: await snapshotCopyTree(ws, st.workspace!.current.tree), at: new Date(clock()).toISOString() };
-      shownConditions = conditionsView(state(), goal, await conds(), null);
+      shownConditions = conditionsView(state(), goal, await conds(), await shownCheckKeys(state(), readJson).catch(() => null));
       touch();
     },
     async start() {
@@ -2162,20 +2166,27 @@ const marksIn = (reports: Record<string, unknown>, turnId: string | null): Condi
   const c = turnId ? (reports[turnId] as { conditions?: unknown } | undefined)?.conditions : undefined;
   return Array.isArray(c) ? c as ConditionMark[] : [];
 };
-// The latest result of a command on the tree a decision is about; checkKeys null (a run nobody holds): the latest of any.
+// The latest result of a command on the tree a decision is about. checkKeys null (the tree is not known here): the latest
+// result, unless an executor turn came after it — then it may be of an older tree, and nothing is concluded from it.
 function checkOn(st: RunState, cmd: string, checkKeys: Readonly<Record<string, string>> | null): { status: Status; checkRunId: string | null } {
   let best: { id: string; seq: number } | null = null;
   for (const [id, a] of Object.entries(st.orch.assessed)) {
     if (st.checks[id]?.checkId !== cmd || (checkKeys && a.checkKey !== checkKeys[cmd])) continue;
     if (!best || a.seq > best.seq) best = { id, seq: a.seq };
   }
-  return best ? { status: st.checks[best.id].status === "passed" ? "met" : "not_met", checkRunId: best.id } : { status: "not_checked", checkRunId: null };
+  if (!best || (!checkKeys && Object.values(st.orch.turns).some((t) => t.purpose === "execute" && t.seq > best!.seq))) return { status: "not_checked", checkRunId: null };
+  return { status: st.checks[best.id].status === "passed" ? "met" : "not_met", checkRunId: best.id };
 }
 const inForce = (st: RunState) => (r: { turnId: string }) => st.orch.turns[r.turnId]?.planVersion === st.orch.plan?.version;
 // The review a stage's "change" conditions are judged by: the one it was accepted on, otherwise its latest under the plan.
 const stageReview = (st: RunState, stage: number): string | null =>
   st.orch.accepted[String(stage)]?.reviewTurnId ?? st.orch.reviews.filter((r) => r.stage === stage && inForce(st)(r)).at(-1)?.turnId ?? null;
 const finalReview = (st: RunState): string | null => st.orch.reviews.filter((r) => r.stage === null && inForce(st)(r)).at(-1)?.turnId ?? null;
+
+// The tree a run nobody decides on is shown on: a completed run's, from its basis; otherwise null (the latest result).
+export async function shownCheckKeys(st: RunState, read: ReadJson): Promise<Readonly<Record<string, string>> | null> {
+  return st.completion ? (await read<CompletionBasis>(st.completion.basis)).checkKeys : null;
+}
 
 // The facts the cycle and the completion function decide on; null: no condition rule applies (v1, A1's plan form).
 export function conditionFacts(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null): ConditionFacts | null {

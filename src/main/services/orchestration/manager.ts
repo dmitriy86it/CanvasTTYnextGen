@@ -37,7 +37,7 @@ import { DEFAULT_LIMITS } from "./cycle.ts";
 import type { Goal } from "./cycle.ts";
 import { MAX_JOURNAL_BYTES, MAX_LINE_BYTES, MAX_TEXT_BYTES, TERMINAL_STATUSES, canonical, isSha256, isTextRef, isUuid, needsRecovery, newerGoal, newerVersion, parseJournal, unfinishedWork } from "./journal.ts";
 import type { JournalRecord, RunState, TextRef } from "./journal.ts";
-import { conditionsView, createOrchestrationService, decidedGoal, loadConditions, progressOf, runView } from "./orchestrationService.ts";
+import { conditionsView, createOrchestrationService, decidedGoal, loadConditions, progressOf, runView, shownCheckKeys } from "./orchestrationService.ts";
 import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchestrationService.ts";
 import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
@@ -327,7 +327,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const goal = await readText(deps.root, runId, st.goal).then((b) => decidedGoal(deps.root, runId, st, JSON.parse(b.toString("utf8")) as Goal), () => null);
     // A2: the conditions as their texts say, with the latest result of each check (nobody holds the run's tree now)
     const readJson = async <T>(ref: TextRef): Promise<T> => JSON.parse((await readText(deps.root, runId, ref)).toString("utf8")) as T;
-    const conditions = goal && st.version === 2 ? await loadConditions(st, readJson).then((c) => conditionsView(st, goal, c, null), () => null) : undefined;
+    const conditions = goal && st.version === 2 ? await loadConditions(st, readJson).then(async (c) => conditionsView(st, goal, c, await shownCheckKeys(st, readJson)), () => null) : undefined;
     const view = runView(st, false, null, {
       ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
       ...(goal ? { progress: { ...progressOf(st, goal, place?.branch ?? null), ...(conditions !== undefined ? { conditions } : {}) } } : {})

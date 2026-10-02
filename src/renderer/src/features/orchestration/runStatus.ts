@@ -411,7 +411,8 @@ export function reportParts(text: string): ReportParts {
     else if (k === "findings" && Array.isArray(x)) out.findings = x.map(str);
     else if (k === "question") out.question = str(x);
     else if (["next", "nextStep", "next_step", "nextSteps", "next_steps"].includes(k)) out.next = Array.isArray(x) ? x.map(str).join("\n") : str(x);
-    else if (k !== "stages") out.other.push([k, str(x)]);
+    // the plan's stages and the lead's marks of conditions and requirements are shown by their own sections (A2)
+    else if (!["stages", "conditions", "requirements", "dropped", "dropRequirements"].includes(k)) out.other.push([k, str(x)]);
   }
   return out;
 }

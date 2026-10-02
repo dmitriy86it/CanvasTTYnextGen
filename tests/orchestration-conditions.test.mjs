@@ -17,7 +17,7 @@ import { createRunManager, testNativeRuntime } from "../src/main/services/orches
 import { conditionsView, decidedGoal, loadConditions } from "../src/main/services/orchestration/orchestrationService.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { readRun } from "../src/main/services/orchestration/store.ts";
-import { activityRuns, conditionsLine } from "../src/renderer/src/features/orchestration/runStatus.ts";
+import { activityRuns, conditionsLine, reportParts } from "../src/renderer/src/features/orchestration/runStatus.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(HERE, "..", "docs", "agent-orchestration", "implementation", "v2-fixtures", "runs");
@@ -313,6 +313,52 @@ test("an executor breaks a met condition: the old tree's pass is no evidence (no
   assert.deepEqual([r.integrity.status, r.integrity.detail?.phase], ["corrupt", "texts"]);
 });
 
+test("a tree seen before (A → B → A): the run completes on A's check run, and its journal reads back intact", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const fix = (...marks) => ({ answer: { ...review(...marks).answer, verdict: "fix" } });
+  const m = manager({ MOCK_SCRIPT: script([
+    plan(["a", [byCheck("a.txt not empty", ["R1"], "cmd-1")]], ["b", [change("a.txt touched", ["R1"])]]),
+    exec({ "a.txt": "2\n" }), review(),
+    exec({ "a.txt": "3\n" }), fix(mark("C2", "not_met")), // the check passes on B
+    exec({ "a.txt": "2\n" }), review(mark("C2", "met", ["a.txt"])), // back on A: not rerun
+    final(["R1", "met"])
+  ]) });
+  const runId = await start(m, src, { commands: ["grep -q . a.txt"] });
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify(v));
+  await m.shutdown();
+  const r = await readRun(m.root, runId);
+  assert.deepEqual([r.integrity.status, r.canContinue], ["ok", true], JSON.stringify(r.integrity));
+  const { st } = await stateOf(m, runId);
+  const basis = JSON.parse(fs.readFileSync(path.join(m.root, "runs", runId, "texts", st.completion.basis.sha256), "utf8"));
+  assert.equal(st.orch.assessed[basis.checks[0].checkRunId].checkKey, basis.checkKeys["cmd-1"], "the basis names the run on the tree it completed on");
+  // the evidence is the checkKey's: a run assessed under another runKey (another command amended, A1.1) still counts
+  const buf = fs.readFileSync(journalFile(m, runId));
+  fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, (recs) => {
+    for (const x of recs) if (x.type === "check.assessed" && x.data.checkRunId === basis.checks[0].checkRunId) x.data.runKey = "f".repeat(64);
+    return recs;
+  }));
+  assert.equal((await readRun(m.root, runId)).integrity.status, "ok");
+});
+
+test("the view between decisions: a check result an executor turn came after is not shown as met (live and not held)", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const m = manager({ MOCK_SCRIPT: script([
+    plan(["a", [byCheck("a.txt says 2", ["R1"], "cmd-1")]], ["b", [change("b.txt exists", ["R1"])]]),
+    exec({ "a.txt": "2\n" }), review(),
+    { answer: { summary: 42 }, writes: [{ rel: "a.txt", base64: b64("3\n") }] } // an invalid report: paused before any check on this tree
+  ]) });
+  const runId = await start(m, src, { commands: ["grep -qx 2 a.txt"] });
+  const v = await settled(m, runId);
+  assert.deepEqual([v.status, v.reason], ["paused", "invalid_report"]);
+  assert.deepEqual(v.progress.conditions.conditions.map((x) => [x.id, x.status, x.proof]), [["C1", "not_checked", null], ["C2", "not_checked", null]]);
+  await m.shutdown();
+  const m2 = manager({}, { root: m.root });
+  const shown = (await m2.get(runId)).value.view.progress.conditions;
+  assert.deepEqual(shown.conditions.map((x) => x.status), ["not_checked", "not_checked"], "the snapshot of a run nobody holds");
+  await m2.shutdown();
+});
+
 // ---------------- a forged «Завершено» ----------------
 
 test("a forged completion: a requirement or a condition without evidence in the texts — corrupt (texts), the run cannot continue", OPTS, async () => {
@@ -424,4 +470,7 @@ test("the UI model: «N из M условий выполнено» on the result
     entries: () => [], lastRecordAt: () => null, runErrors: {}, stageTitles: () => null, now: Date.now()
   });
   assert.equal([...rows.active, ...rows.recent][0].conditions, "1 из 2 условий выполнено");
+  // the lead's marks are the «Условия» section's, not the report's other fields
+  const parts = reportParts(JSON.stringify({ verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "met", note: "" }], conditions: [], extra: 1 }));
+  assert.deepEqual(parts.other, [["extra", "1"]]);
 });
