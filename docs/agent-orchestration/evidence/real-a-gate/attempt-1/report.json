@@ -1,0 +1,70 @@
+{
+  "mode": "real",
+  "startedAt": "2026-10-03T08:53:35.626Z",
+  "budget": {
+    "calls": 36,
+    "minutes": 90
+  },
+  "versions": {
+    "codex": "codex-cli 0.155.1",
+    "claude": "2.1.287 (Claude Code)"
+  },
+  "scenarios": {
+    "R1": {
+      "workMode": "copy",
+      "commands": [
+        "node --test"
+      ],
+      "turnsLimit": 7,
+      "prompts": [],
+      "runId": "<R1>",
+      "ok": false,
+      "status": {
+        "completion": null,
+        "reason": "environment_error",
+        "status": "paused"
+      },
+      "calls": 1,
+      "turns": [
+        "lead/codex"
+      ],
+      "turnOutcomes": [
+        "failed"
+      ],
+      "protocolErrors": [],
+      "journalVersion": [
+        2
+      ],
+      "access": {
+        "claude": "workspace",
+        "codex": "workspace"
+      },
+      "conditions": null,
+      "checks": [
+        "undefined:not_run"
+      ],
+      "checksFrom": "goal",
+      "permissionRecords": [],
+      "integrity": "ok",
+      "usageLimit": false
+    }
+  },
+  "failures": [
+    "R1"
+  ],
+  "globalBefore": {
+    "~/.codex/config.toml": "47430266bb3012f4bf86940f5769301ff1a4f2fbe8a6919876cb1ae9353bf74c",
+    "~/.claude/settings.json": "3532624114b65856efab2f330a7372752b9405e8a84d4b5ad3d8126c606e5738"
+  },
+  "halted": "R1 did not reach its expected state",
+  "globalAfter": {
+    "~/.codex/config.toml": "9e6b9a8bca3fe70ce5023fbf908d5db9953161e0a0bf5b8bcf1e9aae48269e5f",
+    "~/.claude/settings.json": "3532624114b65856efab2f330a7372752b9405e8a84d4b5ad3d8126c606e5738"
+  },
+  "globalChanged": [
+    "~/.codex/config.toml"
+  ],
+  "calls": 1,
+  "durationMs": 10070,
+  "ok": false
+}
