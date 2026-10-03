@@ -252,6 +252,17 @@ A4 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-forma
 
 **Enabling v2** is one constant, `JOURNAL_V2_BY_DEFAULT`, `false` until a real series. Until then v2 is written only behind `CANVASTTY_JOURNAL_V2=1`. Journals of the A1–A3 development builds (`formatPreview`) keep opening under the flag; once v2 is on they are read-only, labelled as a trial build's.
 
+### Agents' rights
+
+Rights are a project setting (`profile.access`, `access.ts`), apart from how much the run does on its own. A goal keeps the mode it was created with; a saved profile keeps its mode.
+
+- **Work folder** (`workspace`, the default for a new project): the agents write only in the run's work folder; anything else goes through a permission request, which pauses the run until the person answers, in autopilot too.
+  - Claude: `--permission-mode acceptEdits --settings {"sandbox":{"enabled":true,"failIfUnavailable":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":true,"network":{"allowedDomains":[],"allowLocalBinding":true}}}`. Edits in the folder are not asked; Bash runs in Claude's sandbox (Seatbelt on macOS) without asking, with no outside network and localhost allowed; a command outside the sandbox and a write outside the folder are asked. Probed on Claude Code 2.1.287 (`evidence/claude-workspace-probe/`): `npm test` and a server on 127.0.0.1 ran without a prompt; a write to `$HOME` and `curl` to an outside host came as `can_use_tool` prompts.
+  - Codex: `sandbox: workspace-write`, `approvalPolicy: on-request` (outside network off).
+- **As in my terminal** (`terminal`): nothing is passed, the user's own settings decide. Only as a project setting, switched on with its warning confirmed ("The agents can do everything you can: network, SSH tunnels, any file"); main refuses to save it without the confirmation (`terminal_not_confirmed`).
+- The other modes (`acceptEdits`, `auto`, `full`) stay as they were; `full` only explicitly, with its warning.
+- The run's board and each participant's card show the mode; "As in my terminal" in a warning colour, "Full access" in red.
+
 ### Requirements and limits
 
 - **Platforms.**

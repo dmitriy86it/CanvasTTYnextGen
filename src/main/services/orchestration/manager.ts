@@ -720,7 +720,14 @@ export function createRunManager(deps: RunManagerDeps) {
       notOpen();
       const project = await leadProject(linkId);
       const p = validateProfile(input);
-      const before = (await profiles.get(project))?.grants ?? [];
+      const saved = await profiles.get(project);
+      // "As in my terminal" lets the agents do all the person can (network, SSH tunnels, any file): switched on only
+      // with its warning confirmed; a mode already saved stays as it is.
+      const toTerminal = (["claude", "codex"] as const).filter((k) => p.access[k] === "terminal" && saved?.access[k] !== "terminal");
+      if (toTerminal.length && (input as { confirmTerminal?: unknown }).confirmTerminal !== true) {
+        refuse("terminal_not_confirmed", `"as in my terminal" for ${toTerminal.join(", ")} needs the warning confirmed`);
+      }
+      const before = saved?.grants ?? [];
       const keep = new Set(p.grants.map((g) => g.id));
       let push = p.finish.push;
       if (push) {

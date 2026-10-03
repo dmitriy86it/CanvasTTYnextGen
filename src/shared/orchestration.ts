@@ -529,7 +529,8 @@ export interface OrchestrationApi {
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode }): Promise<OrchestrationResult<OrchestrationReadiness>>;
   // Stage 13: the project settings of a link's lead project, and what the CLIs report they loaded there (no model turn).
   profile(linkId: string, capabilities?: boolean): Promise<OrchestrationResult<OrchestrationProfileInfo>>; // capabilities: asks the CLIs (settings only)
-  saveProfile(linkId: string, profile: OrchestrationProjectProfile): Promise<OrchestrationResult<OrchestrationProjectProfile>>;
+  // confirmTerminal: the person confirmed the warning of "as in my terminal" (needed to switch a CLI to it; not saved)
+  saveProfile(linkId: string, profile: OrchestrationProjectProfile & { confirmTerminal?: boolean }): Promise<OrchestrationResult<OrchestrationProjectProfile>>;
   // mcpReady: also check that Codex connects this project MCP server (an ephemeral thread, no turn; trusted folders only)
   probe(linkId: string, options?: { mcpReady?: string }): Promise<OrchestrationResult<OrchestrationEnvironmentReport>>;
 }

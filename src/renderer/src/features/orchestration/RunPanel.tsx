@@ -1233,7 +1233,8 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 {progress.checksFrom && <div><dt>{t(locale, "orchBoardChecksFrom")}:</dt><dd data-board="checks-from">{tr(locale, `orchChecksFrom_${progress.checksFrom}`)}</dd></div>}
                 <div><dt>{t(locale, "orchBoardAction")}:</dt><dd data-board="action">{t(locale, top.action ? "orchBoardActionYes" : "orchBoardActionNone")}</dd></div>
                 {progress.access && (
-                  <div className={progress.access.claude === "full" || progress.access.codex === "full" ? "orch-board__full" : undefined}>
+                  <div className={progress.access.claude === "full" || progress.access.codex === "full" ? "orch-board__full"
+                    : progress.access.claude === "terminal" || progress.access.codex === "terminal" ? "orch-board__terminal" : undefined}>
                     <dt>{t(locale, "orchBoardAccess")}:</dt>
                     <dd data-board="access">Claude — {tr(locale, `orchAccess_${progress.access.claude}`)} · Codex — {tr(locale, `orchAccess_${progress.access.codex}`)}</dd>
                   </div>
@@ -1414,6 +1415,11 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                         <li key={role} data-participant={role} data-phase={p.phase}>
                           <strong>{roleName(locale, role)}</strong>
                           {info && <span className="orch-hint">{info.protocol} · {t(locale, "orchNativeInfo")}</span>}
+                          {info && progress?.access && (
+                            <span className="orch-access-badge" data-participant-access={progress.access[info.provider]}>
+                              {t(locale, "orchBoardAccess")}: {tr(locale, `orchAccess_${progress.access[info.provider]}`)}
+                            </span>
+                          )}
                           <span>{phaseText(locale, p, now)}{p.lastEventAt ? ` · ${t(locale, "orchLastEvent")} ${time(locale, p.lastEventAt)}` : ""}</span>
                           <button type="button" onClick={() => onView({ tab: "activity", role })}>{t(locale, "orchObserve")}</button>
                         </li>

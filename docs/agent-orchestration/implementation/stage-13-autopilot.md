@@ -40,10 +40,10 @@ thing for each CLI, and the settings dialog shows it:
 
 | Mode | Claude (argv) | Codex (`thread/start`, `thread/resume` params) |
 |---|---|---|
-| `terminal` «Как в моём терминале» (default) | nothing (the user's settings) | nothing (the user's `config.toml`) |
+| `terminal` «Как в моём терминале» (the default before the stage A gate; now a project setting with a confirmed warning) | nothing (the user's settings) | nothing (the user's `config.toml`) |
+| `workspace` «Рабочая папка» (the default for a new project since the stage A gate) | `--permission-mode acceptEdits --settings <Claude's sandbox>` (access.ts `CLAUDE_WORKSPACE_SETTINGS`) | `sandbox: workspace-write`, `approvalPolicy: on-request` |
 | `acceptEdits` | `--permission-mode acceptEdits` | — |
 | `auto` | `--permission-mode auto` | — |
-| `workspace` | — | `sandbox: workspace-write`, `approvalPolicy: on-request` |
 | `full` «Полный доступ» | `--dangerously-skip-permissions` | `sandbox: danger-full-access`, `approvalPolicy: never` |
 
 - The list comes from the installed CLI:

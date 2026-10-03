@@ -1,0 +1,10 @@
+[+6.8s] P1: completed in 6.5 s; asks 0; tools Bash,StructuredOutput; answer {"done":true,"exitCode":0,"note":"SANDBOX-MARK: outside write denied (EPERM)"}
+[+6.8s] P1: as expected
+[+9.8s] P2: the CLI asked (tool Write: ~/cto-workspace-probe-18adeee8.txt); denied
+[+14.3s] P2: completed in 7.4 s; asks 1; tools Write,StructuredOutput; answer {"done":false,"exitCode":null,"note":"The Write call to ~/cto-workspace-probe-18adeee8.txt was denied at the permission prompt. The path is outside the project folder and the san
+[+14.3s] P2: as expected
+[+18.2s] P3: the CLI asked (tool Bash: curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com; echo " exit=$?"); denied
+[+21.7s] P3: completed in 7.4 s; asks 1; tools Bash,StructuredOutput; answer {"done":false,"exitCode":null,"note":"The curl command was not run. The user denied the Bash tool call (\"The user denied this action in CanvasTTY\"), so there is no HTTP code, exit code, or output. I
+[+21.7s] P3: as expected
+[+27.8s] P4: completed in 6.1 s; asks 0; tools Bash,StructuredOutput; answer {"done":true,"exitCode":0,"note":"Ran once. tests 1, pass 1, fail 0 (✔ serves on 127.0.0.1). Duration ~62ms. No files changed."}
+[+27.8s] P4: as expected

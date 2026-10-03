@@ -674,3 +674,16 @@ E2E: настоящее окно неупакованной сборки, вре
 | A4-S3 | Ревью круга 1 (блокирующее): вид неоткрытого запуска считал несвежее доказательство `change` выполненным. Теперь там условие принятого этапа, после приёмки которого был ход исполнителя, не засчитывается до подтверждения финалом | `orchestrationService.ts` (`possiblyStale`), `manager.ts` | «review 1: the view of a run nobody holds…» | L | без чтения дерева — осторожно: «менялись или могли меняться» |
 | A4-S4 | Ревью круга 1 (не блокирующие): пояснение «Вернуть лиду» — до записи нового плана, не до первого хода; «Закрыть/понизить» не предлагается остановленному или чужому запуску; выбор для замечаний проверяется при воспроизведении и без ревью | `orchestrationService.ts`, `runModel.ts`, `journal.ts` | весь набор | L | — |
 | A4-R | Регрессия: v1, признак выключен, A1/A1.1/A2/A3; журналы A1–A3 (`formatPreview`) открываются и продолжаются под признаком | — | весь набор `orchestration-*`, smoke `orchestration-ui`, `activity-ui`, `a0-newer-ui` | L | — |
+
+## Шлюз этапа A, часть 1: права агентов по умолчанию (2026-10-03)
+
+Решение владельца 2026-10-03; проба режима Claude на настоящем CLI — [evidence/claude-workspace-probe](evidence/claude-workspace-probe/README.md) (4 модельных вызова Claude Code 2.1.287).
+
+| ID | Что проверено | Где | Тест | Уровень | Ограничение |
+|---|---|---|---|---|---|
+| AG-1 | Новый проект — «Рабочая папка» для обоих CLI: Claude получает ровно `--permission-mode acceptEdits --settings <песочница>`, Codex — `workspace-write` + `on-request`; подставные CLI без `MOCK_ALLOW_ACCESS` принимают только этот режим | `access.ts`, `profile.ts` | «access defaults: a new project runs in the work folder…» | U+I | подставные CLI |
+| AG-2 | Сохранённый профиль «Как в моём терминале» и начатый запуск сохраняют режим, даже если профиль сменили во время паузы | `manager.ts`, `orchestrationService.ts` | «access defaults: a saved profile and a started run keep their mode» | I | — |
+| AG-3 | «Как в моём терминале» сохраняется только с подтверждением предупреждения (`terminal_not_confirmed`); уже включённый — без повторного вопроса; подтверждение не сохраняется | `manager.ts` (`saveProfile`), `ProjectSettings.tsx` | «access defaults: "as in my terminal" is saved only with its warning confirmed» | I | — |
+| AG-4 | Режим Claude «Рабочая папка» на настоящем CLI: `npm test` и сервер на 127.0.0.1 — без запроса, в песочнице (запись в `$HOME` изнутри теста — EPERM); запись в `$HOME` и `curl` наружу — запросы `can_use_tool` к хосту, без разрешения не выполнены | `scripts/claude-workspace-probe.mjs` | evidence/claude-workspace-probe | R | macOS, Claude Code 2.1.287 |
+| AG-5 | Хвост A4: на другой паузе при ожидающем предложении плана «Уточнить» и «Поднять лимит» выключены с подсказкой (`view.proposalWaits`) | `orchestrationService.ts`, `runModel.ts` (`proposalBlocks`), `RunPanel.tsx` | «a plan dropping a condition…» | I | — |
+| AG-6 | Хвост A4: smoke `a0-newer-ui` проходит и с признаком v2 (подставной лид отвечает в формах v2), и без | `scripts/smoke-a0-newer-ui.mjs` | smoke | E | — |

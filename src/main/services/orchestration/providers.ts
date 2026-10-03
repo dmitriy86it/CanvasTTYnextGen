@@ -488,7 +488,7 @@ export function accessMismatch(provider: OrchestrationProvider, access: AgentAcc
   const differ = (field: string, asked: string, reported: unknown): AccessMismatch[] =>
     reported === asked ? [] : [{ field, asked, reported: typeof reported === "string" ? reported : reported === undefined || reported === null ? "nothing" : JSON.stringify(reported).slice(0, 200) }];
   if (provider === "claude") {
-    const asked = ({ acceptEdits: "acceptEdits", auto: "auto", full: "bypassPermissions" } as Record<string, string>)[access?.claude ?? "terminal"];
+    const asked = ({ workspace: "acceptEdits", acceptEdits: "acceptEdits", auto: "auto", full: "bypassPermissions" } as Record<string, string>)[access?.claude ?? "terminal"];
     if (!asked || frame.type !== "system" || v.subtype !== "init") return null;
     const out = differ("permissionMode", asked, v.permissionMode);
     return out.length ? out : null;

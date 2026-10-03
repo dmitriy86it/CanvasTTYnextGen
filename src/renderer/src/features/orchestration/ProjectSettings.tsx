@@ -87,6 +87,9 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
   const [steps, setSteps] = useState(stepsText(info.profile));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "As in my terminal" newly chosen for a CLI: saved only with its warning confirmed (main checks it again)
+  const [confirmTerminal, setConfirmTerminal] = useState(false);
+  const toTerminal = (["claude", "codex"] as const).some((k) => p.access[k] === "terminal" && !(info.saved && info.profile.access[k] === "terminal"));
   // The rights modes the installed CLIs offer: asked when the settings open (the CLIs start with --help, no model).
   const [caps, setCaps] = useState<OrchestrationProfileInfo["capabilities"] | null>(null);
   useEffect(() => {
@@ -107,6 +110,7 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
     if (parts > 0 && parts < 3) return t(locale, "orchSettingsErrQa");
     if (p.finish.push && !p.finish.push.branch.trim()) return t(locale, "orchSettingsErrBranch");
     if ((parts > 0 || p.finish.push) && !p.finish.commit) return t(locale, "orchSettingsErrNeedsCommit");
+    if (toTerminal && !confirmTerminal) return t(locale, "orchError_terminal_not_confirmed");
     return null;
   };
   const save = async (): Promise<void> => {
@@ -120,7 +124,7 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
     };
     setBusy(true);
     setError(null);
-    const { outcome, value } = await outcomeOf(() => api().saveProfile(linkId, profile));
+    const { outcome, value } = await outcomeOf(() => api().saveProfile(linkId, { ...profile, ...(toTerminal ? { confirmTerminal } : {}) }));
     setBusy(false);
     if (outcome.kind === "accepted" && value) onSaved(value);
     else setError(outcomeText(locale, outcome) ?? t(locale, "orchError_generic"));
@@ -138,6 +142,8 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
           {all.map((o) => <option key={o.mode} value={o.mode}>{tr(locale, `orchAccess_${o.mode}`)}</option>)}
         </select>
         <small className="orch-hint">{t(locale, "orchAccessMaps")} {mapping === null ? t(locale, "orchAccessMapsNone") : <code>{mapping}</code>}</small>
+        {current === "workspace" && <small className="orch-hint">{t(locale, "orchAccessWorkspaceHint")}</small>}
+        {current === "terminal" && <small className="orch-hint orch-hint--warn" data-orch-terminal-warning>{t(locale, "orchAccessTerminalWarn")}</small>}
         {current === "full" && <small className="dialog-error" data-orch-full-warning>{t(locale, "orchAccessFullWarn")}</small>}
       </label>
     );
@@ -169,6 +175,12 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
         <p className="orch-hint">{t(locale, "orchSettingsAccessHint")}</p>
         {accessSelect("claude")}
         {accessSelect("codex")}
+        {toTerminal && (
+          <label className="orch-check" data-orch-terminal-confirm>
+            <input type="checkbox" checked={confirmTerminal} onChange={(e) => setConfirmTerminal(e.target.checked)} />
+            <span>{t(locale, "orchAccessTerminalConfirm")}</span>
+          </label>
+        )}
       </fieldset>
 
       <details className="orch-advanced" data-orch-advanced>

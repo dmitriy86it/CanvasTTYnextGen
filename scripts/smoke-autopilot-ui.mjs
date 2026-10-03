@@ -110,7 +110,10 @@ try {
   expect(needed.includes("composer install") && needed.includes("key:generate"), "settings: what is missing now is listed", needed);
   await app.waitFor(`document.querySelectorAll('[data-orch-access="claude"] option').length > 1`, "the CLI's own modes", 20_000);
   const claudeModes = await app.ev(`[...document.querySelectorAll('[data-orch-access="claude"] option')].map((o) => o.value)`);
-  expect(JSON.stringify(claudeModes) === JSON.stringify(["terminal", "acceptEdits", "auto", "full"]), "settings: Claude modes from the installed CLI's --help", claudeModes);
+  expect(JSON.stringify(claudeModes) === JSON.stringify(["terminal", "workspace", "acceptEdits", "auto", "full"]), "settings: Claude modes from the installed CLI's --help", claudeModes);
+  // the stage A gate: a new project starts in the work folder for both CLIs
+  const suggested = await app.ev(`["claude", "codex"].map((p) => document.querySelector(\`[data-orch-access="\${p}"] select\`).value)`);
+  expect(JSON.stringify(suggested) === JSON.stringify(["workspace", "workspace"]), "settings: a new project suggests «Рабочая папка» for both CLIs", suggested);
   await setValue(q('[data-orch-access="claude"] select'), "full");
   expect(await app.ev(`!!${q("[data-orch-full-warning]")}`), "full access shows its warning", null);
   await setValue(q('[data-orch-access="claude"] select'), "acceptEdits");
@@ -137,11 +140,19 @@ try {
   await app.ev(`${q("[data-orch-env-report]")}.scrollIntoView({ block: "center" })`);
   await sleep(200);
   await app.shot("03-environment-probe");
+  // «Как в моём терминале» for Codex: shown with its warning, saved only once the warning is confirmed
+  await setValue(q('[data-orch-access="codex"] select'), "terminal");
+  expect(await app.ev(`!!${q("[data-orch-terminal-warning]")} && !!${q("[data-orch-terminal-confirm]")}`), "terminal mode shows its warning and a confirmation", null);
+  await app.clickEl(q(".orch-settings button[type=submit]"));
+  await app.waitFor(`${q(".orch-settings .dialog-error")} && true`, "terminal mode refused without the confirmation", 10_000);
+  expect((await app.ev(`${q(".orch-settings .dialog-error")}.textContent`)).includes("Подтвердите предупреждение"), "settings: not saved without the confirmation", null);
+  await app.clickEl(q("[data-orch-terminal-confirm] input"));
   await app.clickEl(q(".orch-settings button[type=submit]"));
   await app.waitFor(`${q("[data-orch-profile]")}?.dataset.orchProfile === "saved"`, "settings saved", 10_000);
   // review UX-2: the goal dialog says which rights the agents get
   const rights = await app.ev(`${q("[data-orch-rights]")}?.textContent ?? ""`);
   expect(rights.includes("Правки файлов без вопросов") && rights.includes("Как в моём терминале"), "the goal dialog shows the agents' rights from the settings", rights);
+  expect(await app.ev(`!!${q("[data-orch-rights-terminal]")}`), "the goal dialog warns about «Как в моём терминале»", null);
 
   // readiness: prepared, not "go to a terminal"
   await app.type(`document.querySelectorAll(".orch-dialog textarea")[0]`, "Починить /health: тест должен проходить");
@@ -177,7 +188,10 @@ try {
   await app.waitFor(`${q("[data-orch-permission]")} && true`, "panel again", 10_000);
   expect((await visibleNow(app, q(`[data-orch-permission] [data-decision="allow_project"]`))).ok, "reopened by Observe: the permission's buttons are in view", await visibleNow(app, q(`[data-orch-permission] [data-decision="allow_project"]`)));
   expect((await app.ev(`${q("[data-board=access]")}?.textContent ?? ""`)).includes("Правки файлов без вопросов"), "the board shows the run's rights", null);
+  expect(await app.ev(`!!${q("[data-board=access]")}?.closest(".orch-board__terminal")`), "the board shows «Как в моём терминале» in the warning colour", null);
   await openTab(app, "overview");
+  const badges = await app.ev(`[...document.querySelectorAll("[data-participant] [data-participant-access]")].map((e) => [e.closest("[data-participant]").dataset.participant, e.dataset.participantAccess])`);
+  expect(JSON.stringify(badges) === JSON.stringify([["lead", "terminal"], ["executor", "acceptEdits"]]), "each participant's card shows its CLI's mode", badges);
   await app.clickEl(q(`[data-orch-permission] [data-decision="allow_project"]`));
 
   await app.waitFor(`${q('[data-orch-permission="elicitation"]')} && true`, "MCP form", 30_000);
