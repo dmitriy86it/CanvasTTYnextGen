@@ -73,6 +73,10 @@ export interface CodexSessionInput {
   clientVersion: string;
   ask: AskPerson;
   access?: Record<string, string>; // thread parameters of the chosen rights mode (access.ts); none: the user's config decides
+  // The run's own copy or worktree: trusted for this thread only. Codex otherwise writes a [projects."<cwd>"] trust entry
+  // into the person's config.toml for every run that works with a workspace-write sandbox in a folder it does not know
+  // (codex-cli 0.155.1, evidence/codex-trust-probe). The person's own project folder is never passed here.
+  trustCwd?: boolean;
 }
 
 // An MCP form of either CLI, as the person is asked it.
@@ -178,11 +182,13 @@ export function codexAppServerDriver(input: CodexSessionInput): SessionDriver {
       io = sessionIo;
       call("initialize", { clientInfo: { name: "canvastty", title: "Raoden Loom", version: input.clientVersion }, capabilities: null }, () => {
         io?.send({ method: "initialized" });
-        // No approvalPolicy, sandbox or config: the user's own config.toml and profile decide, as in the terminal.
-        // With a chosen rights mode, exactly its sandbox and approval policy for this thread (nothing written to config).
+        // No approvalPolicy or sandbox: the user's own config.toml and profile decide, as in the terminal. With a chosen
+        // rights mode, exactly its sandbox and approval policy for this thread. The only config is the trust of the run's
+        // own folder, for this thread (trustCwd).
         const then = (r: Record<string, unknown>) => { threadId = str(rec(r.thread).id) || threadId; startTurn(); };
-        if (threadId) call("thread/resume", { threadId, cwd: input.cwd, ...(input.access ?? {}) }, then);
-        else call("thread/start", { cwd: input.cwd, ...(input.access ?? {}) }, then);
+        const params = { cwd: input.cwd, ...(input.access ?? {}), ...(input.trustCwd ? { config: { projects: { [input.cwd]: { trust_level: "trusted" } } } } : {}) };
+        if (threadId) call("thread/resume", { threadId, ...params }, then);
+        else call("thread/start", params, then);
       });
     },
     frame(f: EventFrame) {

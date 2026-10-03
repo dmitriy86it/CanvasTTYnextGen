@@ -27,6 +27,7 @@ export interface AgentTurnRequest {
   timeoutMs: number;
   ask?: AskPerson; // stage 12: where the CLI's permission prompts and questions go (the person); required by sessions
   access?: AgentAccess; // stage 13: the run's rights mode per CLI
+  ownFolder?: boolean; // cwd is the run's own copy or worktree, not the person's folder (Codex trusts it for the thread only)
 }
 
 export interface AgentTurn {
@@ -150,7 +151,7 @@ export function createNativeAgents(cfg: NativeAgentsConfig): AgentAdapter {
         task: req.task, schema: req.schema, ask: req.ask, clientVersion: cfg.clientVersion,
         session: req.sessionId ? { kind: "resume", id: req.sessionId } : { kind: "new" },
         limits: { ...DEFAULT_TURN_LIMITS, timeoutMs: req.timeoutMs },
-        ...(req.access ? { access: req.access } : {})
+        ...(req.access ? { access: req.access } : {}), ...(req.ownFolder ? { ownFolder: true } : {})
       };
       const built = buildNativeTurn(input);
       if (!built.ok) return { ok: false, reason: "unavailable", detail: `${built.reason}: ${built.detail}` };

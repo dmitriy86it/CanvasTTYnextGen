@@ -550,6 +550,27 @@ test("access defaults: \"as in my terminal\" is saved only with its warning conf
   await m.shutdown();
 });
 
+test("Codex trust: a run in its own copy leaves the person's config.toml byte for byte; the project folder is the person's business", OPTS, async () => {
+  const home = fs.mkdtempSync(path.join(TMP, "codex-home-"));
+  const config = path.join(home, "config.toml");
+  const before = 'model = "gpt-mock"\n\n[projects."/somewhere/else"]\ntrust_level = "trusted"\n';
+  fs.writeFileSync(config, before);
+  const src = project({});
+  const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]), CODEX_HOME: home });
+  const runId = randomUUID();
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot", workMode: "copy" } })).ok);
+  assert.equal((await settled(m, runId)).status, "completed");
+  assert.equal(fs.readFileSync(config, "utf8"), before, "no trust entry for the run's copy");
+  // in the project folder nothing is passed: Codex keeps its own behaviour there
+  const run2 = randomUUID();
+  const m2 = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]), CODEX_HOME: home }, m.root);
+  await m.shutdown();
+  assert.ok((await m2.create({ requestId: run2, source: src, goal: { text: "y", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot", workMode: "project" } })).ok);
+  assert.equal((await settled(m2, run2)).status, "completed");
+  assert.ok(fs.readFileSync(config, "utf8").includes(`[projects.${JSON.stringify(src)}]`));
+  await m2.shutdown();
+});
+
 test("after success in a worktree: commit and push to the configured branch, QA confirmed by its own check", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
   const remote = path.join(TMP, `remote-${++n}.git`);
