@@ -8,6 +8,7 @@ import type {
   OrchestrationRunProgress,
   OrchestrationRunView
 } from "../../../../shared/orchestration.ts";
+import { closedByPerson } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
 import { activeRole, byReviewer, causeText, finishStatus, headlineKey, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
@@ -202,7 +203,7 @@ export function personDecisionsLine(locale: LocaleId, view: Pick<OrchestrationRu
   const f = view.progress?.findings;
   const dropped = [...(c?.dropped ?? []).map((x) => x.id), ...(c?.requirements ?? []).filter((r) => r.status === "dropped").map((r) => r.id)];
   const downgraded = (f?.items ?? []).filter((x) => x.downgraded).map((x) => x.id);
-  const closed = (f?.items ?? []).filter((x) => x.status === "closed" && x.history.at(-1)?.kind === "closed_by_person").map((x) => x.id);
+  const closed = (f?.items ?? []).filter(closedByPerson).map((x) => x.id);
   const parts = [
     dropped.length ? tr(locale, "orchPersonDropped", { ids: dropped.join(", ") }) : null,
     downgraded.length ? tr(locale, "orchPersonDowngraded", { ids: downgraded.join(", ") }) : null,

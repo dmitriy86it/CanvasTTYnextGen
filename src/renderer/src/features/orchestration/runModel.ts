@@ -46,7 +46,7 @@ export function actionEnabled(action: RunAction, available: boolean): boolean {
 export function availableActions(view: OrchestrationRunView): RunAction[] {
   const actions = runActions(view);
   // A4: an open finding the person may close or make a wish on this pause (main says which pauses: view.decisions)
-  return view.status === "paused" && view.decisions?.findings && !actions.includes("person_decide") ? [...actions, "person_decide"] : actions;
+  return view.status === "paused" && !view.halted && !view.newer && view.decisions?.findings && !actions.includes("person_decide") ? [...actions, "person_decide"] : actions;
 }
 function runActions(view: OrchestrationRunView): RunAction[] {
   if (view.halted || view.newer) return []; // a newer version's run: nothing is sent to it from here

@@ -105,6 +105,9 @@ type Review = RunState["orch"]["reviews"][number];
 export function nextAction(input: CycleInput): Action {
   const { state, goal, limits, now } = input;
   if (state.status !== "running") return { kind: "none" };
+  // A4: a decision the run waits for is the person's, even past the deadline — otherwise nothing could ever decide it
+  // (5h §3.6 p. 2; a waiting proposal admits no other record)
+  if (planProposalWaits(state)) return { kind: "pause", reason: "coverage_lost", detail: state.orch.proposals.at(-1)!.turnId };
   if (now - goal.createdAt >= limits.runMs) return { kind: "pause", reason: "limit_reached", detail: "runMs" };
   const action = decide(input);
   if (action.kind !== "turn" && action.kind !== "check") return action;

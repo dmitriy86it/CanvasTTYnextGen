@@ -1287,7 +1287,8 @@ export function textsConflict(state: RunState, t: V2Texts): string | null {
   if (why) return why;
   // A3 (§2.8): the reviewer's results applied by the rules; no stage accepted and no completion past an open blocking
   // finding or a disputed item
-  if (t.plans && t.applied && o.reviews.some((r) => r.assessed)) {
+  // (A4: also a journal whose accepted proposal carries choices before any review)
+  if (t.plans && t.applied && (o.reviews.some((r) => r.assessed) || o.proposals.some((p) => p.decision?.decision === "accept"))) {
     const f = replayFindings(state, { plans: t.plans, reports: t.reports ?? {}, applied: t.applied, choices: t.choices ?? {} });
     if (f.problem) return f.problem;
   }

@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
-import { completion } from "../src/main/services/orchestration/cycle.ts";
+import { completion, nextAction } from "../src/main/services/orchestration/cycle.ts";
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { JOURNAL_V2_BY_DEFAULT, buildRecord, canonical, parseJournal, sha256Hex } from "../src/main/services/orchestration/journal.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
@@ -21,6 +21,7 @@ import { readRun } from "../src/main/services/orchestration/store.ts";
 import { parseCommand } from "../src/main/ipc/orchestrationIpc.ts";
 import { availableActions } from "../src/renderer/src/features/orchestration/runModel.ts";
 import { personDecisionsLine } from "../src/renderer/src/features/orchestration/runStatus.ts";
+import { closedByPerson } from "../src/shared/orchestration.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.join(HERE, "..", "docs", "agent-orchestration", "implementation", "v2-fixtures", "runs");
@@ -347,6 +348,38 @@ test("a «change» condition whose files changed after its stage was accepted: n
   assert.deepEqual(conds.map((x) => [x.id, x.stage, x.status, x.stale ?? false]), [["C2", 2, "met", false], ["C1", 3, "met", false]]);
   await m.shutdown();
   assert.equal((await readRun(m.root, runId)).integrity.status, "ok");
+});
+
+test("review 1: the view of a run nobody holds does not count «change» evidence an executor turn came after (its tree is not read there)", OPTS, async () => {
+  const src = project({ "a.txt": "1\n", "b.txt": "1\n" });
+  const root = path.join(TMP, `root-${++n}`);
+  const env = { MOCK_SCRIPT: script([
+    plan([["a", [change("a.txt says 2", ["R1"])]], ["b", [change("b.txt says 2", ["R2"])]]]),
+    exec({ "a.txt": "2\n" }), review([], [mark("C1")]),
+    exec({ "b.txt": "2\n", "a.txt": "2\nedited later\n" }), review([], [mark("C2", "met", ["b.txt"])]),
+    final([], [["R1", "met"], ["R2", "met"]]) // C1 stale and not confirmed: invalid
+  ]) };
+  const m = manager(env, { root });
+  const runId = await start(m, src, twoCriteria);
+  assert.equal((await settled(m, runId)).reason, "invalid_report");
+  await m.shutdown();
+  const v = await view(manager(env, { root }), runId); // listed, not opened
+  const c = v.progress.conditions;
+  assert.deepEqual([c.conditions.find((x) => x.id === "C1").status, c.conditions.find((x) => x.id === "C1").stale, c.met], ["not_checked", true, 1]);
+});
+
+test("review 1: a finding the person closed stays «closed by the person» after later events (a disputed repeat refused)", () => {
+  const ev = (kind, by = "reviewer") => ({ kind, by });
+  const f = { id: "F1", status: "closed", severity: "blocking", downgraded: false, history: [ev("opened"), ev("closed_by_person", "person"), ev("disputed"), ev("refused", "person")] };
+  assert.equal(closedByPerson(f), true);
+  assert.equal(closedByPerson({ ...f, history: [...f.history, ev("reopened"), ev("closed")] }), false, "closed again by a review");
+  assert.equal(personDecisionsLine("ru", { progress: { findings: { items: [f], disputed: [], openBlocking: 0 } } }), "Решения человека вместо доказательств: закрыто человеком F1");
+});
+
+test("review 1: a waiting plan proposal pauses for the person even past the run's deadline", () => {
+  const state = { status: "running", turns: {}, checks: {}, orch: { proposals: [{ turnId: "p", decision: null }] } };
+  const a = nextAction({ state, goal: { createdAt: 0 }, limits: { runMs: 1, turns: 10 }, snapshot: null, now: 100, findingsOf: () => [] });
+  assert.deepEqual([a.kind, a.reason, a.detail], ["pause", "coverage_lost", "p"]);
 });
 
 // ---------------- the torn tail and command recovery ----------------

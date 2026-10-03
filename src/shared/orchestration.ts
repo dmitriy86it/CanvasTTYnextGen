@@ -479,6 +479,12 @@ export type OrchestrationResult<T> = { ok: true; value: T }
 // (arm64 and x64 alike); elsewhere a run would spend model turns and then pause at its first check for good. So the
 // application starts, continues and links nothing there (code unsupported_platform); existing runs stay readable and
 // can be stopped.
+// A4 (journal-v2-format.md §2.9): a closed finding the person closed — its last opening or closing event is the
+// person's close (later events, a disputed repeat or its refusal, do not change who closed it).
+export function closedByPerson(f: { status: string; history: readonly { kind: string }[] }): boolean {
+  return f.status === "closed" && f.history.filter((h) => ["opened", "reopened", "closed", "closed_by_person"].includes(h.kind)).at(-1)?.kind === "closed_by_person";
+}
+
 export function orchestrationAvailable(platform: string): boolean {
   return platform === "darwin";
 }

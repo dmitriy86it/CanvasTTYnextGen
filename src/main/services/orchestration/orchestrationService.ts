@@ -36,6 +36,7 @@ import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
 import type { OrchestrationConditions, OrchestrationDecisions, OrchestrationFindings, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationPersonDecide,
   OrchestrationPlanChoice, OrchestrationPlanDecide, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
+import { closedByPerson } from "../../../shared/orchestration.ts";
 import { bookOf, changeIdsOf, conditionBlockers, factsOf, finalMarksProblems, numberPlan, personIdsOf, planProblems, reportConditions, stageMarksProblems } from "./conditions.ts";
 import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, PlanText, RequirementMark, Status } from "./conditions.ts";
 import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, diffTreeNames, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
@@ -1338,7 +1339,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       ...(cs && (cs.book.dropped.size || cs.book.droppedRequirements.size || f?.book.downgraded.length || st.orch.person.length) ? {
         person: {
           droppedConditions: [...cs.book.dropped.keys()], droppedRequirements: [...cs.book.droppedRequirements.keys()], downgraded: [...(f?.book.downgraded ?? [])],
-          closedByPerson: [...(f?.book.list.values() ?? [])].filter((x) => x.status === "closed" && x.history.at(-1)?.kind === "closed_by_person").map((x) => x.id),
+          closedByPerson: [...(f?.book.list.values() ?? [])].filter(closedByPerson).map((x) => x.id),
           conditions: (facts?.conditions ?? []).filter((x) => cs.book.defs.get(x.id)?.evidence.kind === "person").map((x) => ({ id: x.id, status: x.status }))
         }
       } : {}),
@@ -1947,9 +1948,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       ].join("\n")];
       const rejected = await rejectedPlan();
       if (rejected.length) out.push(`Your previous plan was not accepted by the application:\n${rejected.map((x) => `- ${x}`).join("\n")}`);
-      // A4 (5h §3.6 p. 3): the person returned the last proposal
+      // A4 (5h §3.6 p. 3): the person returned the last proposal — told until a plan is recorded after it (a plan turn
+      // the application refused does not use the note up)
       const back = st.orch.proposals.at(-1)?.decision;
-      if (back?.decision === "return" && !Object.values(st.orch.turns).some((t) => t.purpose === "plan" && t.seq > back.seq)) {
+      if (back?.decision === "return" && !st.orch.plans.some((p) => p.seq > back.seq)) {
         const was = await readJson<PlanText>(st.orch.proposals.at(-1)!.ref);
         const what = [...(was.dropped ?? []).map((x) => x.condition), ...(was.dropRequirements ?? []).map((x) => x.requirement)].join(", ");
         out.push(`The person returned your proposal to drop ${what}: the plan in force stays.${back.note ? ` Their note: ${(await readText(root, runId, back.note)).toString("utf8")}` : ""}`);
@@ -2233,14 +2235,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       case "clarify": {
         // on the person's decisions of journal v2 only that decision and Stop (journal-v2-format.md §2.1)
-        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions", "awaiting_person_decision", "coverage_lost"].includes(reason)) return reject("invalid_state");
+        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions", "awaiting_person_decision", "coverage_lost"].includes(reason)
+          || (st.version === 2 && planProposalWaits(st))) return reject("invalid_state"); // A4: a waiting proposal is the person's first
         if (typeof cmd.text !== "string" || cmd.text.trim() === "" || cmd.text.length > 8000) return reject("invalid_command");
         const ref = await j(() => writer.putText(cmd.text));
         await j(() => writer.recordClarification({ version: st.orch.clarifications + 1, commandId, text: ref }));
         return ok;
       }
       case "raise_limit": {
-        if (status !== "paused" || reason !== "limit_reached") return reject("invalid_state");
+        if (status !== "paused" || reason !== "limit_reached" || (st.version === 2 && planProposalWaits(st))) return reject("invalid_state");
         const current = effectiveLimits(goal, st);
         if (!RAISABLE.includes(cmd.limit) || !Number.isSafeInteger(cmd.value) || cmd.value <= current[cmd.limit]) return reject("invalid_command");
         if (cmd.limit === "runMs" && goal.createdAt + cmd.value <= clock()) return reject("invalid_command"); // still expired
@@ -2673,6 +2676,17 @@ export function conditionFacts(st: RunState, goal: Goal, c: ConditionTexts | nul
     person: (id, stage) => personStatus(st, id, stage),
     ...(stale ? { stale, confirmed: (id: string) => marksIn(c.reports, finalReview(st)).find((m) => m.id === id)?.status ?? null } : {})
   });
+}
+
+// A4 (5h §3.7) for a run nobody holds: its copy's tree is not read (a view writes nothing), so the "change" evidence
+// of an accepted stage an executor turn came after may be stale — not counted until the final review confirms it.
+export function possiblyStale(st: RunState, c: ConditionTexts): (id: string) => boolean {
+  const out = new Set<string>();
+  for (const [stage, a] of Object.entries(st.orch.accepted)) {
+    if (!Object.values(st.orch.turns).some((t) => t.purpose === "execute" && t.seq > a.seq)) continue;
+    for (const id of changeIdsOf(c.book, Number(stage))) out.add(id);
+  }
+  return (id) => out.has(id);
 }
 
 // The same facts as shown: every requirement and condition with its proof (journal-v2-format.md §2.7, «Показ»).
