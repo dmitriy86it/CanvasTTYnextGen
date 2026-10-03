@@ -240,6 +240,9 @@ export interface OrchestrationRunView {
   refused?: { checkId: string; command: string } | null;
   // A4: on a pause where the person decides (awaiting_person_decision, coverage_lost, or one a finding may be decided on)
   decisions?: OrchestrationDecisions | null;
+  // journal v2: a plan proposal waits for the person's decision (whatever the pause); clarify and raise_limit are
+  // refused until it is decided
+  proposalWaits?: boolean;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only
   // (status paused, reason newer_version), never opened or changed here. chain: the hash chain of what was read.
   // compatible: its journal declares minReaderVersion this build reads, so the view is its whole state (status and

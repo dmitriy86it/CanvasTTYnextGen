@@ -48,6 +48,9 @@ export function availableActions(view: OrchestrationRunView): RunAction[] {
   // A4: an open finding the person may close or make a wish on this pause (main says which pauses: view.decisions)
   return view.status === "paused" && !view.halted && !view.newer && view.decisions?.findings && !actions.includes("person_decide") ? [...actions, "person_decide"] : actions;
 }
+// A4: while a plan proposal waits, main refuses clarify and raise_limit; they are shown off with a hint (RunPanel)
+export const proposalBlocks = (view: OrchestrationRunView | null, a: RunAction): boolean =>
+  !!view?.proposalWaits && (a === "clarify" || a === "raise_limit");
 function runActions(view: OrchestrationRunView): RunAction[] {
   if (view.halted || view.newer) return []; // a newer version's run: nothing is sent to it from here
   const clarify: RunAction[] = view.reason === "journal_corrupt" ? [] : ["clarify"];

@@ -29,6 +29,7 @@ import {
   byReviewer,
   actionEnabled,
   availableActions,
+  proposalBlocks,
   TERMINAL_STATUSES,
   board,
   commandOf,
@@ -1142,7 +1143,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const has = (a: RunAction) => actions.includes(a);
   // On a platform without orchestration: every action shown, only Stop active.
   const available = orchestrationAvailableHere();
-  const off = (a: RunAction) => !actionEnabled(a, available);
+  const off = (a: RunAction) => !actionEnabled(a, available) || proposalBlocks(view, a);
   const entry = orchestrationEntry(available);
   const busy = view !== null && ACTIVE_STATUSES.includes(view.status);
   const open = state?.open ?? true;
@@ -1308,6 +1309,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <input type="number" min={1} value={limit.value} onChange={(e) => setLimit((l) => ({ ...l, value: e.target.value }))} />
                 <button type="button" disabled={sending || !(Number(limit.value) > 0) || off("raise_limit")}
                   onClick={() => void send("raise_limit", { limit: limit.kind, value: limit.kind === "runMs" ? Number(limit.value) * 60_000 : Number(limit.value) })}>{t(locale, "orchRaiseLimit")}</button>
+                {proposalBlocks(view, "raise_limit") && <small className="orch-hint" data-orch-proposal-waits>{t(locale, "orchProposalWaitsHint")}</small>}
               </div>
             )}
             {has("recover") && (
@@ -1466,6 +1468,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                     <textarea rows={2} value={clarify} placeholder={t(locale, "orchClarifyPlaceholder")} onChange={(e) => setClarify(e.target.value)} />
                     <button type="button" disabled={sending || !clarify.trim() || off("clarify")}
                       onClick={() => void send("clarify", { text: clarify.trim() }, () => setClarify(""))}>{t(locale, "orchClarify")}</button>
+                    {proposalBlocks(view, "clarify") && <small className="orch-hint" data-orch-proposal-waits>{t(locale, "orchProposalWaitsHint")}</small>}
                   </section>
                 )}
               </>

@@ -19,7 +19,7 @@ import { conditionFacts, decidedGoal, loadConditions } from "../src/main/service
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { readRun } from "../src/main/services/orchestration/store.ts";
 import { parseCommand } from "../src/main/ipc/orchestrationIpc.ts";
-import { availableActions } from "../src/renderer/src/features/orchestration/runModel.ts";
+import { availableActions, proposalBlocks } from "../src/renderer/src/features/orchestration/runModel.ts";
 import { personDecisionsLine } from "../src/renderer/src/features/orchestration/runStatus.ts";
 import { closedByPerson } from "../src/shared/orchestration.ts";
 
@@ -252,6 +252,11 @@ test("a plan dropping a condition and a requirement is a proposal: the autopilot
   const v = await waitsFor(m, runId, "coverage_lost");
   assert.deepEqual(availableActions(v), ["plan_decide", "stop"]);
   assert.equal((await sendAs(m, v, { kind: "resume" })).code, "invalid_state");
+  // the same proposal seen on another pause (recovered after a crash): clarify is listed but off, as main refuses it
+  assert.equal(v.proposalWaits, true);
+  const recovered = { ...v, reason: "recovered" };
+  assert.ok(availableActions(recovered).includes("clarify"));
+  assert.deepEqual([proposalBlocks(recovered, "clarify"), proposalBlocks(recovered, "raise_limit"), proposalBlocks(recovered, "stop")], [true, true, false]);
   const p = v.decisions.proposal;
   assert.deepEqual([p.dropped.map((x) => [x.id, x.why]), p.dropRequirements.map((x) => [x.id, x.why]), p.uncovered, p.findings], [[["C2", "WHY-C2"]], [["R2", "WHY-R2"]], ["R2"], []]);
   // «uncovered»: what the proposal leaves without a condition in force (R2 here, dropped with it)
@@ -263,6 +268,7 @@ test("a plan dropping a condition and a requirement is a proposal: the autopilot
   assert.equal((await sendAs(m, v, { kind: "plan.decide", proposalTurnId: p.proposalTurnId, decision: "accept", choices: [], note: null, runKey: v.decisions.runKey })).status, "accepted");
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify([done.status, done.reason, turnsOf(await records(m, runId))]));
+  assert.equal(done.proposalWaits, undefined, "decided: nothing waits");
   all = await records(m, runId);
   const decided = all.find((r) => r.type === "plan.decided").data;
   assert.deepEqual([decided.decision, decided.version, decided.runKey, /^[0-9a-f]{40}$/.test(decided.tree)], ["accept", 2, v.decisions.runKey, true]);
