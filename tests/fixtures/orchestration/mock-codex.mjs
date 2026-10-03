@@ -133,7 +133,9 @@ async function appServer(args) {
     if (access && process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/codex-access.jsonl`, JSON.stringify({ approvalPolicy: p.approvalPolicy, sandbox: p.sandbox }) + "\n");
     // the default «Рабочая папка» (access.ts "workspace") is always accepted; another override only when the test says so
     const workspace = p.sandbox === "workspace-write" && p.approvalPolicy === "on-request";
-    if (["config", "sandboxPolicy"].some((k) => p[k] !== undefined) || (access && !workspace && !process.env.MOCK_ALLOW_ACCESS)) {
+    // the only config a session may pass: its own folder trusted for this thread (sessions.ts trustCwd)
+    const trustOnce = p.config !== undefined && JSON.stringify(p.config) === JSON.stringify({ projects: { [p.cwd]: { trust_level: "trusted" } } });
+    if ((p.config !== undefined && !trustOnce) || p.sandboxPolicy !== undefined || (access && !workspace && !process.env.MOCK_ALLOW_ACCESS)) {
       await emit({ id: m.id, error: { code: -32600, message: "mock: a native session must not override the user's config" } });
       continue;
     }
@@ -141,6 +143,14 @@ async function appServer(args) {
       threadId = m.method === "thread/resume" ? p.threadId : randomUUID();
       prev = m.method === "thread/resume" ? loadState(threadId) : null;
       if (m.method === "thread/resume" && !prev) { await emit({ id: m.id, error: { code: -32602, message: `no thread ${threadId}` } }); continue; }
+      // as codex-cli 0.155.1 does (evidence/codex-trust-probe): a workspace-write thread in a folder neither the config nor
+      // the thread trusts writes a trust entry for it into $CODEX_HOME/config.toml
+      const home = process.env.CODEX_HOME;
+      const configFile = home && path.join(home, "config.toml");
+      const known = configFile && fs.existsSync(configFile) && fs.readFileSync(configFile, "utf8").includes(`[projects.${JSON.stringify(p.cwd)}]`);
+      if (configFile && p.sandbox === "workspace-write" && !trustOnce && !known) {
+        fs.appendFileSync(configFile, `\n[projects.${JSON.stringify(p.cwd)}]\ntrust_level = "trusted"\n`);
+      }
       const sandboxType = { "read-only": "readOnly", "workspace-write": "workspaceWrite", "danger-full-access": "dangerFullAccess" }[p.sandbox ?? "workspace-write"];
       // MOCK_REPORT_APPROVAL: the thread gets another policy than asked (a managed configuration may decide so)
       await reply(m.id, { thread: { id: threadId }, model: "mock", cwd: p.cwd ?? process.cwd(), approvalPolicy: process.env.MOCK_REPORT_APPROVAL ?? p.approvalPolicy ?? "on-request",

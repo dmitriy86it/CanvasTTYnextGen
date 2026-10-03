@@ -1,0 +1,12 @@
+import { spawn } from "node:child_process";
+const [cwd, ...extra] = process.argv.slice(2);
+const p = spawn("codex", ["app-server", ...extra], { env: { ...process.env, CODEX_HOME: process.env.CH }, stdio: ["pipe", "pipe", "pipe"] });
+let buf = ""; const wait = {};
+p.stdout.on("data", (d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); try { const m = JSON.parse(l); if (m.id && wait[m.id]) wait[m.id](m); } catch {} } });
+p.stderr.on("data", (d) => process.stderr.write(String(d).slice(0, 300)));
+let n = 0; const call = (method, params) => new Promise((r) => { const id = ++n; wait[id] = r; p.stdin.write(JSON.stringify({ id, method, params }) + "\n"); });
+const init = await call("initialize", { clientInfo: { name: "probe", version: "0" } });
+p.stdin.write(JSON.stringify({ method: "initialized" }) + "\n");
+const t = await call("thread/start", process.env.NOACCESS ? { cwd } : { cwd, sandbox: "workspace-write", approvalPolicy: "on-request", ...JSON.parse(process.env.EXTRA ?? "{}") });
+const r = t.result; console.log(JSON.stringify({ approvalPolicy: r.approvalPolicy, sandbox: r.sandbox, cwd: r.cwd === cwd }));
+p.kill();

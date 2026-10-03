@@ -428,6 +428,7 @@ export interface NativeTurnInput {
   limits?: TurnLimits;
   supervisor?: SupervisorTimings;
   access?: AgentAccess; // stage 13: the chosen rights mode per CLI (default: the user's own settings)
+  ownFolder?: boolean; // cwd is the run's own copy or worktree (sessions.ts: Codex trusts it for the thread only)
 }
 
 export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
@@ -454,7 +455,7 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
     args = ["app-server"];
     driver = codexAppServerDriver({
       cwd: input.cwd, task: input.task, schema, threadId: sessionId, clientVersion: input.clientVersion, ask: input.ask,
-      access: codexAccessParams(input.access?.codex ?? "terminal")
+      access: codexAccessParams(input.access?.codex ?? "terminal"), ...(input.ownFolder ? { trustCwd: true } : {})
     });
   } else {
     sessionId = input.session.id ?? randomUUID();

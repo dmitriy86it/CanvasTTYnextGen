@@ -1037,7 +1037,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       schema, sessionId: role === "reviewer" ? null : sessionFor(st, role),
       // the role's own limit, cut to what is left of the run: the deadline is not extended by a long turn
       timeoutMs: Math.max(1, Math.min(role === "executor" ? limits.executorTurnMs : limits.leadTurnMs, deadline() - clock())),
-      ask: askPerson(role), ...(goal.access ? { access: goal.access } : {})
+      ask: askPerson(role), ...(goal.access ? { access: goal.access } : {}), ...(ws.mode !== "project" ? { ownFolder: true } : {})
     };
     const roleTimeoutMs = role === "executor" ? limits.executorTurnMs : limits.leadTurnMs;
     const prepared = deps.agents.prepare(request);

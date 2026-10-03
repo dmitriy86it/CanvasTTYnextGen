@@ -687,3 +687,10 @@ E2E: настоящее окно неупакованной сборки, вре
 | AG-4 | Режим Claude «Рабочая папка» на настоящем CLI: `npm test` и сервер на 127.0.0.1 — без запроса, в песочнице (запись в `$HOME` изнутри теста — EPERM); запись в `$HOME` и `curl` наружу — запросы `can_use_tool` к хосту, без разрешения не выполнены | `scripts/claude-workspace-probe.mjs` | evidence/claude-workspace-probe | R | macOS, Claude Code 2.1.287 |
 | AG-5 | Хвост A4: на другой паузе при ожидающем предложении плана «Уточнить» и «Поднять лимит» выключены с подсказкой (`view.proposalWaits`) | `orchestrationService.ts`, `runModel.ts` (`proposalBlocks`), `RunPanel.tsx` | «a plan dropping a condition…» | I | — |
 | AG-6 | Хвост A4: smoke `a0-newer-ui` проходит и с признаком v2 (подставной лид отвечает в формах v2), и без | `scripts/smoke-a0-newer-ui.mjs` | smoke | E | — |
+
+## Шлюз этапа A: доверие Codex и модель аккаунта (2026-10-03)
+
+| ID | Что проверено | Где | Тест | Уровень | Ограничение |
+|---|---|---|---|---|---|
+| AG-7 | Запуск в отдельной копии не меняет `config.toml` Codex (байт в байт); в папке проекта поведение Codex прежнее | `sessions.ts` (`trustCwd`), `orchestrationService.ts` (`ownFolder`) | «Codex trust: a run in its own copy leaves the person's config.toml byte for byte…» | I | подставной Codex повторяет запись доверия codex-cli 0.155.1 (evidence/codex-trust-probe) |
+| AG-8 | HTTP 400 «model is not supported when using Codex with a ChatGPT account» — причина паузы «модель не поддерживается», подсказка про `~/.codex/config.toml`; журнал не меняется | `runModel.ts` (`pauseCause`) | «Codex model not supported by the account…» (образец ленты real-a-gate R1) | U | только сообщение Codex |
