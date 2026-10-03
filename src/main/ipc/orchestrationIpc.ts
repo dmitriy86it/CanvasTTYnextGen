@@ -17,6 +17,7 @@ import type { RunManager } from "../services/orchestration/manager.ts";
 type Handle = (channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) => void;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const SHA256 = /^[0-9a-f]{64}$/;
 const CHECK_ID = /^[a-z][a-z0-9-]{0,63}$/;
 const RUN_LIMITS = ["turns", "roundsPerStage", "replans", "noProgressRounds", "runMs", "leadTurnMs", "executorTurnMs"];
 const RAISABLE = ["turns", "roundsPerStage", "replans", "runMs"];
@@ -37,6 +38,7 @@ const str = (v: unknown, what: string, max: number, min = 1): string =>
 const workspaceId = (v: unknown): string =>
   (typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : bad("workspaceId must be a workspace id"));
 const uuid = (v: unknown, what: string): string => (typeof v === "string" && UUID.test(v) ? v : bad(`${what} must be a UUID`));
+const findingId = (v: unknown): string => (typeof v === "string" && /^F[1-9]\d{0,5}$/.test(v) ? v : bad("a finding id must be F<n>"));
 const int = (v: unknown, what: string, min: number, max = Number.MAX_SAFE_INTEGER): number =>
   Number.isSafeInteger(v) && (v as number) >= min && (v as number) <= max ? v as number : bad(`${what} must be an integer ${min}..${max}`);
 const strings = (v: unknown, what: string, maxItems: number, maxLen: number): string[] =>
@@ -165,6 +167,45 @@ export function parseCommand(v: unknown): { runId: string; commandId: string; ex
       if (typeof c.checkId !== "string" || !/^cmd-([1-9]|1[0-6])$/.test(c.checkId)) bad("command.checkId must be cmd-1…cmd-16");
       command = { kind: c.kind, checkId: c.checkId as string, line: str(c.line, "command.line", 1000, 1) };
       break;
+    // A4 (journal-v2-format.md §2.9): the person's decisions — exactly these fields; anything else (who decided, a role)
+    // is not the renderer's to say: a decision is the person's command, and main records it so
+    case "person.decide": {
+      obj(c, "command", ["kind", "subject", "target", "decision", "finding", "runKey"]);
+      const runKey = typeof c.runKey === "string" && SHA256.test(c.runKey) ? c.runKey : bad("command.runKey must be a run key");
+      if (c.subject === "disputed") {
+        const t = obj(c.target, "command.target", ["reviewTurnId", "index"]);
+        if (c.decision !== "new" && c.decision !== "repeat") bad("command.decision is unknown");
+        const finding = c.decision === "new" ? (c.finding === null ? null : bad("command.finding: null for a new finding")) : findingId(c.finding);
+        command = { kind: c.kind, subject: "disputed", target: { reviewTurnId: uuid(t.reviewTurnId, "command.target.reviewTurnId"), index: int(t.index, "command.target.index", 0, 49) },
+          decision: c.decision, finding, runKey } as RunCommand;
+      } else if (c.subject === "condition" || c.subject === "finding") {
+        const id = c.subject === "condition" ? (typeof c.target === "string" && /^C[1-9]\d{0,5}$/.test(c.target) ? c.target : bad("command.target must be C<n>")) : findingId(c.target);
+        const allowed = c.subject === "condition" ? ["met", "not_met"] : ["close", "to_wish"];
+        if (!allowed.includes(c.decision as string)) bad("command.decision is unknown");
+        if (c.finding !== null) bad("command.finding must be null");
+        command = { kind: c.kind, subject: c.subject, target: id, decision: c.decision, finding: null, runKey } as RunCommand;
+      } else return bad("command.subject is unknown");
+      break;
+    }
+    case "plan.decide": {
+      obj(c, "command", ["kind", "proposalTurnId", "decision", "choices", "note", "runKey"]);
+      const runKey = typeof c.runKey === "string" && SHA256.test(c.runKey) ? c.runKey : bad("command.runKey must be a run key");
+      if (!Array.isArray(c.choices) || c.choices.length > 50) bad("command.choices: up to 50");
+      const choices = (c.choices as unknown[]).map((x, i) => {
+        const ch = obj(x, `command.choices[${i}]`, ["id", "choice", "stage", "condition"]);
+        if (!["move", "close", "to_wish"].includes(ch.choice as string)) bad(`command.choices[${i}].choice is unknown`);
+        return { id: findingId(ch.id), choice: ch.choice as "move", stage: ch.stage === null ? null : int(ch.stage, `command.choices[${i}].stage`, 1, 10_000),
+          condition: ch.condition === null ? null : typeof ch.condition === "string" && /^C[1-9]\d{0,5}$/.test(ch.condition) ? ch.condition : bad(`command.choices[${i}].condition must be C<n>`) };
+      });
+      if (c.decision === "accept") {
+        if (c.note !== null) bad("command.note: only with return");
+        command = { kind: c.kind, proposalTurnId: uuid(c.proposalTurnId, "command.proposalTurnId"), decision: "accept", choices, note: null, runKey };
+      } else if (c.decision === "return") {
+        if (choices.length) bad("command.choices: only with accept");
+        command = { kind: c.kind, proposalTurnId: uuid(c.proposalTurnId, "command.proposalTurnId"), decision: "return", choices: [], note: c.note === null ? null : str(c.note, "command.note", 4000, 0), runKey };
+      } else return bad("command.decision is unknown");
+      break;
+    }
     default:
       return bad("command.kind is unknown");
   }

@@ -7,6 +7,8 @@ import type {
   OrchestrationPermissionOption,
   OrchestrationQaVersion,
   OrchestrationResult,
+  OrchestrationPersonDecide,
+  OrchestrationPlanDecide,
   OrchestrationRunCommand,
   OrchestrationRunView
 } from "../../../../shared/orchestration.ts";
@@ -23,7 +25,8 @@ export const TERMINAL_STATUSES = ["stopped", "completed", "failed"];
 
 export type RunAction = "pause" | "keep_running" | "resume" | "step" | "stop" | "answer" | "clarify" | "raise_limit" | "recover" | "permission"
   | "checks_decide" | "finish_confirm" // journal v2: the person's decisions, with Stop the only actions on their pauses
-  | "check_amend"; // A1.1: a lead's check the sandbox refused — the person's line in its place (edited or not)
+  | "check_amend" // A1.1: a lead's check the sandbox refused — the person's line in its place (edited or not)
+  | "person_decide" | "plan_decide"; // A4: the person's decisions (journal-v2-format.md §2.9)
 
 // Where orchestration is unavailable (orchestrationAvailable() false, main refuses with unsupported_platform) its entry
 // points stay visible but inactive, with this hint: new agent cards, linking, a new goal (and so autopilot).
@@ -41,6 +44,11 @@ export function actionEnabled(action: RunAction, available: boolean): boolean {
 }
 
 export function availableActions(view: OrchestrationRunView): RunAction[] {
+  const actions = runActions(view);
+  // A4: an open finding the person may close or make a wish on this pause (main says which pauses: view.decisions)
+  return view.status === "paused" && view.decisions?.findings && !actions.includes("person_decide") ? [...actions, "person_decide"] : actions;
+}
+function runActions(view: OrchestrationRunView): RunAction[] {
   if (view.halted || view.newer) return []; // a newer version's run: nothing is sent to it from here
   const clarify: RunAction[] = view.reason === "journal_corrupt" ? [] : ["clarify"];
   switch (view.status) {
@@ -53,6 +61,9 @@ export function availableActions(view: OrchestrationRunView): RunAction[] {
       if (r === "awaiting_checks_decision") return ["checks_decide", "stop"];
       if (r === "awaiting_finish_confirmation") return ["finish_confirm", "stop"];
       if (r === "check_needs_permissions") return ["check_amend", "stop"];
+      // A4: the person's decision continues the run itself; nothing else but Stop there
+      if (r === "awaiting_person_decision") return ["person_decide", "stop"];
+      if (r === "coverage_lost") return ["plan_decide", "stop"];
       if (r === "limit_reached") return ["raise_limit", "stop", ...clarify];
       if (r === "outcome_unknown") return ["recover", "stop", ...clarify];
       if (STOP_ONLY.includes(r)) return ["stop", ...clarify];
@@ -321,7 +332,8 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
   requestId?: string; decision?: OrchestrationPermissionOption; answers?: Record<string, string[]>;
   content?: Record<string, unknown>; feedback?: string;
   checks?: string[]; tree?: string; commit?: string | null; push?: "confirm" | "decline" | null; qa?: "confirm" | "decline" | null;
-  checkId?: string; line?: string } = {}): OrchestrationRunCommand {
+  checkId?: string; line?: string;
+  person?: Omit<OrchestrationPersonDecide, "kind">; plan?: Omit<OrchestrationPlanDecide, "kind"> } = {}): OrchestrationRunCommand {
   switch (action) {
     case "pause": return { kind: "pause_after_turn", on: true };
     case "keep_running": return { kind: "pause_after_turn", on: false };
@@ -335,6 +347,8 @@ export function commandOf(action: RunAction, input: { text?: string; questionId?
     case "checks_decide": return { kind: "checks.decide", decision: input.checks ? "edit" : "accept", ...(input.checks ? { checks: input.checks } : {}) };
     case "finish_confirm": return { kind: "finish.confirm", tree: input.tree ?? "", commit: input.commit ?? null, push: input.push ?? null, qa: input.qa ?? null };
     case "check_amend": return { kind: "check.amend", checkId: input.checkId ?? "", line: input.line ?? "" };
+    case "person_decide": return { kind: "person.decide", ...input.person! } as OrchestrationPersonDecide;
+    case "plan_decide": return { kind: "plan.decide", ...input.plan! } as OrchestrationPlanDecide;
     case "permission": return {
       kind: "permission", requestId: input.requestId ?? "", decision: input.decision ?? "deny", ...(input.answers ? { answers: input.answers } : {}),
       ...(input.content ? { content: input.content } : {}), ...(input.feedback !== undefined ? { feedback: input.feedback } : {})
@@ -356,7 +370,7 @@ export type Headline = "working" | "awaiting_permission" | "stopping_after_turn"
   | "awaiting_checks" | "awaiting_checks_none" | "awaiting_finish_confirmation" | "check_needs_permissions";
 const NEEDS_SETUP = ["environment_error", "sandbox_unavailable", "permission_denied", "external_failure"];
 const NEEDS_DECISION = ["outcome_unknown", "limit_reached", "loop_suspected", "invalid_report", "protocol_error", "lead_modified_tree", "shared_git_tampered", "journal_corrupt",
-  "finish_unconfirmed", "tree_changed_during_review", "awaiting_person_decision"];
+  "finish_unconfirmed", "tree_changed_during_review", "awaiting_person_decision", "coverage_lost"];
 
 export function runHeadline(view: OrchestrationRunView): { headline: Headline; next: string } {
   if (view.halted) return { headline: "halted", next: "halted" };

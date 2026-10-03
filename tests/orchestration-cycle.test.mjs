@@ -16,7 +16,7 @@ function run() {
       revision: 1, turns: {}, plan: { version: 1, turnId: "p", ref: null, firstStage: 1, stageCount: 1 }, planReviewPaused: false,
       reviews: [], accepted: {}, pendingCheckpoint: null, clarifications: 0, clarificationRefs: [], clarificationSeqs: [],
       question: null, answers: 0, answerSeqs: [], lastPausedSeq: {}, assessed: {}, limitOverrides: {}, recoveryDecisions: {},
-      prepares: [], classified: {}, grants: {}, applied: 0, finish: []
+      prepares: [], classified: {}, grants: {}, applied: 0, finish: [], proposals: [], person: [], nextCondition: 1, decidedCommands: []
     }
   };
   let seq = 10;

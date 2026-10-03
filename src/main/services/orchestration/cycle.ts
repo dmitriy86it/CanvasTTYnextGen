@@ -6,7 +6,7 @@ import type { CompletionKind, FailureClass, FinishStep, PausedReason, RunState }
 import type { AgentAccess } from "./access.ts";
 import type { PrepareStep } from "./prepare.ts";
 import { detectLoop, findingsKey, normalizeFinding } from "./progress.ts";
-import { reviewKey } from "./journal.ts";
+import { planProposalWaits, reviewKey } from "./journal.ts";
 import { conditionBlockers } from "./conditions.ts";
 import type { ConditionBlocker, ConditionFacts } from "./conditions.ts";
 import type { RoundFacts } from "./progress.ts";
@@ -81,7 +81,9 @@ export interface CycleInput {
   findingsOf(reviewTurnId: string): readonly string[]; // the review's findings as recorded (texts/)
   // journal v2, A2 (journal-v2-format.md §2.7), from the texts: whether a review left a "change" condition of its stage
   // unmet, and whether the conditions and requirements block completion now. Absent: no condition rule applies.
-  conditions?: { stageUnmet(stage: number, reviewTurnId: string): boolean; finalUnmet: boolean };
+  // A4: person(stage) — the stage's person conditions by the person's decisions in force: all met, one not met, one to
+  // ask (5h §3.5); null: the stage has none.
+  conditions?: { stageUnmet(stage: number, reviewTurnId: string): boolean; finalUnmet: boolean; person?(stage: number): "met" | "not_met" | "ask" | null };
   // journal v2, A3 (journal-v2-format.md §2.8), from the applied texts: an open blocking finding the stage owns, any
   // open blocking finding, a disputed item waiting for the person. Absent: the lead reviews (v1, A1–A2 journals).
   findings?: { stageHeld(stage: number): boolean; anyHeld: boolean; disputed: boolean };
@@ -174,7 +176,9 @@ function decide(input: CycleInput): Action {
   const p = orch.checksProposal;
   if (p && !orch.checksDecision) return autoAccepts(goal, p.sandboxNetwork, p.count) ? { kind: "accept_checks" } : pause("awaiting_checks_decision", p.turnId);
   if (p && orch.checksDecision?.decision === "accept" && !orch.plan) return { kind: "record_plan", turnId: p.turnId };
-  // A3 (§2.8): a disputed finding is the person's decision (A4); until then nothing goes on
+  // A4 (5h §3.6 p. 2): a plan proposal that drops conditions or requirements waits for the person before anything else
+  if (planProposalWaits(state)) return pause("coverage_lost", orch.proposals.at(-1)!.turnId);
+  // A3 (§2.8): a disputed finding is the person's decision; until then nothing goes on (the autopilot too)
   if (input.findings?.disputed) return pause("awaiting_person_decision", "disputed finding");
   // A3 (5h §3.1.1): a review of a tree that changed under it is dropped before anything is decided on it
   const lastId = orch.lastOrchTurn;
@@ -182,6 +186,9 @@ function decide(input: CycleInput): Action {
     && !orch.reviews.some((r) => r.turnId === lastId) && !Object.hasOwn(orch.discarded, lastId) && orch.turns[lastId].tree !== snapshot.tree) {
     return { kind: "discard", turnId: lastId };
   }
+  // A4 (5h §3.6 p. 3): «Вернуть лиду» — a plan turn with the person's note; it spends no replan
+  const returned = orch.proposals.at(-1)?.decision;
+  if (returned?.decision === "return" && !Object.values(orch.turns).some((t) => t.purpose === "plan" && t.seq > returned.seq)) return turn("plan", null, null);
   if (!orch.plan || leadReviews.at(-1)?.verdict === "replan") return replan();
   if (goal.reviewPlan && planVersion === 1 && !orch.planReviewPaused) return pause("plan_review", "plan version 1");
 
@@ -233,9 +240,10 @@ function decide(input: CycleInput): Action {
     const lastReview = roundReviews.at(-1);
     const reviewFresh = lastReview !== undefined && lastReview.runKey === snapshot.runKey && !answeredAfter(lastReview);
 
+    const person = input.conditions?.person?.(s) ?? null;
     const needExecute = lastExec === undefined || !execDone(lastExec)
       || (reviewFresh && (lastReview.verdict === "fix" || (lastReview.verdict === "accept"
-        && (!allPassed || !!input.conditions?.stageUnmet(s, lastReview.turnId) || !!input.findings?.stageHeld(s)))));
+        && (!allPassed || !!input.conditions?.stageUnmet(s, lastReview.turnId) || !!input.findings?.stageHeld(s) || person === "not_met"))));
     if (needExecute) {
       if (round + 1 > limits.roundsPerStage) return pause("limit_reached", "roundsPerStage");
       const loop = round >= 1 ? loopOf(input, reviews) : null;
@@ -244,6 +252,8 @@ function decide(input: CycleInput): Action {
     }
     if (missingCheck !== undefined) return { kind: "check", checkId: missingCheck, stage: s, round };
     if (!reviewFresh) return turn("review", s, round);
+    // A4 (5h §3.5): a person condition is asked only about finished work — everything else of the stage is met now
+    if (person === "ask") return pause("awaiting_person_decision", `stage ${s} condition`);
     // fresh review of this round: accept with every required check passed (fix and failing accept went above)
     return { kind: "accept", stage: s, reviewTurnId: lastReview.turnId };
   }
@@ -284,7 +294,7 @@ export function confirmationFor(state: RunState, tree: string, commit: string | 
   return state.orch.confirmations.filter((c) => c.seq > commitSeq && c.tree === tree && c.commit === commit).at(-1) ?? null;
 }
 
-export type CompletionBlocker = "checks_undecided" | "stage_not_accepted" | "check_not_passed" | "final_report_stale" | "finish_pending" | "finish_awaiting_person"
+export type CompletionBlocker = "checks_undecided" | "plan_proposal_pending" | "stage_not_accepted" | "check_not_passed" | "final_report_stale" | "finish_pending" | "finish_awaiting_person"
   | ConditionBlocker | "blocking_open" | "disputed_pending";
 // The completion function, its A1 part (journal-v2-format.md §2.3): the run may be completed only when its checks
 // passed — or it has none by decision (no_checks) — every stage is accepted, the final review completes it, and every
@@ -292,20 +302,21 @@ export type CompletionBlocker = "checks_undecided" | "stage_not_accepted" | "che
 // A2: and every condition in force has its evidence and every requirement is met (conditions: the facts from the texts,
 // null when no condition rule applies — v1 or a plan of A1's form).
 // A3: and no blocking finding is open, nor a disputed item waits (findings: from the applied texts, null when the lead
-// reviews).
+// reviews). A4: and no plan proposal waits for the person; the blockers in the order of journal-v2-format.md §2.3.
 export function completion(state: RunState, goal: Goal, snapshot: Pick<Snapshot, "tree" | "runKey">, conditions: ConditionFacts | null = null,
   findings: { open: number; disputed: number } | null = null):
   { allowed: true; kind: CompletionKind } | { allowed: false; blockers: CompletionBlocker[] } {
   const o = state.orch;
   const blockers: CompletionBlocker[] = [];
   if (o.checksProposal && !o.checksDecision) blockers.push("checks_undecided");
+  if (planProposalWaits(state)) blockers.push("plan_proposal_pending");
+  if (findings && findings.disputed > 0) blockers.push("disputed_pending");
   if (!o.plan || Object.keys(o.accepted).length < o.plan.firstStage - 1 + o.plan.stageCount) blockers.push("stage_not_accepted");
   const byConditions = conditionBlockers(conditions);
   if (byConditions.includes("condition_unmet")) blockers.push("condition_unmet");
   if (!checksPassed(state, goal.checks)) blockers.push("check_not_passed");
   if (byConditions.includes("requirement_unmet")) blockers.push("requirement_unmet");
   if (findings && findings.open > 0) blockers.push("blocking_open");
-  if (findings && findings.disputed > 0) blockers.push("disputed_pending");
   const final = o.reviews.filter((r) => r.stage === null && o.turns[r.turnId]?.planVersion === o.plan?.version).at(-1);
   if (final?.verdict !== "complete" || final.runKey !== snapshot.runKey || final.clarificationVersion !== o.clarifications) blockers.push("final_report_stale");
   const commit = currentCommit(state, snapshot.tree);

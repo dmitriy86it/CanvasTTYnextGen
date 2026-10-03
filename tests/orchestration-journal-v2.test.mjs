@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import {
-  MAX_JOURNAL_VERSION, PAUSED_REASONS_V2, READER_VERSION, V2_MIN_READER_VERSION, buildRecord, canonical, isValidEventData, newerGoal, newerVersion, parseJournal, sha256Hex
+  JOURNAL_V2_BY_DEFAULT, MAX_JOURNAL_VERSION, PAUSED_REASONS_V2, READER_VERSION, V2_MIN_READER_VERSION, buildRecord, canonical, isValidEventData, newerGoal, newerVersion, parseJournal, sha256Hex
 } from "../src/main/services/orchestration/journal.ts";
 import { createRun, openRun, readRun } from "../src/main/services/orchestration/store.ts";
 
@@ -20,8 +20,10 @@ after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const GOAL = { sha256: "a".repeat(64), bytes: 1 };
 const A0 = { maxVersion: 1, readerVersion: 1 }; // the reader of 1.5.7: v1 is its own, READER_VERSION 1
 
-// Records as this build writes a v2 journal: v 2, the first record with minReaderVersion 2 and formatPreview.
-function lines(runId, events, { version = 2, head = { minReaderVersion: 2, formatPreview: true } } = {}) {
+// Records as this build writes a v2 journal: v 2, the first record with minReaderVersion 2 (A4's final form; A1–A3
+// development builds added formatPreview: true).
+const PREVIEW = { minReaderVersion: 2, formatPreview: true };
+function lines(runId, events, { version = 2, head = { minReaderVersion: 2 } } = {}) {
   const out = [];
   let prev = null;
   for (const [i, [type, data, extra]] of events.entries()) {
@@ -41,7 +43,7 @@ function lines(runId, events, { version = 2, head = { minReaderVersion: 2, forma
 }
 const RUNNING = ["run.status", { status: "running", reason: null, completion: null }];
 
-test("a v2 journal of this build: the first record declares minReaderVersion 2 and formatPreview, no other does; replayed as v2", async () => {
+test("a v2 journal of this build (A4's final form): the first record declares minReaderVersion 2 and no formatPreview, no other record a head key; replayed as v2", async () => {
   assert.deepEqual([MAX_JOURNAL_VERSION, READER_VERSION, V2_MIN_READER_VERSION], [2, 2, 2]);
   const root = path.join(TMP, "write");
   const runId = randomUUID();
@@ -52,12 +54,12 @@ test("a v2 journal of this build: the first record declares minReaderVersion 2 a
   const buf = fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"));
   const recs = buf.toString().trim().split("\n").map((l) => JSON.parse(l));
   assert.deepEqual(recs.map((r) => r.v), [2, 2, 2]);
-  assert.deepEqual([recs[0].minReaderVersion, recs[0].formatPreview], [2, true]);
+  assert.deepEqual([recs[0].minReaderVersion, "formatPreview" in recs[0]], [2, false]);
   assert.ok(recs.slice(1).every((r) => !("minReaderVersion" in r) && !("formatPreview" in r)));
   assert.deepEqual(recs[1].data, { status: "running", reason: null, completion: null }, "run.status v2 carries completion");
   const p = parseJournal(buf, runId);
   assert.equal(p.integrity.status, "ok");
-  assert.deepEqual([p.state.version, p.state.preview, p.state.status, p.state.pausedReason], [2, true, "paused", "awaiting_checks_decision"]);
+  assert.deepEqual([p.state.version, p.state.preview, p.state.status, p.state.pausedReason], [2, false, "paused", "awaiting_checks_decision"]);
   // the reader of this build reads it whole, and the run is continued (A0 view only for newer journals)
   const read = await readRun(root, runId);
   assert.deepEqual([read.integrity.status, read.canContinue], ["ok", true]);
@@ -66,6 +68,31 @@ test("a v2 journal of this build: the first record declares minReaderVersion 2 a
   await again.setRunStatus("running", null); // the writer continues in v2
   await again.close();
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"), "utf8").trim().split("\n").at(-1)).v, 2);
+});
+
+test("v2 is not the default (A4): the one switch is off; a journal of an A1–A3 development build (formatPreview) goes on under the flag while it is, read only once v2 is on", async () => {
+  assert.equal(JOURNAL_V2_BY_DEFAULT, false, "v2 is enabled for people only after a real series (ROADMAP)");
+  const root = path.join(TMP, "preview");
+  const runId = randomUUID();
+  fs.mkdirSync(path.join(root, "runs", runId, "texts"), { recursive: true });
+  const file = path.join(root, "runs", runId, "journal.jsonl");
+  fs.writeFileSync(file, lines(runId, [["run.created", { goal: GOAL }], RUNNING, ["run.status", { status: "paused", reason: "user_request", completion: null }]], { head: PREVIEW }));
+  const buf = fs.readFileSync(file);
+  // the flag on, v2 off by default: replayed and continued as before A4
+  const p = parseJournal(buf, runId);
+  assert.deepEqual([p.integrity.status, p.state.version, p.state.preview], ["ok", 2, true]);
+  const w = await openRun(root, runId);
+  await w.setRunStatus("running", null);
+  await w.close();
+  assert.equal(parseJournal(fs.readFileSync(file), runId).integrity.status, "ok");
+  // v2 on: shown read only — the records as they are, no state, said as a development build's
+  const on = parseJournal(fs.readFileSync(file), runId, { previewReadOnly: true });
+  assert.deepEqual([on.integrity.status, on.integrity.detail.preview, on.state, on.records.length], ["newer_version", true, null, 4]);
+  assert.equal(newerVersion(buf, undefined, true), 2);
+  // the final form is this build's own either way
+  assert.equal(parseJournal(lines(runId, [["run.created", { goal: GOAL }], RUNNING]), runId, { previewReadOnly: true }).integrity.status, "ok");
+  // the reader of 1.5.7: either is newer, never "a development build's" (it does not know)
+  assert.deepEqual(parseJournal(buf, runId, A0).integrity, { status: "newer_version", detail: { version: 2, chain: { status: "ok" } } });
 });
 
 test("1.5.7 (the A0 reader, READER_VERSION 1): a v2 journal with minReaderVersion 2 is read only — goal and raw records, no state", () => {
@@ -88,10 +115,10 @@ test("the version is the first record's: another v later, a head key on a later 
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null }, { v: 1 }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null, completion: null }, { minReaderVersion: 2 }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 2, formatPreview: true, extra: 1 } })), ["corrupt", 1, "invalid_event"]);
-  // v2 without formatPreview (A4's final form) is not a journal of this build: read only, the records as they are and no
-  // computed state, whatever minReaderVersion it declares (owner's decision A1.1 Q3)
-  const finalForm = parseJournal(lines(runId, [created, RUNNING], { head: { minReaderVersion: 1 } }), runId);
-  assert.deepEqual([finalForm.integrity.status, finalForm.state, finalForm.records.length], ["newer_version", null, 2]);
+  assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 2, formatPreview: false } })), ["corrupt", 1, "invalid_event"]);
+  // the first record of v2 declares minReaderVersion 2, exactly (A4's final form; A1.1 Q3)
+  assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 1 } })), ["corrupt", 1, "invalid_event"]);
+  assert.deepEqual(at(lines(runId, [created, RUNNING], { head: null })), ["corrupt", 1, "invalid_event"]);
   // run.status of v1 shape in v2 (no completion), and v2 shape in v1
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, RUNNING], { version: 1, head: null })), ["corrupt", 2, "invalid_event"]);
@@ -99,7 +126,7 @@ test("the version is the first record's: another v later, a head key on a later 
   assert.equal(parseJournal(lines(runId, [created, ["run.status", { status: "running", reason: null }]], { version: 1, head: null }), runId).integrity.status, "ok");
 });
 
-test("A1 records: schemas of checks.proposed, checks.decided, finish.confirmed and run.status.completion; none of them in v1", () => {
+test("A1 and A4 records: schemas of checks.proposed, checks.decided, finish.confirmed, run.status.completion, plan.proposed, plan.decided, person.decided; none of them in v1", () => {
   const uuid = randomUUID();
   const ok = [
     ["checks.proposed", { turnId: uuid, proposal: GOAL, count: 0, sandboxNetwork: "open" }],
@@ -107,7 +134,15 @@ test("A1 records: schemas of checks.proposed, checks.decided, finish.confirmed a
     ["checks.decided", { proposalTurnId: uuid, decision: "accept", by: "autopilot", commandId: null, checks: GOAL, count: 1 }],
     ["finish.confirmed", { commandId: uuid, tree: "b".repeat(40), commit: null, push: null, qa: "decline" }],
     ["run.status", { status: "completed", reason: null, completion: { kind: "no_checks", basis: GOAL } }],
-    ["run.status", { status: "paused", reason: "awaiting_finish_confirmation", completion: null }]
+    ["run.status", { status: "paused", reason: "awaiting_finish_confirmation", completion: null }],
+    // A4's records
+    ["plan.proposed", { turnId: uuid, plan: GOAL, firstStage: 1, stageCount: 1, conditionsAssigned: 1 }],
+    ["plan.decided", { commandId: uuid, proposalTurnId: uuid, decision: "accept", version: 2, choices: GOAL, note: null, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["plan.decided", { commandId: uuid, proposalTurnId: uuid, decision: "return", version: null, choices: GOAL, note: GOAL, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["person.decided", { commandId: uuid, subject: "finding", target: "F1", decision: "to_wish", finding: null, reopened: null, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["person.decided", { commandId: uuid, subject: "disputed", target: { reviewTurnId: uuid, index: 0 }, decision: "repeat", finding: "F1", reopened: true, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["person.decided", { commandId: uuid, subject: "condition", target: "C1", decision: "met", finding: null, reopened: null, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["run.status", { status: "paused", reason: "coverage_lost", completion: null }]
   ];
   for (const [type, data] of ok) {
     assert.equal(isValidEventData(type, data, 2), true, `${type} ${JSON.stringify(data)}`);
@@ -120,9 +155,13 @@ test("A1 records: schemas of checks.proposed, checks.decided, finish.confirmed a
     ["finish.confirmed", { commandId: uuid, tree: "b".repeat(40), commit: null, push: null, qa: null }],
     ["run.status", { status: "completed", reason: null, completion: null }],
     ["run.status", { status: "running", reason: null, completion: { kind: "confirmed", basis: GOAL } }],
-    // records of A2–A4: not written, and not read as this build's
     ["review.assessed", { turnId: uuid, stage: 1, request: "none", report: GOAL, applied: GOAL, clarificationVersion: 0, runKey: "k" }],
-    ["plan.proposed", { turnId: uuid, plan: GOAL, firstStage: 1, stageCount: 1, conditionsAssigned: 1 }]
+    // A4: plan.decided and person.decided say who saw what (runKey, tree), and nothing else
+    ["plan.decided", { commandId: uuid, proposalTurnId: uuid, decision: "accept", version: null, choices: GOAL, note: null, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["plan.decided", { commandId: uuid, proposalTurnId: uuid, decision: "return", version: null, choices: GOAL, note: null, runKey: "a".repeat(64) }],
+    ["person.decided", { commandId: uuid, subject: "finding", target: "F1", decision: "close", finding: null, reopened: null, runKey: "a".repeat(64), tree: "b".repeat(40), by: "person" }],
+    ["person.decided", { commandId: uuid, subject: "disputed", target: { reviewTurnId: uuid, index: 0 }, decision: "repeat", finding: null, reopened: false, runKey: "a".repeat(64), tree: "b".repeat(40) }],
+    ["person.decided", { commandId: uuid, subject: "condition", target: "C1", decision: "close", finding: null, reopened: null, runKey: "a".repeat(64), tree: "b".repeat(40) }]
   ];
   for (const [type, data] of bad) assert.equal(isValidEventData(type, data, 2), false, `${type} ${JSON.stringify(data)}`);
 });
@@ -140,17 +179,24 @@ test("A1 replay rules on the records: a proposal belongs to the last plan turn, 
   assert.deepEqual(at([created, RUNNING, ["run.status", { status: "completed", reason: null, completion: { kind: "no_checks", basis: GOAL } }]]), ["corrupt", "replay_conflict", 3]);
 });
 
-test("the fixtures of the format (A4's final form, no formatPreview): read only — the records as they are, never a computed state or a failure (A1.1 Q3)", () => {
+test("the fixtures of the format (A4's final form): this build replays them whole, texts included; the reader of 1.5.7 shows them read only", async () => {
   const dirs = fs.readdirSync(FIXTURES);
   assert.equal(dirs.length, 8);
+  const expected = {
+    "01-no-checks-autopilot": ["completed", null, "no_checks"], "02-proposed-accepted-autopilot": ["completed", null, "confirmed"],
+    "03-steps-accept": ["paused", "plan_review", null], "04-steps-edit": ["paused", "plan_review", null], "05-open-blocking": ["running", null, null],
+    "06-no-checks-push-pause": ["paused", "awaiting_finish_confirmation", null], "07-no-checks-push-confirmed": ["completed", null, "no_checks"],
+    "08-coverage-lost": ["paused", "coverage_lost", null]
+  };
   for (const id of dirs) {
     const name = fs.readFileSync(path.join(FIXTURES, id, "FIXTURE"), "utf8").trim();
     const buf = fs.readFileSync(path.join(FIXTURES, id, "journal.jsonl"));
-    const p = parseJournal(buf, id);
+    // this build: replayed, its texts by the rules (A2–A4), the state the README table says
+    const own = await readRun(path.dirname(FIXTURES), id);
+    assert.deepEqual([own.integrity.status, own.state.status, own.state.pausedReason, own.state.completion?.kind ?? null], ["ok", ...expected[name]], name);
+    const p = parseJournal(buf, id, A0);
     assert.equal(p.integrity.detail.chain.status, "ok", name);
     assert.deepEqual(newerGoal(p.records), JSON.parse(buf.toString().split("\n")[0]).data.goal, name);
-    // A4's final form: never replayed by A1's rules, even where only A1's records are in it (03, 04) — a state cut to
-    // what this build knows is never shown
     assert.deepEqual([p.integrity.status, p.state, p.integrity.detail.fallback, p.records.length], ["newer_version", null, undefined, buf.toString().trim().split("\n").length], name);
     // the reader of 1.5.7: the same read-only view, no fallback (minReaderVersion 2 is above it)
     assert.deepEqual(parseJournal(buf, id, A0).integrity, { status: "newer_version", detail: { version: 2, chain: { status: "ok" } } }, name);

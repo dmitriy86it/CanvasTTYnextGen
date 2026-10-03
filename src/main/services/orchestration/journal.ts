@@ -3,12 +3,16 @@
 // Nothing here touches the file system; store.ts owns files, locks and the writer.
 import { createHash } from "node:crypto";
 import type { ReportStatus, TurnOutcome } from "./types.ts";
-import { applyPlan, changeIdsOf, emptyBook, factsOf, planProblems } from "./conditions.ts";
+import { applyPlan, changeIdsOf, emptyBook, factsOf, personIdsOf, planProblems } from "./conditions.ts";
 import { replayFindings } from "./findings.ts";
-import type { Applied } from "./findings.ts";
+import type { Applied, PlanChoices } from "./findings.ts";
 import type { ConditionMark, PlanText, RequirementMark, Status } from "./conditions.ts";
 
 export const JOURNAL_VERSION = 1; // new runs, unless the run asks for v2 (journal-v2-format.md, behind a dev flag in A1)
+// A4 (journal-v2-format.md §3.4, §2.9): v2 for the person's runs — new native runs written in v2 without the
+// development flag, and the journals of A1–A3 development builds (formatPreview) shown read only. The one switch of
+// that; off until the real series on real CLIs.
+export const JOURNAL_V2_BY_DEFAULT = false;
 // The highest journal version this build reads and writes as its own: above it a journal is a newer version's (A0).
 export const MAX_JOURNAL_VERSION = 2;
 // The highest minReaderVersion this build can read: a newer journal that declares it is replayed by the rules of that
@@ -38,9 +42,10 @@ export const PAUSED_REASONS = [
 ] as const;
 // v2 only (journal-v2-format.md §2.1): waiting for the decision on the lead's proposed check commands, and for the
 // person's confirmation of push/QA of a run without checks; A1.1: a lead's check the sandbox refused (§2.6).
-// A3 (§2.8): the tree changed during two reviews in a row; a disputed finding waits for the person (A4 decides it).
+// A3 (§2.8): the tree changed during two reviews in a row; a disputed finding or a person condition waits for the
+// person. A4 (5h §3.6): a plan proposal that drops conditions or requirements waits for the person.
 export const PAUSED_REASONS_V2 = [...PAUSED_REASONS, "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions",
-  "tree_changed_during_review", "awaiting_person_decision"] as const;
+  "tree_changed_during_review", "awaiting_person_decision", "coverage_lost"] as const;
 const TURN_OUTCOMES: readonly string[] = ["completed", "invalid_report", "delivery_failed", "failed", "stopped", "timeout",
   "protocol_error", "cleanup_unverified", "harness_error"];
 const REPORT_STATUSES: readonly string[] = ["valid", "invalid_json", "schema_mismatch", "missing", "too_large", "not_checked"];
@@ -91,12 +96,16 @@ export type EventType =
   | "checks.amended" // A1.1
   | "finish.confirmed"
   | "review.assessed" // A3
-  | "review.discarded";
+  | "review.discarded"
+  | "plan.proposed" // A4
+  | "plan.decided"
+  | "person.decided";
 
 export const STAGE13_EVENTS = ["prepare.started", "prepare.finished", "check.classified", "permission.granted",
   "permission.applied", "finish.intent", "finish.result"] as const;
 export type Stage13Event = (typeof STAGE13_EVENTS)[number];
-export const V2_EVENTS = ["checks.proposed", "checks.decided", "finish.confirmed", "checks.amended", "review.assessed", "review.discarded"] as const;
+export const V2_EVENTS = ["checks.proposed", "checks.decided", "finish.confirmed", "checks.amended", "review.assessed", "review.discarded",
+  "plan.proposed", "plan.decided", "person.decided"] as const;
 export type V2Event = (typeof V2_EVENTS)[number];
 
 export type CommandResult = { status: "accepted" | "rejected"; code: string | null };
@@ -104,7 +113,7 @@ export type CommandResult = { status: "accepted" | "rejected"; code: string | nu
 export interface JournalRecord {
   v: 1 | 2;
   minReaderVersion?: number; // v2: the first record only
-  formatPreview?: true; // v2: the first record of a journal written by a development build of A1–A3
+  formatPreview?: true; // v2: the first record of a journal written by a development build of A1–A3 (A4 writes none)
   seq: number;
   ts: string;
   runId: string;
@@ -209,7 +218,23 @@ export interface OrchTurnData {
 }
 export interface PlanRecordedData { turnId: string; version: number; plan: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number }
 // conditionsAssigned absent: a plan of A1's form or of v1 (no conditions; journal-v2-format.md §2.7)
-export interface PlanState { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number; seq: number }
+// base: the first number C<base> its new conditions take (v2: from the records' conditionsAssigned, proposals included);
+// proposed: in force by the person's plan.decided(accept) of a proposal (A4)
+export interface PlanState { version: number; turnId: string; ref: TextRef; firstStage: number; stageCount: number; conditionsAssigned?: number; seq: number; base?: number; proposed?: true }
+// A4 (5h §2.4, §3.6): a plan that drops conditions or requirements, waiting for the person; never in force by itself
+export interface ProposalState {
+  turnId: string; ref: TextRef; firstStage: number; stageCount: number; conditionsAssigned: number; base: number; seq: number;
+  decision: { decision: "accept" | "return"; commandId: string; choices: TextRef; note: TextRef | null; runKey: string; tree: string; seq: number } | null;
+}
+// A4 (5h §3.5, journal-v2-format.md §2.9): the person's decision outside a plan — on whose command, about which state
+// (runKey, tree) and what. disputed: target is the item {reviewTurnId, index}; finding the new number (new) or the
+// chosen candidate (repeat), reopened whether the repeat opened it again.
+export type PersonSubject = "condition" | "finding" | "disputed";
+export interface PersonDecision {
+  commandId: string; subject: PersonSubject; target: string | { reviewTurnId: string; index: number };
+  decision: "met" | "not_met" | "close" | "to_wish" | "new" | "repeat"; finding: string | null; reopened: boolean | null;
+  runKey: string; tree: string; seq: number;
+}
 export interface ReviewRecordedData {
   turnId: string; stage: number | null; verdict: ReviewVerdict; findings: TextRef | null; findingsKey: string;
   findingsCount: number; clarificationVersion: number; runKey: string;
@@ -293,6 +318,12 @@ export interface OrchState {
   // reviewer turn of a key (resume/step from tree_changed_during_review, recovery.decided of a reviewer's turn)
   discarded: Record<string, { treeBefore: string; treeAfter: string; seq: number }>;
   reviewPermits: { key: string; seq: number }[];
+  // A4: the next free condition number C<n> (plans and proposals take theirs), every plan proposal in order, the
+  // person's decisions, and the commands whose decision record is in the journal (5h §3.5: accepted after a crash)
+  nextCondition: number;
+  proposals: ProposalState[];
+  person: PersonDecision[];
+  decidedCommands: string[];
 }
 export type SandboxNetwork = "denied" | "open";
 export type FinishDecision = "confirm" | "decline";
@@ -325,7 +356,7 @@ export type ChainIntegrity =
 // version_changed: a record of another v than the first one (the version and minReaderVersion are the first record's).
 export type NewerFallback = { line: number; code: "unknown_record" | "invalid_event" | "replay_conflict" | "version_changed" };
 export type JournalIntegrity = ChainIntegrity
-  | { status: "newer_version"; detail: { version: number; chain: ChainIntegrity; fallback?: NewerFallback } }
+  | { status: "newer_version"; detail: { version: number; chain: ChainIntegrity; fallback?: NewerFallback; preview?: true } }
   | { status: "newer_version_compatible"; detail: { version: number; minReaderVersion: number; chain: ChainIntegrity; skipped: number } };
 
 export class JournalError extends Error {
@@ -560,8 +591,24 @@ const DATA_SCHEMAS_V2: Record<string, (d: Record<string, unknown>) => boolean> =
   "review.assessed": (d) => exactKeys(d, ["turnId", "stage", "request", "report", "applied", "clarificationVersion", "runKey"]) && isUuid(d.turnId)
     && (d.stage === null || isPos(d.stage)) && oneOf(d.request, ["none", "replan", "question"]) && isTextRef(d.report) && isTextRef(d.applied)
     && isNonNeg(d.clarificationVersion) && isSha256(d.runKey),
-  "review.discarded": (d) => exactKeys(d, ["turnId", "treeBefore", "treeAfter"]) && isUuid(d.turnId) && isGitOid(d.treeBefore) && isGitOid(d.treeAfter)
+  "review.discarded": (d) => exactKeys(d, ["turnId", "treeBefore", "treeAfter"]) && isUuid(d.turnId) && isGitOid(d.treeBefore) && isGitOid(d.treeAfter),
+  // A4 (5h §2.4, journal-v2-format.md §2.9): a plan proposal, the person's decision on it, the person's decision outside
+  // a plan — each decision with the state (runKey) and tree the person decided on
+  "plan.proposed": (d) => exactKeys(d, ["turnId", "plan", "firstStage", "stageCount", "conditionsAssigned"]) && isUuid(d.turnId) && isTextRef(d.plan)
+    && isPos(d.firstStage) && isInt(d.stageCount) && d.stageCount >= 1 && d.stageCount <= 50
+    && isInt(d.conditionsAssigned) && d.conditionsAssigned >= 0 && d.conditionsAssigned <= 600,
+  "plan.decided": (d) => exactKeys(d, ["commandId", "proposalTurnId", "decision", "version", "choices", "note", "runKey", "tree"]) && isUuid(d.commandId)
+    && isUuid(d.proposalTurnId) && isTextRef(d.choices) && isSha256(d.runKey) && isGitOid(d.tree)
+    && (d.decision === "accept" ? isPos(d.version) && d.note === null : d.decision === "return" && d.version === null && (d.note === null || isTextRef(d.note))),
+  "person.decided": (d) => exactKeys(d, ["commandId", "subject", "target", "decision", "finding", "reopened", "runKey", "tree"]) && isUuid(d.commandId)
+    && isSha256(d.runKey) && isGitOid(d.tree) && (
+      d.subject === "condition" ? isConditionId(d.target) && oneOf(d.decision, ["met", "not_met"]) && d.finding === null && d.reopened === null
+        : d.subject === "finding" ? isFindingId(d.target) && oneOf(d.decision, ["close", "to_wish"]) && d.finding === null && d.reopened === null
+          : d.subject === "disputed" && exactKeys(d.target, ["reviewTurnId", "index"]) && isUuid(d.target.reviewTurnId) && isNonNeg(d.target.index)
+            && (d.target.index as number) < 50 && isFindingId(d.finding) && (d.decision === "new" ? d.reopened === null : d.decision === "repeat" && typeof d.reopened === "boolean"))
 };
+const isConditionId = (v: unknown): v is string => typeof v === "string" && /^C[1-9]\d{0,5}$/.test(v);
+const isFindingId = (v: unknown): v is string => typeof v === "string" && /^F[1-9]\d{0,5}$/.test(v);
 const schemasOf = (version: number): Record<string, (d: Record<string, unknown>) => boolean> => version === 2 ? DATA_SCHEMAS_V2 : DATA_SCHEMAS;
 
 export function isValidEventData(type: string, data: unknown, version = 1): boolean {
@@ -598,7 +645,8 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
         clarifications: 0, clarificationRefs: [], clarificationSeqs: [], question: null, answers: 0, answerSeqs: [],
         lastPausedSeq: {}, assessed: {}, limitOverrides: {}, recoveryDecisions: {},
         prepares: [], classified: {}, grants: {}, applied: 0, finish: [],
-        lastOrchTurn: null, checksProposal: null, checksDecision: null, confirmations: [], amended: {}, discarded: {}, reviewPermits: []
+        lastOrchTurn: null, checksProposal: null, checksDecision: null, confirmations: [], amended: {}, discarded: {}, reviewPermits: [],
+        nextCondition: 1, proposals: [], person: [], decidedCommands: []
       }
     };
   }
@@ -639,6 +687,7 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
       const id = d.turnId as string;
       if (Object.hasOwn(state.turns, id)) conflict(`turn ${id} started twice`);
       if (proposalWaits(state)) conflict("a turn while the proposed check commands wait for a decision");
+      if (planProposalWaits(state)) conflict("a turn while a plan proposal waits for the person");
       if (d.role === "reviewer") reviewerTurnAllowed(state, id);
       state.turns[id] = {
         status: "in_flight", commandId: d.commandId as string | null, role: d.role as TurnState["role"],
@@ -739,6 +788,7 @@ export function applyRecord(state: RunState | null, rec: JournalRecord): RunStat
       if (ws.pendingRestore) conflict("check while a restore is unfinished");
       if (state.checks[d.checkRunId as string]) conflict(`check ${String(d.checkRunId)} started twice`);
       if (state.version === 2) checkOfDecidedSet(state, d.checkId as string, d.profileSha256 as string);
+      if (planProposalWaits(state)) conflict("a check while a plan proposal waits for the person");
       const base = d.base as { commit: string; tree: string };
       // the check runs on the applicable base of the copy, the one confirmed events left in place
       if (base.commit !== ws.current.commit || base.tree !== ws.current.tree) conflict("check base is not the current base of the copy");
@@ -795,6 +845,10 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
   };
   // v2: proposed check commands without a decision: only the commands' records and run.status until it (§2.1)
   if (proposalWaits(state) && rec.type !== "checks.decided") conflict(`${rec.type} while the proposed check commands wait for a decision`);
+  // A4 (5h §3.6 p. 2): a plan proposal waiting for the person: only its decision (and the commands, run.status)
+  if (planProposalWaits(state) && rec.type !== "plan.decided") conflict(`${rec.type} while a plan proposal waits for the person`);
+  // 5h §3.5: the commands whose decision is in the journal (a command left without its end is accepted after a crash)
+  const decision = () => { if (!o.decidedCommands.includes(d.commandId as string)) o.decidedCommands.push(d.commandId as string); };
   const completedTurn = (id: string, purposes: readonly string[]) => {
     const t = o.turns[id];
     if (!t || !purposes.includes(t.purpose)) conflict(`turn ${id} is not a ${purposes.join("/")} turn`);
@@ -806,6 +860,8 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       const id = d.turnId as string;
       // written before turn.intent; a bare turn.intent (without orch.turn) stays valid
       if (Object.hasOwn(o.turns, id) || Object.hasOwn(state.turns, id)) conflict(`orch.turn ${id} is not before its intent`);
+      // the final form of v2 (A4, §3.4): every orch.turn says its tree (null but for the reviewer)
+      if (finalForm(state) && d.tree === undefined) throw new JournalError("invalid_event", "orch.turn without its tree");
       o.lastOrchTurn = id;
       o.turns[id] = {
         purpose: d.purpose as TurnPurpose, stage: d.stage as number | null, round: d.round as number | null,
@@ -827,15 +883,65 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (d.firstStage !== Object.keys(o.accepted).length + 1) conflict("plan firstStage is not the next stage");
       // A2 (journal-v2-format.md §2.7): once a plan has conditions, a plan without them would drop them unseen
       if (o.plans.some((x) => x.conditionsAssigned !== undefined) && d.conditionsAssigned === undefined) conflict("a plan without conditions after a plan with them");
+      if (o.proposals.some((p) => p.turnId === d.turnId)) conflict(`turn ${String(d.turnId)} proposed its plan`);
       o.plan = {
         version: d.version as number, turnId: d.turnId as string, ref: d.plan as TextRef,
         firstStage: d.firstStage as number, stageCount: d.stageCount as number,
-        ...(d.conditionsAssigned === undefined ? {} : { conditionsAssigned: d.conditionsAssigned as number }), seq: rec.seq
+        ...(d.conditionsAssigned === undefined ? {} : { conditionsAssigned: d.conditionsAssigned as number, base: o.nextCondition }), seq: rec.seq
       };
+      o.nextCondition += (d.conditionsAssigned as number | undefined) ?? 0;
       o.plans.push(o.plan);
       break;
     }
+    // A4 (5h §3.6): a plan that drops conditions or requirements is a proposal; the plan in force stays until the
+    // person decides. Its new conditions take their numbers now, so C<n> always means one text.
+    case "plan.proposed": {
+      completedTurn(d.turnId as string, ["plan"]);
+      if (o.lastOrchTurn !== d.turnId) conflict("the proposal is not of the last turn");
+      if (o.plan?.turnId === d.turnId || o.proposals.some((p) => p.turnId === d.turnId) || o.checksProposal?.turnId === d.turnId) conflict(`turn ${String(d.turnId)} already has its result`);
+      if (d.firstStage !== Object.keys(o.accepted).length + 1) conflict("proposal firstStage is not the next stage");
+      o.proposals.push({ turnId: d.turnId as string, ref: d.plan as TextRef, firstStage: d.firstStage as number, stageCount: d.stageCount as number,
+        conditionsAssigned: d.conditionsAssigned as number, base: o.nextCondition, seq: rec.seq, decision: null });
+      o.nextCondition += d.conditionsAssigned as number;
+      break;
+    }
+    case "plan.decided": {
+      const p = o.proposals.at(-1);
+      if (!p || p.decision !== null || p.turnId !== d.proposalTurnId) conflict("the decision is not about the waiting proposal");
+      openCommand("plan.decide");
+      decision();
+      p!.decision = { decision: d.decision as "accept" | "return", commandId: d.commandId as string, choices: d.choices as TextRef,
+        note: d.note as TextRef | null, runKey: d.runKey as string, tree: d.tree as string, seq: rec.seq };
+      if (d.decision === "accept") {
+        if (d.version !== (o.plan?.version ?? 0) + 1) conflict(`plan version ${String(d.version)} out of order`);
+        if (p!.firstStage !== Object.keys(o.accepted).length + 1) conflict("the proposal's firstStage is not the next stage");
+        o.plan = { version: d.version as number, turnId: p!.turnId, ref: p!.ref, firstStage: p!.firstStage, stageCount: p!.stageCount,
+          conditionsAssigned: p!.conditionsAssigned, base: p!.base, seq: rec.seq, proposed: true };
+        o.plans.push(o.plan);
+      }
+      break;
+    }
+    // A4 (5h §3.5): a person's decision outside a plan, by command; what it is about is checked against the texts
+    case "person.decided": {
+      openCommand("person.decide");
+      const t = d.target as PersonDecision["target"];
+      if (d.subject === "disputed") {
+        const id = (t as { reviewTurnId: string }).reviewTurnId;
+        if (!o.reviews.some((r) => r.turnId === id && r.assessed)) conflict(`no reviewer's result ${id} for the disputed item`);
+        if (o.person.some((x) => x.subject === "disputed" && typeof x.target === "object" && x.target.reviewTurnId === id && x.target.index === (t as { index: number }).index)) {
+          conflict("the disputed item was already decided");
+        }
+      }
+      decision();
+      o.person.push({ commandId: d.commandId as string, subject: d.subject as PersonSubject,
+        target: typeof t === "string" ? t : { reviewTurnId: t.reviewTurnId, index: t.index },
+        decision: d.decision as PersonDecision["decision"], finding: d.finding as string | null, reopened: d.reopened as boolean | null,
+        runKey: d.runKey as string, tree: d.tree as string, seq: rec.seq });
+      break;
+    }
     case "review.recorded": {
+      // A4 (§3.4): the final form of v2 never has it — only the A1–A2 development journals the lead reviewed
+      if (finalForm(state)) throw new JournalError("invalid_event", "review.recorded in a journal of the final v2 form");
       // A3 (§2.8): a journal is reviewed by the lead (A1–A2) or by the reviewer, never both
       if (Object.values(state.turns).some((x) => x.role === "reviewer")) conflict("a lead's review in a journal the reviewer reviews");
       const t = completedTurn(d.turnId as string, d.stage === null ? ["final_review"] : ["review"]);
@@ -860,6 +966,7 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       const q = o.question ?? conflict("no question is open");
       if (q.answered || q.questionId !== d.questionId) conflict(`question ${String(d.questionId)} is not open`);
       openCommand();
+      decision();
       q.answered = true;
       q.answerRef = d.text as TextRef;
       q.answeredSeq = rec.seq;
@@ -896,12 +1003,14 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
     case "clarification.added":
       if (d.version !== o.clarifications + 1) conflict(`clarification version ${String(d.version)} out of order`);
       openCommand();
+      decision();
       o.clarifications++;
       o.clarificationRefs.push(d.text as TextRef);
       o.clarificationSeqs.push(rec.seq);
       break;
     case "limits.changed":
       openCommand();
+      decision();
       o.limitOverrides[d.kind as LimitKind] = d.value as number;
       break;
     case "recovery.decided": {
@@ -909,6 +1018,7 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       if (state.turns[id]?.status !== "outcome_unknown") conflict(`turn ${id} is not outcome_unknown`);
       if (Object.hasOwn(o.recoveryDecisions, id)) conflict(`turn ${id} already has a recovery decision`);
       openCommand();
+      decision();
       o.recoveryDecisions[id] = d.action as RecoveryAction;
       // A3 (5h §3.1.1): retrying a reviewer's turn of unknown outcome is leave for exactly one more turn of its key
       if (state.turns[id].role === "reviewer" && d.action !== "accept" && o.turns[id]) o.reviewPermits.push({ key: reviewKey(o.turns[id]), seq: rec.seq });
@@ -1004,7 +1114,7 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       // A1.1 (§7 Q1, Q2): no command proposed — nothing to run, the network rule does not apply
       if (auto && p.sandboxNetwork !== "denied" && p.count !== 0) conflict("the autopilot accepts proposed commands only when the checks' sandbox denies the network");
       if (d.decision === "accept" && d.count !== p.count) conflict("an acceptance changes the number of commands");
-      if (!auto) openCommand("checks.decide");
+      if (!auto) { openCommand("checks.decide"); decision(); }
       o.checksDecision = { decision: d.decision as "accept" | "edit", by: d.by as "autopilot" | "person", commandId: d.commandId as string | null,
         ref: d.checks as TextRef, count: d.count as number, seq: rec.seq };
       break;
@@ -1019,11 +1129,13 @@ function applyOrchRecord(state: RunState, rec: JournalRecord): void {
       const runs = Object.entries(state.checks).filter(([, c]) => c.checkId === id && c.status !== "in_flight");
       const last = runs.at(-1)?.[0];
       if (!last || o.classified[last] !== "sandbox") conflict(`check ${id} was not refused by the sandbox`);
+      decision();
       o.amended[id] = { commandId: d.commandId as string, line: d.line as TextRef, seq: rec.seq };
       break;
     }
     case "finish.confirmed":
       openCommand("finish.confirm");
+      decision();
       o.confirmations.push({ commandId: d.commandId as string, tree: d.tree as string, commit: d.commit as string | null,
         push: d.push as FinishDecision | null, qa: d.qa as FinishDecision | null, seq: rec.seq });
       break;
@@ -1080,6 +1192,10 @@ function reviewerResultOf(state: RunState, id: string): RunState["orch"]["turns"
 
 // v2: proposed check commands without a decision: no turn, no check and no plan until it (journal-v2-format.md §2.1).
 const proposalWaits = (state: RunState) => state.orch.checksProposal !== null && state.orch.checksDecision === null;
+// A4 (5h §3.6 p. 2): a plan proposal without the person's decision: no turn and no check until it.
+export const planProposalWaits = (state: RunState): boolean => state.orch.proposals.at(-1)?.decision === null;
+// A4 (§3.4): a v2 journal of the final form (not written by a development build of A1–A3)
+const finalForm = (state: RunState): boolean => state.version === 2 && !state.preview;
 
 // v2: a check of the decided set only (cmd-1…cmd-n); "the network is denied" cannot be said of a check run without a
 // sandbox. A goal with its own commands has no decision: its set is in the goal text (second stage).
@@ -1112,6 +1228,7 @@ export function checksPassed(state: RunState, ids: readonly string[]): boolean {
 function completedAllowed(state: RunState, completion: { kind: CompletionKind }): void {
   const o = state.orch;
   if (proposalWaits(state)) conflict("completed while the proposed check commands wait for a decision");
+  if (planProposalWaits(state)) conflict("completed while a plan proposal waits for the person");
   if (o.finish.some((f) => f.status === "in_flight" || f.status === "outcome_unknown" || f.status === "unknown")) conflict("completed with an action after success without its result");
   if (!o.plan || Object.keys(o.accepted).length < o.plan.firstStage - 1 + o.plan.stageCount) conflict("completed with a stage of the plan not accepted");
   const last = o.lastOrchTurn;
@@ -1137,6 +1254,9 @@ export interface V2Texts {
   reports?: Record<string, unknown>;
   basis?: CompletionBasis | null;
   applied?: Record<string, Applied>; // A3 (§2.8): the applied texts of review.assessed, by turn
+  choices?: Record<string, PlanChoices>; // A4: the person's choices of the accepted proposals, by their turn
+  // A4 (§2.3): the params of push and QA of a run without checks, by intent — about the tree and commit confirmed
+  finishParams?: Record<string, { tree?: unknown; commit?: unknown }>;
 }
 export interface CompletionBasis {
   checks: { id: string; checkRunId: string | null }[]; runKey: string; checkKeys: Record<string, string>;
@@ -1168,8 +1288,15 @@ export function textsConflict(state: RunState, t: V2Texts): string | null {
   // A3 (§2.8): the reviewer's results applied by the rules; no stage accepted and no completion past an open blocking
   // finding or a disputed item
   if (t.plans && t.applied && o.reviews.some((r) => r.assessed)) {
-    const f = replayFindings(state, { plans: t.plans, reports: t.reports ?? {}, applied: t.applied });
+    const f = replayFindings(state, { plans: t.plans, reports: t.reports ?? {}, applied: t.applied, choices: t.choices ?? {} });
     if (f.problem) return f.problem;
+  }
+  // A4 (§2.3): push and QA of a run without checks deliver what the person confirmed — the same tree and commit
+  for (const [intentId, params] of Object.entries(t.finishParams ?? {})) {
+    const f = o.finish.find((x) => x.intentId === intentId)!;
+    const commitSeq = Math.max(-1, ...o.finish.filter((x) => x.step === "commit" && x.status === "done" && (x.resultSeq ?? -1) < f.seq).map((x) => x.resultSeq ?? -1));
+    const ok = o.confirmations.some((c) => c.seq > commitSeq && c.seq < f.seq && c[f.step as "push" | "qa"] === "confirm" && c.tree === params.tree && c.commit === params.commit);
+    if (!ok) return `${f.step} of a run without checks delivers another tree or commit than the person confirmed`;
   }
   if (state.completion) {
     const n = d ? d.count : own?.length ?? 0;
@@ -1194,13 +1321,17 @@ function conditionsConflict(state: RunState, t: V2Texts, commands: number): stri
     // a plan without conditionsAssigned has no conditions: applyPlan below refuses any it numbers
     if (p.conditionsAssigned !== undefined) {
       if (text.stages.some((s) => !s.conditions)) return `plan v${p.version}: a stage without conditions`;
+      // A4 (5h §3.6): only a proposal the person accepted drops a condition or a requirement
+      if (!p.proposed && ((text.dropped ?? []).length || (text.dropRequirements ?? []).length)) return `plan v${p.version}: drops without the person's decision`;
       const stages = text.stages.map((s) => ({ conditions: s.conditions!.map((c) => ("keep" in c ? { keep: c.keep } : { text: c.text, covers: c.covers, evidence: c.evidence })) }));
       const problems = planProblems(stages, { dropped: text.dropped ?? [], dropRequirements: text.dropRequirements ?? [] }, book, p.firstStage, criteria, checkIds);
       if (problems.length) return `plan v${p.version}: ${problems[0]}`;
     }
-    try { applyPlan(book, { firstStage: p.firstStage, text, conditionsAssigned: p.conditionsAssigned ?? null }); } catch (e) { return `plan v${p.version}: ${(e as Error).message}`; }
+    try { applyPlan(book, { firstStage: p.firstStage, text, conditionsAssigned: p.conditionsAssigned ?? null, base: p.base }); } catch (e) { return `plan v${p.version}: ${(e as Error).message}`; }
   }
   if (!o.plans.some((p) => p.conditionsAssigned !== undefined)) return null;
+  // A4 (5h §3.5): a person's decision about a condition is about a person condition of the plans
+  for (const d of o.person) if (d.subject === "condition" && book.defs.get(d.target as string)?.evidence.kind !== "person") return `a person's decision about ${String(d.target)}, not a person condition`;
   const marksOf = (turnId: string): ConditionMark[] => {
     const c = (t.reports?.[turnId] as { conditions?: unknown } | undefined)?.conditions;
     return Array.isArray(c) ? c as ConditionMark[] : [];
@@ -1211,6 +1342,7 @@ function conditionsConflict(state: RunState, t: V2Texts, commands: number): stri
       const m = marks.find((x) => x.id === id);
       if (m?.status !== "met" || !m.paths?.length) return `stage ${stage} accepted while its review did not mark ${id} met`;
     }
+    for (const id of personIdsOf(book, Number(stage))) if (personStatus(state, id, Number(stage), a.seq) !== "met") return `stage ${stage} accepted without the person's met for ${id}`;
   }
   if (!state.completion || !book.conditioned) return null;
   const basis = t.basis;
@@ -1227,10 +1359,21 @@ function conditionsConflict(state: RunState, t: V2Texts, commands: number): stri
   const finalMarks = (t.reports?.[final.turnId] as { requirements?: unknown } | undefined)?.requirements;
   const facts = factsOf(book, criteria, {
     check, marks: (stage) => (o.accepted[String(stage)] ? marksOf(o.accepted[String(stage)].reviewTurnId) : null),
-    finalMarks: Array.isArray(finalMarks) ? finalMarks as RequirementMark[] : null
+    finalMarks: Array.isArray(finalMarks) ? finalMarks as RequirementMark[] : null,
+    person: (id, stage) => personStatus(state, id, stage)
   });
-  const unmet = facts.conditions.find((c) => c.status !== "met") ?? facts.requirements.find((r) => r.status !== "met");
+  // A4: a requirement the person dropped is not met and needs no evidence; it never counts as met
+  const unmet = facts.conditions.find((c) => c.status !== "met") ?? facts.requirements.find((r) => r.status !== "met" && r.status !== "dropped");
   return unmet ? `completed while ${unmet.id} has no evidence` : null;
+}
+
+// A4 (5h §3.5): the person's decision about a person condition, in force until the next executor turn of its stage (a
+// new turn there asks again): the last one after that turn. before: only decisions recorded before that seq.
+export function personStatus(state: RunState, id: string, stage: number, before = Number.MAX_SAFE_INTEGER): Status {
+  const o = state.orch;
+  const lastExec = Math.max(-1, ...Object.values(o.turns).filter((t) => t.purpose === "execute" && t.stage === stage && t.seq < before).map((t) => t.seq));
+  const d = o.person.filter((x) => x.subject === "condition" && x.target === id && x.seq > lastExec && x.seq < before).at(-1);
+  return d ? d.decision as Status : "not_checked";
 }
 
 // In-flight turns and received-but-not-completed commands, in journal order.
@@ -1289,8 +1432,9 @@ const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }) // a BOM
 
 // One complete line (without '\n') -> record, checked against the previous record. Throws JournalError.
 // version > JOURNAL_VERSION: a newer journal's line; only the envelope and the chain are checked, not its event schema.
-// own: a journal of this build (v1, or v2 with formatPreview): the exact envelope and the event schema of its version;
-// a v2 first record carries minReaderVersion 2 and formatPreview true, no other record does (journal-v2-format.md §1).
+// own: a journal of this build (v1, or v2): the exact envelope and the event schema of its version; a v2 first record
+// carries minReaderVersion 2 — and formatPreview true when a development build of A1–A3 wrote it —, no other record
+// does (journal-v2-format.md §1, §3.4).
 export function parseLine(bytes: Uint8Array, runId: string, prev: { seq: number; hash: string } | null, version = JOURNAL_VERSION,
   own = version === JOURNAL_VERSION): JournalRecord {
   if (bytes.length > MAX_LINE_BYTES) throw new JournalError("line_too_large", `line of ${bytes.length} bytes`);
@@ -1313,7 +1457,7 @@ export function parseLine(bytes: Uint8Array, runId: string, prev: { seq: number;
     canon = canonical(value);
   } catch { /* e.g. 1e999 parsed as Infinity */ }
   if (canon !== text) throw new JournalError("non_canonical", "line is not canonical JSON");
-  const head = version === 2 && prev === null ? { minReaderVersion: V2_MIN_READER_VERSION, formatPreview: true } : {};
+  const head = version === 2 && prev === null ? { minReaderVersion: V2_MIN_READER_VERSION, ...(Object.hasOwn(value, "formatPreview") ? { formatPreview: true } : {}) } : {};
   const envelope = own ? exactKeys(value, [...RECORD_KEYS, ...Object.keys(head)]) && Object.entries(head).every(([k, v]) => value[k] === v)
       && isValidEventData(String(value.type), value.data, version)
     : RECORD_KEYS.every((k) => Object.hasOwn(value, k)) && isRecord(value.data);
@@ -1342,7 +1486,9 @@ export interface ParsedJournal {
 // corrupt: a '\n'-terminated line fails, or there is no valid run.created at all (empty file, lone fragment).
 // How a build reads journals: the highest own version and the highest minReaderVersion it can replay. The defaults
 // are this build's; { maxVersion: 1, readerVersion: 1 } reads as 1.5.7 (A0) did.
-export interface ReaderOptions { maxVersion?: number; readerVersion?: number }
+// previewReadOnly: a journal of an A1–A3 development build (formatPreview) is shown read only, never replayed — once v2
+// is the person's (JOURNAL_V2_BY_DEFAULT, journal-v2-format.md §3.4).
+export interface ReaderOptions { maxVersion?: number; readerVersion?: number; previewReadOnly?: boolean }
 
 export function parseJournal(buf: Uint8Array, runId: string, opts: ReaderOptions = {}): ParsedJournal {
   const records: JournalRecord[] = [];
@@ -1351,8 +1497,9 @@ export function parseJournal(buf: Uint8Array, runId: string, opts: ReaderOptions
   let line = 1;
   const corrupt = (code: CorruptCode): ParsedJournal =>
     ({ records, state, integrity: { status: "corrupt", detail: { line, offset, code } }, validBytes: offset });
-  const newer = newerVersion(buf, opts.maxVersion);
-  if (newer !== null) return parseNewerJournal(buf, runId, newer, opts.readerVersion ?? READER_VERSION);
+  const newer = newerVersion(buf, opts.maxVersion, opts.previewReadOnly);
+  // newer only by previewReadOnly (its version is this build's own): an A1–A3 development journal, said as such
+  if (newer !== null) return parseNewerJournal(buf, runId, newer, opts.readerVersion ?? READER_VERSION, newer <= (opts.maxVersion ?? MAX_JOURNAL_VERSION));
   if (buf.length > MAX_JOURNAL_BYTES) return corrupt("journal_too_large");
   const version = firstVersion(buf) === 2 ? 2 : JOURNAL_VERSION; // by the first record; a mismatch later is the line's error
   while (offset < buf.length) {
@@ -1416,23 +1563,22 @@ function asVersion(rec: JournalRecord, version: 1 | 2): JournalRecord | null {
 // The version of a journal this build does not write (its first line, also one without its '\n'; only that line is
 // looked at, the rest is never parsed as events):
 // - an integer v above maxVersion (MAX_JOURNAL_VERSION: v2 is this build's own);
-// - v2 without formatPreview: the final form of v2 (A4, journal-v2-format.md §3.4), which A1–A3 do not replay as
-//   their own — it reaches the reader of its minReaderVersion like any newer journal.
+// - v2 with formatPreview (an A1–A3 development build's) once v2 is the person's: shown read only, not replayed (A4,
+//   journal-v2-format.md §3.4). The final form of v2 (no formatPreview) is this build's own.
 // null: any other journal — also a first line torn inside its JSON, whose version cannot be read: it stays corrupt.
-export function newerVersion(buf: Uint8Array, maxVersion = MAX_JOURNAL_VERSION): number | null {
+export function newerVersion(buf: Uint8Array, maxVersion = MAX_JOURNAL_VERSION, previewReadOnly = JOURNAL_V2_BY_DEFAULT): number | null {
   const first = firstRecord(buf);
   const v = first?.v;
   if (!isInt(v) || v <= JOURNAL_VERSION) return null;
-  return v > maxVersion || (v === 2 && first!.formatPreview !== true) ? v : null;
+  return v > maxVersion || (v === 2 && previewReadOnly && first!.formatPreview === true) ? v : null;
 }
 
 // A0 bridge (acceptance-review-spec.md §2.2): the valid prefix of the chain (seq, prevHash, hash, runId, one version),
 // with state null. Records keep their own types and data; nothing is replayed (no applyRecord).
-function parseNewerJournal(buf: Uint8Array, runId: string, version: number, readerVersion: number): ParsedJournal {
+function parseNewerJournal(buf: Uint8Array, runId: string, version: number, readerVersion: number, preview = false): ParsedJournal {
   const min = minReaderVersion(buf);
-  // owner's decision A1.1 Q3: v2 without formatPreview (the final form of A4) is never replayed by A1–A3 rules — read
-  // only, the records as they are, no computed state: a state cut to what this build knows is never shown
-  if (version === 2) return parseRawNewerJournal(buf, runId, version);
+  // v2 here is a development journal of A1–A3 shown read only (§3.4): the records as they are, no computed state
+  if (preview) return parseRawNewerJournal(buf, runId, version, true);
   if (min !== null && min >= 1 && min <= Math.min(readerVersion, READER_VERSION)) {
     const compatible = parseCompatibleJournal(buf, runId, version, min);
     if (!("fallback" in compatible)) return compatible;
@@ -1497,12 +1643,13 @@ function parseCompatibleJournal(buf: Uint8Array, runId: string, version: number,
 }
 
 // Only the envelope and the chain: the records as they are, state null.
-function parseRawNewerJournal(buf: Uint8Array, runId: string, version: number): ParsedJournal {
+// preview: the journal of an A1–A3 development build (§3.4), labelled so rather than as a newer version's
+function parseRawNewerJournal(buf: Uint8Array, runId: string, version: number, preview = false): ParsedJournal {
   const records: JournalRecord[] = [];
   let offset = 0;
   let line = 1;
   const done = (chain: ChainIntegrity): ParsedJournal =>
-    ({ records, state: null, integrity: { status: "newer_version", detail: { version, chain } }, validBytes: offset });
+    ({ records, state: null, integrity: { status: "newer_version", detail: { version, chain, ...(preview ? { preview: true as const } : {}) } }, validBytes: offset });
   if (buf.length > MAX_JOURNAL_BYTES) return done({ status: "corrupt", detail: { line, offset, code: "journal_too_large" } });
   while (offset < buf.length) {
     const nl = buf.indexOf(0x0a, offset);

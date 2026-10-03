@@ -237,6 +237,21 @@ The reviewer has no verdict. It reports findings — `blocking` or `wish`, with 
 
 A stage is accepted only with its checks passing, its conditions met and no open blocking finding it owns; the completion function adds `blocking_open` and `disputed_pending`. Replay re-applies every result from the texts and marks a journal whose stage was accepted, or run completed, with an open blocking finding as damaged (`phase: "texts"`). The result's "Findings" section (number, severity, status, owning stage, history with the review and the tree), the cards and the activity feed say "Open blocking: N" through one function (`findingsView`, `findingsLine`); the run panel lists the reviewer as its own participant, and the Codex card shows its work.
 
+### Person decisions and the finish (journal v2; v2 still off by default)
+
+A4 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.9. Some decisions are the person's alone, and the run waits for them; neither the autopilot nor an agent makes one. Each is a command from the run panel (`person.decide`, `plan.decide`, exactly their fields: a renderer cannot say who decided). Main records it with the state the person saw: the `runKey` of the view, which must still be current (otherwise `stale_revision`), and the tree it computes itself.
+
+- **A disputed item.** A blocking finding on the unchanged files of a closed one, with no relation said. The panel shows both side by side. "A new defect" opens it; "A repeat of F<n>" applies the reopen rule to the files changed since F<n> was closed. The run goes on by itself after the decision.
+- **A finding.** On a pause the run did not choose, the person may close an open finding or make a blocking one a wish. The result says "downgraded by the person, not fixed", never fixed.
+- **A condition with the person's evidence**: met or not met after its stage's review.
+- **A plan proposal.** A replan that drops conditions or requirements is recorded as `plan.proposed`, and the plan in force stays. On `coverage_lost` the panel shows what goes and why, what is left uncovered, and a choice for each open blocking finding of a dropped condition. "Accept" makes the proposal the plan; "Return to the lead" keeps the old one and sends the note.
+
+**Freshness and the final result.** A "change" condition whose files changed after its stage was accepted no longer counts until the final review confirms it. A refused final review returns such conditions, and those of unmet requirements or open blocking findings, to the next plan, which keeps or drops each. A dropped requirement is never met: the completion basis carries a `person` section, and the result, the board and the history say "The person's decisions instead of evidence". A run never reads cleaner than it is.
+
+**Recovery.** A v2 journal's torn tail is cut off on opening: the bytes go to `quarantine/` and `journal.tail_repaired` is written. A decision already journaled stands after a restart; a command without one is `interrupted`. Continuing leads back to the person's pause.
+
+**Enabling v2** is one constant, `JOURNAL_V2_BY_DEFAULT`, `false` until a real series. Until then v2 is written only behind `CANVASTTY_JOURNAL_V2=1`. Journals of the A1–A3 development builds (`formatPreview`) keep opening under the flag; once v2 is on they are read-only, labelled as a trial build's.
+
 ### Requirements and limits
 
 - **Platforms.**

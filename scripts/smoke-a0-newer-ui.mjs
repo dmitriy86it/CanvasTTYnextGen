@@ -1,7 +1,8 @@
 // Electron UI smoke for stage A0 (acceptance-review-spec.md §2.2): a run whose journal a newer version wrote is shown
 // read-only next to a v1 run, on a temporary profile with fake Codex/Claude CLIs. Three launches on one user-data dir:
 //   first:    two links in one project; link A starts a v1 run that stops at the plan review;
-//   (closed): a v2 journal (goal text, v2-only records, valid hash chain) is written for link B;
+//   (closed): a v3 journal (goal text, records of a newer version, valid hash chain) is written for link B — v3 since
+//            A4, whose final form of v2 this build replays itself;
 //   second:   link B says "read only" and offers no new goal or delete; its cards say "read only" (never paused) with no
 //             continue or stop; its panel shows the goal and the raw records and no action but closing and "Release
 //             link"; direct commands from the renderer are refused; the v1 run resumes to completed;
@@ -61,7 +62,7 @@ function writeNewer(runId, goalText) {
   const lines = [["run.created", { goal: ref }], ["plan.recorded", { turnId: randomUUID(), version: 1, plan: ref, firstStage: 1, stageCount: 1, conditionsAssigned: 2 }],
     ["review.assessed", { turnId: randomUUID(), stage: 1, request: "none", report: ref, applied: ref, clarificationVersion: 0, runKey: "k" }],
     ["plan.proposed", { turnId: randomUUID(), plan: ref, firstStage: 1, stageCount: 1, conditionsAssigned: 3 }]].map(([type, data], seq) => {
-    const body = { v: 2, seq, ts: `2026-09-30T10:00:0${seq}.000Z`, runId, type, prevHash: prev, data };
+    const body = { v: 3, seq, ts: `2026-09-30T10:00:0${seq}.000Z`, runId, type, prevHash: prev, data };
     prev = sha(canonical(body));
     return canonical({ ...body, hash: prev }) + "\n";
   });
@@ -153,7 +154,7 @@ try {
     types: [...p.querySelectorAll("[data-orch-newer-history] code")].map((c) => c.textContent),
     buttons: [...p.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent.trim()),
     text: p.textContent }; })()`);
-  expect(panel.version === "2" && panel.title.includes("более новой версией Raoden Loom"), "second: the panel names the newer version", panel);
+  expect(panel.version === "3" && panel.title.includes("более новой версией Raoden Loom"), "second: the panel names the newer version", panel);
   expect(panel.goal.includes(GOAL), "second: the goal of run.created is shown", panel.goal);
   expect(same(panel.types, ["run.created", "plan.recorded", "review.assessed", "plan.proposed"]), "second: the raw records are the history", panel.types);
   expect(same(panel.buttons, ["Закрыть", "Отпустить связь"]), "second: no action but closing and Release link", panel.buttons);

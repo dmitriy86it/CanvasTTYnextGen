@@ -125,11 +125,44 @@ export type OrchestrationRunCommand =
   | { kind: "checks.decide"; decision: "accept" | "edit"; checks?: string[] }
   | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   | { kind: "check.amend"; checkId: string; line: string }
+  // A4 (journal-v2-format.md §2.9): the person's decisions, each about the state shown to them (runKey): a disputed
+  // finding (new / repeat of a candidate), a person condition (met / not met), an open finding (close / to wish); and
+  // a plan proposal that drops conditions or requirements (accept with a choice for each affected finding / return)
+  | OrchestrationPersonDecide
+  | OrchestrationPlanDecide
   | {
     kind: "permission"; requestId: string; decision: OrchestrationPermissionOption; answers?: Record<string, string[]>;
     content?: Record<string, unknown>; // an MCP form's values (accept)
     feedback?: string; // why a plan is sent back (Claude ExitPlanMode, deny)
   };
+
+export type OrchestrationPersonDecide =
+  | { kind: "person.decide"; subject: "disputed"; target: { reviewTurnId: string; index: number }; decision: "new" | "repeat"; finding: string | null; runKey: string }
+  | { kind: "person.decide"; subject: "condition"; target: string; decision: "met" | "not_met"; finding: null; runKey: string }
+  | { kind: "person.decide"; subject: "finding"; target: string; decision: "close" | "to_wish"; finding: null; runKey: string };
+export interface OrchestrationPlanChoice { id: string; choice: "move" | "close" | "to_wish"; stage: number | null; condition: string | null }
+export type OrchestrationPlanDecide =
+  | { kind: "plan.decide"; proposalTurnId: string; decision: "accept"; choices: OrchestrationPlanChoice[]; note: null; runKey: string }
+  | { kind: "plan.decide"; proposalTurnId: string; decision: "return"; choices: []; note: string | null; runKey: string };
+
+// A4 (5h §3.5, §3.6, §4): what the person decides now, about the state they see — runKey and tree go with the decision;
+// another state refuses it and shows the new one. disputed: the items waiting, with the closed candidates' texts;
+// conditions: the person conditions asked now; findings: whether an open finding may be closed or made a wish on this
+// pause; proposal: the plan proposal on coverage_lost, what it drops and what that leaves.
+export interface OrchestrationDecisions {
+  runKey: string; tree: string;
+  disputed: { reviewTurnId: string; index: number; problem: string; evidence: string; paths: string[]; candidates: { id: string; problem: string; paths: string[] }[] }[];
+  conditions: { id: string; text: string; stage: number }[];
+  findings: boolean;
+  proposal: null | {
+    proposalTurnId: string;
+    stages: { stage: number; title: string; conditions: string[] }[];
+    dropped: { id: string; text: string; covers: string[]; why: string }[];
+    dropRequirements: { id: string; text: string; why: string }[];
+    uncovered: string[]; // requirements left without a condition in force, dropped with the proposal
+    findings: { id: string; problem: string; condition: string }[]; // open blocking findings of dropped conditions: a choice each
+  };
+}
 
 // A permission prompt or question of an agent's CLI, waiting for the person (stage 12). The CLI's own prompt: CanvasTTY
 // only carries it, never answers it by itself. Texts are sanitized (no secrets, paths relative to the work folder).
@@ -205,6 +238,8 @@ export interface OrchestrationRunView {
   confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
   // A1.1, on the pause check_needs_permissions: the lead's check the sandbox refused; check.amend is about it
   refused?: { checkId: string; command: string } | null;
+  // A4: on a pause where the person decides (awaiting_person_decision, coverage_lost, or one a finding may be decided on)
+  decisions?: OrchestrationDecisions | null;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only
   // (status paused, reason newer_version), never opened or changed here. chain: the hash chain of what was read.
   // compatible: its journal declares minReaderVersion this build reads, so the view is its whole state (status and
@@ -213,6 +248,7 @@ export interface OrchestrationRunView {
   newer?: {
     version: number; chain: "ok" | "torn_tail" | "corrupt"; goal: string | null;
     compatible?: boolean; fallback?: { line: number; code: string } | null;
+    preview?: boolean; // A4: a journal of an A1–A3 development build, shown read only once v2 is the person's
     skipped?: number; // compatible: records of types this build does not know, marked skippable, left out of the state
   };
 }
@@ -253,22 +289,33 @@ export interface OrchestrationFindings {
   items: {
     id: string; severity: "blocking" | "wish"; status: "open" | "closed"; condition: string | null; stage: number | null;
     problem: string; evidence: string; closeWhen: string; paths: string[]; possibleRepeatOf: string | null;
-    history: { kind: "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged"; reviewTurnId: string; index: number; runKey: string; tree: string; reason: string | null }[];
+    // A4: by person — the person's command did it (closed_by_person, to_wish, moved; a disputed item's decision)
+    history: {
+      kind: "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged" | "closed_by_person" | "to_wish" | "moved" | "decided";
+      reviewTurnId: string | null; index: number | null; runKey: string; tree: string; reason: string | null; by: "reviewer" | "person"; note: string | null;
+    }[];
+    downgraded: boolean; // A4: a blocking finding the person made a wish — never shown as fixed
   }[];
-  disputed: { reviewTurnId: string; index: number; problem: string; candidates: string[] }[]; // waiting for the person (A4 decides)
+  disputed: { reviewTurnId: string; index: number; problem: string; candidates: string[] }[]; // waiting for the person
   openBlocking: number;
 }
 
-export type OrchestrationConditionStatus = "met" | "not_met" | "not_checked";
+// dropped (A4): a requirement the person dropped — shown as such, never as met
+export type OrchestrationConditionStatus = "met" | "not_met" | "not_checked" | "dropped";
 // R<n>: the n-th criterion of the goal. C<n>: a condition of the plans, numbered by the application. The proof of a
 // condition is a check run (its output) or the lead's review answer; met counts conditions in force that are met.
+// A4: evidence person — the person's decision (its command); stale — change evidence of an accepted stage whose files
+// changed since (5h §3.7), counted only as the final review confirms it; dropped — the conditions and requirements the
+// person dropped (plan.decided), with the lead's why.
 export interface OrchestrationConditions {
-  requirements: { id: string; text: string; conditions: string[]; status: OrchestrationConditionStatus }[];
+  requirements: { id: string; text: string; conditions: string[]; status: OrchestrationConditionStatus; why?: string | null }[];
   conditions: {
-    id: string; text: string; covers: string[]; stage: number; status: OrchestrationConditionStatus;
-    evidence: { kind: "check"; check: string; command: string | null } | { kind: "change" };
-    proof: { checkRunId: string; output: { sha256: string; bytes: number } | null } | { reviewTurnId: string; paths: string[]; note: string } | null;
+    id: string; text: string; covers: string[]; stage: number; status: OrchestrationConditionStatus; stale?: boolean;
+    evidence: { kind: "check"; check: string; command: string | null } | { kind: "change" } | { kind: "person" };
+    proof: { checkRunId: string; output: { sha256: string; bytes: number } | null } | { reviewTurnId: string; paths: string[]; note: string }
+      | { commandId: string; decision: "met" | "not_met" } | null;
   }[];
+  dropped: { id: string; text: string; covers: string[]; why: string }[];
   met: number;
   total: number;
 }

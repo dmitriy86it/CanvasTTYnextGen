@@ -1,14 +1,17 @@
 // Journal v2 fixtures of acceptance-review-spec edition 5i (journal-v2-format.md §4). Writes runs/<id>/journal.jsonl
 // and runs/<id>/texts/<sha256> next to this file, with the real hash chain and canonical JSON of the application.
 //   node docs/agent-orchestration/implementation/v2-fixtures/build.mjs           write the fixtures
-//   node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   read them with the A0 reader of this tree
-// --check reads only: each fixture as written (minReaderVersion 2) and, in memory, the same journal declaring
-// minReaderVersion 1, both through parseJournal and newerGoal of src/main/services/orchestration/journal.ts.
+//   node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   read them: this build and the A0 reader
+// --check reads only: each fixture with this build's reader (readRun: the replay and its texts), then as 1.5.7 (A0:
+// maxVersion 1, READER_VERSION 1) would — as written (minReaderVersion 2) and, in memory, declaring minReaderVersion 1.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonical, newerGoal, parseJournal, sha256Hex } from "../../../../src/main/services/orchestration/journal.ts";
+import { readRun } from "../../../../src/main/services/orchestration/store.ts";
+
+const A0 = { maxVersion: 1, readerVersion: 1 }; // the reader of 1.5.7
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ZERO = "0".repeat(64);
@@ -85,7 +88,8 @@ function journal(name, min, skippable = false) {
     conditionsMet: [], opened: [], closed: [], reopened: [], refused: [], disputed: [], unchanged: [], nextFinding: 1, ...extra });
   const review = (turnId, stage, report, extra, runKey) =>
     rec("review.assessed", { turnId, stage, request: report.request, report: text(report), applied: text(applied(report, extra)), clarificationVersion: 0, runKey });
-  const complete = (kind, basis) => rec("run.status", { status: "completed", reason: null, completion: { kind, basis: text(basis) } });
+  // the basis as the service writes it (orchestrationService.ts complete): the checks with their runs, the tree, R → C
+  const complete = (kind, basis) => rec("run.status", { status: "completed", reason: null, completion: { kind, basis: text({ kind, ...basis }) } });
   return { runId, rec, text, turn, command, start, checkpoint, check, review, complete, ws, done: () => ({ runId, lines, texts }) };
 }
 
@@ -127,8 +131,8 @@ const FIXTURES = {
     j.checkpoint(1, tree);
     const f = j.turn({ purpose: "final_review", planVersion: 1, role: "reviewer", provider: "codex", tree, report: finalReport(["R1", "R2"]) });
     j.review(f, null, finalReport(["R1", "R2"]), {}, h("01:runKey"));
-    j.complete("no_checks", { checks: [], requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
-      finalReviewTurnId: f, runKey: h("01:runKey"), checkKeys: {}, finish: {} });
+    j.complete("no_checks", { checks: [], runKey: h("01:runKey"), checkKeys: {}, tree, finalTurnId: f,
+      requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }], finish: [] });
   },
   // The lead proposes two commands, the autopilot accepts (sandboxNetwork "denied": unreachable in stage A, where
   // native checks run without a sandbox — a format example only), both pass: completed and confirmed.
@@ -147,8 +151,8 @@ const FIXTURES = {
     const tree = oid("02:after");
     const runKey = h("02:runKey");
     const checkKeys = { "cmd-1": h("02:checkKey:cmd-1"), "cmd-2": h("02:checkKey:cmd-2") };
-    j.check("cmd-1", "npm test", 1, 1, runKey, checkKeys["cmd-1"], tree);
-    j.check("cmd-2", "npm run typecheck", 1, 1, runKey, checkKeys["cmd-2"], tree);
+    const run1 = j.check("cmd-1", "npm test", 1, 1, runKey, checkKeys["cmd-1"], tree);
+    const run2 = j.check("cmd-2", "npm run typecheck", 1, 1, runKey, checkKeys["cmd-2"], tree);
     const rep = { conditions: [{ id: "C2", status: "met", paths: ["src/import/date.ts"], note: "учтён часовой пояс" }], findings: [], request: "none", question: null };
     const r = j.turn({ purpose: "review", stage: 1, round: 1, planVersion: 1, role: "reviewer", provider: "codex", tree, report: rep });
     j.review(r, 1, rep, { conditionsMet: ["C2"] }, runKey);
@@ -156,8 +160,8 @@ const FIXTURES = {
     j.checkpoint(1, tree);
     const f = j.turn({ purpose: "final_review", planVersion: 1, role: "reviewer", provider: "codex", tree, report: finalReport(["R1", "R2"]) });
     j.review(f, null, finalReport(["R1", "R2"]), {}, runKey);
-    j.complete("confirmed", { checks: ["cmd-1", "cmd-2"], requirements: [{ id: "R1", conditions: ["C2"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
-      finalReviewTurnId: f, runKey, checkKeys, finish: {} });
+    j.complete("confirmed", { checks: [{ id: "cmd-1", command: "npm test", checkRunId: run1 }, { id: "cmd-2", command: "npm run typecheck", checkRunId: run2 }],
+      runKey, checkKeys, tree, finalTurnId: f, requirements: [{ id: "R1", conditions: ["C2"], met: true }, { id: "R2", conditions: ["C1"], met: true }], finish: [] });
   },
   // Steps: the run waits for the person on the proposal, «Принять», the plan is recorded and shown for review.
   "03-steps-accept": (j) => {
@@ -222,8 +226,9 @@ const FIXTURES = {
     const push = uuid("07:push");
     j.rec("finish.intent", { intentId: push, step: "push", params: j.text({ step: "push", push: { remote: "origin", branch: "feature/csv", commit, tree } }) });
     j.rec("finish.result", { intentId: push, status: "done", established: false, evidence: null, commit, tree });
-    j.complete("no_checks", { checks: [], requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
-      finalReviewTurnId: finalTurn, runKey, checkKeys: {}, finish: { commit: "done", push: "done", qa: "declined" } });
+    j.complete("no_checks", { checks: [], runKey, checkKeys: {}, tree, finalTurnId: finalTurn,
+      requirements: [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: ["C1"], met: true }],
+      finish: [{ step: "commit", status: "done", declined: false, commit }, { step: "push", status: "done", declined: false, commit }, { step: "qa", status: "not_started", declined: true, commit: null }] });
   },
   // A replan proposes dropping C2: plan.proposed, coverage_lost; the current plan stays.
   "08-coverage-lost": (j) => {
@@ -290,17 +295,19 @@ if (process.argv.includes("--check")) {
     const { runId } = build(name, 2);
     const dir = path.join(HERE, "runs", runId);
     const buf = fs.readFileSync(path.join(dir, "journal.jsonl"));
-    const two = parseJournal(buf, runId);
+    const own = await readRun(HERE, runId);
+    const two = parseJournal(buf, runId, A0);
     const ref = newerGoal(two.records);
     const goalText = ref ? JSON.parse(fs.readFileSync(path.join(dir, "texts", ref.sha256), "utf8")).text : null;
     const one = build(name, 1);
-    const p1 = parseJournal(Buffer.from(`${one.lines.join("\n")}\n`), runId);
+    const p1 = parseJournal(Buffer.from(`${one.lines.join("\n")}\n`), runId, A0);
     const d1 = p1.integrity.detail ?? {};
     const sk = build(name, 1, true);
-    const ps = parseJournal(Buffer.from(`${sk.lines.join("\n")}\n`), runId);
+    const ps = parseJournal(Buffer.from(`${sk.lines.join("\n")}\n`), runId, A0);
     const ds = ps.integrity.detail ?? {};
     const lineOf = (k) => JSON.parse(two.records[k - 1] ? JSON.stringify(two.records[k - 1]) : "null")?.type;
-    rows.push({ fixture: name, records: two.records.length, v2: `${two.integrity.status} (chain ${two.integrity.detail?.chain?.status}, state ${two.state === null ? "null" : "set"})`,
+    rows.push({ fixture: name, records: two.records.length,
+      thisBuild: `${own.integrity.status}, ${own.state?.status}${own.state?.pausedReason ? `/${own.state.pausedReason}` : ""}${own.state?.completion ? ` (${own.state.completion.kind})` : ""}`, v2: `${two.integrity.status} (chain ${two.integrity.detail?.chain?.status}, state ${two.state === null ? "null" : "set"})`,
       goal: goalText,
       min1: d1.fallback ? `fallback at line ${d1.fallback.line} (${lineOf(d1.fallback.line)}): ${d1.fallback.code}` : `${p1.integrity.status}`,
       min1Skippable: ds.fallback ? `fallback at line ${ds.fallback.line} (${lineOf(ds.fallback.line)}): ${ds.fallback.code}` : `${ps.integrity.status}, skipped ${ds.skipped}, status ${ps.state?.status}/${ps.state?.pausedReason}` });

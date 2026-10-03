@@ -194,6 +194,23 @@ export function findingsLine(locale: LocaleId, view: Pick<OrchestrationRunView, 
   return f ? tr(locale, "orchFindingsOpenBlocking", { n: f.openBlocking }) : null;
 }
 
+// A4 (journal-v2-format.md §2.9): what the person decided instead of evidence — dropped conditions and requirements,
+// blocking findings made wishes, findings closed by the person. The result never reads cleaner than it is: the one line
+// the result and the panel say it with; null when the person decided none of these.
+export function personDecisionsLine(locale: LocaleId, view: Pick<OrchestrationRunView, "progress">): string | null {
+  const c = view.progress?.conditions;
+  const f = view.progress?.findings;
+  const dropped = [...(c?.dropped ?? []).map((x) => x.id), ...(c?.requirements ?? []).filter((r) => r.status === "dropped").map((r) => r.id)];
+  const downgraded = (f?.items ?? []).filter((x) => x.downgraded).map((x) => x.id);
+  const closed = (f?.items ?? []).filter((x) => x.status === "closed" && x.history.at(-1)?.kind === "closed_by_person").map((x) => x.id);
+  const parts = [
+    dropped.length ? tr(locale, "orchPersonDropped", { ids: dropped.join(", ") }) : null,
+    downgraded.length ? tr(locale, "orchPersonDowngraded", { ids: downgraded.join(", ") }) : null,
+    closed.length ? tr(locale, "orchPersonClosed", { ids: closed.join(", ") }) : null
+  ].filter((x): x is string => x !== null);
+  return parts.length ? tr(locale, "orchPersonDecisions", { list: parts.join("; ") }) : null;
+}
+
 // Journal v2, A2 (journal-v2-format.md §2.7): "N of M conditions met" — the one line the result, the cards and the
 // activity feed show; null without conditions (v1, a plan of A1's form, nothing planned yet).
 export function conditionsLine(locale: LocaleId, view: Pick<OrchestrationRunView, "progress">): string | null {

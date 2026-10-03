@@ -35,7 +35,8 @@ import {
 import type { Stage13Event } from "./journal.ts";
 import type { CompletionBasis, V2Texts } from "./journal.ts";
 import type { PlanText } from "./conditions.ts";
-import type { Applied } from "./findings.ts";
+import type { Applied, PlanChoices } from "./findings.ts";
+import type { FinishParams } from "./finish.ts";
 import type {
   CheckAssessedData, CheckStatus, ClarificationAddedData, CommandResult, EventType, JournalIntegrity, LimitsChangedData, NotVerifiedReason,
   OrchTurnData, PausedReason, PlanRecordedData, QuestionAnsweredData, QuestionAskedData, RecoveryDecidedData, ReportStoreError,
@@ -157,8 +158,8 @@ export interface CheckFinishedInput {
   evidenceFingerprint: string; durationMs: number;
 }
 
-// version 2: a journal of format v2 (journal-v2-format.md), written in A1–A3 only behind the development flag and
-// marked formatPreview in its first record (§3.4).
+// version 2: a journal of format v2 (journal-v2-format.md) in its final form (A4, §3.4: no formatPreview; A1–A3
+// development builds marked theirs so).
 export interface CreateRunOptions { goal: string; version?: 1 | 2; clock?: () => Date; io?: StoreIo }
 export interface OpenRunOptions { acceptTornTail?: boolean; clock?: () => Date; io?: StoreIo; hooks?: LockHooks }
 
@@ -456,7 +457,7 @@ class Writer implements RunWriter {
     if (!isValidEventData(type, data, this.version)) fail("invalid_input", `${type} data does not match the schema`);
     const cur = this.current;
     const { record, line } = buildRecord(cur ? { seq: cur.lastSeq, hash: cur.lastHash } : null, this.runId,
-      this.clock().toISOString(), type, data, this.version, this.version === 2 ? { minReaderVersion: V2_MIN_READER_VERSION, formatPreview: true } : null);
+      this.clock().toISOString(), type, data, this.version, this.version === 2 ? { minReaderVersion: V2_MIN_READER_VERSION } : null);
     if (line.length - 1 > MAX_LINE_BYTES) fail("invalid_input", `${type} record is over ${MAX_LINE_BYTES} bytes`);
     if (this.size + line.length > MAX_JOURNAL_BYTES) fail("invalid_input", "the journal is full");
     let next: RunState;
@@ -773,7 +774,9 @@ export async function openRun(root: string, runId: string, options: OpenRunOptio
     const parsed = parseJournal(buf, runId);
     const integrity = await withTexts(dir, parsed);
     if (integrity.status === "corrupt") fail("journal_corrupt", `line ${integrity.detail.line}: ${integrity.detail.code}${integrity.detail.phase ? ` (${integrity.detail.phase})` : ""}`, integrity.detail);
-    if (integrity.status === "torn_tail" && !options.acceptTornTail) {
+    // A4 (5h §3.10): a v2 run takes its torn tail itself — the bytes to quarantine/, the journal cut, tail_repaired; an
+    // unconfirmed record started nothing (T39). v1 asks the person, as before.
+    if (integrity.status === "torn_tail" && !options.acceptTornTail && parsed.state?.version !== 2) {
       fail("journal_torn_tail", "the journal ends with a torn record; reopen with acceptTornTail", integrity.detail);
     }
     fh = await open(journalPath, fsc.O_WRONLY | fsc.O_APPEND);
@@ -840,7 +843,7 @@ async function withTexts(dir: string, parsed: ReturnType<typeof parseJournal>): 
 
 // A2 (journal-v2-format.md §2.7): the plans, the lead's review answers and the completed status' basis. Shared with the
 // service and the run view, which show the conditions from the same texts.
-export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Promise<T>): Promise<Pick<V2Texts, "plans" | "reports" | "basis" | "applied">> {
+export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Promise<T>): Promise<Pick<V2Texts, "plans" | "reports" | "basis" | "applied" | "choices" | "finishParams">> {
   const plans: PlanText[] = [];
   for (const p of st.orch.plans) plans.push(await read<PlanText>(p.ref));
   const reports: Record<string, unknown> = {};
@@ -851,7 +854,20 @@ export async function conditionTexts(st: RunState, read: <T>(ref: TextRef) => Pr
   // A3 (§2.8): the applied text of every reviewer's result
   const applied: Record<string, Applied> = {};
   for (const r of st.orch.reviews) if (r.assessed) applied[r.turnId] = await read<Applied>(r.assessed.applied);
-  return { plans, reports, basis: st.completion ? await read<CompletionBasis>(st.completion.basis) : null, applied };
+  // A4 (5h §3.6): the person's choices for the findings of an accepted proposal, by its turn
+  const choices: Record<string, PlanChoices> = {};
+  for (const p of st.orch.proposals) if (p.decision?.decision === "accept") choices[p.turnId] = await read<PlanChoices>(p.decision.choices);
+  // A4 (§2.3): push and QA of a run without checks, by what they delivered (tree and commit) against the confirmation
+  const finishParams: NonNullable<V2Texts["finishParams"]> = {};
+  if (st.orch.checksDecision?.count === 0) {
+    for (const f of st.orch.finish) {
+      if (f.step === "commit") continue;
+      const p = await read<FinishParams>(f.params);
+      const x = p.step === "push" ? p.push : p.step === "qa" ? p.qa : null;
+      if (x) finishParams[f.intentId] = { tree: x.tree, commit: x.commit };
+    }
+  }
+  return { plans, reports, basis: st.completion ? await read<CompletionBasis>(st.completion.basis) : null, applied, choices, finishParams };
 }
 
 const refuseNewer = (buf: Buffer | { head: Buffer }): void => {
