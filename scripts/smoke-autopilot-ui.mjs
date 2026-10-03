@@ -53,7 +53,15 @@ const deployed = D("qa-deployed");
 
 // ---------- fake CLIs ----------
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
-const codexScript = script("codex", [{ report: { stages: [{ title: "Исправить /health", task: "Make the health test pass" }], question: null } }, verdict("accept"), verdict("accept"), verdict("complete")]);
+// With the development flag CANVASTTY_JOURNAL_V2=1 the run is written in v2: the lead plans in the v2 shape (the one
+// criterion R1 proven by the check command), the reviewer answers each review (journal-v2-format.md §2.7, §2.8).
+const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const planV2 = { report: { stages: [{ title: "Исправить /health", task: "Make the health test pass",
+  conditions: [{ keep: null, text: "php artisan test passes", covers: ["R1"], evidence: { kind: "check", check: "cmd-1" } }] }], dropped: [], dropRequirements: [], question: null } };
+const reviewV2 = { report: { conditions: [], findings: [], request: "none", question: null } };
+const finalV2 = { report: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "the test passes" }] } };
+const codexScript = script("codex", V2 ? [planV2, reviewV2, reviewV2, finalV2]
+  : [{ report: { stages: [{ title: "Исправить /health", task: "Make the health test pass" }], question: null } }, verdict("accept"), verdict("accept"), verdict("complete")]);
 const claudeScript = script("claude", [{ report: { summary: "looked around", done: false } }, { report: { summary: "fixed", done: true }, writes: [["app.php", "<?php // fixed\n"]] }]);
 const migrate = { tool: "Bash", command: "php artisan migrate --env=testing" };
 fs.writeFileSync(path.join(claudeScript, "1.asks.json"), JSON.stringify([
@@ -191,8 +199,9 @@ try {
   expect((await app.ev(`${q("[data-board=access]")}?.textContent ?? ""`)).includes("Правки файлов без вопросов"), "the board shows the run's rights", null);
   expect(await app.ev(`!!${q("[data-board=access]")}?.closest(".orch-board__terminal")`), "the board shows «Как в моём терминале» in the warning colour", null);
   await openTab(app, "overview");
+  // v2: the reviewer is a participant too, a new session of the lead's CLI with its mode
   const badges = await app.ev(`[...document.querySelectorAll("[data-participant] [data-participant-access]")].map((e) => [e.closest("[data-participant]").dataset.participant, e.dataset.participantAccess])`);
-  expect(JSON.stringify(badges) === JSON.stringify([["lead", "terminal"], ["executor", "acceptEdits"]]), "each participant's card shows its CLI's mode", badges);
+  expect(JSON.stringify(badges) === JSON.stringify([["lead", "terminal"], ["executor", "acceptEdits"], ...(V2 ? [["reviewer", "terminal"]] : [])]), "each participant's card shows its CLI's mode", badges);
   await app.clickEl(q(`[data-orch-permission] [data-decision="allow_project"]`));
 
   await app.waitFor(`${q('[data-orch-permission="elicitation"]')} && true`, "MCP form", 30_000);
