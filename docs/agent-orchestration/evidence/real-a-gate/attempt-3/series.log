@@ -1,0 +1,3 @@
+[+3.7s] R1: run 31acc02c started (copy, commands ["node --test"])
+[+69.2s] R1: NOT OK — paused/invalid_report ; calls 3; prompts 0; protocol errors 0
+[+69.5s] HALT: R1 did not reach its expected state

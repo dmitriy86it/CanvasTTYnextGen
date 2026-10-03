@@ -1,0 +1,3 @@
+[+4.4s] R1: run 51912110 started (copy, commands ["node --test"])
+[+78.8s] R1: NOT OK — paused/invalid_report ; calls 3; prompts 0; protocol errors 0
+[+79.0s] HALT: R1 did not reach its expected state

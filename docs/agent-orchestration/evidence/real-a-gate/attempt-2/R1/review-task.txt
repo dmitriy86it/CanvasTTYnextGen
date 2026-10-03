@@ -1,0 +1,79 @@
+Role: reviewer. Purpose: review.
+
+Goal:
+Add a function clamp(x, lo, hi) in src/clamp.mjs (ES module, named export) that returns x limited to [lo, hi] and throws RangeError when lo > hi. Add a unit test tests/clamp.test.mjs. Do not modify tests/clamp.accept.test.mjs.
+
+Acceptance criteria (fixed; you cannot change them):
+1. tests/clamp.accept.test.mjs passes unchanged
+2. all tests pass
+
+Required checks (CanvasTTY runs these commands itself in the work folder after the executor's turn; your own statements do not count):
+cmd-1: node --test
+
+Mode: autopilot. Work on your own: inspect the project, choose reversible technical options yourself, prepare what the work needs within your rights, run the project's checks when useful, fix and check again. Ask the person (the question field of your report) only when required data is missing, a significant decision is ambiguous, or an action is outside the rights you have.
+Leave the changes uncommitted: do not commit, push or deploy.
+
+Rules for this review:
+- You are an independent reviewer in a new session: judge the work by the files in the folder and the check results, not by anyone's word.
+- A stage is accepted by the application only when every required check passes, every condition of the stage is met and no blocking finding of it is open.
+
+Budget: this is turn 3 of at most 7 (4 left after it; the final review needs one of them, a fix round needs an executor turn and a review).
+Replans used: 0 of 1. Rounds per stage: at most 2 (this is round 1). Time left for the run: about 19 min.
+
+Plan v1, stages accepted: 0:
+1. Implement and test clamp
+
+Current stage 1 (round 1): Implement and test clamp
+
+Check results on the current state of the copy (results of other states are not shown):
+- cmd-1: passed
+(anon):setopt:7: can't change option: monitor
+
+[[31mERROR[39m]: gitstatus failed to initialize.
+
+
+  Add the following parameter to [4m~/.zshrc[24m for extra diagnostics on error:
+
+    [1mGITSTATUS_LOG_LEVEL=DEBUG[0m
+
+  Restart Zsh to retry gitstatus initialization:
+
+    [32m[4mexec[24m[32m zsh[39m
+✔ clamp keeps a value inside [lo, hi] (0.590458ms)
+✔ clamp rejects an empty range (0.193833ms)
+✔ clamp limits x to [lo, hi] (0.313208ms)
+✔ clamp throws RangeError when lo > hi (0.15675ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41.074791
+
+
+Requirements (R<n> is acceptance criterion n, fixed):
+R1: tests/clamp.accept.test.mjs passes unchanged
+R2: all tests pass
+Readiness conditions of stage 1:
+- C1 [covers R1; change]: src/clamp.mjs implements the specified named export, and tests/clamp.accept.test.mjs remains unchanged. — not checked yet
+- C2 [covers R2; change]: tests/clamp.test.mjs covers the clamp behavior and reversed-bound RangeError. — not checked yet
+- C3 [covers R1, R2; check cmd-1]: The required node --test check passes. — met
+
+In conditions give one mark for every change condition of this stage: {id, status: met | not_met, paths, note}; met names the files this run changed that show it (paths are checked against the changes since the run started). The stage is accepted only when every condition of it is met and every check passes.
+
+Paths changed since the run started:
+- src/clamp.mjs
+- tests/clamp.test.mjs
+
+Findings of this run: none yet.
+
+How to answer (findings):
+- Every problem you see is a finding {id, severity, condition, problem, evidence, closeWhen, status, paths, relation}. A new one has id null: the application gives it the next number. Name an existing one by its id with its status now: open, or closed when it is fixed.
+- severity blocking stops the stage until the finding is closed; wish does not block. The severity and condition of a finding never change.
+- A new blocking finding names the files it is about (paths). Closing a blocking one names the files changed for it since it was opened (paths); it cannot be closed on the state it was opened on.
+- A new blocking finding about the files of a closed one that did not change since: say relation {repeatOf: "F<n>", distinctFrom: null, why: null} when it is that one again, or {repeatOf: null, distinctFrom: "F<n>", why} when it is another problem; otherwise relation null.
+- request: none (the application decides the stage by the checks, the conditions and the open blocking findings), replan when the plan itself cannot work, question (with question) when only the person can answer.
+
+Answer only with the JSON object the schema describes.
