@@ -108,7 +108,8 @@ try {
   await app.waitFor(`${q("[data-orch-settings]")} && true`, "settings");
   const needed = await app.ev(`${q("[data-orch-needed]")}.textContent`);
   expect(needed.includes("composer install") && needed.includes("key:generate"), "settings: what is missing now is listed", needed);
-  await app.waitFor(`document.querySelectorAll('[data-orch-access="claude"] option').length > 1`, "the CLI's own modes", 20_000);
+  // more than the suggested mode and "terminal": the modes read from the CLI's --help have arrived
+  await app.waitFor(`document.querySelectorAll('[data-orch-access="claude"] option').length > 2`, "the CLI's own modes", 20_000);
   const claudeModes = await app.ev(`[...document.querySelectorAll('[data-orch-access="claude"] option')].map((o) => o.value)`);
   expect(JSON.stringify(claudeModes) === JSON.stringify(["terminal", "workspace", "acceptEdits", "auto", "full"]), "settings: Claude modes from the installed CLI's --help", claudeModes);
   // the stage A gate: a new project starts in the work folder for both CLIs

@@ -38,7 +38,7 @@ const ledger = D("ledger.jsonl");
 const HOLD = { codex: D("hold-codex"), claude: D("hold-claude") };
 const wrap = (p) => {
   const f = D(`${p}-mock`);
-  fs.writeFileSync(f, `#!/bin/sh\nwhile [ -e "${HOLD[p]}" ]; do sleep 0.1; done\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
+  fs.writeFileSync(f, `#!/bin/sh\ncase "$1" in --help|--version) ;; *) while [ -e "${HOLD[p]}" ]; do sleep 0.1; done ;; esac\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
   return f;
 };
 const SHELL = D("login-shell");
