@@ -192,6 +192,20 @@ export function numberPlan(report: PlanReportV2, stages: ReturnType<typeof repor
   return { text, assigned: n - next };
 }
 
+// Stage A gate (2026-10-03): a mark of a condition no review decides — a check condition (met only by its command) or a
+// person condition (only by the person) — is extra. It is never counted (factsOf reads such a condition from its command
+// or the person) and not a reason to refuse the report: it is left out before the rules below and named in the feed.
+export function ignoredMarks(marks: readonly ConditionMark[], book: ConditionsBook): { id: string; by: "check" | "person" }[] {
+  return marks.flatMap((m) => {
+    const kind = book.defs.get(m.id)?.evidence.kind;
+    return kind === "check" || kind === "person" ? [{ id: m.id, by: kind }] : [];
+  });
+}
+export const decidedMarks = (marks: readonly ConditionMark[], book: ConditionsBook): ConditionMark[] => {
+  const extra = new Set(ignoredMarks(marks, book).map((x) => x.id));
+  return marks.filter((m) => !extra.has(m.id));
+};
+
 // The lead's stage review (journal-v2-format.md §2.7): one mark for every "change" condition of the stage, none else;
 // met with paths the work changed since the start of the run (a limiter, not proof). changed: null — not known here.
 export function stageMarksProblems(marks: readonly ConditionMark[], changeIds: readonly string[], changed: ReadonlySet<string> | null): string[] {
@@ -202,19 +216,28 @@ export function stageMarksProblems(marks: readonly ConditionMark[], changeIds: r
     if (seen.has(m.id)) out.push(`${m.id} is marked twice`);
     seen.add(m.id);
     if (m.status === "met" && m.paths.length === 0) out.push(`${m.id} met without paths`);
-    if (m.status === "met" && changed) for (const p of m.paths) if (!changed.has(p)) out.push(`${m.id}: ${p} is not changed since the start of the run`);
+    // a met mark stands on the changed files it names; a file it names besides them that did not change is extra (left
+    // out, said in the feed: unchangedPaths), but a mark with no changed file at all has no evidence
+    if (m.status === "met" && changed && m.paths.length && m.paths.every((p) => !changed.has(p))) out.push(`${m.id}: none of ${m.paths.join(", ")} changed since the start of the run`);
   }
   for (const id of changeIds) if (!seen.has(id)) out.push(`${id} is not marked`);
   return out;
 }
-// A4: a requirement the person dropped is not in force — not marked (journal-v2-format.md §2.9).
+// The files a met mark names that did not change since the start of the run, next to ones that did: not its evidence.
+export const unchangedPaths = (marks: readonly ConditionMark[], changed: ReadonlySet<string>): { id: string; paths: string[] }[] =>
+  marks.flatMap((m) => {
+    const extra = m.status === "met" ? m.paths.filter((p) => !changed.has(p)) : [];
+    return extra.length && extra.length < m.paths.length ? [{ id: m.id, paths: extra }] : [];
+  });
+// A4: a requirement the person dropped is not in force (journal-v2-format.md §2.9). Stage A gate: a mark of it is extra —
+// never counted (factsOf: dropped) and not a reason to refuse the report.
 export function finalMarksProblems(marks: readonly RequirementMark[], criteria: number, dropped: ReadonlyMap<string, unknown> | ReadonlySet<string> = new Set()): string[] {
   const ids = requirementIds(criteria).filter((r) => !dropped.has(r));
   const out: string[] = [];
   const seen = new Set<string>();
   for (const m of marks) {
-    if (dropped.has(m.id)) out.push(`${m.id} was dropped by the person: it is not marked`);
-    else if (!ids.includes(m.id)) out.push(`${m.id} is not a requirement (R1..R${criteria})`);
+    if (dropped.has(m.id)) continue;
+    if (!ids.includes(m.id)) out.push(`${m.id} is not a requirement (R1..R${criteria})`);
     else if (seen.has(m.id)) out.push(`${m.id} is marked twice`);
     seen.add(m.id);
   }

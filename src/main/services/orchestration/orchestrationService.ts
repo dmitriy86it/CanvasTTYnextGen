@@ -37,7 +37,7 @@ import type { ShellCheckResult } from "./userCheck.ts";
 import type { OrchestrationConditions, OrchestrationDecisions, OrchestrationFindings, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationPersonDecide,
   OrchestrationPlanChoice, OrchestrationPlanDecide, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
 import { closedByPerson } from "../../../shared/orchestration.ts";
-import { bookOf, changeIdsOf, conditionBlockers, factsOf, finalMarksProblems, numberPlan, personIdsOf, planProblems, reportConditions, stageMarksProblems } from "./conditions.ts";
+import { bookOf, changeIdsOf, conditionBlockers, decidedMarks, factsOf, finalMarksProblems, ignoredMarks, numberPlan, personIdsOf, planProblems, reportConditions, requirementIds, stageMarksProblems, unchangedPaths } from "./conditions.ts";
 import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, PlanText, RequirementMark, Status } from "./conditions.ts";
 import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, diffTreeNames, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
 import type { CloneDir } from "./workspace.ts";
@@ -358,6 +358,20 @@ const schemaOf = (purpose: TurnPurpose, st: RunState, goal: Goal): AnswerSchema 
   : purpose === "plan" ? (proposesChecks(st, goal) ? PLAN_PROPOSAL_SCHEMA : PLAN_V2_SCHEMA)
     : purpose === "review" ? (byReviewer(st) ? REVIEWER_SCHEMA : REVIEW_V2_SCHEMA) : purpose === "final_review" ? (byReviewer(st) ? FINAL_REVIEWER_SCHEMA : FINAL_V2_SCHEMA)
       : REPORT_SCHEMAS[purpose];
+// Stage A gate: the ids a review may mark, in its schema (structured output keeps the model to them): the stage's own
+// "change" conditions, the stale ones a final review confirms, the requirements in force. No id at all: no mark
+// (maxItems 0, never an empty enum).
+const marksOf = (list: AnswerSchema, ids: readonly string[]): AnswerSchema => ids.length
+  ? { ...list, items: { ...list.items!, properties: { ...list.items!.properties, id: { type: "string", enum: [...ids] } } } }
+  : { ...list, maxItems: 0 };
+export function narrowMarks(schema: AnswerSchema, conditions: readonly string[] | null, requirements: readonly string[] | null): AnswerSchema {
+  const p = schema.properties!;
+  return compileSchema({ ...schema, properties: {
+    ...p,
+    ...(conditions && p.conditions ? { conditions: marksOf(p.conditions, conditions) } : {}),
+    ...(requirements && p.requirements ? { requirements: marksOf(p.requirements, requirements) } : {})
+  } });
+}
 for (const s of [...Object.values(REPORT_SCHEMAS), PLAN_PROPOSAL_SCHEMA, PLAN_V2_SCHEMA, REVIEW_V2_SCHEMA, FINAL_V2_SCHEMA, REVIEWER_SCHEMA, FINAL_REVIEWER_SCHEMA]) compileSchema(s); // a schema the engine would refuse fails at load
 
 interface PlanReport { stages: { title: string; task: string }[]; question: string | null }
@@ -366,6 +380,8 @@ interface ProposedCheck { command: string; why: string; source: string[] }
 export interface ChecksProposalText { checks: (ProposedCheck & { id: string })[]; none: string | null }
 interface PlanProposalReport extends PlanReport { checks: { checks: ProposedCheck[]; none: string | null } | null }
 interface ReviewReport { verdict: string; findings: string[]; question: string | null }
+// confirm: a final review's stale conditions, the only ones it marks
+interface ReviewMarks { conditions?: ConditionMark[]; requirements?: RequirementMark[]; findings?: ReportFinding[]; confirm?: string[] }
 interface ReviewerReport { conditions: ConditionMark[]; requirements?: RequirementMark[]; findings: ReportFinding[]; request: ReviewRequest; question: string | null }
 
 // What the Р1 schema subset cannot say: counts and "question iff verdict question".
@@ -1026,15 +1042,31 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
 
   // ---------- turns ----------
 
+  // The schema the CLI is offered: a review of a v2 journal with conditions may mark only the ids it decides (narrowMarks).
+  async function turnSchema(action: Extract<Action, { kind: "turn" }>, snapshot: Snapshot): Promise<AnswerSchema> {
+    const st = state();
+    const base = schemaOf(action.purpose, st, goal);
+    if (st.version !== 2 || (action.purpose !== "review" && action.purpose !== "final_review")) return base;
+    const c = await conds();
+    if (!c?.book.conditioned) return base;
+    const requirements = requirementIds(goal.criteria.length).filter((r) => !c.book.droppedRequirements.has(r));
+    if (action.purpose === "review") return narrowMarks(base, changeIdsOf(c.book, action.stage!), null);
+    const stale = await staleOn(st, c, snapshot.tree);
+    const confirm = Object.keys(st.orch.accepted).flatMap((n) => changeIdsOf(c.book, Number(n))).filter((id) => stale(id));
+    return narrowMarks(base, byReviewer(st) ? confirm : null, requirements);
+  }
+
   async function runTurn(action: Extract<Action, { kind: "turn" }>, snapshot: Snapshot): Promise<void> {
     const st = state();
     // A3 (§2.8): the reviewer reviews a v2 journal the lead did not review — a new session of the lead's CLI each time
     const role: AgentRole = action.purpose === "execute" ? "executor" : action.purpose !== "plan" && byReviewer(st) ? "reviewer" : "lead";
     const limits = effectiveLimits(goal, st);
+    // the report is checked against the purpose's schema; the CLI is offered the narrowed one (turnSchema)
     const schema = schemaOf(action.purpose, st, goal);
+    const offered = await turnSchema(action, snapshot);
     const request = {
       purpose: action.purpose, role, cwd: ws.repo, task: await buildTask(action, snapshot),
-      schema, sessionId: role === "reviewer" ? null : sessionFor(st, role),
+      schema: offered, ...(offered !== schema ? { accept: schema } : {}), sessionId: role === "reviewer" ? null : sessionFor(st, role),
       // the role's own limit, cut to what is left of the run: the deadline is not extended by a long turn
       timeoutMs: Math.max(1, Math.min(role === "executor" ? limits.executorTurnMs : limits.leadTurnMs, deadline() - clock())),
       ask: askPerson(role), ...(goal.access ? { access: goal.access } : {}), ...(ws.mode !== "project" ? { ownFolder: true } : {})
@@ -1146,6 +1178,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       await j(() => writer.recordEvent("review.assessed", {
         turnId, stage: action.stage, request: r.request, report, applied: ref, clarificationVersion: state().orch.turns[turnId].clarificationVersion, runKey: snapshot.runKey
       }));
+      await noteIgnored(role, prepared.provider, turnId, { ...r, ...(plan.confirm ? { confirm: plan.confirm } : {}) }, snapshot.tree);
       if (r.request === "question") return askQuestion(turnId, r.question as string);
     } else if (action.purpose === "review" || action.purpose === "final_review") {
       const r = value as ReviewReport;
@@ -1159,7 +1192,37 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         turnId, stage: action.stage, verdict: r.verdict as never, findings: ref, findingsKey: findingsKey(findings),
         findingsCount: findings.length, clarificationVersion: state().orch.turns[turnId].clarificationVersion, runKey: snapshot.runKey
       }));
+      if (st.version === 2) await noteIgnored(role, prepared.provider, turnId, value as ReviewMarks, latest?.tree ?? snapshot.tree);
       if (r.verdict === "question") return askQuestion(turnId, r.question as string);
+    }
+  }
+
+  // What a recorded review gave besides what it decides, said in the feed and never counted: a mark of a check or person
+  // condition (ignoredMarks), of a requirement the person dropped, and files a met mark names that did not change.
+  async function noteIgnored(role: AgentRole, provider: "codex" | "claude", turnId: string, r: ReviewMarks, tree: string): Promise<void> {
+    const c = await conds();
+    if (!c?.book.conditioned) return;
+    const note = (text: string, detail: Record<string, string>) => observe((a) => a.reportNote(role, provider, turnId, text, detail));
+    const marks = r.conditions ?? [];
+    for (const x of ignoredMarks(marks, c.book)) note(`${x.id} marked: not counted, it is met by ${x.by === "check" ? "its command" : "the person"}`, { ignoredMark: x.id, by: x.by });
+    for (const m of r.requirements ?? []) if (c.book.droppedRequirements.has(m.id)) note(`${m.id} marked: not counted, dropped by the person`, { ignoredMark: m.id, by: "dropped" });
+    let kept = decidedMarks(marks, c.book);
+    if (r.confirm) {
+      for (const m of kept) if (!r.confirm.includes(m.id)) note(`${m.id} marked: not counted, nothing to confirm`, { ignoredMark: m.id, by: "unconfirmed" });
+      kept = kept.filter((m) => r.confirm!.includes(m.id));
+    }
+    const changedSince = async (from: string) => new Set((await diffTreeNames(ws, from, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
+    if (kept.some((m) => m.status === "met")) {
+      const changed = await changedSince(state().workspace!.baseline.tree);
+      for (const x of unchangedPaths(kept, changed)) note(`${x.id}: ${x.paths.join(", ")} not changed: not its evidence`, { ignoredMark: x.id, by: "unchanged", paths: x.paths.join(", ") });
+    }
+    // a finding the review closed: the files it named that did not change since it was opened
+    for (const f of r.findings ?? []) {
+      const known = f.id !== null && f.status === "closed" ? c.findings?.book.list.get(f.id) : undefined;
+      if (known?.severity !== "blocking" || f.paths.length === 0) continue;
+      const changed = await changedSince(known.openTree);
+      const extra = f.paths.filter((p) => !changed.has(p));
+      if (extra.length && extra.length < f.paths.length) note(`${f.id}: ${extra.join(", ")} not changed: not its evidence`, { ignoredMark: known.id, by: "unchanged", paths: extra.join(", ") });
     }
   }
 
@@ -1276,26 +1339,30 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const r = value as ReviewReport & { conditions: ConditionMark[] };
     if (r.verdict !== "accept" && r.verdict !== "fix") return [];
     const changed = new Set((await diffTreeNames(ws, state().workspace!.baseline.tree, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
-    return stageMarksProblems(r.conditions, changeIdsOf(c.book, action.stage!), changed);
+    return stageMarksProblems(decidedMarks(r.conditions, c.book), changeIdsOf(c.book, action.stage!), changed);
   }
 
   // A3 (journal-v2-format.md §2.8): the reviewer's report against the conditions and the findings now — the violations
   // (invalid_report), or what the application does with it. tree: the reviewed one.
-  async function reviewerPlan(action: Extract<Action, { kind: "turn" }>, r: ReviewerReport, tree: string, key: string): Promise<{ problems: string[]; applied: Omit<Applied, "report" | "conditionsMet"> | null }> {
+  async function reviewerPlan(action: Extract<Action, { kind: "turn" }>, r: ReviewerReport, tree: string, key: string): Promise<{ problems: string[]; applied: Omit<Applied, "report" | "conditionsMet"> | null; confirm: string[] | null }> {
     const c = (await conds())!;
     const book = c.findings!.book;
     const problems: string[] = [];
+    let confirm: string[] | null = null;
     const changedSince = async (from: string) => new Set((await diffTreeNames(ws, from, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
     if (action.purpose === "final_review") {
       // A4 (5h §3.7): the final review confirms the stale evidence of accepted stages — a mark for each, none else; met
       // names files changed since the run started
       const stale = await staleOn(state(), c, tree);
       const ids = Object.keys(state().orch.accepted).flatMap((s) => changeIdsOf(c.book, Number(s))).filter((id) => stale(id));
-      if (r.request === "none") problems.push(...stageMarksProblems(r.conditions, ids, await changedSince(state().workspace!.baseline.tree)));
-      else if (r.conditions.some((m) => !ids.includes(m.id))) problems.push("conditions: only the conditions to confirm are marked");
+      confirm = ids;
+      // stage A gate: a mark of a condition with nothing to confirm is extra — a final review's mark counts only for a
+      // stale one (factsOf: confirmed) — left out, said in the feed
+      const marks = decidedMarks(r.conditions, c.book).filter((m) => ids.includes(m.id));
+      if (r.request === "none") problems.push(...stageMarksProblems(marks, ids, await changedSince(state().workspace!.baseline.tree)));
       if (r.request === "none" && c.book.conditioned) problems.push(...finalMarksProblems(r.requirements ?? [], goal.criteria.length, c.book.droppedRequirements));
     } else if (r.request === "none") {
-      problems.push(...stageMarksProblems(r.conditions, changeIdsOf(c.book, action.stage!), await changedSince(state().workspace!.baseline.tree)));
+      problems.push(...stageMarksProblems(decidedMarks(r.conditions, c.book), changeIdsOf(c.book, action.stage!), await changedSince(state().workspace!.baseline.tree)));
     }
     const diffs = new Map<string, Set<string>>();
     for (const f of book.list.values()) for (const t of [f.openTree, f.closeTree]) if (t && !diffs.has(t)) diffs.set(t, await changedSince(t));
@@ -1304,7 +1371,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       stageConditions: action.stage === null ? null : c.book.stages.get(action.stage) ?? [], conditions: [...c.book.defs.keys()]
     });
     problems.push(...planned.problems);
-    return { problems, applied: problems.length ? null : planned.applied };
+    return { problems, applied: problems.length ? null : planned.applied, confirm };
   }
   // The reviewer's last turn the application did not apply (invalid_report): what was wrong, recomputed from its report.
   async function rejectedReview(snapshot: Snapshot): Promise<string[]> {
@@ -1969,9 +2036,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       const notes = marksIn(c.reports, last).filter((m) => m.status === "not_met");
       if (action.purpose === "execute" && notes.length) out.push(`Not met in the last review:\n${notes.map((m) => `- ${m.id}: ${m.note}`).join("\n")}`);
       if (action.purpose === "review") {
-        out.push("In conditions give one mark for every change condition of this stage: {id, status: met | not_met, paths, note}; met names the files "
-          + "this run changed that show it (paths are checked against the changes since the run started). The stage is accepted only when every "
-          + "condition of it is met and every check passes.");
+        // exactly the ids the schema offers (turnSchema): the others are named apart, never as something to mark
+        const change = changeIdsOf(c.book, action.stage);
+        const others = own.filter((id) => !change.includes(id));
+        out.push(change.length
+          ? `In conditions give one mark for each of ${change.join(", ")} (the change conditions of this stage): {id, status: met | not_met, paths, note}; `
+            + "met names the files this run changed that show it (paths are checked against the changes since the run started). No other condition is marked."
+          : "conditions stays empty: this stage has no change condition to mark.");
+        if (others.length) out.push(`Do not mark ${others.join(", ")}: a check condition is met only by its command passing, a person condition only by the person.`);
+        out.push("The stage is accepted only when every condition of it is met and every check passes.");
       }
       return out;
     }

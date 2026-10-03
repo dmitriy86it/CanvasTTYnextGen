@@ -88,6 +88,7 @@ function preflight(spec: TurnSpec, launch: SupervisorLaunch): string | null {
   }
   if (typeof spec.task !== "string" && !(spec.task instanceof Uint8Array)) fail("task must be a string or Uint8Array");
   compileSchema(spec.schema); // UnsupportedSchemaError: nothing is started
+  if (spec.accept) compileSchema(spec.accept);
   const limits = spec.limits as unknown as Record<string, unknown> | undefined;
   for (const k of Object.keys(DEFAULT_TURN_LIMITS)) {
     const v = limits?.[k];
@@ -494,8 +495,8 @@ export function startTurn(spec: TurnSpec, launch: SupervisorLaunch, observer?: T
       let answer: unknown;
       if (spec.session) { try { answer = spec.session.answer(); } catch { answer = undefined; } }
       report = reportFile !== null
-        ? readReport(reportFile, L.maxReportBytes, spec.schema)
-        : checkValue(spec.session ? answer : collector.terminals[0].value.structured_output, L.maxReportBytes, spec.schema);
+        ? readReport(reportFile, L.maxReportBytes, spec.accept ?? spec.schema)
+        : checkValue(spec.session ? answer : collector.terminals[0].value.structured_output, L.maxReportBytes, spec.accept ?? spec.schema);
     }
     const sessionId = collector.sessionId;
     const sessionMismatch = (spec.expectSessionId != null && sessionId !== spec.expectSessionId) || collector.sessionConflict;

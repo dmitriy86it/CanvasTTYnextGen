@@ -23,6 +23,7 @@ export interface AgentTurnRequest {
   cwd: string; // the managed copy (stage 3)
   task: string;
   schema: AnswerSchema;
+  accept?: AnswerSchema; // TurnSpec.accept: the wider schema the report is checked against
   sessionId: string | null; // resume of the same role's session
   timeoutMs: number;
   ask?: AskPerson; // stage 12: where the CLI's permission prompts and questions go (the person); required by sessions
@@ -79,7 +80,7 @@ export function createProviderAgents(cfg: ProviderAgentsConfig): AgentAdapter {
         return { ok: false, reason: "unsupported_capability", detail: `the lead runs only as Codex structured-readonly, not ${cfg.lead.cli.provider}` };
       }
       const input: ProviderTurnInput = {
-        ...cfg.lead, mode: "structured-readonly", cwd: req.cwd, schema: req.schema, task: req.task,
+        ...cfg.lead, mode: "structured-readonly", cwd: req.cwd, schema: req.schema, ...(req.accept ? { accept: req.accept } : {}), task: req.task,
         attemptDir: join(cfg.attemptRoot, randomUUID()),
         session: req.sessionId ? { kind: "resume", id: req.sessionId } : { kind: "new" },
         limits: { ...DEFAULT_TURN_LIMITS, timeoutMs: req.timeoutMs }
@@ -148,7 +149,7 @@ export function createNativeAgents(cfg: NativeAgentsConfig): AgentAdapter {
       if (!req.ask) return { ok: false, reason: "unavailable", detail: "no one to ask the CLI's permission prompts" };
       const input: NativeTurnInput = {
         cli: cfg.clis[provider].cli, cliVersion: cfg.clis[provider].cliVersion, cwd: req.cwd, env: cfg.env[provider],
-        task: req.task, schema: req.schema, ask: req.ask, clientVersion: cfg.clientVersion,
+        task: req.task, schema: req.schema, ...(req.accept ? { accept: req.accept } : {}), ask: req.ask, clientVersion: cfg.clientVersion,
         session: req.sessionId ? { kind: "resume", id: req.sessionId } : { kind: "new" },
         limits: { ...DEFAULT_TURN_LIMITS, timeoutMs: req.timeoutMs },
         ...(req.access ? { access: req.access } : {}), ...(req.ownFolder ? { ownFolder: true } : {})

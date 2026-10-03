@@ -82,8 +82,10 @@ export function planReview(book: FindingsBook, findings: readonly ReportFinding[
           if (ctx.runKey === known.openRunKey) problems.push(`${at}: ${f.id} cannot be closed on the state it was opened on`);
           else if (f.paths.length === 0) problems.push(`${at}: closing ${f.id} needs the paths changed for it`);
           else {
+            // stage A gate: a close stands on the changed files it names; an unchanged one besides them is extra (the feed
+            // says so), a close with none changed has no evidence
             const changed = ctx.changedSince(known.openTree);
-            for (const p of f.paths) if (!changed.has(p)) problems.push(`${at}: ${p} did not change since ${f.id} was opened`);
+            if (f.paths.every((p) => !changed.has(p))) problems.push(`${at}: none of ${f.paths.join(", ")} changed since ${f.id} was opened`);
           }
         }
       }

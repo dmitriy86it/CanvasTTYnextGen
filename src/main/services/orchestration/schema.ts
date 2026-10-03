@@ -1,13 +1,13 @@
 // Answer validator: a deliberately small subset of JSON Schema, not the standard.
 // Supported: type (one or a list), properties, required, additionalProperties: false, enum, items (one schema),
-// minLength/maxLength (code points). Any other keyword (annotations included) or additionalProperties !== false
+// minLength/maxLength (code points), maxItems. Any other keyword (annotations included) or additionalProperties !== false
 // is rejected by compileSchema: silently ignoring it would accept what the schema forbids.
 import type { AnswerSchema, SchemaType } from "./types.ts";
 
 export type { AnswerSchema, SchemaType } from "./types.ts";
 
 export const SUPPORTED_SCHEMA_KEYWORDS: readonly string[] = Object.freeze([
-  "type", "properties", "required", "additionalProperties", "enum", "items", "minLength", "maxLength"
+  "type", "properties", "required", "additionalProperties", "enum", "items", "minLength", "maxLength", "maxItems"
 ]);
 
 const TYPES: readonly string[] = ["object", "array", "string", "number", "integer", "boolean", "null"];
@@ -46,7 +46,7 @@ export function compileSchema(schema: unknown, path = "$"): AnswerSchema {
   if (s.additionalProperties !== undefined && s.additionalProperties !== false) fail(`${path}.additionalProperties`, "only false is supported");
   if (s.enum !== undefined && !(Array.isArray(s.enum) && s.enum.length > 0)) fail(`${path}.enum`, "must be a non-empty array");
   if (s.items !== undefined) compileSchema(s.items, `${path}.items`); // tuple form (array) fails as "must be an object"
-  for (const k of ["minLength", "maxLength"]) if (s[k] !== undefined && !isCount(s[k])) fail(`${path}.${k}`, "must be a non-negative integer");
+  for (const k of ["minLength", "maxLength", "maxItems"]) if (s[k] !== undefined && !isCount(s[k])) fail(`${path}.${k}`, "must be a non-negative integer");
   return s as AnswerSchema;
 }
 
@@ -74,6 +74,7 @@ export function validateAnswer(schema: AnswerSchema, value: unknown, path = "$",
     if (schema.minLength !== undefined && n < schema.minLength) err(`shorter than ${schema.minLength}`);
     if (schema.maxLength !== undefined && n > schema.maxLength) err(`longer than ${schema.maxLength}`);
   }
+  if (Array.isArray(value) && schema.maxItems !== undefined && value.length > schema.maxItems) err(`more than ${schema.maxItems} items`);
   if (Array.isArray(value) && schema.items) {
     const items = schema.items;
     value.forEach((v, i) => validateAnswer(items, v, `${path}[${i}]`, errors));

@@ -172,8 +172,10 @@ test("closing a blocking finding: never on the state it was opened on, never wit
   const close = (paths) => [finding({ id: "F1", status: "closed", paths })];
   assert.match(planReview(book, close(["a.txt"]), ctx("k1", ["a.txt"])).problems.join(), /cannot be closed on the state it was opened on/);
   assert.match(planReview(book, close([]), ctx("k2", ["a.txt"])).problems.join(), /needs the paths changed for it/);
-  assert.match(planReview(book, close(["a.txt"]), ctx("k2", ["b.txt"])).problems.join(), /a\.txt did not change since F1 was opened/);
+  assert.match(planReview(book, close(["a.txt"]), ctx("k2", ["b.txt"])).problems.join(), /none of a\.txt changed since F1 was opened/);
   assert.deepEqual(planReview(book, close(["b.txt"]), ctx("k2", ["b.txt"])).problems, []);
+  // stage A gate: an unchanged file next to a changed one is extra, not a refusal
+  assert.deepEqual(planReview(book, close(["b.txt", "a.txt"]), ctx("k2", ["b.txt"])).problems, []);
   assert.equal(openBlocking(book).length, 1, "nothing is applied by planning");
 });
 
@@ -272,7 +274,7 @@ test("the reviewer renumbers a finding, closes one on the same tree, or closes i
   const cases = [
     [exec({ "b.txt": "2\n" }), review([finding({ id: "F2", problem: "the same one, renumbered" })]), /F2 is not a finding of this run/],
     [exec({}), review([finding({ id: "F1", status: "closed", paths: ["a.txt"] })]), /cannot be closed on the state it was opened on/],
-    [exec({ "b.txt": "2\n" }), review([finding({ id: "F1", status: "closed", paths: ["a.txt"] })]), /a\.txt did not change since F1 was opened/]
+    [exec({ "b.txt": "2\n" }), review([finding({ id: "F1", status: "closed", paths: ["a.txt"] })]), /none of a\.txt changed since F1 was opened/]
   ];
   for (const [fix, bad, why] of cases) {
     const src = project({ "a.txt": "1\n", "b.txt": "1\n" });

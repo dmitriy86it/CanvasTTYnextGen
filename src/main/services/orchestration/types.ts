@@ -39,6 +39,7 @@ export interface AnswerSchema {
   items?: AnswerSchema;
   minLength?: number;
   maxLength?: number;
+  maxItems?: number;
 }
 
 // Optional observation of a running turn (stage 11): what the CLI reports, as it arrives. Called synchronously from the
@@ -56,6 +57,9 @@ export interface TurnSpec {
   env: Readonly<Record<string, string>>; // exact CLI environment; ELECTRON_*, NODE_*, SUP_* are rejected
   task: string | Uint8Array; // fd4 -> CLI stdin, then EOF
   schema: AnswerSchema;
+  // the schema the report is checked against, when wider than the one the CLI is given (a review's marks: the CLI is
+  // offered the ids it decides; an extra mark is left out by the application, not a refused report). Default: schema.
+  accept?: AnswerSchema;
   attemptDir?: string; // codex: report file attemptDir/report-<uuid>.json, must not exist yet
   expectSessionId?: string | null;
   limits: TurnLimits;
