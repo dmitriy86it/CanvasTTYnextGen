@@ -87,7 +87,7 @@ async function main() {
 // ---- stage 12: `codex app-server` (JSON-RPC lines, no "jsonrpc" field) ----
 // initialize -> thread/start|thread/resume -> turn/start {input, outputSchema}. Script asks (see mock-common.mjs) or
 // MOCK_ASK=command become item/commandExecution/requestApproval server requests; "accept*" runs the (pretend) command.
-// Refuses any approvalPolicy/sandbox/config override: a native session must leave the user's config in charge.
+// Refuses an approvalPolicy/sandbox/config override other than the default «Рабочая папка» unless MOCK_ALLOW_ACCESS.
 async function appServer(args) {
   if (args.length !== 1) { process.stderr.write(`mock-codex: app-server takes no flags here ${JSON.stringify(args)}\n`); process.exitCode = 2; return; }
   const input = lineReader(process.stdin);
@@ -131,7 +131,9 @@ async function appServer(args) {
     }
     const access = ["approvalPolicy", "sandbox"].some((k) => p[k] !== undefined);
     if (access && process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/codex-access.jsonl`, JSON.stringify({ approvalPolicy: p.approvalPolicy, sandbox: p.sandbox }) + "\n");
-    if (["config", "sandboxPolicy"].some((k) => p[k] !== undefined) || (access && !process.env.MOCK_ALLOW_ACCESS)) {
+    // the default «Рабочая папка» (access.ts "workspace") is always accepted; another override only when the test says so
+    const workspace = p.sandbox === "workspace-write" && p.approvalPolicy === "on-request";
+    if (["config", "sandboxPolicy"].some((k) => p[k] !== undefined) || (access && !workspace && !process.env.MOCK_ALLOW_ACCESS)) {
       await emit({ id: m.id, error: { code: -32600, message: "mock: a native session must not override the user's config" } });
       continue;
     }

@@ -136,7 +136,7 @@ test("rights: each mode says what it turns into; the installed Claude's own --he
   assert.deepEqual(codexAccessParams("full"), { sandbox: "danger-full-access", approvalPolicy: "never" });
   assert.match(accessMapping("codex", "terminal"), /config\.toml/);
   const help = execFileSync(CLAUDE, ["--help"], { encoding: "utf8" });
-  assert.deepEqual(claudeModesFromHelp(help), ["terminal", "acceptEdits", "auto", "full"]);
+  assert.deepEqual(claudeModesFromHelp(help), ["terminal", "workspace", "acceptEdits", "auto", "full"]);
   assert.deepEqual(claudeModesFromHelp("Usage: claude"), ["terminal"], "an older CLI without the choices offers only the terminal mode");
 });
 
@@ -479,6 +479,75 @@ test("rights modes reach each CLI exactly; the probe asks without a model turn",
   const cby = Object.fromEntries(cx.items.map((i) => [i.id, i]));
   assert.deepEqual([cby.skills.value, cby.plugins.value, cby.hooks.value, cby.sandbox.value], ["1: mock-skill", "1: mock-plugin", "1: SessionStart", "workspace-write"]);
   assert.ok(!fs.existsSync(path.join(state, "decisions.jsonl")), "no turn, no prompt");
+});
+
+test("access defaults: a new project runs in the work folder (Claude acceptEdits + its sandbox, Codex workspace-write)", OPTS, async () => {
+  assert.deepEqual(claudeAccessArgs("workspace").slice(0, 3), ["--permission-mode", "acceptEdits", "--settings"]);
+  const settings = JSON.parse(claudeAccessArgs("workspace")[3]);
+  assert.deepEqual(settings.sandbox, { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: true,
+    network: { allowedDomains: [], allowLocalBinding: true } });
+  const src = project({});
+  const state = fs.mkdtempSync(path.join(TMP, "state-"));
+  // no MOCK_ALLOW_ACCESS: the fakes accept only the work-folder mode without it
+  const m = manager({ MOCK_STATE: state, MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]) });
+  const runId = randomUUID();
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot" } })).ok);
+  const done = await settled(m, runId);
+  assert.equal(done.status, "completed", JSON.stringify(done));
+  assert.deepEqual(done.progress.access, { claude: "workspace", codex: "workspace" });
+  const argv = JSON.parse(fs.readFileSync(path.join(state, "claude-argv.jsonl"), "utf8").trim().split("\n")[0]);
+  const at = argv.indexOf("--permission-mode");
+  assert.deepEqual(argv.slice(at, at + 4), claudeAccessArgs("workspace"));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(state, "codex-access.jsonl"), "utf8").trim().split("\n")[0]), { approvalPolicy: "on-request", sandbox: "workspace-write" });
+  await m.shutdown();
+});
+
+test("access defaults: a saved profile and a started run keep their mode", OPTS, async () => {
+  const src = project({});
+  const state = fs.mkdtempSync(path.join(TMP, "state-"));
+  const m = manager({ MOCK_STATE: state, MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]) });
+  const store = createProfileStore(m.root);
+  // a profile saved before the default changed: "as in my terminal"
+  await store.save(src, { ...(await suggestProfile(src)), checks: ["true"], access: { claude: "terminal", codex: "terminal" } });
+  const runId = randomUUID();
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot", reviewPlan: true } })).ok);
+  const paused = await settled(m, runId, "the plan review");
+  assert.equal(paused.reason, "plan_review", JSON.stringify(paused));
+  // the project switches to the work folder while the run waits: the run keeps the mode it was created with
+  await store.save(src, { ...(await store.get(src)), access: { claude: "workspace", codex: "workspace" } });
+  assert.equal((await m.command(runId, { commandId: randomUUID(), expectedRevision: paused.revision, command: { kind: "resume" } })).value.status, "accepted");
+  const done = await settled(m, runId);
+  assert.equal(done.status, "completed", JSON.stringify(done));
+  assert.deepEqual(done.progress.access, { claude: "terminal", codex: "terminal" });
+  const argvs = fs.readFileSync(path.join(state, "claude-argv.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.ok(argvs.every((a) => !a.includes("--permission-mode") && !a.includes("--settings")), "no rights flag for Claude");
+  assert.ok(!fs.existsSync(path.join(state, "codex-access.jsonl")), "no sandbox or approval override for Codex");
+  await m.shutdown();
+});
+
+test("access defaults: \"as in my terminal\" is saved only with its warning confirmed", OPTS, async () => {
+  const src = fs.realpathSync(project({}));
+  const m = manager({});
+  const bounds = { position: { x: 0, y: 0 }, size: { width: 300, height: 176 } };
+  const lead = (await m.createAgent({ agentId: randomUUID(), provider: "codex", project: src, bounds })).value.agentId;
+  const exec = (await m.createAgent({ agentId: randomUUID(), provider: "claude", project: src, bounds })).value.agentId;
+  const link = (await m.createLink({ linkId: randomUUID(), fromAgentId: lead, toAgentId: exec })).value.linkId;
+  const info = (await m.profile(link)).value;
+  assert.equal(info.saved, false);
+  assert.deepEqual(info.profile.access, { claude: "workspace", codex: "workspace" }, "suggested: the work folder");
+  const terminal = { ...info.profile, access: { claude: "workspace", codex: "terminal" } };
+  const refused = await m.saveProfile(link, terminal);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, "terminal_not_confirmed");
+  assert.equal((await m.profile(link)).value.saved, false, "nothing saved");
+  const saved = await m.saveProfile(link, { ...terminal, confirmTerminal: true });
+  assert.ok(saved.ok, JSON.stringify(saved));
+  assert.deepEqual(saved.value.access, { claude: "workspace", codex: "terminal" });
+  assert.equal("confirmTerminal" in saved.value, false, "the confirmation is not saved");
+  // already "as in my terminal": saved again without asking; another CLI switched to it asks again
+  assert.ok((await m.saveProfile(link, { ...saved.value, checks: ["true"] })).ok);
+  assert.equal((await m.saveProfile(link, { ...saved.value, access: { claude: "terminal", codex: "terminal" } })).code, "terminal_not_confirmed");
+  await m.shutdown();
 });
 
 test("after success in a worktree: commit and push to the configured branch, QA confirmed by its own check", OPTS, async () => {

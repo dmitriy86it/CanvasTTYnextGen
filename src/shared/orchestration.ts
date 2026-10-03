@@ -240,6 +240,9 @@ export interface OrchestrationRunView {
   refused?: { checkId: string; command: string } | null;
   // A4: on a pause where the person decides (awaiting_person_decision, coverage_lost, or one a finding may be decided on)
   decisions?: OrchestrationDecisions | null;
+  // journal v2: a plan proposal waits for the person's decision (whatever the pause); clarify and raise_limit are
+  // refused until it is decided
+  proposalWaits?: boolean;
   // A run whose journal a newer version of the application wrote (acceptance-review-spec.md §2.2): shown read-only
   // (status paused, reason newer_version), never opened or changed here. chain: the hash chain of what was read.
   // compatible: its journal declares minReaderVersion this build reads, so the view is its whole state (status and
@@ -529,7 +532,8 @@ export interface OrchestrationApi {
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode }): Promise<OrchestrationResult<OrchestrationReadiness>>;
   // Stage 13: the project settings of a link's lead project, and what the CLIs report they loaded there (no model turn).
   profile(linkId: string, capabilities?: boolean): Promise<OrchestrationResult<OrchestrationProfileInfo>>; // capabilities: asks the CLIs (settings only)
-  saveProfile(linkId: string, profile: OrchestrationProjectProfile): Promise<OrchestrationResult<OrchestrationProjectProfile>>;
+  // confirmTerminal: the person confirmed the warning of "as in my terminal" (needed to switch a CLI to it; not saved)
+  saveProfile(linkId: string, profile: OrchestrationProjectProfile & { confirmTerminal?: boolean }): Promise<OrchestrationResult<OrchestrationProjectProfile>>;
   // mcpReady: also check that Codex connects this project MCP server (an ephemeral thread, no turn; trusted folders only)
   probe(linkId: string, options?: { mcpReady?: string }): Promise<OrchestrationResult<OrchestrationEnvironmentReport>>;
 }

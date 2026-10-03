@@ -29,6 +29,7 @@ import {
   byReviewer,
   actionEnabled,
   availableActions,
+  proposalBlocks,
   TERMINAL_STATUSES,
   board,
   commandOf,
@@ -1142,7 +1143,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const has = (a: RunAction) => actions.includes(a);
   // On a platform without orchestration: every action shown, only Stop active.
   const available = orchestrationAvailableHere();
-  const off = (a: RunAction) => !actionEnabled(a, available);
+  const off = (a: RunAction) => !actionEnabled(a, available) || proposalBlocks(view, a);
   const entry = orchestrationEntry(available);
   const busy = view !== null && ACTIVE_STATUSES.includes(view.status);
   const open = state?.open ?? true;
@@ -1233,7 +1234,8 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 {progress.checksFrom && <div><dt>{t(locale, "orchBoardChecksFrom")}:</dt><dd data-board="checks-from">{tr(locale, `orchChecksFrom_${progress.checksFrom}`)}</dd></div>}
                 <div><dt>{t(locale, "orchBoardAction")}:</dt><dd data-board="action">{t(locale, top.action ? "orchBoardActionYes" : "orchBoardActionNone")}</dd></div>
                 {progress.access && (
-                  <div className={progress.access.claude === "full" || progress.access.codex === "full" ? "orch-board__full" : undefined}>
+                  <div className={progress.access.claude === "full" || progress.access.codex === "full" ? "orch-board__full"
+                    : progress.access.claude === "terminal" || progress.access.codex === "terminal" ? "orch-board__terminal" : undefined}>
                     <dt>{t(locale, "orchBoardAccess")}:</dt>
                     <dd data-board="access">Claude — {tr(locale, `orchAccess_${progress.access.claude}`)} · Codex — {tr(locale, `orchAccess_${progress.access.codex}`)}</dd>
                   </div>
@@ -1307,6 +1309,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 <input type="number" min={1} value={limit.value} onChange={(e) => setLimit((l) => ({ ...l, value: e.target.value }))} />
                 <button type="button" disabled={sending || !(Number(limit.value) > 0) || off("raise_limit")}
                   onClick={() => void send("raise_limit", { limit: limit.kind, value: limit.kind === "runMs" ? Number(limit.value) * 60_000 : Number(limit.value) })}>{t(locale, "orchRaiseLimit")}</button>
+                {proposalBlocks(view, "raise_limit") && <small className="orch-hint" data-orch-proposal-waits>{t(locale, "orchProposalWaitsHint")}</small>}
               </div>
             )}
             {has("recover") && (
@@ -1414,6 +1417,11 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                         <li key={role} data-participant={role} data-phase={p.phase}>
                           <strong>{roleName(locale, role)}</strong>
                           {info && <span className="orch-hint">{info.protocol} · {t(locale, "orchNativeInfo")}</span>}
+                          {info && progress?.access && (
+                            <span className="orch-access-badge" data-participant-access={progress.access[info.provider]}>
+                              {t(locale, "orchBoardAccess")}: {tr(locale, `orchAccess_${progress.access[info.provider]}`)}
+                            </span>
+                          )}
                           <span>{phaseText(locale, p, now)}{p.lastEventAt ? ` · ${t(locale, "orchLastEvent")} ${time(locale, p.lastEventAt)}` : ""}</span>
                           <button type="button" onClick={() => onView({ tab: "activity", role })}>{t(locale, "orchObserve")}</button>
                         </li>
@@ -1460,6 +1468,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                     <textarea rows={2} value={clarify} placeholder={t(locale, "orchClarifyPlaceholder")} onChange={(e) => setClarify(e.target.value)} />
                     <button type="button" disabled={sending || !clarify.trim() || off("clarify")}
                       onClick={() => void send("clarify", { text: clarify.trim() }, () => setClarify(""))}>{t(locale, "orchClarify")}</button>
+                    {proposalBlocks(view, "clarify") && <small className="orch-hint" data-orch-proposal-waits>{t(locale, "orchProposalWaitsHint")}</small>}
                   </section>
                 )}
               </>

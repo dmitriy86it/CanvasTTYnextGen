@@ -697,6 +697,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       ...(st.pausedReason === "awaiting_checks_decision" ? { proposal: proposalText } : {}),
       ...(st.pausedReason === "check_needs_permissions" ? { refused: refusedCheck(st) } : {}),
       ...(st.version === 2 && st.status === "paused" && shownDecisions ? { decisions: shownDecisions } : {}),
+      // a plan proposal waits for the person on another pause (after a crash): only Continue leads to it
+      ...(st.version === 2 && planProposalWaits(st) ? { proposalWaits: true } : {}),
       ...(st.pausedReason === "awaiting_finish_confirmation" ? {
         confirm: { tree: latest?.tree ?? null, commit: latest ? currentCommit(st, latest.tree)?.commit ?? null : null, push: !!goal.finish?.push, qa: !!goal.finish?.qa }
       } : {})

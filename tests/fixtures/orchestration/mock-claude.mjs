@@ -49,6 +49,7 @@ const resumeId = flags["--resume"] ?? flags["-r"] ?? null;
 const HELP = `Usage: claude [options] [command] [prompt]
   --dangerously-skip-permissions  Bypass all permission checks.
   --permission-mode <mode>  Permission mode to use for the session (choices: "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
+  --settings <file-or-json>  Path to a settings JSON file or a JSON string to load additional settings from
 `;
 if (flags["--help"]) {
   process.stdout.write(HELP);
@@ -210,6 +211,8 @@ async function host() {
   for (const f of ["--safe-mode", "--restricted", "--bare", "--tools", "--strict-mcp-config", "--setting-sources", "--permission-mode", "--dangerously-skip-permissions"]) {
     // stage 13: a rights mode the person chose is passed, and allowed only when the test says so (MOCK_ALLOW_ACCESS)
     if ((f === "--permission-mode" || f === "--dangerously-skip-permissions") && process.env.MOCK_ALLOW_ACCESS) continue;
+    // the default «Рабочая папка» (access.ts "workspace"): acceptEdits with Claude's sandbox in --settings
+    if (f === "--permission-mode" && flags[f] === "acceptEdits" && /"sandbox":\{"enabled":true/.test(String(flags["--settings"] ?? ""))) continue;
     if (flags[f] !== undefined) { process.stderr.write(`mock-claude: a native session must not pass ${f}\n`); process.exitCode = 2; return; }
   }
   if (process.env.MOCK_STATE) fs.appendFileSync(path.join(process.env.MOCK_STATE, "claude-argv.jsonl"), JSON.stringify(args) + "\n");

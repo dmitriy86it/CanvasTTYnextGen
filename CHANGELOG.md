@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Agents' rights: a new project starts in **Work folder** mode. The agents write only in the run's work folder; anything else goes through a permission request, which pauses the run until you answer, in autopilot too. Claude runs with `acceptEdits` and its own sandbox (commands without asking, no outside network, localhost allowed), Codex with `workspace-write` and `on-request`. **As in my terminal** is now a project setting switched on with a confirmed warning; saved settings and started runs keep their mode. The run's board and each participant's card show the mode, "As in my terminal" in a warning colour. While a plan proposal waits for your decision on another pause, "Clarify" and "Raise limit" are shown off with a hint.
 - Journal v2 (stage A, A4, development flag only; v2 is still not on by default): the person's decisions and the finish. Some decisions are the person's alone, made in the run panel, and the run waits for them — the autopilot never makes one:
   - a disputed finding is shown next to the closed one it may repeat: "A new defect" or "A repeat of F<n>";
   - a condition the person confirms: "Met" or "Not met";

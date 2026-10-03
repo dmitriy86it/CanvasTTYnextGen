@@ -1,0 +1,416 @@
+{
+  "mode": "real",
+  "startedAt": "2026-10-03T07:53:58.734Z",
+  "node": "v26.8.1",
+  "platform": "darwin-arm64",
+  "access": {
+    "claude": "workspace",
+    "codex": "workspace"
+  },
+  "claudeArgs": [
+    "--permission-mode",
+    "acceptEdits",
+    "--settings",
+    "{\"sandbox\":{\"enabled\":true,\"failIfUnavailable\":true,\"autoAllowBashIfSandboxed\":true,\"allowUnsandboxedCommands\":true,\"network\":{\"allowedDomains\":[],\"allowLocalBinding\":true}}}"
+  ],
+  "versions": {
+    "claudeInstalled": "2.1.287 (Claude Code)",
+    "claude": "2.1.287 (Claude Code)",
+    "codex": "codex-cli 0.155.1"
+  },
+  "probes": [
+    {
+      "id": "P1",
+      "events": [
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/init",
+        "assistant",
+        "rate_limit_event",
+        "user",
+        "assistant",
+        "user",
+        "result/success"
+      ],
+      "controlRequests": [],
+      "asks": [],
+      "bash": [
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "npm test",
+            "description": "Run project tests"
+          }
+        },
+        {
+          "tool": "StructuredOutput",
+          "input": {
+            "done": true,
+            "exitCode": 0,
+            "note": "SANDBOX-MARK: outside write denied (EPERM)"
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "is_error": false,
+          "text": "> check-project@1.0.0 test\n> node --test tests/sum.test.mjs tests/mark.test.mjs\n\nSANDBOX-MARK: outside write denied (EPERM)\n✔ sandbox mark (0.706666ms)\n✔ sum adds numbers (0.3025ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 41.682"
+        },
+        {
+          "is_error": false,
+          "text": "Structured output provided successfully"
+        }
+      ],
+      "init": {
+        "permissionMode": "acceptEdits",
+        "model": "claude-opus-5-5",
+        "claude_code_version": "2.1.287"
+      },
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "num_turns": 3,
+        "total_cost_usd": 0.2807236,
+        "permission_denials": []
+      },
+      "elapsedMs": 6461,
+      "outcome": "completed",
+      "report": {
+        "done": true,
+        "exitCode": 0,
+        "note": "SANDBOX-MARK: outside write denied (EPERM)"
+      },
+      "stderrTail": "",
+      "after": {
+        "sandboxMarkWritten": false
+      },
+      "verdict": "as expected"
+    },
+    {
+      "id": "P2",
+      "events": [
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/init",
+        "assistant",
+        "control_request",
+        "rate_limit_event",
+        "user",
+        "assistant",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "system/thinking_tokens",
+        "assistant",
+        "assistant",
+        "user",
+        "result/success"
+      ],
+      "controlRequests": [
+        {
+          "subtype": "can_use_tool",
+          "tool": "Write",
+          "input": {
+            "file_path": "~/cto-workspace-probe-18adeee8.txt",
+            "content": "probe"
+          }
+        }
+      ],
+      "asks": [
+        {
+          "kind": "tool",
+          "tool": "Write",
+          "summary": "~/cto-workspace-probe-18adeee8.txt",
+          "input": {
+            "file_path": "~/cto-workspace-probe-18adeee8.txt",
+            "content": "probe"
+          },
+          "options": [
+            "allow_once",
+            "allow_session",
+            "deny"
+          ],
+          "reply": "deny"
+        }
+      ],
+      "bash": [
+        {
+          "tool": "Write",
+          "input": {
+            "file_path": "~/cto-workspace-probe-18adeee8.txt",
+            "content": "probe"
+          }
+        },
+        {
+          "tool": "StructuredOutput",
+          "input": {
+            "done": false,
+            "exitCode": null,
+            "note": "The Write call to ~/cto-workspace-probe-18adeee8.txt was denied at the permission prompt. The path is outside the project folder and the sandbox does not allow writes there. I did not retry with Bash, as instructed."
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "is_error": true,
+          "text": "The user denied this action in CanvasTTY."
+        },
+        {
+          "is_error": false,
+          "text": "Structured output provided successfully"
+        }
+      ],
+      "init": {
+        "permissionMode": "acceptEdits",
+        "model": "claude-opus-5-5",
+        "claude_code_version": "2.1.287"
+      },
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "num_turns": 3,
+        "total_cost_usd": 0.17314200000000002,
+        "permission_denials": [
+          {
+            "tool_name": "Write",
+            "tool_use_id": "toolu_015Wb31CHobHz8WCp95KMh7w",
+            "tool_input": {
+              "file_path": "~/cto-workspace-probe-18adeee8.txt",
+              "content": "probe"
+            }
+          }
+        ]
+      },
+      "elapsedMs": 7442,
+      "outcome": "completed",
+      "report": {
+        "done": false,
+        "exitCode": null,
+        "note": "The Write call to ~/cto-workspace-probe-18adeee8.txt was denied at the permission prompt. The path is outside the project folder and the sandbox does not allow writes there. I did not retry with Bash, as instructed."
+      },
+      "stderrTail": "",
+      "after": {
+        "outsideFileWritten": false
+      },
+      "verdict": "as expected"
+    },
+    {
+      "id": "P3",
+      "events": [
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/init",
+        "assistant",
+        "rate_limit_event",
+        "control_request",
+        "user",
+        "assistant",
+        "user",
+        "result/success"
+      ],
+      "controlRequests": [
+        {
+          "subtype": "can_use_tool",
+          "tool": "Bash",
+          "input": {
+            "command": "curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com; echo \" exit=$?\"",
+            "description": "Fetch example.com HTTP status code"
+          }
+        }
+      ],
+      "asks": [
+        {
+          "kind": "tool",
+          "tool": "Bash",
+          "summary": "curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com; echo \" exit=$?\"",
+          "input": {
+            "command": "curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com; echo \" exit=$?\"",
+            "description": "Fetch example.com HTTP status code"
+          },
+          "options": [
+            "allow_once",
+            "allow_session",
+            "deny"
+          ],
+          "reply": "deny"
+        }
+      ],
+      "bash": [
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com; echo \" exit=$?\"",
+            "description": "Fetch example.com HTTP status code"
+          }
+        },
+        {
+          "tool": "StructuredOutput",
+          "input": {
+            "done": false,
+            "exitCode": null,
+            "note": "The curl command was not run. The user denied the Bash tool call (\"The user denied this action in CanvasTTY\"), so there is no HTTP code, exit code, or output. I did not retry."
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "is_error": true,
+          "text": "The user denied this action in CanvasTTY."
+        },
+        {
+          "is_error": false,
+          "text": "Structured output provided successfully"
+        }
+      ],
+      "init": {
+        "permissionMode": "acceptEdits",
+        "model": "claude-opus-5-5",
+        "claude_code_version": "2.1.287"
+      },
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "num_turns": 3,
+        "total_cost_usd": 0.171263,
+        "permission_denials": [
+          {
+            "tool_name": "Bash",
+            "tool_use_id": "toolu_013mbEMk8XR8Y7X2ctHqjsNZ",
+            "tool_input": {
+              "command": "curl -sS -m 10 -o /dev/null -w '%{http_code}' https://example.com; echo \" exit=$?\"",
+              "description": "Fetch example.com HTTP status code"
+            }
+          }
+        ]
+      },
+      "elapsedMs": 7423,
+      "outcome": "completed",
+      "report": {
+        "done": false,
+        "exitCode": null,
+        "note": "The curl command was not run. The user denied the Bash tool call (\"The user denied this action in CanvasTTY\"), so there is no HTTP code, exit code, or output. I did not retry."
+      },
+      "stderrTail": "",
+      "after": {
+        "fetchedWithoutPrompt": false
+      },
+      "verdict": "as expected"
+    },
+    {
+      "id": "P4",
+      "events": [
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_started",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/hook_response",
+        "system/init",
+        "assistant",
+        "rate_limit_event",
+        "user",
+        "assistant",
+        "user",
+        "result/success"
+      ],
+      "controlRequests": [],
+      "asks": [],
+      "bash": [
+        {
+          "tool": "Bash",
+          "input": {
+            "command": "node --test tests/server.test.mjs",
+            "description": "Run server tests"
+          }
+        },
+        {
+          "tool": "StructuredOutput",
+          "input": {
+            "done": true,
+            "exitCode": 0,
+            "note": "Ran once. tests 1, pass 1, fail 0 (✔ serves on 127.0.0.1). Duration ~62ms. No files changed."
+          }
+        }
+      ],
+      "toolResults": [
+        {
+          "is_error": false,
+          "text": "✔ serves on 127.0.0.1 (13.667709ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 62.013792"
+        },
+        {
+          "is_error": false,
+          "text": "Structured output provided successfully"
+        }
+      ],
+      "init": {
+        "permissionMode": "acceptEdits",
+        "model": "claude-opus-5-5",
+        "claude_code_version": "2.1.287"
+      },
+      "result": {
+        "subtype": "success",
+        "is_error": false,
+        "num_turns": 3,
+        "total_cost_usd": 0.17049640000000002,
+        "permission_denials": []
+      },
+      "elapsedMs": 6136,
+      "outcome": "completed",
+      "report": {
+        "done": true,
+        "exitCode": 0,
+        "note": "Ran once. tests 1, pass 1, fail 0 (✔ serves on 127.0.0.1). Duration ~62ms. No files changed."
+      },
+      "stderrTail": "",
+      "verdict": "as expected"
+    }
+  ],
+  "ok": true,
+  "finishedAt": "2026-10-03T07:54:26.548Z"
+}

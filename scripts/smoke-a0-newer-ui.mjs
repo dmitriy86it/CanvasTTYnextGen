@@ -29,7 +29,15 @@ const sha = (b) => createHash("sha256").update(b).digest("hex");
 const projectA = project("project-a");
 const planR = { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant" }], question: null } };
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
-const codexScript = script("codex", [planR, verdict("accept"), verdict("complete")]);
+// With the development flag CANVASTTY_JOURNAL_V2=1 the run next to the newer one is written in v2: the lead answers in
+// the v2 shapes (journal-v2-format.md §2.7: conditions over the criteria R1, R2; the final review marks them met).
+const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const change = (text, covers) => ({ keep: null, text, covers, evidence: { kind: "change", check: null } });
+const planV2 = { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant",
+  conditions: [change("src/note.mjs exists", ["R1"]), change("node --test passes", ["R2"])] }], dropped: [], dropRequirements: [], question: null } };
+const reviewV2 = { report: { conditions: ["C1", "C2"].map((id) => ({ id, status: "met", paths: ["src/note.mjs"], note: "src/note.mjs exports note" })), findings: [], request: "none", question: null } };
+const finalV2 = { report: { conditions: [], findings: [], request: "none", question: null, requirements: ["R1", "R2"].map((id) => ({ id, status: "met", note: "done" })) } };
+const codexScript = script("codex", V2 ? [planV2, reviewV2, finalV2] : [planR, verdict("accept"), verdict("complete")]);
 const claudeScript = script("claude", [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] }]);
 fs.mkdirSync(D("mock-state", ".codex"), { recursive: true });
 const ledger = D("ledger.jsonl");
@@ -171,7 +179,7 @@ try {
   await app.clickEl(q("[data-orch-resume]"));
   await app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(v1)}).then((r) => r.value.view.status === "completed")`, "v1 completed", 120_000);
   // with the development flag CANVASTTY_JOURNAL_V2=1 a new native run is written in v2 (journal-v2-format.md §3.4)
-  const own = process.env.CANVASTTY_JOURNAL_V2 === "1" ? 2 : 1;
+  const own = V2 ? 2 : 1;
   expect(v1Lines().every((l) => l.v === own), `second: this build's run is written only as v${own}`, v1Lines().map((l) => l.v));
   expect(ledgerCount() > cliBefore, "second: CLIs ran for the v1 run", [cliBefore, ledgerCount()]);
   await app.shot("a0-03-v1-completed");

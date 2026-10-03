@@ -2,18 +2,31 @@
 // (autopilot or step by step). "terminal" adds nothing: the user's own settings decide, as in their terminal. The other
 // modes are the CLI's own documented switches for one session; nothing is written to a global configuration. The
 // same word means different things for the two CLIs, so every mode says exactly what it turns into.
-export type ClaudeAccess = "terminal" | "acceptEdits" | "auto" | "full";
+export type ClaudeAccess = "terminal" | "workspace" | "acceptEdits" | "auto" | "full";
 export type CodexAccess = "terminal" | "workspace" | "full";
 export interface AgentAccess { claude: ClaudeAccess; codex: CodexAccess }
-export const DEFAULT_ACCESS: Readonly<AgentAccess> = Object.freeze({ claude: "terminal", codex: "terminal" });
+// New projects start in the work folder; "terminal" is a project setting chosen on purpose. A saved profile keeps its
+// mode, and a goal keeps the mode it was created with.
+export const DEFAULT_ACCESS: Readonly<AgentAccess> = Object.freeze({ claude: "workspace", codex: "workspace" });
 
-export const CLAUDE_ACCESS: readonly ClaudeAccess[] = ["terminal", "acceptEdits", "auto", "full"];
+export const CLAUDE_ACCESS: readonly ClaudeAccess[] = ["terminal", "workspace", "acceptEdits", "auto", "full"];
+
+// "workspace" for Claude: edits without asking, and Bash in Claude's own sandbox (Seatbelt on macOS) that writes only in
+// the work folder and reaches no outside host (localhost is allowed). A command run outside the sandbox goes through
+// the permission prompt, which the host turns into a pause for the person. Passed with --settings for this session only.
+export const CLAUDE_WORKSPACE_SETTINGS = Object.freeze({
+  sandbox: {
+    enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: true,
+    network: { allowedDomains: [], allowLocalBinding: true }
+  }
+});
 export const CODEX_ACCESS: readonly CodexAccess[] = ["terminal", "workspace", "full"];
 
 // Extra arguments of `claude -p` for one session. "full" is the CLI's own bypass switch.
 export function claudeAccessArgs(a: ClaudeAccess): string[] {
   switch (a) {
     case "terminal": return [];
+    case "workspace": return ["--permission-mode", "acceptEdits", "--settings", JSON.stringify(CLAUDE_WORKSPACE_SETTINGS)];
     case "acceptEdits": return ["--permission-mode", "acceptEdits"];
     case "auto": return ["--permission-mode", "auto"];
     case "full": return ["--dangerously-skip-permissions"];
@@ -46,6 +59,7 @@ export function claudeModesFromHelp(help: string): ClaudeAccess[] {
   const out: ClaudeAccess[] = ["terminal"];
   const m = /--permission-mode <mode>[\s\S]{0,400}?\(choices:([^)]*)\)/.exec(help);
   const choices = m ? [...m[1].matchAll(/"([A-Za-z]+)"/g)].map((x) => x[1]) : [];
+  if (choices.includes("acceptEdits") && /--settings\b/.test(help)) out.push("workspace");
   if (choices.includes("acceptEdits")) out.push("acceptEdits");
   if (choices.includes("auto")) out.push("auto");
   if (/--dangerously-skip-permissions\b/.test(help)) out.push("full");

@@ -299,6 +299,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           <p className="orch-rights" data-orch-rights>
             <b>{t(locale, "orchRights")}:</b> {rightsText(locale, info.profile.access)}
             {(info.profile.access.claude === "full" || info.profile.access.codex === "full") && <small className="dialog-error" data-orch-rights-full>{t(locale, "orchAccessFullWarn")}</small>}
+            {(info.profile.access.claude === "terminal" || info.profile.access.codex === "terminal") && <small className="orch-hint orch-hint--warn" data-orch-rights-terminal>{t(locale, "orchAccessTerminalWarn")}</small>}
           </p>
         )}
         <label className="orch-field">

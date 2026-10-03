@@ -35,7 +35,7 @@ const HOLD = D("hold-executor");
 fs.writeFileSync(HOLD, "");
 const wrap = (p) => {
   const f = D(`${p}-mock`);
-  const hold = p === "claude" ? `while [ -e "${HOLD}" ]; do sleep 0.1; done\n` : "";
+  const hold = p === "claude" ? `case "$1" in --help|--version) ;; *) while [ -e "${HOLD}" ]; do sleep 0.1; done ;; esac\n` : "";
   fs.writeFileSync(f, `#!/bin/sh\n${hold}exec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
   return f;
 };
