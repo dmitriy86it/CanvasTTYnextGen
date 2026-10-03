@@ -132,7 +132,8 @@ const LIMIT_TEXT = /usage limit|rate limit|limit reached|hit your limit|quota|42
 
 async function scenario(name) {
   const s = SCEN[name];
-  const rec = report.scenarios[name] = { workMode: s.workMode, commands: s.commands, turnsLimit: LIMITS[name], prompts: [] };
+  const rec = { workMode: s.workMode, commands: s.commands, turnsLimit: LIMITS[name], prompts: [] };
+  report.scenarios[name] = rec;
   const dir = D(name);
   fs.mkdirSync(dir, { recursive: true });
   const project = makeProject(name, s.project);
