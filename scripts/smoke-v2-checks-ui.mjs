@@ -1,9 +1,9 @@
-// Electron UI smoke for stage A, A1, A1.1 and A2 (docs/agent-orchestration/implementation/journal-v2-format.md): journal v2
+// Electron UI smoke for stage A, A1–A4 (docs/agent-orchestration/implementation/journal-v2-format.md): journal v2
 // behind the development flag CANVASTTY_JOURNAL_V2=1, on temporary profiles with fake Codex/Claude CLIs.
 //   none:    the goal dialog leaves the check commands empty (a hint says the lead proposes them), readiness does not
 //            block; the lead proposes none and the autopilot goes on by itself (A1.1 Q1) — the run completes without
 //            checks: the link chip, both cards and the result say so, never "completed"; the journal is v 2 with
-//            minReaderVersion 2 and formatPreview in its first record;
+//            minReaderVersion 2 in its first record and no formatPreview (A4's final form);
 //   refused: the lead proposes a command that writes outside the work folder; the autopilot accepts it (it runs in the
 //            check profile, A1.1 Q2) and the sandbox refuses it — the panel says «Проверке нужно больше прав» with
 //            «Изменить команду» only (no «Запустить без песочницы» for a lead's command, owner's decision on S1-4), no
@@ -16,7 +16,13 @@
 //            repeated review closes the blocking one on the changed tree — the cards and the result say «Открыто
 //            блокирующих: 0», the result's «Замечания» lists F1 closed with its history and F2 an open wish, the
 //            participants list the reviewer.
+//   A4:      the person's decisions on their pauses, by the panel's buttons: a disputed item decided «Повтор F1» (the
+//            run completes, F1's history says the person decided); a blocking finding made a wish on a step pause (the
+//            result says «понижено человеком»); a plan proposal dropping C2 and R2 accepted (the result lists them as
+//            dropped by the person, never met); push and QA after a run without checks, confirmed and declined apart
+//            (the push reaches the remote, QA does not run).
 // Needs `npm run build` first; macOS (Seatbelt). Starts no real model. Usage: node scripts/smoke-v2-checks-ui.mjs [--shots <dir>]
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { FIXTURES, NODE, launch as launchApp, openTab, q, runs, startGoal, workspace } from "./orchestration-app-kit.mjs";
@@ -48,10 +54,14 @@ const chip = (linkId) => q(`[data-agent-link-id="${linkId}"]`);
 const NO_CHECKS = "Завершён без проверок";
 
 // One scenario: its own user data, project, scripts and fake CLIs (MOCK_CHECKS, tests/fixtures/orchestration/mock-common.mjs).
-async function scenario(name, port, checks, conditions, body, scripts = null) {
+// SMOKE_V2_ONLY=disputed,drop: only these scenarios (a rerun while fixing one)
+const ONLY = process.env.SMOKE_V2_ONLY ? process.env.SMOKE_V2_ONLY.split(",") : null;
+async function scenario(name, port, checks, conditions, body, scripts = null, prepare = null) {
+  if (ONLY && !ONLY.includes(name)) return;
   const dir = D(name);
   fs.mkdirSync(path.join(dir, "mock-state", ".codex"), { recursive: true });
   const projectA = project(`${name}-project`);
+  prepare?.(projectA);
   const changes = conditions.map((c, i) => (c.evidence.kind === "change" ? `C${i + 1}` : null)).filter(Boolean);
   const codexScript = script(`${name}-codex`, scripts?.codex ?? [plan(conditions), review(changes), final]);
   const claudeScript = script(`${name}-claude`, scripts?.claude ?? [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] }]);
@@ -122,7 +132,7 @@ try {
     await app.ev(`${q('[data-sum="conditions"]')}?.scrollIntoView()`);
     await app.shot("v2-02b-conditions");
     const lines = fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-    expect(lines.every((l) => l.v === 2) && lines[0].minReaderVersion === 2 && lines[0].formatPreview === true, "none: the journal is v 2, minReaderVersion 2 and formatPreview in its first record", lines[0]);
+    expect(lines.every((l) => l.v === 2) && lines[0].minReaderVersion === 2 && !("formatPreview" in lines[0]), "none: the journal is v 2, minReaderVersion 2 in its first record, no formatPreview (A4)", lines[0]);
     expect(!lines.some((l) => l.type === "run.status" && l.data.reason === "awaiting_checks_decision"), "none: the autopilot did not wait (A1.1 Q1)", null);
     const last = lines.at(-1);
     expect(last.type === "run.status" && last.data.status === "completed" && last.data.completion?.kind === "no_checks", "none: the journal says completed, no_checks", last);
@@ -198,6 +208,149 @@ try {
     claude: [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] },
       { report: { summary: "documented", done: true }, writes: [["src/note.md", "The note.\n"]] }]
   });
+  // =============== A4: the person's decisions ===============
+  const viewOf = (app, runId) => app.ev(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view)`);
+  const waitView = (app, runId, cond, what, ms = 120_000) => app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => { const v = r.value.view; return ${cond}; })`, what, ms);
+  const noteWrites = [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] },
+    { report: { summary: "documented", done: true }, writes: [["src/note.md", "The note.\n"]] }];
+
+  // a disputed item: the panel shows both findings; «Повтор F1» — refused (F1's files did not change), the run completes
+  await scenario("disputed", 9600 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "none" }, C, async (app, ids) => {
+    await startGoal(app, ids.link, { onDialog: () => app.type(q("[data-orch-commands]"), "") });
+    const runId = (await runs(app))[0].runId;
+    await app.waitFor(`${q("[data-orch-person-decide]")} && true`, "the disputed item", 120_000);
+    const shown = await app.ev(`({ item: ${q("[data-orch-disputed]")}.textContent, buttons: [...document.querySelectorAll("[data-orch-person-decide] button")].map((b) => b.textContent.trim()),
+      actions: [...document.querySelectorAll(".orch-panel__actions button")].map((b) => b.textContent.trim()), next: ${q("[data-orch-next]")}?.textContent ?? "" })`);
+    expect(shown.item.includes("LIKE-F1") && shown.item.includes("note is not documented") && shown.buttons.join("|") === "Новый дефект|Повтор F1",
+      "disputed (A4): the item and its closed candidate side by side, «Новый дефект» / «Повтор F1»", shown);
+    expect(!shown.actions.some((b) => /Продолжить|Шаг/.test(b)) && /Повтор/.test(shown.next), "disputed (A4): no Resume or Step; the next step says what to decide", shown);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect((await viewOf(app, runId)).reason === "awaiting_person_decision", "disputed (A4): the autopilot does not decide it", null);
+    await app.ev(`${q("[data-orch-disputed-new]")}.scrollIntoView({ block: "center" })`);
+    await app.shot("v2-08-disputed-item");
+    await app.clickEl(q('[data-orch-disputed-repeat="F1"]'));
+    await waitView(app, runId, `v.status === "completed"`, "completed after the decision");
+    await openTab(app, "summary");
+    await app.waitFor(`${q('[data-finding="F1"]')} && true`, "«Замечания»");
+    const f1 = await app.ev(`[...document.querySelectorAll('[data-finding="F1"] [data-finding-event]')].map((e) => e.dataset.findingEvent + ":" + (e.dataset.findingBy ?? ""))`);
+    expect(f1.at(-1) === "refused:person", "disputed (A4): F1's history ends with the person's decision", f1);
+    await app.ev(`document.querySelectorAll("[data-finding-history]").forEach((d) => { d.open = true; }); ${q('[data-sum="findings"]')}?.scrollIntoView()`);
+    await app.shot("v2-09-disputed-decided");
+  }, {
+    codex: [plan(C), review(["C1"], [finding()]), review(["C1"], [finding({ id: "F1", status: "closed", paths: ["src/note.md"] })]),
+      { report: { ...final.report, findings: [finding({ problem: "LIKE-F1: still undocumented" })] } }],
+    claude: noteWrites
+  });
+
+  // a blocking finding made a wish on the pause of the rounds limit (one round per stage), from the result's «Замечания»
+  await scenario("downgrade", 9500 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "none" }, C, async (app, ids) => {
+    await startGoal(app, ids.link, { onDialog: async () => {
+      await app.type(q("[data-orch-commands]"), "");
+      await app.ev(`${q(".orch-dialog .orch-advanced")}.open = true`);
+      await app.type(`document.querySelectorAll(".orch-dialog .orch-advanced input[type=number]")[1]`, "1");
+    } });
+    const runId = (await runs(app))[0].runId;
+    // until the review has opened F1; the pauses on the way are not this scenario's: answered through main
+    const goOn = async (v) => {
+      const command = v.reason === "awaiting_checks_decision" ? { kind: "checks.decide", decision: "accept" }
+        : v.reason === "limit_reached" ? { kind: "raise_limit", limit: "roundsPerStage", value: 2 } : { kind: "resume" };
+      const r = await app.ev(`window.canvasTTY.orchestration.command({ runId: ${JSON.stringify(runId)}, commandId: crypto.randomUUID(), expectedRevision: ${v.revision}, command: ${JSON.stringify(command)} })`);
+      expect(r?.ok && r.value.status === "accepted", `downgrade: ${command.kind} on ${v.reason}`, r);
+      await waitView(app, runId, `v.revision > ${v.revision} && (v.status === "paused" || v.status === "completed")`, "the next pause");
+    };
+    for (let i = 0; i < 12; i += 1) {
+      await waitView(app, runId, `v.status === "paused" || v.status === "completed"`, "a pause");
+      const v = await viewOf(app, runId);
+      if (v.progress?.findings?.openBlocking === 1 && v.decisions?.findings) break;
+      await goOn(v);
+    }
+    await openTab(app, "summary");
+    await app.waitFor(`${q('[data-finding-to-wish="F1"]')} && true`, "«Понизить до пожелания»");
+    await app.shot("v2-10-finding-actions");
+    await app.clickEl(q('[data-finding-to-wish="F1"]'));
+    await waitView(app, runId, `v.progress.findings.openBlocking === 0`, "F1 made a wish");
+    for (let i = 0; i < 12; i += 1) {
+      const v = await viewOf(app, runId);
+      if (v.status === "completed") break;
+      await goOn(v);
+    }
+    expect((await viewOf(app, runId)).status === "completed", "downgrade (A4): the run completes with F1 a wish", null);
+    await openTab(app, "summary");
+    await app.waitFor(`${q("[data-sum-person]")} && true`, "the person's decisions in the result");
+    const sum = await app.ev(`({ person: ${q("[data-sum-person]")}.textContent, f1: ${q('[data-finding="F1"]')}.dataset.findingDowngraded, text: ${q('[data-finding="F1"]')}.textContent })`);
+    expect(sum.person === "Решения человека вместо доказательств: понижено F1" && sum.f1 === "yes" && sum.text.includes("понижено человеком, не исправлено"),
+      "downgrade (A4): the result says «понижено человеком», never fixed", sum);
+    await app.ev(`${q('[data-sum="findings"]')}?.scrollIntoView()`);
+    await app.shot("v2-11-downgraded");
+  }, { codex: [plan(C), review(["C1"], [finding({ problem: "NOT-FIXED" })]), final], claude: noteWrites.slice(0, 1) });
+
+  // a plan proposal dropping C2 and R2, accepted in the panel
+  const C12 = [change("src/note.mjs exists", ["R1"]), change("node --test passes", ["R2"])];
+  await scenario("drop", 9400 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "none" }, C12, async (app, ids) => {
+    await startGoal(app, ids.link, { onDialog: () => app.type(q("[data-orch-commands]"), "") });
+    const runId = (await runs(app))[0].runId;
+    await app.waitFor(`${q("[data-orch-plan-proposal]")} && true`, "the proposal", 120_000);
+    const shown = await app.ev(`({ drops: [...document.querySelectorAll("[data-orch-proposal-drop]")].map((e) => e.dataset.orchProposalDrop + ":" + e.textContent.includes("WHY-")),
+      uncovered: ${q("[data-orch-proposal-uncovered]")}?.textContent ?? null, buttons: [...document.querySelectorAll("[data-orch-plan-proposal] button")].map((b) => b.textContent.trim()) })`);
+    expect(shown.drops.join() === "C2:true,R2:true" && /R2/.test(shown.uncovered ?? "") && shown.buttons.join("|") === "Принять|Вернуть лиду",
+      "drop (A4): the proposal says what goes and why, what is left uncovered; «Принять» / «Вернуть лиду»", shown);
+    await new Promise((r) => setTimeout(r, 1000));
+    expect((await viewOf(app, runId)).reason === "coverage_lost", "drop (A4): the autopilot does not accept it", null);
+    await app.ev(`${q("[data-orch-proposal-accept]")}.scrollIntoView({ block: "center" })`);
+    await app.shot("v2-12-plan-proposal");
+    await app.clickEl(q("[data-orch-proposal-accept]"));
+    await waitView(app, runId, `v.status === "completed"`, "completed after the decision");
+    await openTab(app, "summary");
+    await app.waitFor(`${q("[data-sum-person]")} && true`, "the person's decisions in the result");
+    const sum = await app.ev(`({ person: ${q("[data-sum-person]")}.textContent, reqs: [...document.querySelectorAll("[data-requirement]")].map((e) => e.dataset.requirement + ":" + e.dataset.requirementStatus),
+      dropped: [...document.querySelectorAll("[data-conditions-dropped] [data-condition]")].map((e) => e.dataset.condition + ":" + e.dataset.conditionStatus), count: ${q("[data-sum-conditions-count]")}?.textContent ?? null })`);
+    expect(sum.person === "Решения человека вместо доказательств: снято C2, R2" && sum.reqs.join() === "R1:met,R2:dropped" && sum.dropped.join() === "C2:dropped" && sum.count === "1 из 1 условий выполнено",
+      "drop (A4): the result lists C2 and R2 as dropped by the person, never met", sum);
+    await app.ev(`${q('[data-sum="conditions"]')}?.scrollIntoView()`);
+    await app.shot("v2-13-dropped");
+  }, {
+    codex: [plan(C12), { report: { conditions: [{ id: "C1", status: "met", paths: ["src/note.mjs"], note: "exists" }, { id: "C2", status: "not_met", paths: [], note: "no tests" }], findings: [], request: "replan", question: null } },
+      { report: { stages: [{ title: "Заметка", task: "keep the note", conditions: [{ keep: "C1", text: null, covers: null, evidence: null }] }],
+        dropped: [{ condition: "C2", why: "WHY-C2: the project has no tests" }], dropRequirements: [{ requirement: "R2", why: "WHY-R2: no test runner here" }], question: null } },
+      review(["C1"]), { report: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "done" }] } }],
+    claude: [noteWrites[0], { report: { summary: "kept", done: true }, writes: [["src/note.mjs", "export const note = 'b';\n"]] }]
+  });
+
+  // push and QA after a run without checks: push confirmed, QA declined — decided apart, bound to the tree shown
+  const bare = D("finish-remote.git");
+  const qaLog = D("qa.log");
+  execFileSync("git", ["init", "-q", "--bare", bare]);
+  await scenario("finish", 9300 + Math.floor(Math.random() * 90), { MOCK_CHECKS: "none" }, C, async (app, ids) => {
+    const saved = await app.ev(`(async () => { const o = window.canvasTTY.orchestration; const p = (await o.profile(${JSON.stringify(ids.link)})).value.profile;
+      return o.saveProfile(${JSON.stringify(ids.link)}, { ...p, finish: { commit: true, push: { remote: "qa", branch: "qa-branch", remoteUrl: ${JSON.stringify(bare)} },
+        qa: { environment: "qa", command: ${JSON.stringify(`echo run >> ${qaLog}`)}, verify: "true" } } }); })()`);
+    expect(saved?.ok === true, "finish (A4): push and QA set up for the project", saved);
+    await startGoal(app, ids.link, { onDialog: async () => {
+      await app.type(q("[data-orch-commands]"), "");
+      await app.clickEl(q('[data-finish-option="push"] input'));
+      await app.clickEl(q('[data-finish-option="qa"] input'));
+    } });
+    const runId = (await runs(app))[0].runId;
+    await app.waitFor(`${q("[data-orch-finish-confirm]")} && true`, "the push/QA confirmation", 120_000);
+    const shown = await app.ev(`({ steps: [...document.querySelectorAll("[data-orch-finish-step]")].map((e) => e.dataset.orchFinishStep), warn: ${q("[data-orch-finish-no-checks]")}?.textContent ?? null,
+      submit: ${q("[data-orch-finish-submit]")}.disabled })`);
+    expect(shown.steps.join() === "push,qa" && !!shown.warn && shown.submit === true, "finish (A4): push and QA decided apart; nothing sent before both are chosen", shown);
+    await app.ev(`${q("[data-orch-finish-submit]")}.scrollIntoView({ block: "center" })`);
+    await app.shot("v2-14-finish-confirm");
+    await app.clickEl(q('[data-orch-finish-choice="push:confirm"]'));
+    await app.clickEl(q('[data-orch-finish-choice="qa:decline"]'));
+    await app.clickEl(q("[data-orch-finish-submit]"));
+    await waitView(app, runId, `v.status === "completed"`, "completed after the confirmation");
+    const v = await viewOf(app, runId);
+    const pushed = execFileSync("git", ["-C", bare, "rev-parse", "--verify", "-q", "refs/heads/qa-branch"], { encoding: "utf8" }).trim();
+    const push = v.progress.finish.find((f) => f.step === "push"), qa = v.progress.finish.find((f) => f.step === "qa");
+    expect(push.status === "done" && pushed === push.commit && qa.declined === true && !fs.existsSync(qaLog),
+      "finish (A4): the push reached the remote with the commit confirmed; QA declined did not run", { push, qa, pushed });
+    await openTab(app, "summary");
+    await app.waitFor(`${q("[data-sum-outcome]")} && true`, "the result");
+    await app.shot("v2-15-finish-decided");
+  }, { codex: [plan(C), review(["C1"]), final], claude: noteWrites.slice(0, 1) },
+  (dir) => execFileSync("git", ["-C", dir, "remote", "add", "qa", bare]));
 } catch (error) {
   failures.push(`exception: ${error?.stack ?? error}`);
 }

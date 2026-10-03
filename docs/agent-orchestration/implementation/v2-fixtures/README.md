@@ -6,11 +6,12 @@
 
 ```sh
 node docs/agent-orchestration/implementation/v2-fixtures/build.mjs           # пересобрать (детерминированно)
-node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   # прочитать читателем A0 этого дерева
+node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   # прочитать: эта сборка и читатель A0
 ```
 
-`--check` только читает. Он прогоняет каждую фикстуру через `parseJournal` и `newerGoal` (код A0, тот же, что в
-сборке 1.5.7) в трёх вариантах:
+`--check` только читает. Сначала каждую фикстуру читает эта сборка (`readRun`: воспроизведение и тексты, A4). Затем
+она прогоняется через `parseJournal` и `newerGoal` как в сборке 1.5.7 (`maxVersion: 1`, `READER_VERSION 1`) в трёх
+вариантах:
 - как записана (`minReaderVersion: 2`);
 - в памяти с `minReaderVersion: 1`;
 - в памяти с `minReaderVersion: 1` и `skippable: true` у новых видов записей.
@@ -24,21 +25,22 @@ node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   # �
 - 02 — `"denied"`, автопилот принял сам. **В этапе A недостижимо**: показывает только форму записи. Её проверки
   несут `profileSha256` профиля, а не `NO_SANDBOX_SHA256`, как требует первый этап разбора.
 
-Фикстуры описывают формат, а не поведение будущего кода. Второй этап разбора v2 (номера, `applied`, функция
-завершения) здесь не исполняется: читателя v2 ещё нет. Правильность по 5i проверяется ревью (§9 формата).
+Фикстуры — окончательная форма v2 (A4, без `formatPreview`). С A4 сборка воспроизводит их целиком, второй этап
+разбора тоже: номера, `applied`, функция завершения, основание `completed` в форме сервиса, push/QA по подтверждению
+человека (уточнено при реализации A4, формат §2.9).
 
-## Результат `--check` (2026-10-01, `main` после 1.5.7)
+## Результат `--check` (2026-10-03, A4; столбцы A0 — как 2026-10-01 на `main` после 1.5.7)
 
-| Фикстура | Записей | `minReaderVersion: 2` | `minReaderVersion: 1` | `1` + `skippable` |
-|---|---|---|---|---|
-| 01-no-checks-autopilot | 27 | `newer_version`, цепочка ok, цель видна | откат на строке 7 (`checks.proposed`): `unknown_record` | откат на строке 8 (`run.status`, `awaiting_checks_decision`): `invalid_event` |
-| 02-proposed-accepted-autopilot | 29 | то же | строка 7: `unknown_record` | строка 20 (`turn.intent`): `invalid_event` |
-| 03-steps-accept | 14 | то же | строка 7: `unknown_record` | строка 8 (`run.status`, `awaiting_checks_decision`): `invalid_event` |
-| 04-steps-edit | 17 | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
-| 05-open-blocking | 19 | то же | строка 15 (`turn.intent`): `invalid_event` | то же |
-| 06-no-checks-push-pause | 29 | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
-| 07-no-checks-push-confirmed | 36 | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
-| 08-coverage-lost | 19 | то же | строка 12 (`turn.intent`): `invalid_event` | то же |
+| Фикстура | Записей | Эта сборка (A4) | `minReaderVersion: 2` | `minReaderVersion: 1` | `1` + `skippable` |
+|---|---|---|---|---|---|
+| 01-no-checks-autopilot | 27 | ok, completed (`no_checks`) | `newer_version`, цепочка ok, цель видна | откат на строке 7 (`checks.proposed`): `unknown_record` | откат на строке 8 (`run.status`, `awaiting_checks_decision`): `invalid_event` |
+| 02-proposed-accepted-autopilot | 29 | ok, completed (`confirmed`) | то же | строка 7: `unknown_record` | строка 20 (`turn.intent`): `invalid_event` |
+| 03-steps-accept | 14 | ok, paused `plan_review` | то же | строка 7: `unknown_record` | строка 8 (`run.status`, `awaiting_checks_decision`): `invalid_event` |
+| 04-steps-edit | 17 | ok, paused `plan_review` | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
+| 05-open-blocking | 19 | ok, running | то же | строка 15 (`turn.intent`): `invalid_event` | то же |
+| 06-no-checks-push-pause | 29 | ok, paused `awaiting_finish_confirmation` | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
+| 07-no-checks-push-confirmed | 36 | ok, completed (`no_checks`) | то же | строка 7: `unknown_record` | строка 8 (`run.status`): `invalid_event` |
+| 08-coverage-lost | 19 | ok, paused `coverage_lost` | то же | строка 12 (`turn.intent`): `invalid_event` | то же |
 
 Вывод для §3 формата:
 - Откат показа при `minReaderVersion: 1` случаен: он зависит от того, дошёл ли запуск до записи, которую v1 отвергает.
@@ -55,7 +57,7 @@ node docs/agent-orchestration/implementation/v2-fixtures/build.mjs --check   # �
 - действия: только «Отпустить связь» (§2.2.1 п. 1);
 - `openRun`, recovery, усечение хвоста, Stop и удаление отказывают (`run_newer_version`).
 
-**В новой версии (после A4, по 5i):**
+**В новой версии (A4, по 5i; панель показывает решения человека, формат §2.9):**
 
 | Фикстура | Цель | Статус | Что показано |
 |---|---|---|---|

@@ -101,7 +101,7 @@ function rewrite(buf, runId, fn) {
   const out = [];
   let prev = null;
   for (const r of recs) {
-    const { record, line } = buildRecord(prev, runId, r.ts, r.type, r.data, 2, prev === null ? { minReaderVersion: 2, formatPreview: true } : null);
+    const { record, line } = buildRecord(prev, runId, r.ts, r.type, r.data, 2, prev === null ? { minReaderVersion: 2 } : null);
     out.push(line);
     prev = record;
   }
@@ -133,7 +133,7 @@ const final = (...marks) => ({ answer: { conditions: [], findings: [], request: 
 
 // ---------------- the ids (5h §2.3) ----------------
 
-test("ids: R from the criteria, C numbered by the application, never renumbered; a replan keeps the open ones and drops none (A4)", () => {
+test("ids: R from the criteria, C numbered by the application, never renumbered; a replan keeps or drops (with why, A4) each open one", () => {
   const def = (text, covers, evidence = { kind: "change" }) => ({ text, covers, evidence });
   const book = emptyBook();
   const r1 = { stages: [{ title: "a", task: "a", conditions: [{ ...change("a", ["R1"]) }] }, { title: "b", task: "b", conditions: [{ ...change("b", ["R2"]) }, { ...byCheck("t", ["R1"], "cmd-1") }] }], dropped: [], dropRequirements: [] };
@@ -146,9 +146,12 @@ test("ids: R from the criteria, C numbered by the application, never renumbered;
   const lost = { stages: [{ title: "b2", task: "b2", conditions: [{ ...change("b again", ["R2"]) }] }], dropped: [], dropRequirements: [] };
   const lp = planProblems(reportConditions(lost).stages, lost, book, 2, 2, ["cmd-1"]);
   assert.ok(lp.some((x) => /C2.*neither kept nor dropped/.test(x)) && lp.some((x) => /C3.*neither kept nor dropped/.test(x)), lp.join("; "));
-  for (const [extra, what] of [[{ dropped: [{ condition: "C2", why: "x" }] }, /^dropped must be empty/], [{ dropRequirements: [{ requirement: "R2", why: "x" }] }, /^dropRequirements must be empty/]]) {
-    assert.ok(planProblems(reportConditions(lost).stages, { ...lost, ...extra }, book, 2, 2, ["cmd-1"]).some((x) => what.test(x)), `dropping is A4's, invalid in A2: ${what}`);
-  }
+  // A4: dropped instead of kept — each with why; a dropped condition or requirement no plan has is a violation
+  const drop = (extra) => planProblems(reportConditions(lost).stages, { ...lost, dropped: [], dropRequirements: [], ...extra }, book, 2, 2, ["cmd-1"], new Set());
+  assert.deepEqual(drop({ dropped: [{ condition: "C2", why: "x" }, { condition: "C3", why: "y" }] }), []);
+  assert.ok(drop({ dropped: [{ condition: "C2", why: " " }, { condition: "C3", why: "y" }] }).some((x) => /dropped C2 says why/.test(x)));
+  assert.ok(drop({ dropped: [{ condition: "C1", why: "x" }, { condition: "C2", why: "x" }, { condition: "C3", why: "y" }] }).some((x) => /dropped C1 is not a condition still to be met/.test(x)), "C1's stage is accepted and not returned");
+  assert.ok(drop({ dropped: [{ condition: "C2", why: "x" }, { condition: "C3", why: "y" }], dropRequirements: [{ requirement: "R7", why: "x" }] }).some((x) => /R7 is not a requirement in force/.test(x)));
   const keep = (id) => ({ keep: id, text: null, covers: null, evidence: null });
   const r2 = { stages: [{ title: "b2", task: "b2", conditions: [keep("C3"), keep("C2"), { ...change("c", ["R2"]) }] }], dropped: [], dropRequirements: [] };
   const second = reportConditions(r2);
@@ -166,7 +169,7 @@ test("ids: R from the criteria, C numbered by the application, never renumbered;
   assert.equal(planProblems(reportConditions(bad).stages, bad, book, 2, 2, ["cmd-1"]).length >= 3, true);
 });
 
-test("a run: the lead's conditions over the criteria, a stage back to the executor while one is not met, a replan on an unmet requirement keeps the ids", OPTS, async () => {
+test("a run: the lead's conditions over the criteria, a stage back to the executor while one is not met, a replan on an unmet requirement keeps the ids (and keeps C1, returned by the refused final review: A4, 5h §3.8)", OPTS, async () => {
   const src = project({ "a.txt": "1\n", "b.txt": "1\n" });
   const m = manager({ MOCK_SCRIPT: script([
     plan(["a", [change("a.txt says 2", ["R1", "R2"]), byCheck("the check passes", ["R1"], "cmd-1")]]),
@@ -175,9 +178,9 @@ test("a run: the lead's conditions over the criteria, a stage back to the execut
     exec({ "a.txt": "2\n" }),
     review(mark("C1", "met", ["a.txt"])),
     final(["R1", "met"], ["R2", "not_met"]), // complete with R2 unmet: a new plan
-    plan(["b", [change("b.txt says 2", ["R2"])]]),
+    plan(["b", [{ keep: "C1", text: null, covers: null, evidence: null }, change("b.txt says 2", ["R2"])]]),
     exec({ "b.txt": "2\n" }),
-    review(mark("C3", "met", ["b.txt"])),
+    review(mark("C1", "met", ["a.txt"]), mark("C3", "met", ["b.txt"])),
     final(["R1", "met"], ["R2", "met"])
   ]) });
   const runId = await start(m, src, { criteria: ["a.txt says 2", "b.txt says 2"], commands: ["grep -qx 2 a.txt"] });
@@ -188,14 +191,15 @@ test("a run: the lead's conditions over the criteria, a stage back to the execut
   assert.deepEqual(turns, ["plan", "execute", "review", "execute", "review", "final_review", "plan", "execute", "review", "final_review"]);
   assert.deepEqual(all.filter((r) => r.type === "plan.recorded").map((r) => [r.data.firstStage, r.data.conditionsAssigned]), [[1, 2], [2, 1]]);
   const c = v.progress.conditions;
-  assert.deepEqual(c.requirements.map((r) => [r.id, r.text, r.conditions, r.status]), [["R1", "a.txt says 2", ["C1", "C2"], "met"], ["R2", "b.txt says 2", ["C1", "C3"], "met"]]);
-  assert.deepEqual(c.conditions.map((x) => [x.id, x.stage, x.status, x.evidence.kind]), [["C1", 1, "met", "change"], ["C2", 1, "met", "check"], ["C3", 2, "met", "change"]]);
+  // C1, returned by the refused final review, is kept by the second plan: its stage is 2, met again there
+  assert.deepEqual(c.requirements.map((r) => [r.id, r.text, r.conditions, r.status]), [["R1", "a.txt says 2", ["C2", "C1"], "met"], ["R2", "b.txt says 2", ["C1", "C3"], "met"]]);
+  assert.deepEqual(c.conditions.map((x) => [x.id, x.stage, x.status, x.evidence.kind]), [["C2", 1, "met", "check"], ["C1", 2, "met", "change"], ["C3", 2, "met", "change"]]);
   assert.deepEqual([c.met, c.total], [3, 3]);
-  assert.deepEqual(c.conditions[0].proof.paths, ["a.txt"]);
-  assert.equal(c.conditions[1].evidence.command, "grep -qx 2 a.txt");
+  assert.deepEqual(c.conditions[1].proof.paths, ["a.txt"]);
+  assert.equal(c.conditions[0].evidence.command, "grep -qx 2 a.txt");
   // the result's basis: R → C → evidence
   const basis = JSON.parse(fs.readFileSync(path.join(m.root, "runs", runId, "texts", all.at(-1).data.completion.basis.sha256), "utf8"));
-  assert.deepEqual(basis.requirements, [{ id: "R1", conditions: ["C1", "C2"], met: true }, { id: "R2", conditions: ["C1", "C3"], met: true }]);
+  assert.deepEqual(basis.requirements, [{ id: "R1", conditions: ["C2", "C1"], met: true }, { id: "R2", conditions: ["C1", "C3"], met: true }]);
   await m.shutdown();
 });
 

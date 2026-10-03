@@ -54,6 +54,7 @@ import { resolveSupervisorLaunch } from "./services/orchestration/supervisorLaun
 import { runOrchestrationSmoke } from "./services/orchestration/smoke";
 import { createRunManager, dropCommandReplies, findProgram, nativeRuntime, providerAgents, testNativeRuntime, testProviderAgents } from "./services/orchestration/manager";
 import type { RunManager } from "./services/orchestration/manager";
+import { JOURNAL_V2_BY_DEFAULT } from "./services/orchestration/journal";
 import { runOrchestrationIpcSmoke } from "./services/orchestration/ipcSmoke";
 import { startupPageUrl } from "./startupPage";
 import { mainWindowChromeOptions } from "./windowChrome";
@@ -528,8 +529,9 @@ function buildRunManager(): RunManager {
     workspaceOpen: (id) => workspaceStore?.isOpen(id) ?? false,
     workspaceKnown: (id) => workspaceStore?.get().workspaces.some((w) => w.id === id) ?? false,
     appVersion: () => app.getVersion(),
-    // journal v2 and optional check commands (journal-v2-format.md §3.4): a development flag until A4
-    journalV2: developmentEnv("CANVASTTY_JOURNAL_V2") === "1",
+    // journal v2 and optional check commands (journal-v2-format.md §3.4): the person's once JOURNAL_V2_BY_DEFAULT is on
+    // (off until the real series); before that only behind the development flag
+    journalV2: JOURNAL_V2_BY_DEFAULT || developmentEnv("CANVASTTY_JOURNAL_V2") === "1",
     gitPath: () => found("git"),
     // a hermetic smoke names its node explicitly: the lookup would fall back to Homebrew's
     nodePath: () => (hermeticSmoke() && developmentEnv("CANVASTTY_SMOKE_NODE")) || found("node"),

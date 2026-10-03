@@ -1,7 +1,7 @@
 // Journal v2, A3: findings of the reviewer (5h §2.4, §3.4, §3.10; journal-v2-format.md §2.8). Pure: the service, the
 // replay of the texts and the view all derive the findings from the same applied texts with these functions. The only
 // outside facts — which paths changed since a tree — come in already computed.
-import type { RunState, TextRef } from "./journal.ts";
+import type { PersonDecision, RunState, TextRef } from "./journal.ts";
 import { applyPlan, emptyBook } from "./conditions.ts";
 import type { ConditionsBook, PlanText } from "./conditions.ts";
 
@@ -25,9 +25,17 @@ export interface Applied {
   unchanged: { id: string; index: number }[];
   nextFinding: number;
 }
-export type FindingEventKind = "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged";
-// One step of a finding's history: which review did what, on which state (runKey) and tree.
-export interface FindingEvent { kind: FindingEventKind; turnId: string; seq: number; runKey: string; tree: string; index: number; reason?: RefusedReason }
+// A4 (journal-v2-format.md §2.3, §2.9): closed_by_person, to_wish (downgraded by the person), moved (to another stage
+// or condition when its condition was dropped), and the disputed item's decision on its candidates (decided).
+export type FindingEventKind = "opened" | "closed" | "reopened" | "refused" | "disputed" | "unchanged" | "closed_by_person" | "to_wish" | "moved" | "decided";
+// One step of a finding's history: which review did what, on which state (runKey) and tree. by person (A4): the
+// person's command did it (commandId); turnId and index are then the disputed item's, or null outside a review.
+export interface FindingEvent {
+  kind: FindingEventKind; turnId: string | null; seq: number; runKey: string; tree: string; index: number | null; reason?: RefusedReason;
+  by?: "person"; commandId?: string; note?: string;
+}
+// A4 (5h §3.6 p. 4): the person's choice for every open blocking finding bound to a condition the proposal drops
+export interface PlanChoices { findings: { id: string; choice: "move" | "close" | "to_wish"; stage: number | null; condition: string | null }[] }
 export interface Finding {
   id: string; severity: Severity; condition: string | null;
   stage: number | null; // the stage of the review that opened it (or opened it again); null: the final review
@@ -42,12 +50,13 @@ export interface Finding {
 export interface FindingsBook {
   list: Map<string, Finding>;
   next: number; // nextFinding
-  // disputed items without the person's decision (A4 decides them): each blocks its stage and the completion
+  // disputed items without the person's decision: each blocks its stage and the completion
   disputed: { turnId: string; index: number; candidates: string[]; problem: string; seq: number }[];
+  downgraded: string[]; // A4: blocking findings the person made wishes — the result says so, never as fixed
 }
 export interface ReviewContext { turnId: string; seq: number; runKey: string; tree: string; stage: number | null }
 
-export const emptyFindings = (): FindingsBook => ({ list: new Map(), next: 1, disputed: [] });
+export const emptyFindings = (): FindingsBook => ({ list: new Map(), next: 1, disputed: [], downgraded: [] });
 const fid = (n: number) => `F${n}`;
 const relationOf = (r: Relation | null): Relation | null => (r && (r.repeatOf !== null || r.distinctFrom !== null || r.why !== null) ? r : null);
 
@@ -228,10 +237,102 @@ export function ownerOf(f: Finding, plans: { stages: ReadonlyMap<number, readonl
 
 export const openBlocking = (book: FindingsBook): Finding[] => [...book.list.values()].filter((f) => f.status === "open" && f.severity === "blocking");
 
+// ---------- A4: the person's decisions (5h §3.4–§3.6, journal-v2-format.md §2.9) ----------
+
+// The reviewed state of a disputed item: its review's runKey, tree and stage, and the item as the report gave it.
+export interface ItemContext { runKey: string; tree: string; stage: number | null; finding: ReportFinding | undefined; stageConditions: readonly string[] | null }
+
+// A person.decided about a finding or a disputed item, applied to the book (in place). What is wrong, or null (then
+// applied). A condition's decision is not the findings' (conditions.ts).
+export function applyPerson(book: FindingsBook, d: PersonDecision, item: (turnId: string, index: number) => ItemContext | null): string | null {
+  const by = { by: "person" as const, commandId: d.commandId };
+  if (d.subject === "finding") {
+    const f = book.list.get(d.target as string);
+    if (f?.status !== "open") return `${String(d.target)} is not an open finding`;
+    if (d.decision === "close") {
+      Object.assign(f, { status: "closed", closeRunKey: d.runKey, closeTree: d.tree, distinctCount: 0 });
+      f.history.push({ kind: "closed_by_person", turnId: null, seq: d.seq, runKey: d.runKey, tree: d.tree, index: null, ...by });
+    } else {
+      if (f.severity !== "blocking") return `${f.id} is not blocking`;
+      f.severity = "wish";
+      book.downgraded.push(f.id);
+      f.history.push({ kind: "to_wish", turnId: null, seq: d.seq, runKey: d.runKey, tree: d.tree, index: null, ...by });
+    }
+    return null;
+  }
+  if (d.subject !== "disputed") return null;
+  const t = d.target as { reviewTurnId: string; index: number };
+  const at = book.disputed.findIndex((x) => x.turnId === t.reviewTurnId && x.index === t.index);
+  const ctx = item(t.reviewTurnId, t.index);
+  if (at < 0 || !ctx?.finding) return `no disputed item ${t.reviewTurnId}#${t.index} waits for the person`;
+  const pending = book.disputed[at];
+  const event = (kind: FindingEventKind, reason?: RefusedReason): FindingEvent => ({
+    kind, turnId: t.reviewTurnId, seq: d.seq, runKey: ctx.runKey, tree: ctx.tree, index: t.index, ...(reason ? { reason } : {}), ...by
+  });
+  if (d.decision === "new") {
+    if (d.finding !== fid(book.next)) return `the new finding of a disputed item is ${fid(book.next)}, not ${String(d.finding)}`;
+    const f = ctx.finding;
+    const condition = f.condition !== null && (ctx.stageConditions === null || ctx.stageConditions.includes(f.condition)) ? f.condition : null;
+    book.list.set(d.finding, {
+      id: d.finding, severity: f.severity, condition, stage: ctx.stage, ownedSince: d.seq, paths: [...f.paths], problem: f.problem, evidence: f.evidence,
+      closeWhen: f.closeWhen, status: "open", openRunKey: ctx.runKey, openTree: ctx.tree, closeRunKey: null, closeTree: null,
+      possibleRepeatOf: pending.candidates.join(", "), distinctCount: 0, history: [event("opened")]
+    });
+    book.next++;
+  } else {
+    const target = pending.candidates.includes(d.finding as string) ? book.list.get(d.finding as string) : undefined;
+    if (target?.status !== "closed") return `${String(d.finding)} is not a closed candidate of the disputed item`;
+    if (d.reopened && target.closeRunKey === ctx.runKey) return `${target.id} is opened again on the state it was closed on`;
+    if (d.reopened) {
+      Object.assign(target, { status: "open", openRunKey: ctx.runKey, openTree: ctx.tree, stage: ctx.stage, ownedSince: d.seq });
+      target.history.push(event("reopened"));
+    } else target.history.push(event("refused", "declared_repeat"));
+  }
+  // the person's decision is about this item only: the next possible repeat of a candidate is disputed again (5h §3.4 p. 4)
+  for (const id of pending.candidates) {
+    const c = book.list.get(id)!;
+    if (c.status === "closed") c.distinctCount = Math.max(c.distinctCount + (d.decision === "new" ? 1 : 0), 1);
+    if (id !== d.finding || d.decision === "new") c.history.push(event("decided"));
+  }
+  book.disputed.splice(at, 1);
+  return null;
+}
+
+// plan.decided(accept): the person's choice for each open blocking finding bound to a dropped condition (5h §3.6 p. 4),
+// after the new plan is in force. wish findings of a dropped condition stay wishes without it.
+export function applyChoices(book: FindingsBook, choices: PlanChoices, dropped: ReadonlySet<string>,
+  ctx: { seq: number; runKey: string; tree: string; commandId: string; conditions: ConditionsBook; firstStage: number; lastStage: number }): string | null {
+  const affected = openBlocking(book).filter((f) => f.condition !== null && dropped.has(f.condition)).map((f) => f.id).sort();
+  const chosen = (choices?.findings ?? []).map((c) => c.id);
+  if (JSON.stringify([...chosen].sort()) !== JSON.stringify(affected)) return "the choices are not one for each open blocking finding of a dropped condition";
+  for (const c of choices?.findings ?? []) {
+    const f = book.list.get(c.id)!;
+    const was = f.condition;
+    const event = (kind: FindingEventKind): FindingEvent => ({ kind, turnId: null, seq: ctx.seq, runKey: ctx.runKey, tree: ctx.tree, index: null, by: "person", commandId: ctx.commandId, note: was ?? undefined });
+    if (c.choice === "move") {
+      const stageOf = c.condition === null ? null : [...ctx.conditions.stages.entries()].find(([s, ids]) => s >= ctx.firstStage && ids.includes(c.condition!))?.[0] ?? null;
+      const stage = c.condition !== null ? stageOf : c.stage;
+      if (stage === null || stage < ctx.firstStage || stage > ctx.lastStage) return `${c.id} is moved to no unaccepted stage of the new plan`;
+      Object.assign(f, { condition: c.condition, stage, ownedSince: ctx.seq });
+      f.history.push(event("moved"));
+    } else if (c.choice === "close") {
+      Object.assign(f, { status: "closed", closeRunKey: ctx.runKey, closeTree: ctx.tree, distinctCount: 0, condition: null });
+      f.history.push(event("closed_by_person"));
+    } else {
+      Object.assign(f, { severity: "wish", condition: null });
+      book.downgraded.push(f.id);
+      f.history.push(event("to_wish"));
+    }
+  }
+  for (const f of book.list.values()) if (f.condition !== null && dropped.has(f.condition)) f.condition = null;
+  return null;
+}
+
 // ---------- replay: the findings of a run from its texts ----------
 
 // The texts a replay needs: the plans' (in o.plans order), the reviewer's reports and applied texts by turn.
-export interface FindingsTexts { plans: readonly PlanText[]; reports: Readonly<Record<string, unknown>>; applied: Readonly<Record<string, Applied>> }
+// A4: choices of the accepted proposals, by their turn
+export interface FindingsTexts { plans: readonly PlanText[]; reports: Readonly<Record<string, unknown>>; applied: Readonly<Record<string, Applied>>; choices?: Readonly<Record<string, PlanChoices>> }
 export interface FindingsReplay {
   book: FindingsBook;
   conditions: ConditionsBook; // the plans in force (A2's book)
@@ -261,10 +362,29 @@ export function replayFindings(state: RunState, t: FindingsTexts): FindingsRepla
   const events: Ev[] = [];
   const recorded: { firstStage: number; seq: number }[] = [];
   for (const [i, p] of o.plans.entries()) events.push({ seq: p.seq, run: () => {
-    try { applyPlan(conditions, { firstStage: p.firstStage, text: t.plans[i], conditionsAssigned: p.conditionsAssigned ?? null }); } catch { /* conditionsConflict reports it */ }
+    try { applyPlan(conditions, { firstStage: p.firstStage, text: t.plans[i], conditionsAssigned: p.conditionsAssigned ?? null, base: p.base }); } catch { /* conditionsConflict reports it */ }
     recorded.push({ firstStage: p.firstStage, seq: p.seq });
-    return null;
+    // A4: a proposal the person accepted — its choices for the findings of the dropped conditions
+    const decision = p.proposed ? o.proposals.find((x) => x.turnId === p.turnId)?.decision : null;
+    if (!decision) return null;
+    const why = applyChoices(book, t.choices?.[p.turnId] as PlanChoices, new Set((t.plans[i].dropped ?? []).map((x) => x.condition)), {
+      seq: p.seq, runKey: decision.runKey, tree: decision.tree, commandId: decision.commandId, conditions, firstStage: p.firstStage, lastStage: p.firstStage + p.stageCount - 1
+    });
+    return why ? `plan v${p.version}: ${why}` : null;
   } });
+  // A4: the person's decisions about findings and disputed items, each about the state of its review
+  for (const d of o.person) {
+    if (d.subject === "condition") continue;
+    events.push({ seq: d.seq, run: () => {
+      const why = applyPerson(book, d, (turnId, index) => {
+        const r = o.reviews.find((x) => x.turnId === turnId);
+        if (!r) return null;
+        return { runKey: r.runKey, tree: o.turns[turnId]?.tree ?? "", stage: r.stage, finding: reportFindings(t.reports[turnId])[index],
+          stageConditions: r.stage === null ? null : conditions.stages.get(r.stage) ?? [] };
+      });
+      return why ? `person decision ${d.commandId}: ${why}` : null;
+    } });
+  }
   let accepted = 0;
   const owners = () => ({ stages: conditions.stages, accepted, recorded });
   for (const r of o.reviews) {

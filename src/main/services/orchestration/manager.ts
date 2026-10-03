@@ -37,7 +37,7 @@ import { DEFAULT_LIMITS } from "./cycle.ts";
 import type { Goal } from "./cycle.ts";
 import { MAX_JOURNAL_BYTES, MAX_LINE_BYTES, MAX_TEXT_BYTES, TERMINAL_STATUSES, canonical, isSha256, isTextRef, isUuid, needsRecovery, newerGoal, newerVersion, parseJournal, unfinishedWork } from "./journal.ts";
 import type { JournalRecord, RunState, TextRef } from "./journal.ts";
-import { conditionsView, createOrchestrationService, decidedGoal, findingsView, loadConditions, progressOf, runView, shownCheckKeys } from "./orchestrationService.ts";
+import { conditionsView, createOrchestrationService, decidedGoal, findingsView, loadConditions, possiblyStale, progressOf, runView, shownCheckKeys } from "./orchestrationService.ts";
 import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchestrationService.ts";
 import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
@@ -329,7 +329,8 @@ export function createRunManager(deps: RunManagerDeps) {
     const readJson = async <T>(ref: TextRef): Promise<T> => JSON.parse((await readText(deps.root, runId, ref)).toString("utf8")) as T;
     // A3: and the findings
     const texts = goal && st.version === 2 ? await loadConditions(st, readJson).catch(() => null) : undefined;
-    const conditions = texts === undefined ? undefined : texts && goal ? conditionsView(st, goal, texts, await shownCheckKeys(st, readJson).catch(() => null)) : null;
+    const conditions = texts === undefined ? undefined : texts && goal
+      ? conditionsView(st, goal, texts, await shownCheckKeys(st, readJson).catch(() => null), st.status === "completed" ? null : possiblyStale(st, texts)) : null;
     const findings = texts === undefined ? undefined : findingsView(st, texts);
     const view = runView(st, false, null, {
       ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
@@ -348,7 +349,7 @@ export function createRunManager(deps: RunManagerDeps) {
   // A0 bridge (acceptance-review-spec.md §2.2): a run written by a newer version is listed and its history read, and
   // nothing else: no open, recovery, stop, command or CLI. Shown as paused (it may still go on in that version) with the
   // goal of its run.created, never as a damaged journal.
-  async function newerSnapshot(runId: string, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" }; fallback?: { line: number; code: string } }): Promise<OrchestrationRunSnapshot> {
+  async function newerSnapshot(runId: string, detail: { version: number; chain: { status: "ok" | "torn_tail" | "corrupt" }; fallback?: { line: number; code: string }; preview?: true }): Promise<OrchestrationRunSnapshot> {
     const records = await journal(runId);
     const goal = await newerGoalText(runId, records);
     const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
@@ -357,7 +358,7 @@ export function createRunManager(deps: RunManagerDeps) {
       view: {
         runId, status: "paused", reason: "newer_version", revision: 0, stage: null, turns: 0, halted: false, active: null,
         ...(place ? { workMode: place.mode, workDir: place.repo } : {}),
-        newer: { version: detail.version, chain: detail.chain.status, goal, ...(detail.fallback ? { fallback: detail.fallback } : {}) }
+        newer: { version: detail.version, chain: detail.chain.status, goal, ...(detail.fallback ? { fallback: detail.fallback } : {}), ...(detail.preview ? { preview: true } : {}) }
       }
     };
   }

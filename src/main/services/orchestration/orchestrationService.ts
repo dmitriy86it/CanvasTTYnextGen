@@ -17,10 +17,10 @@ import { currentExecutableSha256, inspectPreparedDeps, startProjectCheck } from 
 import type { ProjectCheckResult } from "./checkService.ts";
 import { DEFAULT_LIMITS, completion, confirmationFor, currentCommit, effectiveLimits, nextAction, proposesChecks, withoutChecks } from "./cycle.ts";
 import type { Action, Goal, LimitKind, RunLimits, Snapshot } from "./cycle.ts";
-import { canonical } from "./journal.ts";
+import { canonical, personStatus, planProposalWaits } from "./journal.ts";
 import type { CommandResult, CompletionBasis, CompletionKind, PausedReason, ReviewRequest, RunState, RunStatus, SandboxNetwork, TextRef } from "./journal.ts";
 import { byReviewer, openBlocking, ownerOf, planReview, replayFindings } from "./findings.ts";
-import type { Applied, Finding, FindingsReplay, ReportFinding } from "./findings.ts";
+import type { Applied, Finding, FindingsReplay, PlanChoices, ReportFinding } from "./findings.ts";
 import { checkKey, findingsKey, runKey } from "./progress.ts";
 import type { CheckDef, DepsFacts } from "./progress.ts";
 import type { ProviderTurnResult } from "./providers.ts";
@@ -34,9 +34,11 @@ import { endingDetail, sanitize } from "./activity.ts";
 import type { AskPerson, PermissionAsk, PermissionReply } from "./sessions.ts";
 import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
-import type { OrchestrationConditions, OrchestrationFindings, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
-import { bookOf, changeIdsOf, conditionBlockers, factsOf, finalMarksProblems, numberPlan, planProblems, reportConditions, stageMarksProblems } from "./conditions.ts";
-import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, RequirementMark, Status } from "./conditions.ts";
+import type { OrchestrationConditions, OrchestrationDecisions, OrchestrationFindings, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationPersonDecide,
+  OrchestrationPlanChoice, OrchestrationPlanDecide, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
+import { closedByPerson } from "../../../shared/orchestration.ts";
+import { bookOf, changeIdsOf, conditionBlockers, factsOf, finalMarksProblems, numberPlan, personIdsOf, planProblems, reportConditions, stageMarksProblems } from "./conditions.ts";
+import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, PlanText, RequirementMark, Status } from "./conditions.ts";
 import { WorkspaceError, cloneDependencies, createWorkspace, diffPaths, diffTreeNames, inPlace, openWorkspace, readCommit, readDependencyRecord, readIncompleteRestore, snapshotCopyTree, verifyWorkspace } from "./workspace.ts";
 import type { CloneDir } from "./workspace.ts";
 import type { AgentAccess } from "./access.ts";
@@ -124,6 +126,9 @@ export type RunCommand =
   | { kind: "finish.confirm"; tree: string; commit: string | null; push: "confirm" | "decline" | null; qa: "confirm" | "decline" | null }
   // A1.1 (§2.6): a lead's check the sandbox refused — run it without the sandbox (no line) or as the person's line
   | { kind: "check.amend"; checkId: string; line: string }
+  // A4 (journal-v2-format.md §2.9): the person's decisions, about the state they saw (runKey)
+  | OrchestrationPersonDecide
+  | OrchestrationPlanDecide
   | { kind: "permission"; requestId: string; decision: PermissionDecision; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string };
 // What the person can answer: the CLI's own options, plus remembering exactly this action for the run or the project.
 export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project";
@@ -151,6 +156,8 @@ export interface RunView {
   confirm?: { tree: string | null; commit: string | null; push: boolean; qa: boolean } | null;
   // A1.1, on the pause check_needs_permissions: the lead's check the sandbox refused (journal-v2-format.md §2.6)
   refused?: { checkId: string; command: string } | null;
+  // A4: what the person decides on this pause, about the state shown (journal-v2-format.md §2.9)
+  decisions?: OrchestrationDecisions | null;
 }
 
 // Facts from the journal (and the goal), never from an agent's own report.
@@ -191,7 +198,7 @@ export interface RunHandle {
 
 // The view of a run from its journal state; also for a run nobody has open (halted false, nothing active).
 export function runView(st: RunState, halted = false, active: RunView["active"] = null,
-  extra: Pick<RunView, "permission" | "pendingPermissions" | "workMode" | "workDir" | "progress" | "proposal" | "confirm" | "refused"> = {}): RunView {
+  extra: Pick<RunView, "permission" | "pendingPermissions" | "workMode" | "workDir" | "progress" | "proposal" | "confirm" | "refused" | "decisions"> = {}): RunView {
   const accepted = Object.keys(st.orch.accepted).length;
   const total = st.orch.plan ? st.orch.plan.firstStage - 1 + st.orch.plan.stageCount : 0;
   return {
@@ -220,6 +227,9 @@ const RESUMABLE: readonly string[] = ["user_request", "step_done", "plan_review"
   "app_closed", "stage_done", "external_failure", "needs_user_action", "finish_unconfirmed", "tree_changed_during_review"];
 const STEP_ONLY: readonly string[] = ["invalid_report", "protocol_error"];
 const STOP_ONLY: readonly string[] = ["lead_modified_tree", "shared_git_tampered", "journal_corrupt", "sandbox_unavailable"];
+// A4 (journal-v2-format.md §2.9): the pauses an open finding may be closed or made a wish on by the person — where the
+// run waits for the person anyway; never a pause of another decision (checks, push/QA, a plan proposal, recovery)
+const FINDING_PAUSES: readonly string[] = [...RESUMABLE, ...STEP_ONLY, "limit_reached", "awaiting_answer", "awaiting_person_decision"];
 const ACTIVE: readonly string[] = ["preparing", "running", "pausing", "paused"];
 const MAX_CHECK_OUTPUT_IN_TASK = 1500;
 
@@ -253,8 +263,8 @@ export const REPORT_SCHEMAS: Readonly<Record<TurnPurpose, AnswerSchema>> = Objec
   final_review: findingsSchema(["complete", "replan", "question"])
 });
 // Journal v2, A2 (journal-v2-format.md §2.7): every stage of a plan states its readiness conditions — new ones or the
-// plan in force's carried over (keep) — flat, as the schema subset has no anyOf. dropped and dropRequirements are part
-// of the form (5h §2.3) and must stay empty until the person decides them (A4).
+// plan in force's carried over (keep) — flat, as the schema subset has no anyOf. dropped and dropRequirements (5h §2.3)
+// make the plan a proposal the person decides (A4).
 const CONDITION_ITEM: AnswerSchema = {
   type: "object", additionalProperties: false, required: ["keep", "text", "covers", "evidence"],
   properties: {
@@ -263,7 +273,7 @@ const CONDITION_ITEM: AnswerSchema = {
     covers: { type: ["array", "null"], items: str(1, 16) },
     evidence: {
       type: ["object", "null"], additionalProperties: false, required: ["kind", "check"],
-      properties: { kind: { type: "string", enum: ["check", "change"] }, check: { type: ["string", "null"], maxLength: 16 } }
+      properties: { kind: { type: "string", enum: ["check", "change", "person"] }, check: { type: ["string", "null"], maxLength: 16 } }
     }
   }
 };
@@ -524,11 +534,16 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
       try {
         const goal = await decidedGoal(deps.root, runId, writer.state(), JSON.parse((await readText(deps.root, runId, writer.state().goal)).toString("utf8")) as Goal);
         const ws = await openWorkspace({ root: deps.root, runId, gitPath: deps.gitPath });
-        const o = writer.state().orch;
-        const decidedBy = new Set([o.checksDecision?.commandId, ...o.confirmations.map((c) => c.commandId), ...Object.values(o.amended).map((a) => a.commandId)]);
-        for (const [id, c] of Object.entries(writer.state().commands)) {
-          // journal-v2-format.md §2.5: a decision already in the journal stands — its command was accepted
-          if (c.status === "unfinished") await writer.completeCommand(id, decidedBy.has(id) ? { status: "accepted", code: null } : { status: "rejected", code: "interrupted" });
+        const st = writer.state();
+        // 5h §3.5, journal-v2-format.md §2.5: a decision already in a v2 journal stands — its command was accepted; recover
+        // only with its decision for every turn of unknown outcome. pause/resume/stop write no decision of their own, and
+        // a v1 journal keeps its rule: interrupted.
+        const decidedBy = new Set(st.version === 2 ? st.orch.decidedCommands : []);
+        const undecided = Object.keys(st.turns).some((t) => st.turns[t].status === "outcome_unknown" && !st.orch.recoveryDecisions[t]);
+        for (const [id, c] of Object.entries(st.commands)) {
+          if (c.status !== "unfinished") continue;
+          const ok = decidedBy.has(id) && !(c.kind === "recover" && undecided);
+          await writer.completeCommand(id, ok ? { status: "accepted", code: null } : { status: "rejected", code: "interrupted" });
         }
         const run = controller(deps, clock, writer, ws, goal);
         await run.reopen();
@@ -681,6 +696,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       progress: { ...progressOf(st, goal, ws.branch), ...(st.version === 2 ? { conditions: shownConditions, findings: shownFindings } : {}) },
       ...(st.pausedReason === "awaiting_checks_decision" ? { proposal: proposalText } : {}),
       ...(st.pausedReason === "check_needs_permissions" ? { refused: refusedCheck(st) } : {}),
+      ...(st.version === 2 && st.status === "paused" && shownDecisions ? { decisions: shownDecisions } : {}),
       ...(st.pausedReason === "awaiting_finish_confirmation" ? {
         confirm: { tree: latest?.tree ?? null, commit: latest ? currentCommit(st, latest.tree)?.commit ?? null : null, push: !!goal.finish?.push, qa: !!goal.finish?.qa }
       } : {})
@@ -739,7 +755,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       throw error;
     }
   }
-  const setStatus = (status: RunStatus, reason: PausedReason | null = null) => j(() => writer.setRunStatus(status, reason));
+  // A4: a v2 pause is shown with what the person decides on it from its first view (computed before it is written, so no
+  // view of the pause goes without its decisions, and none carries another pause's)
+  const setStatus = async (status: RunStatus, reason: PausedReason | null = null): Promise<void> => {
+    if (status === "paused" && state().version === 2) shownDecisions = shuttingDown ? null : await decisionsView(reason).catch(() => null);
+    return j(() => writer.setRunStatus(status, reason));
+  };
 
   // ---------- the driver: one external operation at a time ----------
 
@@ -749,7 +770,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     // Anything unexpected in the cycle (Git, the file system) stops it in a state the user can see and resume from.
     drive().catch(async () => {
       if (!halted && state().status === "running") await setStatus("paused", shuttingDown ? "app_closed" : "environment_error").catch(() => {});
-    }).finally(() => {
+    }).finally(async () => {
       driving = false;
       if (!halted && !active && !shuttingDown && state().status === "running") schedule();
       else notify();
@@ -795,7 +816,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
           case "turn":
             await runTurn(action, decided.snapshot!);
             // A2: the conditions as shown, after the turn (a pause in it does not reach decide())
-            shownConditions = conditionsView(state(), goal, await conds(), null);
+            shownConditions = await viewConditions(null);
             shownFindings = findingsView(state(), await conds());
             touch();
             break;
@@ -866,8 +887,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const snapshot = await takeSnapshot(st);
     await loadFindings();
     const c = await conds();
-    const facts = conditionFacts(st, goal, c, snapshot.checkKeys);
-    shownConditions = conditionsView(st, goal, c, snapshot.checkKeys);
+    // A4 (5h §3.7): the "change" evidence of accepted stages whose files changed since their checkpoint
+    const stale = c ? await staleOn(st, c, snapshot.tree) : null;
+    const facts = conditionFacts(st, goal, c, snapshot.checkKeys, stale);
+    shownConditions = conditionsView(st, goal, c, snapshot.checkKeys, stale);
     shownFindings = findingsView(st, c);
     const action = nextAction({
       state: st, goal, limits: effectiveLimits(goal, st), snapshot, now: clock(),
@@ -877,13 +900,33 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       ...(facts && c ? {
         conditions: {
           stageUnmet: (stage: number, turnId: string) => changeIdsOf(c.book, stage).some((id) => marksIn(c.reports, turnId).find((m) => m.id === id)?.status !== "met"),
-          finalUnmet: conditionBlockers(facts).length > 0
+          finalUnmet: conditionBlockers(facts).length > 0,
+          // A4 (5h §3.5): the person conditions of a stage, by the person's decisions in force
+          person: (stage: number) => {
+            const ids = personIdsOf(c.book, stage);
+            if (!ids.length) return null;
+            const said = ids.map((id) => personStatus(st, id, stage));
+            return said.includes("not_met") ? "not_met" : said.every((x) => x === "met") ? "met" : "ask";
+          }
         }
       } : {}),
       // A3: the open blocking findings and the disputed items, from the applied texts (journal-v2-format.md §2.8)
       ...(c?.findings ? { findings: findingsInput(st, c) } : {})
     });
     return { action, snapshot };
+  }
+
+  // A4 (5h §3.7): which "change" evidence of the accepted stages is stale on `tree` — a path its mark names changed
+  // since the stage's checkpoint. Its condition then counts only as the final review confirms it.
+  async function staleOn(st: RunState, c: ConditionTexts, tree: string): Promise<(id: string) => boolean> {
+    const out = new Set<string>();
+    for (const [stage, a] of Object.entries(st.orch.accepted)) {
+      const ids = changeIdsOf(c.book, Number(stage));
+      if (!ids.length) continue;
+      const changed = new Set((await diffTreeNames(ws, st.workspace?.checkpoints[stage]?.tree ?? a.tree, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
+      for (const id of ids) if (marksIn(c.reports, a.reviewTurnId).find((m) => m.id === id)?.paths.some((x) => changed.has(x))) out.add(id);
+    }
+    return (id) => out.has(id);
   }
 
   async function takeSnapshot(st: RunState): Promise<Snapshot> {
@@ -902,6 +945,49 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     return { tree, runKey: runKey(tree, checkDefs, facts), checkKeys };
   }
 
+  // ---------- A4: the person's decisions (5h §3.5, §3.6; journal-v2-format.md §2.9) ----------
+
+  let shownDecisions: OrchestrationDecisions | null = null;
+  // What the person decides on this pause, about the state of the work now (its runKey and tree go with the decision).
+  // pausing: the reason of a pause about to be written (setStatus); otherwise the pause the run is on.
+  async function decisionsView(pausing: PausedReason | null = null): Promise<OrchestrationDecisions | null> {
+    const st = state();
+    if (st.version !== 2 || (pausing === null && st.status !== "paused")) return null;
+    const reason: string = pausing ?? st.pausedReason ?? "";
+    const c = await conds();
+    const book = c?.findings?.book ?? null;
+    const proposal = reason === "coverage_lost" && planProposalWaits(st) ? st.orch.proposals.at(-1)! : null;
+    const findings = !!book && FINDING_PAUSES.includes(reason) && [...book.list.values()].some((f) => f.status === "open");
+    if (!c || (reason !== "awaiting_person_decision" && !proposal && !findings)) return null;
+    const snap = await takeSnapshot(st);
+    const said = (r: unknown, i: number) => ((r as { findings?: ReportFinding[] } | undefined)?.findings ?? [])[i];
+    const disputed = reason !== "awaiting_person_decision" || !book ? [] : book.disputed.map((d) => {
+      const f = said(c.reports[d.turnId], d.index);
+      return { reviewTurnId: d.turnId, index: d.index, problem: f?.problem ?? d.problem, evidence: f?.evidence ?? "", paths: f?.paths ?? [],
+        candidates: d.candidates.map((id) => ({ id, problem: book.list.get(id)?.problem ?? "", paths: book.list.get(id)?.paths ?? [] })) };
+    });
+    const stage = Object.keys(st.orch.accepted).length + 1;
+    const conditions = reason !== "awaiting_person_decision" ? [] : personIdsOf(c.book, stage).filter((id) => personStatus(st, id, stage) === "not_checked")
+      .map((id) => ({ id, text: c.book.defs.get(id)!.text, stage }));
+    let shown: OrchestrationDecisions["proposal"] = null;
+    if (proposal) {
+      const text = await readJson<PlanText>(proposal.ref);
+      const drops = new Set((text.dropped ?? []).map((x) => x.condition));
+      const inForce = [...c.book.stages.values()].flat().filter((id) => !drops.has(id));
+      shown = {
+        proposalTurnId: proposal.turnId,
+        stages: text.stages.map((x, i) => ({ stage: proposal.firstStage + i, title: x.title, conditions: (x.conditions ?? []).map((k) => ("keep" in k ? k.keep : k.id)) })),
+        dropped: (text.dropped ?? []).map((x) => ({ id: x.condition, text: c.book.defs.get(x.condition)?.text ?? "", covers: c.book.defs.get(x.condition)?.covers ?? [], why: x.why })),
+        dropRequirements: (text.dropRequirements ?? []).map((x) => ({ id: x.requirement, text: goal.criteria[Number(x.requirement.slice(1)) - 1] ?? "", why: x.why })),
+        uncovered: goal.criteria.map((_, i) => `R${i + 1}`).filter((r) => !c.book.droppedRequirements.has(r)
+          && [...drops].some((id) => c.book.defs.get(id)?.covers.includes(r)) && !inForce.some((id) => c.book.defs.get(id)?.covers.includes(r))),
+        findings: book ? openBlocking(book).filter((f) => f.condition !== null && drops.has(f.condition)).map((f) => ({ id: f.id, problem: f.problem, condition: f.condition! })) : []
+      };
+    }
+    return { runKey: snap.runKey, tree: snap.tree, disputed, conditions, findings, proposal: shown };
+  }
+  const showDecisions = async () => { shownDecisions = await decisionsView().catch(() => null); touch(); };
+
   // A2 (journal-v2-format.md §2.7): the plans' conditions and the lead's review answers, from texts/ (content-addressed:
   // each read once). shownConditions: as the last decision saw them, for the view.
   const jsonCache = new Map<string, unknown>();
@@ -911,6 +997,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   };
   const conds = async (): Promise<ConditionTexts | null> => (state().version === 2 ? loadConditions(state(), readJson) : null);
   let shownConditions: OrchestrationConditions | null = null;
+  // The conditions as shown between decisions: stale evidence (A4, 5h §3.7) on the tree last seen
+  const viewConditions = async (checkKeys: Readonly<Record<string, string>> | null): Promise<OrchestrationConditions | null> => {
+    const c = await conds();
+    const tree = latest?.tree;
+    return conditionsView(state(), goal, c, checkKeys, c && tree ? await staleOn(state(), c, tree).catch(() => null) : null);
+  };
   let shownFindings: OrchestrationFindings | null = null;
 
   // Findings of past reviews, read once from texts/ (the journal holds only the reference).
@@ -1121,10 +1213,38 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   async function planViolations(report: PlanReportV2, schema: AnswerSchema): Promise<string[]> {
     const c = (await conds())!;
     const { stages, problems } = reportConditions(report);
-    const checkIds = schema === PLAN_PROPOSAL_SCHEMA ? ((report as unknown as PlanProposalReport).checks?.checks ?? []).map((_, i) => `cmd-${i + 1}`) : goal.checks;
-    return [...problems, ...planProblems(stages, report, c.book, Object.keys(state().orch.accepted).length + 1, goal.criteria.length, checkIds)];
+    const proposing = schema === PLAN_PROPOSAL_SCHEMA;
+    const checkIds = proposing ? ((report as unknown as PlanProposalReport).checks?.checks ?? []).map((_, i) => `cmd-${i + 1}`) : goal.checks;
+    // A4: dropping is decided by the person after the check commands are; the plan that proposes them drops nothing
+    if (proposing && (report.dropped.length || report.dropRequirements.length)) problems.push("the plan that proposes check commands drops nothing: propose dropping in a later plan");
+    return [...problems, ...planProblems(stages, report, c.book, Object.keys(state().orch.accepted).length + 1, goal.criteria.length, checkIds, await returnedConditions())];
   }
-  // The plan with the numbers the application gives its new conditions.
+  // A4 (5h §3.8): the conditions of accepted stages a refused final review returns to the work — the next plan keeps or
+  // drops each: those without evidence in force on the final review's tree (stale and not confirmed, not met), covering
+  // a requirement it marked not met, or bound to an open blocking finding. Empty unless the last review of the plan in
+  // force is a final one that did not complete the run.
+  async function returnedConditions(): Promise<Set<string>> {
+    const st = state();
+    const c = await conds();
+    const id = finalReview(st);
+    const last = st.orch.reviews.filter(inForce(st)).at(-1);
+    if (!c || !id || last?.turnId !== id || !last.assessed || !c.book.conditioned) return new Set();
+    const tree = st.orch.turns[id]?.tree;
+    // the checks the final review was given: the latest result of each command before it (run on its tree)
+    const keys: Record<string, string> = {};
+    for (const [run, a] of Object.entries(st.orch.assessed).sort((x, y) => x[1].seq - y[1].seq)) {
+      if (a.seq < st.orch.turns[id].seq && st.checks[run]) keys[st.checks[run].checkId] = a.checkKey;
+    }
+    const facts = conditionFacts(st, goal, c, keys, tree ? await staleOn(st, c, tree) : null);
+    const report = c.reports[id] as { requirements?: RequirementMark[] } | undefined;
+    const notMet = new Set((report?.requirements ?? []).filter((m) => m.status === "not_met").map((m) => m.id));
+    const open = new Set((c.findings ? openBlocking(c.findings.book) : []).map((f) => f.condition));
+    const accepted = Object.keys(st.orch.accepted).length;
+    return new Set((facts?.conditions ?? []).filter((x) => x.stage <= accepted && (x.status !== "met" || open.has(x.id)
+      || c.book.defs.get(x.id)!.covers.some((r) => notMet.has(r)))).map((x) => x.id));
+  }
+  // The plan with the numbers the application gives its new conditions; one that drops a condition or a requirement is a
+  // proposal the person decides (A4, 5h §3.6): plan.proposed, the plan in force stays.
   async function recordPlanV2(turnId: string, report: PlanReportV2): Promise<void> {
     // a proposal of A1's form accepted before this version: its plan has no conditions, and is recorded so (§2.7)
     if (report.stages.some((x) => !Array.isArray(x.conditions))) {
@@ -1132,9 +1252,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       await j(() => writer.recordPlan({ turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref, firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: report.stages.length }));
       return;
     }
-    const c = (await conds())!;
-    const { text, assigned } = numberPlan(report, reportConditions(report).stages, c.book.next);
+    const { text, assigned } = numberPlan(report, reportConditions(report).stages, state().orch.nextCondition);
     const ref = await j(() => writer.putText(canonical(text)));
+    if (text.dropped?.length || text.dropRequirements?.length) {
+      await j(() => writer.recordEvent("plan.proposed", { turnId, plan: ref, firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: text.stages.length, conditionsAssigned: assigned }));
+      return;
+    }
     await j(() => writer.recordPlan({
       turnId, version: (state().orch.plan?.version ?? 0) + 1, plan: ref,
       firstStage: Object.keys(state().orch.accepted).length + 1, stageCount: text.stages.length, conditionsAssigned: assigned
@@ -1146,7 +1269,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (action.purpose === "final_review") {
       const r = value as ReviewReport & { requirements: RequirementMark[] };
       // a plan of A1's form has no conditions: the condition rules do not apply to it (§2.7)
-      return r.verdict === "complete" && c.book.conditioned ? finalMarksProblems(r.requirements, goal.criteria.length) : [];
+      return r.verdict === "complete" && c.book.conditioned ? finalMarksProblems(r.requirements, goal.criteria.length, c.book.droppedRequirements) : [];
     }
     const r = value as ReviewReport & { conditions: ConditionMark[] };
     if (r.verdict !== "accept" && r.verdict !== "fix") return [];
@@ -1162,8 +1285,13 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const problems: string[] = [];
     const changedSince = async (from: string) => new Set((await diffTreeNames(ws, from, tree, Number.MAX_SAFE_INTEGER)).files.map((f) => f.path));
     if (action.purpose === "final_review") {
-      if (r.conditions.length) problems.push("conditions: the final review marks requirements, not conditions");
-      if (r.request === "none" && c.book.conditioned) problems.push(...finalMarksProblems(r.requirements ?? [], goal.criteria.length));
+      // A4 (5h §3.7): the final review confirms the stale evidence of accepted stages — a mark for each, none else; met
+      // names files changed since the run started
+      const stale = await staleOn(state(), c, tree);
+      const ids = Object.keys(state().orch.accepted).flatMap((s) => changeIdsOf(c.book, Number(s))).filter((id) => stale(id));
+      if (r.request === "none") problems.push(...stageMarksProblems(r.conditions, ids, await changedSince(state().workspace!.baseline.tree)));
+      else if (r.conditions.some((m) => !ids.includes(m.id))) problems.push("conditions: only the conditions to confirm are marked");
+      if (r.request === "none" && c.book.conditioned) problems.push(...finalMarksProblems(r.requirements ?? [], goal.criteria.length, c.book.droppedRequirements));
     } else if (r.request === "none") {
       problems.push(...stageMarksProblems(r.conditions, changeIdsOf(c.book, action.stage!), await changedSince(state().workspace!.baseline.tree)));
     }
@@ -1193,8 +1321,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   async function complete(snapshot: Snapshot): Promise<void> {
     const st = state();
     if (st.version !== 2) return setStatus("completed");
-    const facts = conditionFacts(st, goal, await conds(), snapshot.checkKeys);
-    const f = (await conds())?.findings ?? null;
+    const cs = await conds();
+    const facts = conditionFacts(st, goal, cs, snapshot.checkKeys, cs ? await staleOn(st, cs, snapshot.tree) : null);
+    const f = cs?.findings ?? null;
     const c = completion(st, goal, snapshot, facts, f && { open: openBlocking(f.book).length, disputed: f.book.disputed.length });
     if (!c.allowed) { await setStatus("paused", "environment_error"); return; }
     const progress = progressOf(st, goal, ws.branch);
@@ -1205,7 +1334,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       runKey: snapshot.runKey, checkKeys: snapshot.checkKeys, tree: snapshot.tree,
       finalTurnId: st.orch.reviews.filter((r) => r.stage === null).at(-1)?.turnId ?? null,
       // A2: R → C → evidence (the checks above, the reviews in the journal)
-      ...(facts ? { requirements: facts.requirements.map((r) => ({ id: r.id, conditions: r.conditions, met: r.status === "met" })) } : {}),
+      ...(facts ? { requirements: facts.requirements.map((r) => ({ id: r.id, conditions: r.conditions, met: r.status === "met", ...(r.status === "dropped" ? { dropped: true } : {}) })) } : {}),
+      // A4 (journal-v2-format.md §2.9): what the person decided instead of evidence — never counted as met
+      ...(cs && (cs.book.dropped.size || cs.book.droppedRequirements.size || f?.book.downgraded.length || st.orch.person.length) ? {
+        person: {
+          droppedConditions: [...cs.book.dropped.keys()], droppedRequirements: [...cs.book.droppedRequirements.keys()], downgraded: [...(f?.book.downgraded ?? [])],
+          closedByPerson: [...(f?.book.list.values() ?? [])].filter(closedByPerson).map((x) => x.id),
+          conditions: (facts?.conditions ?? []).filter((x) => cs.book.defs.get(x.id)?.evidence.kind === "person").map((x) => ({ id: x.id, status: x.status }))
+        }
+      } : {}),
       finish: progress.finish.filter((f) => f.asked).map((f) => ({ step: f.step, status: f.status, declined: f.declined ?? false, commit: f.commit }))
     };
     const ref = await j(() => writer.putText(canonical(basis)));
@@ -1777,29 +1914,48 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   async function conditionLines(action: Extract<Action, { kind: "turn" }>, snapshot: Snapshot): Promise<string[]> {
     const st = state();
     const c = (await conds())!;
-    const facts = conditionFacts(st, goal, c, snapshot.checkKeys);
-    const said: Record<Status, string> = { met: "met", not_met: "not met", not_checked: "not checked yet" };
+    const stale = await staleOn(st, c, snapshot.tree);
+    const facts = conditionFacts(st, goal, c, snapshot.checkKeys, stale);
+    const said: Record<Status, string> = { met: "met", not_met: "not met", not_checked: "not checked yet", dropped: "dropped by the person" };
     const line = (id: string) => {
       const d = c.book.defs.get(id)!;
-      return `- ${id} [covers ${d.covers.join(", ") || "nothing"}; ${d.evidence.kind === "check" ? `check ${d.evidence.check}` : "change"}]: ${d.text} — ${said[facts?.conditions.find((x) => x.id === id)?.status ?? "not_checked"]}`;
+      const fact = facts?.conditions.find((x) => x.id === id);
+      return `- ${id} [covers ${d.covers.join(", ") || "nothing"}; ${d.evidence.kind === "check" ? `check ${d.evidence.check}` : d.evidence.kind}]: ${d.text} — ${said[fact?.status ?? "not_checked"]}`
+        + `${fact?.stale ? " (its files changed since its stage was accepted: to confirm)" : ""}`;
     };
-    const reqs = `Requirements (R<n> is acceptance criterion n, fixed):\n${goal.criteria.map((t, i) => `R${i + 1}: ${t}`).join("\n")}`;
+    const dropped = [...c.book.droppedRequirements.keys()];
+    const reqs = `Requirements (R<n> is acceptance criterion n, fixed):\n${goal.criteria.map((t, i) => `R${i + 1}: ${t}${dropped.includes(`R${i + 1}`) ? " — dropped by the person" : ""}`).join("\n")}`;
     const stages = [...c.book.stages.entries()].sort((a, b) => a[0] - b[0]);
     if (action.purpose === "plan") {
       const first = Object.keys(st.orch.accepted).length + 1;
       const accepted = stages.filter(([n]) => n < first).flatMap(([, ids]) => ids);
+      const returned = await returnedConditions();
       const open = stages.filter(([n]) => n >= first).flatMap(([, ids]) => ids);
       const out = [[reqs,
         "Readiness conditions: every stage of your plan lists 1..12 of them in conditions; the application numbers new ones C<n>.",
         "- A new condition: {keep: null, text, covers: [the requirement ids it proves], evidence}. evidence {kind: \"check\", check: \"cmd-<n>\"} is met when "
-          + "that check command passes on the work; {kind: \"change\", check: null} is met when the review marks it met, naming the files changed for it.",
-        "- Every requirement is covered by at least one condition: of an accepted stage, kept, or new.",
-        "- dropped and dropRequirements stay empty: dropping a condition or a requirement is the person's decision, not available yet.",
-        ...(accepted.length ? ["Conditions of accepted stages (in force; they count for coverage):", ...accepted.map(line)] : []),
-        ...(open.length ? ["Conditions still to be met: keep each one in a stage of your plan as {keep: \"C<n>\", text: null, covers: null, evidence: null}:", ...open.map(line)] : [])
+          + "that check command passes on the work; {kind: \"change\", check: null} is met when the review marks it met, naming the files changed for it; "
+          + "{kind: \"person\", check: null} is met when the person says so — only for what nobody but the person can judge.",
+        "- Every requirement in force is covered by at least one condition: of an accepted stage, kept, or new.",
+        "- To give up a condition or a requirement, list it in dropped [{condition, why}] or dropRequirements [{requirement, why}]. Such a plan is a "
+          + "proposal: the person accepts it or returns it to you, and the plan in force stays until then. Never drop silently: a condition still to be "
+          + "met that is neither kept nor dropped, or a requirement left uncovered, makes the plan invalid.",
+        ...(accepted.filter((id) => !returned.has(id)).length ? ["Conditions of accepted stages (in force; they count for coverage):", ...accepted.filter((id) => !returned.has(id)).map(line)] : []),
+        ...(returned.size ? ["Conditions of accepted stages the final review returned to the work (no evidence in force, a requirement not met, or an open blocking "
+          + "finding): keep each one in a stage of your plan, or drop it:", ...[...returned].map(line)] : []),
+        ...(open.length ? ["Conditions still to be met: keep each one in a stage of your plan as {keep: \"C<n>\", text: null, covers: null, evidence: null}, or drop it:", ...open.map(line)] : []),
+        ...(c.book.dropped.size ? [`Dropped by the person: ${[...c.book.dropped.keys()].join(", ")}.`] : [])
       ].join("\n")];
       const rejected = await rejectedPlan();
       if (rejected.length) out.push(`Your previous plan was not accepted by the application:\n${rejected.map((x) => `- ${x}`).join("\n")}`);
+      // A4 (5h §3.6 p. 3): the person returned the last proposal — told until a plan is recorded after it (a plan turn
+      // the application refused does not use the note up)
+      const back = st.orch.proposals.at(-1)?.decision;
+      if (back?.decision === "return" && !st.orch.plans.some((p) => p.seq > back.seq)) {
+        const was = await readJson<PlanText>(st.orch.proposals.at(-1)!.ref);
+        const what = [...(was.dropped ?? []).map((x) => x.condition), ...(was.dropRequirements ?? []).map((x) => x.requirement)].join(", ");
+        out.push(`The person returned your proposal to drop ${what}: the plan in force stays.${back.note ? ` Their note: ${(await readText(root, runId, back.note)).toString("utf8")}` : ""}`);
+      }
       const unmet = facts?.requirements.filter((r) => r.status !== "met").map((r) => r.id) ?? [];
       if (st.orch.plan && finalReview(st) && unmet.length) out.push(`The run could not complete: no evidence yet for ${unmet.join(", ")}. Plan the work that gives it.`);
       return out;
@@ -1817,9 +1973,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       return out;
     }
+    const confirm = stages.flatMap(([n, ids]) => (st.orch.accepted[String(n)] ? ids : [])).filter((id) => facts?.conditions.find((x) => x.id === id)?.stale);
     return [[reqs, "Readiness conditions in force:", ...stages.flatMap(([, ids]) => ids).map(line)].join("\n"),
-      "In requirements give one mark for every requirement: {id, status: met | not_met, note}. The run completes only when every requirement "
-        + "is met and covered by a met condition."];
+      "In requirements give one mark for every requirement in force (not the ones dropped by the person): {id, status: met | not_met, note}. "
+        + "The run completes only when every requirement in force is met and covered by a met condition.",
+      // A4 (5h §3.7): evidence of an accepted stage whose files changed since — confirmed here, or it does not count
+      confirm.length
+        ? `In conditions give one mark for each of ${confirm.join(", ")} (files changed since its stage was accepted): {id, status: met | not_met, paths, note}; `
+          + "met names the files this run changed that show it still holds. No other condition is marked."
+        : "conditions stays empty: no condition needs to be confirmed."];
   }
 
   // A3 (5h §3.2, journal-v2-format.md §2.8): the findings as each role needs them. The executor: the open blocking ones of
@@ -1829,7 +1991,14 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const st = state();
     const c = (await conds())!;
     const book = c.findings!.book;
-    const say = (f: Finding) => `- ${f.id} [${f.severity}${f.condition ? `, ${f.condition}` : ""}; ${f.status}${f.paths.length ? `; ${f.paths.join(", ")}` : ""}]: ${f.problem}`
+    // A4 (5h §3.4 p. 4): the person's past decisions about a finding go with it
+    const PERSON: Record<string, string> = { closed_by_person: "closed it", to_wish: "made it a wish", moved: "moved it", decided: "decided a possible repeat of it",
+      reopened: "opened it again as a repeat", refused: "refused it as a repeat", opened: "opened it from a disputed item" };
+    const byPerson = (f: Finding) => {
+      const said = f.history.filter((h) => h.by === "person").map((h) => PERSON[h.kind] ?? h.kind);
+      return said.length ? `; the person ${[...new Set(said)].join(", ")}` : "";
+    };
+    const say = (f: Finding) => `- ${f.id} [${f.severity}${f.condition ? `, ${f.condition}` : ""}; ${f.status}${f.paths.length ? `; ${f.paths.join(", ")}` : ""}${byPerson(f)}]: ${f.problem}`
       + `${f.evidence ? `\n  evidence: ${f.evidence}` : ""}\n  close when: ${f.closeWhen}`;
     if (action.purpose === "execute") {
       const own = heldBy(st, c, action.stage!);
@@ -2002,6 +2171,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (check.status === "duplicate_in_progress") return { status: "in_progress" };
     if (check.status === "command_id_reused") return { status: "rejected", code: "command_id_reused" };
     let result: CommandResult;
+    const pausedFor = state().pausedReason; // A4: a decision on awaiting_person_decision goes on by itself
     try {
       result = await apply(commandId, expectedRevision, cmd);
     } catch (error) {
@@ -2015,7 +2185,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     }
     // v2 decisions: the run goes on only after its command.completed (journal-v2-format.md §2.4); a failure here leaves
     // the decision recorded and the run paused, which reopen() turns into paused(recovered)
-    if (result.status === "accepted" && (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm" || cmd.kind === "check.amend")) {
+    const goesOn = cmd.kind === "checks.decide" || cmd.kind === "finish.confirm" || cmd.kind === "check.amend" || cmd.kind === "plan.decide"
+      || (cmd.kind === "person.decide" && pausedFor === "awaiting_person_decision");
+    if (result.status === "accepted" && goesOn) {
       try {
         await setStatus("running");
       } catch {
@@ -2023,6 +2195,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
     }
     if (result.status === "accepted") after(cmd);
+    if (result.status === "accepted" && cmd.kind === "person.decide" && !goesOn) await showDecisions(); // still paused: what is left to decide
     return result;
   }
 
@@ -2062,14 +2235,15 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       }
       case "clarify": {
         // on the person's decisions of journal v2 only that decision and Stop (journal-v2-format.md §2.1)
-        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions", "awaiting_person_decision"].includes(reason)) return reject("invalid_state");
+        if (!ACTIVE.includes(status) || ["journal_corrupt", "awaiting_checks_decision", "awaiting_finish_confirmation", "check_needs_permissions", "awaiting_person_decision", "coverage_lost"].includes(reason)
+          || (st.version === 2 && planProposalWaits(st))) return reject("invalid_state"); // A4: a waiting proposal is the person's first
         if (typeof cmd.text !== "string" || cmd.text.trim() === "" || cmd.text.length > 8000) return reject("invalid_command");
         const ref = await j(() => writer.putText(cmd.text));
         await j(() => writer.recordClarification({ version: st.orch.clarifications + 1, commandId, text: ref }));
         return ok;
       }
       case "raise_limit": {
-        if (status !== "paused" || reason !== "limit_reached") return reject("invalid_state");
+        if (status !== "paused" || reason !== "limit_reached" || (st.version === 2 && planProposalWaits(st))) return reject("invalid_state");
         const current = effectiveLimits(goal, st);
         if (!RAISABLE.includes(cmd.limit) || !Number.isSafeInteger(cmd.value) || cmd.value <= current[cmd.limit]) return reject("invalid_command");
         if (cmd.limit === "runMs" && goal.createdAt + cmd.value <= clock()) return reject("invalid_command"); // still expired
@@ -2143,6 +2317,10 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         await j(() => writer.recordEvent("finish.confirmed", { commandId, tree, commit, push: cmd.push, qa: cmd.qa }));
         return ok;
       }
+      case "person.decide":
+        return personDecide(commandId, cmd);
+      case "plan.decide":
+        return planDecide(commandId, cmd);
       case "permission": {
         const p = permissions.get(cmd.requestId);
         if (!p) return reject("unknown_request");
@@ -2187,6 +2365,100 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     }
   }
 
+  // ---------- A4: the person's decisions (5h §3.5, §3.6; journal-v2-format.md §2.9) ----------
+
+  // The state the person decides on: the copy as it is now. A decision about another state than they saw (the work
+  // changed while the dialog was open) is refused; the view shows the new state and they decide again.
+  async function seen(runKeyShown: unknown): Promise<Snapshot | null> {
+    const snap = await takeSnapshot(state());
+    if (snap.runKey === runKeyShown) return snap;
+    await showDecisions();
+    return null;
+  }
+
+  async function personDecide(commandId: string, cmd: OrchestrationPersonDecide): Promise<CommandResult> {
+    const st = state();
+    const reason = st.pausedReason ?? "";
+    if (st.version !== 2 || st.status !== "paused") return reject("invalid_state");
+    const c = await conds();
+    const book = c?.findings?.book;
+    let finding: string | null = null;
+    let reopened: boolean | null = null;
+    let target: string | { reviewTurnId: string; index: number };
+    if (cmd.subject === "disputed") {
+      const t = cmd.target as { reviewTurnId?: unknown; index?: unknown };
+      const item = book?.disputed.find((d) => d.turnId === t?.reviewTurnId && d.index === t?.index);
+      if (reason !== "awaiting_person_decision" || !book || !item) return reject("invalid_state");
+      if (cmd.decision === "new" && cmd.finding === null) finding = `F${book.next}`;
+      else if (cmd.decision === "repeat" && typeof cmd.finding === "string" && item.candidates.includes(cmd.finding)) {
+        const f = book.list.get(cmd.finding)!;
+        if (f.status !== "closed") return reject("invalid_state");
+        // the rule of opening again by id (5h §3.4), about the state the item was reported on: another state than the
+        // one it was closed on, and one of its own paths changed since it was closed
+        const review = st.orch.reviews.find((r) => r.turnId === item.turnId)!;
+        const tree = st.orch.turns[item.turnId]?.tree ?? null;
+        const changed = tree ? new Set((await diffTreeNames(ws, f.closeTree!, tree, Number.MAX_SAFE_INTEGER)).files.map((x) => x.path)) : new Set<string>();
+        finding = f.id;
+        reopened = review.runKey !== f.closeRunKey && f.paths.some((x) => changed.has(x));
+      } else return reject("invalid_command");
+      target = { reviewTurnId: item.turnId, index: item.index };
+    } else if (cmd.subject === "condition") {
+      const stage = Object.keys(st.orch.accepted).length + 1;
+      if (reason !== "awaiting_person_decision" || !c || typeof cmd.target !== "string" || !personIdsOf(c.book, stage).includes(cmd.target)) return reject("invalid_state");
+      if ((cmd.decision !== "met" && cmd.decision !== "not_met") || cmd.finding !== null) return reject("invalid_command");
+      target = cmd.target;
+    } else if (cmd.subject === "finding") {
+      const f = typeof cmd.target === "string" ? book?.list.get(cmd.target) : undefined;
+      if (!FINDING_PAUSES.includes(reason) || !f || f.status !== "open") return reject("invalid_state");
+      if ((cmd.decision !== "close" && cmd.decision !== "to_wish") || cmd.finding !== null || (cmd.decision === "to_wish" && f.severity !== "blocking")) return reject("invalid_command");
+      target = f.id;
+    } else return reject("invalid_command");
+    const snap = await seen(cmd.runKey);
+    if (!snap) return reject("stale_revision");
+    await j(() => writer.recordEvent("person.decided", { commandId, subject: cmd.subject, target, decision: cmd.decision, finding, reopened, runKey: snap.runKey, tree: snap.tree }));
+    shownFindings = findingsView(state(), await conds());
+    shownConditions = await viewConditions(snap.checkKeys);
+    return ok; // on awaiting_person_decision the run goes on after command.completed; elsewhere it stays paused
+  }
+
+  async function planDecide(commandId: string, cmd: OrchestrationPlanDecide): Promise<CommandResult> {
+    const st = state();
+    const p = st.orch.proposals.at(-1);
+    if (st.version !== 2 || st.status !== "paused" || st.pausedReason !== "coverage_lost" || !p || p.decision !== null || cmd.proposalTurnId !== p.turnId) return reject("invalid_state");
+    const c = (await conds())!;
+    const text = await readJson<PlanText>(p.ref);
+    let choices: PlanChoices = { findings: [] };
+    let note: string | null = null;
+    if (cmd.decision === "accept") {
+      if (cmd.note !== null || !Array.isArray(cmd.choices)) return reject("invalid_command");
+      // 5h §3.6 p. 4: one choice for every open blocking finding of a dropped condition, nothing else
+      const drops = new Set((text.dropped ?? []).map((x) => x.condition));
+      const affected = (c.findings ? openBlocking(c.findings.book) : []).filter((f) => f.condition !== null && drops.has(f.condition)).map((f) => f.id).sort();
+      const last = p.firstStage + p.stageCount - 1;
+      const newIds = new Set(text.stages.flatMap((x) => (x.conditions ?? []).map((k) => ("keep" in k ? k.keep : k.id))));
+      const valid = (x: OrchestrationPlanChoice) => x && typeof x.id === "string" && (x.choice === "close" || x.choice === "to_wish"
+        ? x.stage === null && x.condition === null
+        : x.choice === "move" && (x.condition === null ? Number.isSafeInteger(x.stage) && x.stage! >= p.firstStage && x.stage! <= last : x.stage === null && newIds.has(x.condition)));
+      if (!cmd.choices.every(valid) || JSON.stringify(cmd.choices.map((x) => x.id).sort()) !== JSON.stringify(affected)) return reject("invalid_command");
+      // the defensive check of 5h §3.6 p. 3: the proposal still holds against the state now
+      const stages = text.stages.map((x) => ({ conditions: (x.conditions ?? []).map((k) => ("keep" in k ? { keep: k.keep } : { text: k.text, covers: k.covers, evidence: k.evidence })) }));
+      if (planProblems(stages, { dropped: text.dropped ?? [], dropRequirements: text.dropRequirements ?? [] }, c.book, p.firstStage, goal.criteria.length, goal.checks, await returnedConditions()).length) return reject("invalid_state");
+      choices = { findings: cmd.choices.map((x) => ({ id: x.id, choice: x.choice, stage: x.stage, condition: x.condition })) };
+    } else if (cmd.decision === "return") {
+      if (!Array.isArray(cmd.choices) || cmd.choices.length || (cmd.note !== null && (typeof cmd.note !== "string" || cmd.note.length > 4000))) return reject("invalid_command");
+      note = cmd.note?.trim() ? cmd.note.trim() : null;
+    } else return reject("invalid_command");
+    const snap = await seen(cmd.runKey);
+    if (!snap) return reject("stale_revision");
+    const choicesRef = await j(() => writer.putText(canonical(choices)));
+    const noteRef = note === null ? null : await j(() => writer.putText(note!));
+    await j(() => writer.recordEvent("plan.decided", {
+      commandId, proposalTurnId: p.turnId, decision: cmd.decision, version: cmd.decision === "accept" ? (st.orch.plan?.version ?? 0) + 1 : null,
+      choices: choicesRef, note: noteRef, runKey: snap.runKey, tree: snap.tree
+    }));
+    return ok; // run.status(running) follows command.completed, in command()
+  }
+
   // Actions after the decision is journaled. Stop never waits for the operation here: the command returns now.
   function after(cmd: RunCommand): void {
     if (cmd.kind === "stop") {
@@ -2200,7 +2472,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       return;
     }
     if (cmd.kind === "step") stepBudget = 1;
-    if (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm" || cmd.kind === "check.amend") stepBudget = null;
+    if (cmd.kind === "checks.decide" || cmd.kind === "finish.confirm" || cmd.kind === "check.amend" || cmd.kind === "plan.decide" || cmd.kind === "person.decide") stepBudget = null;
     if (cmd.kind === "resume") stepBudget = null;
     if (state().status === "running") schedule();
   }
@@ -2248,13 +2520,16 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       const st = state();
       const decided = (st.pausedReason === "awaiting_checks_decision" && st.orch.checksDecision !== null)
         || (st.pausedReason === "awaiting_finish_confirmation" && (st.orch.confirmations.at(-1)?.seq ?? -1) > (st.orch.lastPausedSeq.awaiting_finish_confirmation ?? -1))
+        // A4: the person decided on the proposal, or about what the pause asked (5h §3.5)
+        || (st.pausedReason === "coverage_lost" && !planProposalWaits(st))
+        || (st.pausedReason === "awaiting_person_decision" && (st.orch.person.at(-1)?.seq ?? -1) > (st.orch.lastPausedSeq.awaiting_person_decision ?? -1))
         || (st.pausedReason === "check_needs_permissions" && Math.max(-1, ...Object.values(st.orch.amended).map((a) => a.seq)) > (st.orch.lastPausedSeq.check_needs_permissions ?? -1));
       if (decided) await setStatus("paused", "recovered");
       if (state().pausedReason === "awaiting_checks_decision") await loadProposal();
       if (state().pausedReason === "awaiting_finish_confirmation") latest = { tree: await snapshotCopyTree(ws, st.workspace!.current.tree), at: new Date(clock()).toISOString() };
-      shownConditions = conditionsView(state(), goal, await conds(), await shownCheckKeys(state(), readJson).catch(() => null));
+      shownConditions = await viewConditions(await shownCheckKeys(state(), readJson).catch(() => null));
       shownFindings = findingsView(state(), await conds());
-      touch();
+      await showDecisions();
     },
     async start() {
       await setStatus("running");
@@ -2333,9 +2608,9 @@ export interface ConditionTexts { book: ConditionsBook; reports: Record<string, 
 export async function loadConditions(st: RunState, read: ReadJson): Promise<ConditionTexts> {
   const t = await conditionTexts(st, read);
   return {
-    book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned ?? null }))), reports: t.reports!,
-    // A3: the findings of a journal the reviewer reviews (journal-v2-format.md §2.8)
-    findings: byReviewer(st) ? replayFindings(st, { plans: t.plans!, reports: t.reports!, applied: t.applied! }) : null
+    book: bookOf(st.orch.plans.map((p, i) => ({ firstStage: p.firstStage, text: t.plans![i], conditionsAssigned: p.conditionsAssigned ?? null, base: p.base }))), reports: t.reports!,
+    // A3: the findings of a journal the reviewer reviews (journal-v2-format.md §2.8); A4: with the person's choices
+    findings: byReviewer(st) ? replayFindings(st, { plans: t.plans!, reports: t.reports!, applied: t.applied!, choices: t.choices ?? {} }) : null
   };
 }
 // A3: the findings as the run panel shows them (journal-v2-format.md §2.8); null when the lead reviews.
@@ -2347,7 +2622,9 @@ export function findingsView(st: RunState, c: ConditionTexts | null): Orchestrat
     items: [...book.list.values()].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1))).map((f) => ({
       id: f.id, severity: f.severity, status: f.status, condition: f.condition, stage: f.status === "open" ? ownerOf(f, owners) : null,
       problem: f.problem, evidence: f.evidence, closeWhen: f.closeWhen, paths: f.paths, possibleRepeatOf: f.possibleRepeatOf,
-      history: f.history.map((h) => ({ kind: h.kind, reviewTurnId: h.turnId, index: h.index, runKey: h.runKey, tree: h.tree, reason: h.reason ?? null }))
+      history: f.history.map((h) => ({ kind: h.kind, reviewTurnId: h.turnId, index: h.index, runKey: h.runKey, tree: h.tree, reason: h.reason ?? null,
+        by: h.by ?? "reviewer" as const, note: h.note ?? null })),
+      downgraded: book.downgraded.includes(f.id)
     })),
     disputed: book.disputed.map((d) => ({ reviewTurnId: d.turnId, index: d.index, problem: d.problem, candidates: d.candidates })),
     openBlocking: openBlocking(book).length
@@ -2386,19 +2663,36 @@ export async function shownCheckKeys(st: RunState, read: ReadJson): Promise<Read
 }
 
 // The facts the cycle and the completion function decide on; null: no condition rule applies (v1, A1's plan form).
-export function conditionFacts(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null): ConditionFacts | null {
+// stale (A4, 5h §3.7): the evidence of accepted stages whose files changed since — then the last final review's mark
+// of it counts; null: not known here (nobody holds the run's tree), the evidence stands.
+export function conditionFacts(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null,
+  stale: ((id: string) => boolean) | null = null): ConditionFacts | null {
   if (st.version !== 2 || !c?.book.conditioned) return null;
   const final = (c.reports[finalReview(st) ?? ""] as { requirements?: unknown } | undefined)?.requirements;
   return factsOf(c.book, goal.criteria.length, {
     check: (cmd) => checkOn(st, cmd, checkKeys).status,
     marks: (stage) => { const id = stageReview(st, stage); return id ? marksIn(c.reports, id) : null; },
-    finalMarks: Array.isArray(final) ? final as RequirementMark[] : null
+    finalMarks: Array.isArray(final) ? final as RequirementMark[] : null,
+    person: (id, stage) => personStatus(st, id, stage),
+    ...(stale ? { stale, confirmed: (id: string) => marksIn(c.reports, finalReview(st)).find((m) => m.id === id)?.status ?? null } : {})
   });
 }
 
+// A4 (5h §3.7) for a run nobody holds: its copy's tree is not read (a view writes nothing), so the "change" evidence
+// of an accepted stage an executor turn came after may be stale — not counted until the final review confirms it.
+export function possiblyStale(st: RunState, c: ConditionTexts): (id: string) => boolean {
+  const out = new Set<string>();
+  for (const [stage, a] of Object.entries(st.orch.accepted)) {
+    if (!Object.values(st.orch.turns).some((t) => t.purpose === "execute" && t.seq > a.seq)) continue;
+    for (const id of changeIdsOf(c.book, Number(stage))) out.add(id);
+  }
+  return (id) => out.has(id);
+}
+
 // The same facts as shown: every requirement and condition with its proof (journal-v2-format.md §2.7, «Показ»).
-export function conditionsView(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null): OrchestrationConditions | null {
-  const f = conditionFacts(st, goal, c, checkKeys);
+export function conditionsView(st: RunState, goal: Goal, c: ConditionTexts | null, checkKeys: Readonly<Record<string, string>> | null,
+  stale: ((id: string) => boolean) | null = null): OrchestrationConditions | null {
+  const f = conditionFacts(st, goal, c, checkKeys, stale);
   if (!f || !c) return null;
   const conditions = f.conditions.map((x): OrchestrationConditions["conditions"][number] => {
     const d = c.book.defs.get(x.id)!;
@@ -2406,18 +2700,27 @@ export function conditionsView(st: RunState, goal: Goal, c: ConditionTexts | nul
     if (d.evidence.kind === "check") {
       const run = checkOn(st, d.evidence.check, checkKeys).checkRunId;
       if (run) proof = { checkRunId: run, output: st.checks[run]?.output ?? null };
+    } else if (d.evidence.kind === "person") {
+      // A4: the person's decision in force, by its command
+      const said = personStatus(st, x.id, x.stage);
+      const by = st.orch.person.filter((p) => p.subject === "condition" && p.target === x.id).at(-1);
+      if (by && (said === "met" || said === "not_met")) proof = { commandId: by.commandId, decision: said };
     } else {
       const review = stageReview(st, x.stage);
       const m = marksIn(c.reports, review).find((y) => y.id === x.id);
       if (review && m) proof = { reviewTurnId: review, paths: [...m.paths], note: m.note };
     }
     const evidence = d.evidence.kind === "check"
-      ? { kind: "check" as const, check: d.evidence.check, command: goal.commands?.[Number(d.evidence.check.slice(4)) - 1] ?? null } : { kind: "change" as const };
-    return { id: x.id, text: d.text, covers: [...d.covers], stage: x.stage, status: x.status, evidence, proof };
+      ? { kind: "check" as const, check: d.evidence.check, command: goal.commands?.[Number(d.evidence.check.slice(4)) - 1] ?? null } : { kind: d.evidence.kind };
+    return { id: x.id, text: d.text, covers: [...d.covers], stage: x.stage, status: x.status, ...(x.stale ? { stale: true } : {}), evidence, proof };
   });
   return {
-    requirements: f.requirements.map((r, i) => ({ id: r.id, text: goal.criteria[i], conditions: r.conditions, status: r.status })),
-    conditions, met: conditions.filter((x) => x.status === "met").length, total: conditions.length
+    // A4: a requirement or condition the person dropped says so, with the lead's why — never as met
+    requirements: f.requirements.map((r, i) => ({ id: r.id, text: goal.criteria[i], conditions: r.conditions, status: r.status,
+      ...(r.status === "dropped" ? { why: c.book.droppedRequirements.get(r.id) ?? null } : {}) })),
+    conditions,
+    dropped: [...c.book.dropped.entries()].map(([id, why]) => ({ id, text: c.book.defs.get(id)?.text ?? "", covers: [...(c.book.defs.get(id)?.covers ?? [])], why })),
+    met: conditions.filter((x) => x.status === "met").length, total: conditions.length
   };
 }
 

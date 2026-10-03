@@ -381,7 +381,7 @@ function rewrite(buf, runId, fn) {
   const out = [];
   let prev = null;
   for (const r of recs) {
-    const { record, line } = buildRecord(prev, runId, r.ts, r.type, r.data, 2, prev === null ? { minReaderVersion: 2, formatPreview: true } : null);
+    const { record, line } = buildRecord(prev, runId, r.ts, r.type, r.data, 2, prev === null ? { minReaderVersion: 2 } : null);
     out.push(line);
     prev = record;
   }

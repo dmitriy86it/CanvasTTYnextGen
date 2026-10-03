@@ -1,6 +1,7 @@
-// Stage A0 (acceptance-review-spec.md §2.2, §5): a journal written by a newer version (first record v > 1) is shown
-// read-only — its goal and its hash-checked records — and never opened, repaired, recovered, stopped or written; a
-// neighbouring v1 run goes on as before, and new runs are still written as v1.
+// Stage A0 (acceptance-review-spec.md §2.2, §5): a journal written by a newer version (first record v above this build's;
+// 3 here since A4, whose final form of v2 is this build's own) is shown read-only — its goal and its hash-checked
+// records — and never opened, repaired, recovered, stopped or written; a neighbouring v1 run goes on as before, and new
+// runs are still written as v1.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -49,7 +50,7 @@ const V2_EVENTS = (goal) => [
   ["plan.proposed", { turnId: randomUUID(), plan: goal, firstStage: 1, stageCount: 1, conditionsAssigned: 3 }]
 ];
 // kind: ok | broken (line 3 altered) | torn (last line cut) | mixed (line 3 another version) | no_goal (goal text removed)
-function writeNewer(root, { version = 2, kind = "ok", text = "newer goal" } = {}) {
+function writeNewer(root, { version = 3, kind = "ok", text = "newer goal" } = {}) {
   const runId = randomUUID();
   const dir = path.join(root, "runs", runId);
   fs.mkdirSync(path.join(dir, "texts"), { recursive: true, mode: 0o700 });
@@ -82,7 +83,7 @@ function footprint(dir) {
 
 test("A0 journal: any version above the supported one is newer_version, chain-checked, never replayed", () => {
   const root = path.join(TMP, "j");
-  for (const version of [2, 3, 17]) {
+  for (const version of [3, 17]) {
     const r = writeNewer(root, { version });
     const p = parseJournal(fs.readFileSync(path.join(r.dir, "journal.jsonl")), r.runId);
     assert.equal(newerVersion(fs.readFileSync(path.join(r.dir, "journal.jsonl"))), version);
@@ -106,8 +107,8 @@ test("A0 journal: any version above the supported one is newer_version, chain-ch
   // Not newer: v1, a first line that is not JSON, a version that is not an integer above 1, no complete first line.
   const id = randomUUID();
   for (const first of ['{"v":1}', "garbage", '{"v":"2"}', '{"v":1.5}', '{"v":0}']) assert.equal(newerVersion(Buffer.from(`${first}\n`)), null, first);
-  assert.equal(newerVersion(Buffer.from('{"v":2}')), 2, "a first line that lost its newline still names its version");
-  const [only] = newerLines(id, 2, [["run.created", { goal: { sha256: "a".repeat(64), bytes: 1 } }]]);
+  assert.equal(newerVersion(Buffer.from('{"v":3}')), 3, "a first line that lost its newline still names its version");
+  const [only] = newerLines(id, 3, [["run.created", { goal: { sha256: "a".repeat(64), bytes: 1 } }]]);
   const lone = parseJournal(Buffer.from(only.trimEnd()), id);
   assert.deepEqual([lone.integrity.status, lone.integrity.detail.chain.status, lone.records.length], ["newer_version", "torn_tail", 0]);
   // A first line torn inside its JSON names no version: it stays a damaged journal (accepted, nothing to read).
@@ -219,7 +220,7 @@ test("A0 manager: newer runs are listed and read-only; direct commands are refus
       assert.equal(s.integrity, "newer_version", `${round} ${kind}`);
       assert.equal(s.open, false);
       assert.deepEqual([s.view.status, s.view.reason, s.view.active, s.view.halted], ["paused", "newer_version", null, false]);
-      assert.equal(s.view.newer.version, kind === "v9" ? 9 : 2);
+      assert.equal(s.view.newer.version, kind === "v9" ? 9 : 3);
       assert.equal(s.view.newer.chain, kind === "broken" ? "corrupt" : kind === "torn" ? "torn_tail" : "ok");
       assert.equal(s.view.newer.goal, kind === "no_goal" ? null : r.text);
       const h = (await mgr.history(r.runId, 0, 100)).value;

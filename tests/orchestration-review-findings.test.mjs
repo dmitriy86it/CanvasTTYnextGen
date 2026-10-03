@@ -99,13 +99,15 @@ async function start(m, src, goal = {}) {
   assert.ok(r.ok, JSON.stringify(r));
   return runId;
 }
-// A journal rebuilt by fn (records in, records out), re-chained as this build writes it.
-function rewrite(buf, runId, fn) {
+// A journal rebuilt by fn (records in, records out), re-chained as this build writes it (head: as an A1–A3 development
+// build wrote it, PREVIEW).
+const PREVIEW = { minReaderVersion: 2, formatPreview: true };
+function rewrite(buf, runId, fn, head = { minReaderVersion: 2 }) {
   const recs = fn(buf.toString().trim().split("\n").map((l) => JSON.parse(l)));
   const out = [];
   let prev = null;
   for (const r of recs) {
-    const { record, line } = buildRecord(prev, runId, r.ts, r.type, r.data, 2, prev === null ? { minReaderVersion: 2, formatPreview: true } : null);
+    const { record, line } = buildRecord(prev, runId, r.ts, r.type, r.data, 2, prev === null ? head : null);
     out.push(line);
     prev = record;
   }
@@ -385,12 +387,14 @@ test("the final review opens a blocking finding: the run is not completed — a 
 test("a blocking finding bound to a condition of an accepted stage reaches the next plan's executor; its stage is not accepted while it is open", OPTS, async () => {
   const src = project({ "a.txt": "1\n", "b.txt": "1\n", "c.txt": "1\n" });
   const C2 = { keep: null, text: "b.txt says 2", covers: ["R1"], evidence: { kind: "change", check: null } };
-  const PLAN2 = { answer: { stages: [{ title: "b", task: "make b.txt say 2", conditions: [C2] }], dropped: [], dropRequirements: [], question: null } };
+  // C1, bound to the open F1, is returned by the refused final review (A4, 5h §3.8): the next plan keeps it
+  const PLAN2 = { answer: { stages: [{ title: "b", task: "make b.txt say 2", conditions: [{ keep: "C1", text: null, covers: null, evidence: null }, C2] }], dropped: [], dropRequirements: [], question: null } };
+  const marks = [{ id: "C1", status: "met", paths: ["a.txt"], note: "C1" }, { id: "C2", status: "met", paths: ["b.txt"], note: "C2" }];
   const m = manager({ MOCK_SCRIPT: script([
     PLAN, exec({ "a.txt": "2\n" }), review([]),
     final([finding({ condition: "C1", problem: "C1-IS-WRONG" })]), // bound to C1, whose stage 1 is accepted
-    PLAN2, exec({ "b.txt": "2\n" }, "first try"), review([], [{ id: "C2", status: "met", paths: ["b.txt"], note: "C2" }]),
-    exec({ "c.txt": "2\n" }), review([finding({ id: "F1", condition: "C1", status: "closed", paths: ["c.txt"] })], [{ id: "C2", status: "met", paths: ["b.txt"], note: "C2" }]),
+    PLAN2, exec({ "b.txt": "2\n" }, "first try"), review([], marks),
+    exec({ "c.txt": "2\n" }), review([finding({ id: "F1", condition: "C1", status: "closed", paths: ["c.txt"] })], marks),
     final()
   ]) });
   const runId = await start(m, src);
@@ -418,7 +422,7 @@ test("discarded reviews count only in a row: a review applied between two discar
   await m.shutdown();
 });
 
-test("a disputed finding: the run waits for the person (A4 decides) — only Stop; the run is not completed", OPTS, async () => {
+test("a disputed finding: the run waits for the person — resume and clarify are refused (the person decides, A4); the run is not completed", OPTS, async () => {
   const src = project({ "a.txt": "1\n", "b.txt": "1\n" });
   // F1 on a.txt closed; the final review opens a blocking one on a.txt, unchanged since, without saying how they relate
   const m = manager({ MOCK_SCRIPT: script([
@@ -468,7 +472,7 @@ test("a journal the lead reviewed (A1–A2) opens and goes on with the lead; a r
       return x;
     });
   };
-  fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, asA2));
+  fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, asA2, PREVIEW));
   const leadFinal = { answer: { verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "met", note: "R1" }] } };
   const m2 = manager({ MOCK_SCRIPT: script([leadFinal]), MOCK_STATE }, { root: m.root });
   const v = await view(m2, runId);
@@ -484,24 +488,25 @@ test("a journal the lead reviewed (A1–A2) opens and goes on with the lead; a r
   fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, (recs) => {
     const a2 = asA2(recs);
     return [...a2, ...recs.slice(a2.length)];
-  }));
+  }, PREVIEW));
   assert.equal((await readRun(m.root, runId)).integrity.detail.code, "replay_conflict");
+  // A4's final form: the lead's review record is not of this form at all
+  fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, asA2));
+  assert.equal((await readRun(m.root, runId)).integrity.detail.code, "invalid_event");
 });
 
 // ---------------- the fixtures of the format ----------------
 
-// The records as this build replays them, and the findings from their texts (the completion basis of the final form is
-// A4's: not checked here).
-test("the fixtures (A4's final form) with the reviewer's results and nothing of A4: their records replay, their findings apply; 05-open-blocking has F1 open, blocking, owned by stage 1", async () => {
+// The records as this build replays them, and the findings from their texts.
+test("the fixtures (A4's final form) with the reviewer's results: their records replay, their findings apply; 05-open-blocking has F1 open, blocking, owned by stage 1", async () => {
   let seen = 0;
   for (const id of fs.readdirSync(FIXTURES)) {
     const dir = path.join(FIXTURES, id);
     const name = fs.readFileSync(path.join(dir, "FIXTURE"), "utf8").trim();
     const types = fs.readFileSync(path.join(dir, "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
-    if (!types.includes("review.assessed") || types.some((t) => t === "plan.proposed" || t.startsWith("person."))) continue;
+    if (!types.includes("review.assessed")) continue;
     seen += 1;
-    // as this build writes them (formatPreview): the final form itself is read only, never replayed (A1.1 Q3)
-    const r = parseJournal(rewrite(fs.readFileSync(path.join(dir, "journal.jsonl")), id, (x) => x), id);
+    const r = parseJournal(fs.readFileSync(path.join(dir, "journal.jsonl")), id);
     assert.equal(r.integrity.status, "ok", `${name}: ${JSON.stringify(r.integrity)}`);
     const c = await loadConditions(r.state, async (ref) => JSON.parse(fs.readFileSync(path.join(dir, "texts", ref.sha256), "utf8")));
     assert.equal(c.findings.problem, null, name);
@@ -510,7 +515,7 @@ test("the fixtures (A4's final form) with the reviewer's results and nothing of 
     assert.deepEqual(f.items.map((x) => [x.id, x.severity, x.status, x.stage, x.condition]), [["F1", "blocking", "open", 1, "C1"]]);
     assert.equal(f.openBlocking, 1);
   }
-  assert.ok(seen >= 5, `${seen} fixtures`);
+  assert.ok(seen >= 6, `${seen} fixtures`);
 });
 
 // ---------------- the renderer's model ----------------
