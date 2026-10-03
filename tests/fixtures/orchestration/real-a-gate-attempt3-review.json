@@ -1,0 +1,1 @@
+{"conditions":[{"id":"C1","note":"The named export limits values to the inclusive range, throws RangeError for reversed bounds, and has unit tests for those behaviors.","paths":["src/clamp.mjs","tests/clamp.test.mjs"],"status":"met"},{"id":"C2","note":"The acceptance test has no working-tree changes.","paths":[],"status":"met"}],"findings":[],"question":null,"request":"none"}

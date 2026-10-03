@@ -1964,6 +1964,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     if (isReplan && lastReview?.assessed) {
       parts.push(`Why a new plan is needed: the reviewer's last review of plan v${st.orch.plan!.version}`
         + `${lastReview.stage === null ? " (the final review)" : ` (stage ${lastReview.stage})`} ${lastReview.assessed.request === "replan" ? "asked for a new plan" : "left the goal unmet"}.`);
+      // stage A gate: what it found not met, in its words — a condition no change can prove is dropped (with why) or
+      // replaced, never kept as it is
+      const c = await conds();
+      const notMet = c ? marksIn(c.reports, lastReview.turnId).filter((m) => m.status === "not_met") : [];
+      if (notMet.length) parts.push(`Conditions it marked not met:\n${notMet.map((m) => `- ${m.id}: ${m.note}`).join("\n")}\n`
+        + "A condition it says no changed file can prove is not kept as it is: drop it with why, and add a check condition instead when it matters.");
     }
     if (isReplan && lastReview && !lastReview.assessed) {
       parts.push(`Why a new plan is needed: the last review of plan v${st.orch.plan!.version} returned ${lastReview.verdict}` +
@@ -2005,6 +2011,9 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         "- A new condition: {keep: null, text, covers: [the requirement ids it proves], evidence}. evidence {kind: \"check\", check: \"cmd-<n>\"} is met when "
           + "that check command passes on the work; {kind: \"change\", check: null} is met when the review marks it met, naming the files changed for it; "
           + "{kind: \"person\", check: null} is met when the person says so — only for what nobody but the person can judge.",
+        // stage A gate, attempt 3: "a file remains unchanged" as a change condition — no review can ever prove it
+        "- A change condition is proven only by files the run changes. A statement that something does not change (a file or a path stays as it "
+          + "is) is never a change condition: make it a check condition with a command that verifies it, or leave it out of the conditions.",
         "- Every requirement in force is covered by at least one condition: of an accepted stage, kept, or new.",
         "- To give up a condition or a requirement, list it in dropped [{condition, why}] or dropRequirements [{requirement, why}]. Such a plan is a "
           + "proposal: the person accepts it or returns it to you, and the plan in force stays until then. Never drop silently: a condition still to be "
@@ -2113,6 +2122,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         + "when it is that one again, or {repeatOf: null, distinctFrom: \"F<n>\", why} when it is another problem; otherwise relation null.",
       "- request: none (the application decides the stage by the checks, the conditions and the open blocking findings), replan when the plan "
         + "itself cannot work, question (with question) when only the person can answer.",
+      ...(action.stage !== null ? ["- A change condition no file changed by the run can prove (for example, that a file stays unchanged): mark it "
+        + "not_met with a note saying so and answer request replan — never met without paths."] : []),
       ...(await rejectedReview(snapshot)).map((x, i) => `${i === 0 ? "Your previous report was not accepted by the application:\n" : ""}- ${x}`)
     ].join("\n"));
     return out;

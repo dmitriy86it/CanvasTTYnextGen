@@ -117,7 +117,10 @@ export function checkProcesses(rootPid, roots = ALLOWED, seen = new Set()) {
     const file = exe.get(p.pid);
     if (!file) continue; // gone before lsof saw it
     const args = p.command.split(/\s+/).slice(1);
-    const script = INTERPRETERS.has(path.basename(file).replace(/\d+(\.\d+)*$/, "")) ? args.find((a) => a.startsWith("/")) : undefined;
+    // `sh -c "<command line>"` (and `node -e`) runs no script file: a "/word" in that line (a commit message's "/health:")
+    // is not a program; what the line starts is a process of its own, looked at by itself
+    const inline = args[0] === "-c" || args[0] === "-e";
+    const script = INTERPRETERS.has(path.basename(file).replace(/\d+(\.\d+)*$/, "")) && !inline ? args.find((a) => a.startsWith("/")) : undefined;
     const bad = [file, script].filter((f) => f && !ok(real(f)));
     const key = `foreign ${p.pid} ${bad.join(" ")}`; // the same program under a changed command line is said once
     if (bad.length && !seen.has(key)) { seen.add(key); out.push({ pid: p.pid, program: bad.join(" "), command: p.command.slice(0, 300) }); }

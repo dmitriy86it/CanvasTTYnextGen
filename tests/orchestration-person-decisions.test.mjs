@@ -629,3 +629,27 @@ test("gate: a final review's mark of a condition with nothing to confirm, an unc
   assert.deepEqual(notes, [["F1", "unchanged", "b.txt"], ["C1", "unconfirmed", null]]);
   await m.shutdown();
 });
+
+test("gate: a change condition no file can prove (real attempt 3) — the reviewer's not met with replan leads straight to a new plan told why, not a stuck stage", OPTS, async () => {
+  const fixture = (name) => JSON.parse(fs.readFileSync(new URL(`./fixtures/orchestration/${name}`, import.meta.url), "utf8"));
+  const recorded = fixture("real-a-gate-attempt3-plan.json");
+  const asPlan = { answer: { stages: recorded.stages.map((s) => ({ title: s.title, task: s.task, conditions: s.conditions.map((c) => ({
+    keep: null, text: c.text, covers: c.covers, evidence: { kind: c.evidence.kind, check: c.evidence.check ?? null } })) })), dropped: [], dropRequirements: [], question: null } };
+  // the recorded review, C2 answered as the reviewer is now told: not met, a new plan
+  const review = fixture("real-a-gate-attempt3-review.json");
+  review.conditions = review.conditions.map((m) => m.id === "C2" ? { ...m, status: "not_met", paths: [], note: "No file changed by the run can prove that the acceptance test stays unchanged." } : m);
+  review.request = "replan";
+  const src = project({ "a.txt": "1\n" });
+  const m = manager({ MOCK_SCRIPT: script([asPlan, exec({ "src/clamp.mjs": "export const clamp = (x) => x;\n", "tests/clamp.test.mjs": "// unit\n" }), { answer: review },
+    plan([["clamp", [keep("C1"), keep("C3")]]], [{ condition: "C2", why: "no change can prove it" }])]) });
+  const runId = await start(m, src, { criteria: ["clamp is exported", "it is tested"], commands: ["true"] });
+  const v = await settled(m, runId);
+  const all = await records(m, runId);
+  assert.deepEqual(turnsOf(all), ["plan", "execute", "review", "plan"], "straight to a new plan: no second execute round");
+  assert.deepEqual([v.status, v.reason], ["paused", "coverage_lost"], "dropping C2 is the person's decision");
+  const [first, second] = tasksOf(m, runId, all, "lead");
+  assert.match(first, /A statement that something does not change \(a file or a path stays as it is\) is never a change condition/);
+  assert.match(second, /Conditions it marked not met:\n- C2: No file changed by the run can prove/);
+  assert.match(tasksOf(m, runId, all, "reviewer")[0], /mark it not_met with a note saying so and answer request replan — never met without paths/);
+  await m.shutdown();
+});

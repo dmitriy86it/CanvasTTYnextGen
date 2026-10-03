@@ -51,6 +51,8 @@ test("checkProcesses names a program outside the allowed folders, and a script a
   const native = spawn("/bin/sh", [path.join(dir, "codex")], { stdio: "ignore" });
   const script = spawn(process.execPath, [path.join(dir, "agent.mjs")], { stdio: "ignore" });
   const system = spawn("/bin/sleep", ["30"], { stdio: "ignore" }); // allowed
+  // an inline command line, a "/word" in it (a commit message): no script file — allowed (the sleep it starts is too)
+  const inline = spawn("/bin/sh", ["-c", "echo 'fix /health: ok'; /bin/sleep 30"], { stdio: "ignore" });
   try {
     await new Promise((r) => setTimeout(r, 500));
     const roots = ["/bin/", "/usr/bin/", "/System/", "/usr/lib/", "/lib/", fs.realpathSync(process.execPath)];
@@ -60,7 +62,7 @@ test("checkProcesses names a program outside the allowed folders, and a script a
     assert.equal(found.find((f) => f.pid === script.pid).program, path.join(dir, "agent.mjs"));
     assert.deepEqual(checkProcesses(process.pid), [], "the default list allows the temporary folders and this node");
   } finally {
-    for (const c of [native, script, system]) c.kill("SIGKILL");
+    for (const c of [native, script, system, inline]) c.kill("SIGKILL");
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
