@@ -10,12 +10,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire, Module } from "node:module";
 import { after, test } from "node:test";
 import { completion, nextAction } from "../src/main/services/orchestration/cycle.ts";
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { JOURNAL_V2_BY_DEFAULT, buildRecord, canonical, parseJournal, sha256Hex } from "../src/main/services/orchestration/journal.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
-import { conditionFacts, decidedGoal, loadConditions } from "../src/main/services/orchestration/orchestrationService.ts";
+import { REVIEWER_SCHEMA, conditionFacts, decidedGoal, loadConditions, narrowMarks } from "../src/main/services/orchestration/orchestrationService.ts";
+import { decidedMarks, factsOf, finalMarksProblems, ignoredMarks, stageMarksProblems, unchangedPaths } from "../src/main/services/orchestration/conditions.ts";
+import { validateAnswer } from "../src/main/services/orchestration/schema.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { readRun } from "../src/main/services/orchestration/store.ts";
 import { parseCommand } from "../src/main/ipc/orchestrationIpc.ts";
@@ -507,4 +510,122 @@ test("replay: push of a run without checks delivering another tree than the pers
   fs.writeFileSync(file, Buffer.concat(out));
   const r = await readRun(root, id);
   assert.deepEqual([r.integrity.status, r.integrity.detail?.phase, r.canContinue], ["corrupt", "texts", false]);
+});
+
+// ---------------- stage A gate: review marks (real series attempt 2, evidence/real-a-gate/attempt-2) ----------------
+
+const requireApp = createRequire(path.join(HERE, "..", "package.json"));
+async function bundle(entry) {
+  const out = await requireApp("esbuild").build({
+    entryPoints: [path.join(HERE, "..", entry)], bundle: true, write: false, platform: "node", format: "cjs", jsx: "automatic", logLevel: "silent",
+    loader: { ".svg": "dataurl", ".png": "dataurl", ".ico": "dataurl", ".webp": "dataurl", ".jpg": "dataurl" },
+    plugins: [{ name: "same-react", setup(b) { b.onResolve({ filter: /^react(\/.*)?$/ }, (a) => ({ path: requireApp.resolve(a.path), external: true })); } }]
+  });
+  const file = path.join(HERE, "..", `${path.basename(entry)}.person-decisions.cjs`);
+  const mod = new Module(file);
+  mod.filename = file;
+  mod.paths = Module._nodeModulePaths(path.join(HERE, ".."));
+  mod._compile(out.outputFiles[0].text, file);
+  return mod.exports;
+}
+// The schemas the fake Codex was given, in the order of its turns (its own state files).
+const schemasOf = (state) => fs.readdirSync(state).filter((f) => f.endsWith(".json")).flatMap((f) => {
+  try { return JSON.parse(fs.readFileSync(path.join(state, f), "utf8")).turns ?? []; } catch { return []; }
+}).map((t) => t.outputSchema).filter(Boolean);
+const check = (text, covers, cmd = "cmd-1") => ({ keep: null, text, covers, evidence: { kind: "check", check: cmd } });
+
+test("gate: the reviewer's mark of a check condition is left out and never counted — the command failed, C2 stays not met; the feed says so", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const state = fs.mkdtempSync(path.join(TMP, "state-"));
+  const m = manager({ MOCK_STATE: state, MOCK_SCRIPT: script([plan([["a", [change("a.txt changed", ["R1"]), check("the check passes", ["R1"])]]]), exec({ "a.txt": "3\n" }),
+    review([], [mark("C1"), mark("C2")])]) });
+  const runId = await start(m, src, { limits: { roundsPerStage: 1 } });
+  const v = await settled(m, runId);
+  assert.ok((await records(m, runId)).some((r) => r.type === "review.assessed"), "the review is recorded");
+  const task = tasksOf(m, runId, await records(m, runId), "reviewer")[0];
+  assert.match(task, /give one mark for each of C1 \(the change conditions of this stage\)/);
+  assert.match(task, /Do not mark C2: a check condition is met only by its command passing/);
+  assert.notEqual(v.reason, "invalid_report", "the extra mark does not refuse the report");
+  const c2 = v.progress.conditions.conditions.find((x) => x.id === "C2");
+  assert.equal(c2.status, "not_met", "a check condition is met only by its command, which failed");
+  const entries = (await m.activity(runId, 0, 500)).value.entries;
+  const notes = entries.filter((e) => e.kind === "report_note");
+  assert.deepEqual(notes.map((e) => [e.role, e.detail.ignoredMark, e.detail.by]), [["reviewer", "C2", "check"]]);
+  // the feed says it, in both languages
+  const React = requireApp("react");
+  const { renderToStaticMarkup } = requireApp("react-dom/server");
+  const { RunPanel } = await bundle("src/renderer/src/features/orchestration/RunPanel.tsx");
+  const feed = (locale) => renderToStaticMarkup(React.createElement(RunPanel, {
+    orch: { runs: { r: { view: v, open: true, seq: 9, tick: 0 } }, activity: { r: { entries, gaps: [], firstId: entries[0]?.id ?? 0, status: "ready", resyncs: 0 } },
+      runErrors: {}, canvas: { links: [], agents: [] }, journals: { r: { records: [], next: 0, status: "ready" } }, texts: {},
+      commands: { pending: () => [] }, catalog: { checks: [] }, loadText() {}, syncJournal() {}, retry() {} },
+    runId: "r", locale, panel: { linkId: "L", tab: "activity", role: "reviewer", focus: 1 }, onClose() {}, onNewGoal() {}, onView() {}
+  })).replace(/<[^>]+>/g, "");
+  assert.match(feed("ru"), /проверяющий отметил C2 — не учтено: условие засчитывается командой/);
+  assert.match(feed("en"), /the reviewer marked C2 — not counted: the condition is met by its command/);
+  // the schema offered exactly the stage's change condition
+  const reviewSchema = schemasOf(state).find((s) => s.properties?.request && s.properties?.conditions);
+  assert.deepEqual(reviewSchema.properties.conditions.items.properties.id.enum, ["C1"]);
+  await m.shutdown();
+});
+
+test("gate: a stage with no change condition — the review's schema allows no mark (maxItems 0), the run completes", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const state = fs.mkdtempSync(path.join(TMP, "state-"));
+  const m = manager({ MOCK_STATE: state, MOCK_SCRIPT: script([plan([["a", [check("the check passes", ["R1"])]]]), exec({ "a.txt": "2\n" }), review([], []), final()]) });
+  const runId = await start(m, src);
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify([v.status, v.reason]));
+  const reviewSchema = schemasOf(state).find((s) => s.properties?.request && s.properties?.conditions && !s.properties?.requirements);
+  assert.equal(reviewSchema.properties.conditions.maxItems, 0);
+  assert.equal(reviewSchema.properties.conditions.items.properties.id.enum, undefined, "no empty enum");
+  const finalSchema = schemasOf(state).find((s) => s.properties?.requirements);
+  assert.deepEqual(finalSchema.properties.requirements.items.properties.id.enum, ["R1"]);
+  await m.shutdown();
+});
+
+test("gate: marks a review does not decide are extra, not a refusal; marks without evidence still are", () => {
+  const book = { defs: new Map([["C1", { evidence: { kind: "change" } }], ["C2", { evidence: { kind: "check", check: "cmd-1" } }], ["C3", { evidence: { kind: "person" } }]]) };
+  const marks = [mark("C1", "met", ["a.txt", "tests/accept.mjs"]), mark("C2"), mark("C3")];
+  assert.deepEqual(ignoredMarks(marks, book), [{ id: "C2", by: "check" }, { id: "C3", by: "person" }]);
+  const changed = new Set(["a.txt"]);
+  assert.deepEqual(stageMarksProblems(decidedMarks(marks, book), ["C1"], changed), [], "an unchanged file next to a changed one is extra");
+  assert.deepEqual(unchangedPaths(decidedMarks(marks, book), changed), [{ id: "C1", paths: ["tests/accept.mjs"] }]);
+  assert.deepEqual(stageMarksProblems([mark("C1", "met", ["tests/accept.mjs"])], ["C1"], changed), ["C1: none of tests/accept.mjs changed since the start of the run"]);
+  assert.deepEqual(stageMarksProblems([mark("C4")], ["C1"], changed), ["C4 is not a change condition of this stage (C1)", "C1 is not marked"]);
+  // a requirement the person dropped: its mark is extra (never counted: factsOf says dropped)
+  assert.deepEqual(finalMarksProblems([{ id: "R1", status: "met", note: "" }, { id: "R2", status: "met", note: "" }], 2, new Set(["R2"])), []);
+  // the schema: only the ids decided, none at all is maxItems 0
+  const narrowed = narrowMarks(REVIEWER_SCHEMA, [], null);
+  assert.deepEqual(validateAnswer(narrowed, { conditions: [mark("C1")], findings: [], request: "none", question: null }), ["$.conditions: more than 0 items"]);
+  assert.deepEqual(validateAnswer(narrowMarks(REVIEWER_SCHEMA, ["C1"], null), { conditions: [mark("C2")], findings: [], request: "none", question: null }), ["$.conditions[0].id: not in enum"]);
+});
+
+test("gate: the real R1 review (attempt 2) — C3 is a check condition: its mark is left out, the report is accepted, C3 stays its command's", () => {
+  const report = JSON.parse(fs.readFileSync(new URL("./fixtures/orchestration/real-a-gate-r1-review.json", import.meta.url), "utf8"));
+  // plan v1 of that run: C1, C2 change; C3 check cmd-1
+  const def = (covers, evidence) => ({ covers, evidence });
+  const book = { stages: new Map([[1, ["C1", "C2", "C3"]]]), droppedRequirements: new Set(),
+    defs: new Map([["C1", def(["R1"], { kind: "change" })], ["C2", def(["R2"], { kind: "change" })], ["C3", def(["R1", "R2"], { kind: "check", check: "cmd-1" })]]) };
+  assert.deepEqual(validateAnswer(REVIEWER_SCHEMA, report), [], "the report checked by the purpose's schema");
+  assert.deepEqual(validateAnswer(narrowMarks(REVIEWER_SCHEMA, ["C1", "C2"], null), report), ["$.conditions[2].id: not in enum"], "the CLI is not offered C3");
+  assert.deepEqual(ignoredMarks(report.conditions, book), [{ id: "C3", by: "check" }]);
+  assert.deepEqual(stageMarksProblems(decidedMarks(report.conditions, book), ["C1", "C2"], new Set(["src/clamp.mjs", "tests/clamp.test.mjs"])), []);
+  // the command failed: C3 is not met whatever the review said
+  for (const [check, status] of [["not_met", "not_met"], ["met", "met"]]) {
+    const facts = factsOf(book, 2, { check: () => check, marks: () => report.conditions, finalMarks: null });
+    assert.equal(facts.conditions.find((c) => c.id === "C3").status, status);
+  }
+});
+
+test("gate: a final review's mark of a condition with nothing to confirm, an unchanged file next to a changed one when closing — extra, said in the feed, the run completes", OPTS, async () => {
+  const src = project({ "a.txt": "1\n", "b.txt": "1\n" });
+  const m = manager({ MOCK_SCRIPT: script([PLAN, exec({ "a.txt": "1\n" }), review([finding({ paths: ["a.txt"] })], [mark("C1", "not_met")]), exec({ "a.txt": "2\n" }),
+    review([finding({ id: "F1", status: "closed", paths: ["a.txt", "b.txt"] })]), final([], [["R1", "met"]], [mark("C1")])]) });
+  const runId = await start(m, src);
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify([v.status, v.reason]));
+  const notes = (await m.activity(runId, 0, 500)).value.entries.filter((e) => e.kind === "report_note").map((e) => [e.detail.ignoredMark, e.detail.by, e.detail.paths ?? null]);
+  assert.deepEqual(notes, [["F1", "unchanged", "b.txt"], ["C1", "unconfirmed", null]]);
+  await m.shutdown();
 });

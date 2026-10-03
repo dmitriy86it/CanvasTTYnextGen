@@ -98,6 +98,7 @@ export interface ProviderTurnInput {
   maxBudgetUsd?: number; // claude only
   cwd: string;
   schema: unknown;
+  accept?: unknown; // TurnSpec.accept
   env: Readonly<Record<string, string>>; // CLI environment; the registry PATH is the base
   task: string | Uint8Array;
   attemptDir?: string; // required for codex (schema file + report file)
@@ -139,7 +140,7 @@ export type ProviderTurnStart =
   | { ok: true; sessionId: string | null; stop(): void; result: Promise<ProviderTurnResult> }
   | { ok: false; reason: ProviderRefusal; detail: string };
 
-const INPUT_KEYS = new Set(["cli", "cliVersion", "mode", "candidate", "model", "modelParams", "maxBudgetUsd", "cwd", "schema", "env",
+const INPUT_KEYS = new Set(["cli", "cliVersion", "mode", "candidate", "model", "modelParams", "maxBudgetUsd", "cwd", "schema", "accept", "env",
   "task", "attemptDir", "session", "limits", "supervisor"]);
 const SAFE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -303,6 +304,7 @@ function spec(
     env,
     task: input.task,
     schema,
+    ...(input.accept ? { accept: compileSchema(input.accept) } : {}),
     ...(input.attemptDir ? { attemptDir: input.attemptDir } : {}),
     expectSessionId,
     limits,
@@ -422,6 +424,7 @@ export interface NativeTurnInput {
   env: Readonly<Record<string, string>>; // the user's login-shell environment (loginEnv.ts)
   task: string;
   schema: unknown;
+  accept?: unknown; // TurnSpec.accept
   session: ProviderSession;
   ask: AskPerson;
   clientVersion: string;
@@ -440,8 +443,10 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
   if (typeof input.cwd !== "string" || !isAbsolute(input.cwd)) return refuse("invalid_input", "cwd must be absolute");
   if (typeof input.task !== "string") return refuse("invalid_input", "task must be a string");
   let schema: AnswerSchema;
+  let accept: AnswerSchema | null;
   try {
     schema = compileSchema(input.schema);
+    accept = input.accept === undefined ? null : compileSchema(input.accept);
   } catch (error) {
     return refuse("invalid_input", `schema: ${(error as Error).message}`);
   }
@@ -474,7 +479,7 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
       provider, argv: [launch.command, ...launch.args], cwd: input.cwd,
       // PATH of the registry only where the login shell gave none; everything else is the user's.
       env: { ...launch.environment, ...input.env },
-      task: "", schema, expectSessionId: sessionId, limits: input.limits ?? DEFAULT_TURN_LIMITS, session: driver,
+      task: "", schema, ...(accept ? { accept } : {}), expectSessionId: sessionId, limits: input.limits ?? DEFAULT_TURN_LIMITS, session: driver,
       ...(input.supervisor ? { supervisor: input.supervisor } : {})
     }
   };

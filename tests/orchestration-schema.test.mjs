@@ -22,12 +22,15 @@ test("supported subset validates values", () => {
   assert.deepEqual(validateAnswer(compileSchema({ type: "string", minLength: 2 }), "a"), ["$: shorter than 2"]);
   assert.deepEqual(validateAnswer(compileSchema({ type: "number" }), 3), [], "an integer is a number");
   assert.deepEqual(validateAnswer(compileSchema({}), { anything: [1] }), [], "empty schema accepts anything");
+  // maxItems: 0 forbids any item (a review of a stage with no condition to mark)
+  assert.deepEqual(validateAnswer(compileSchema({ type: "array", maxItems: 0, items: { type: "string" } }), []), []);
+  assert.deepEqual(validateAnswer(compileSchema({ type: "array", maxItems: 0, items: { type: "string" } }), ["C1"]), ["$: more than 0 items"]);
   const many = validateAnswer(compileSchema({ type: "array", items: { type: "string" } }), Array(500).fill(1));
   assert.equal(many.length, 100, "errors are bounded");
 });
 
 test("compileSchema rejects everything outside the subset, with the path", () => {
-  assert.deepEqual([...SUPPORTED_SCHEMA_KEYWORDS].sort(), ["additionalProperties", "enum", "items", "maxLength", "minLength", "properties", "required", "type"]);
+  assert.deepEqual([...SUPPORTED_SCHEMA_KEYWORDS].sort(), ["additionalProperties", "enum", "items", "maxItems", "maxLength", "minLength", "properties", "required", "type"]);
   const cases = [
     [{ $ref: "#/x" }, "$.$ref"],
     [{ oneOf: [{ type: "string" }] }, "$.oneOf"],
@@ -50,6 +53,8 @@ test("compileSchema rejects everything outside the subset, with the path", () =>
     [{ properties: [] }, "$.properties"],
     [{ type: "string", maxLength: -1 }, "$.maxLength"],
     [{ type: "string", minLength: 1.5 }, "$.minLength"],
+    [{ type: "array", maxItems: -1 }, "$.maxItems"],
+    [{ type: "array", minItems: 1 }, "$.minItems"],
     [null, "$"],
     [[], "$"]
   ];

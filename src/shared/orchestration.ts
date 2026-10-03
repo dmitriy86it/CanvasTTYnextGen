@@ -378,7 +378,8 @@ export type OrchestrationActivityKind =
   | "file_read" | "file_changed" | "subagent" | "usage" | "refusal" | "error" | "stderr" | "turn_finished"
   | "check_started" | "check_finished" | "check_output" | "status" | "truncated"
   | "permission_requested" | "permission_decided"
-  | "permission_applied" | "prepare_started" | "prepare_finished" | "external_action"; // stage 13
+  | "permission_applied" | "prepare_started" | "prepare_finished" | "external_action" // stage 13
+  | "report_note"; // stage A gate: the application's note about a model's report (a mark left out)
 export interface OrchestrationActivityEntry {
   id: number; // per run, increasing; the renderer dedupes by it
   ts: string;

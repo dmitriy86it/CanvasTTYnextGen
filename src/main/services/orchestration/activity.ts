@@ -543,6 +543,10 @@ export function createRunActivity(log: ActivityLog, runId: string) {
       text: string, detail?: Draft["detail"]) {
       put(role, provider, turnId, phase === "requested" ? "permission_requested" : phase === "applied" ? "permission_applied" : "permission_decided", text, { phase, ...(detail ?? {}) });
     },
+    // The application's note about a model's report (stage A gate): a mark it left out, never counted.
+    reportNote(role: "lead" | "executor" | "reviewer", provider: "codex" | "claude", turnId: string | null, text: string, detail?: Draft["detail"]) {
+      put(role, provider, turnId, "report_note", text, detail);
+    },
     // Stage 13: the environment preparation and the actions after success, run by CanvasTTY itself.
     prepare(kind: "prepare_started" | "prepare_finished", text: string, detail?: Draft["detail"]) {
       put("run", null, null, kind, text, detail);

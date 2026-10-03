@@ -246,7 +246,7 @@ function phaseText(locale: LocaleId, p: ParticipantState, now: number): string {
 const LOG_KINDS = new Set(["stderr", "error", "process_started", "process_exited", "usage", "truncated", "session", "check_output", "turn_finished", "refusal"]);
 const FEED_KINDS = new Set(["task_sent", "process_started", "process_exited", "session", "thinking", "message", "tool_started", "tool_finished", "file_read",
   "file_changed", "subagent", "refusal", "error", "turn_finished", "check_started", "check_finished", "status", "truncated",
-  "permission_requested", "permission_decided", "permission_applied", "prepare_started", "prepare_finished", "external_action"]);
+  "permission_requested", "permission_decided", "permission_applied", "prepare_started", "prepare_finished", "external_action", "report_note"]);
 
 function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: readonly OrchestrationActivityEntry[]): string {
   const d = e.detail ?? {};
@@ -281,6 +281,11 @@ function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: re
       if (d.nothing === true) return `${tr(locale, "orchAct_prepare_finished")}: ${e.text.replace(/: nothing to install$/, "")}: ${t(locale, "orchPrepareNothing")}`;
       return `${tr(locale, "orchAct_prepare_finished")}: ${e.text}`;
     }
+    case "report_note": // a mark the application left out: never counted
+      return typeof d.ignoredMark === "string"
+        ? t(locale, `orchAct_markIgnored_${d.by === "person" || d.by === "dropped" || d.by === "unchanged" || d.by === "unconfirmed" ? d.by : "check"}`).replace("{role}", t(locale, e.role === "lead" ? "orchRoleLead" : "orchRoleReviewer").toLowerCase())
+          .replace("{id}", d.ignoredMark).replace("{paths}", String(d.paths ?? ""))
+        : e.text;
     case "usage": return `${tr(locale, "orchAct_usage")}${typeof d.costUsd === "number" ? ` · $${d.costUsd.toFixed(4)}` : ""}${typeof d.outputTokens === "number" ? ` · ${d.inputTokens ?? "?"}/${d.outputTokens} tok` : ""}`;
     default: {
       // a CLI reported another rights mode than the one chosen: a warning about rights, not a failed turn
