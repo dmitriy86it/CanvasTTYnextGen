@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
-import { nextStepText, providerLimit } from "../src/renderer/src/features/orchestration/runModel.ts";
+import { causeText, headlineKey, nextStepText, providerLimit, viewCause } from "../src/renderer/src/features/orchestration/runModel.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GIT = findGit(process.env);
@@ -100,4 +100,20 @@ test("the run's own turn budget: paused(limit_reached), the hint is to raise the
   assert.match(nextStepText("en", view, entries), /raise the limit below and resume/);
   assert.match(nextStepText("ru", view, entries), /поднимите лимит ниже и продолжите/);
   await m.shutdown();
+});
+
+// The recorded Codex refusal of its configured model (codex-cli 0.155.1, evidence/real-a-gate R1): the journal says
+// paused(environment_error); the cause is read from the turn's activity, the journal is not changed.
+test("Codex model not supported by the account: the pause names the model and where to change it, not the environment", () => {
+  const entries = fs.readFileSync(path.join(HERE, "fixtures", "orchestration", "codex-model-unsupported.activity.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  const view = { status: "paused", reason: "environment_error", progress: null };
+  assert.deepEqual(viewCause(view, entries), { kind: "model_unsupported", reason: "environment_error", provider: "codex", model: "gpt-6.1-sol" });
+  assert.equal(headlineKey(view, entries), "model_unsupported");
+  assert.equal(causeText("ru", viewCause(view, entries)), "Codex: модель gpt-6.1-sol не поддерживается вашим аккаунтом");
+  assert.equal(nextStepText("ru", view, entries), "Codex: модель gpt-6.1-sol не поддерживается вашим аккаунтом. Модель задана в ~/.codex/config.toml — смените её (codex → /model) и нажмите «Продолжить».");
+  assert.match(nextStepText("en", view, entries), /^Codex: the model gpt-6\.1-sol is not supported by your account\. The model is set in ~\/\.codex\/config\.toml/);
+  assert.equal(providerLimit(view, entries), null, "not a usage limit");
+  // without the message the same pause stays an environment error
+  const plain = entries.filter((e) => e.kind !== "error");
+  assert.equal(viewCause(view, plain).kind, "ending");
 });
