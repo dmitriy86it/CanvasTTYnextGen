@@ -8,7 +8,7 @@
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-orchestration-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, byText, canvasState, card, cardText, createAgent, launch as launchApp, openTab, q, visibleNow, runs, sleep, startGoal as startGoalKit, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, card, cardText, createAgent, launch as launchApp, openTab, q, visibleNow, runs, sleep, startGoal as startGoalKit, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 
 const { TMP, D, project, script } = workspace("cto-ui-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -32,7 +32,7 @@ const FINDINGS = ["tests/extra.test.mjs fails: 1 + 1 is not 3", "keep sum() pure
 // With the development flag CANVASTTY_JOURNAL_V2=1 the run is written in v2: the lead plans with conditions (R1 by the
 // note, R2 by the check), the reviewer answers the reviews — the same two findings as blocking ones, closed in round 2
 // (journal-v2-format.md §2.7, §2.8).
-const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const V2 = JOURNAL_V2;
 const planV2 = { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant", conditions: [
   { keep: null, text: "src/note.mjs exists", covers: ["R1"], evidence: { kind: "change", check: null } },
   { keep: null, text: "node --test passes", covers: ["R2"], evidence: { kind: "check", check: "cmd-1" } }] }], dropped: [], dropRequirements: [], question: null } };

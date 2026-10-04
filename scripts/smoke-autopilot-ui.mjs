@@ -11,7 +11,7 @@
 // Usage: node scripts/smoke-autopilot-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, visibleNow, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, visibleNow, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 import { linkAgents } from "./link-agents.mjs";
 
 const { TMP, D, git, script } = workspace("cto-autopilot-");
@@ -55,7 +55,7 @@ const deployed = D("qa-deployed");
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
 // With the development flag CANVASTTY_JOURNAL_V2=1 the run is written in v2: the lead plans in the v2 shape (the one
 // criterion R1 proven by the check command), the reviewer answers each review (journal-v2-format.md §2.7, §2.8).
-const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const V2 = JOURNAL_V2;
 const planV2 = { report: { stages: [{ title: "Исправить /health", task: "Make the health test pass",
   conditions: [{ keep: null, text: "php artisan test passes", covers: ["R1"], evidence: { kind: "check", check: "cmd-1" } }] }], dropped: [], dropRequirements: [], question: null } };
 const reviewV2 = { report: { conditions: [], findings: [], request: "none", question: null } };

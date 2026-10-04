@@ -38,7 +38,7 @@ Download the latest release from [GitHub Releases](https://github.com/dmitriy86i
 
 | Platform | Canvas, terminals, browser, plugins | Agent orchestration |
 |:--|:--|:--|
-| macOS arm64 | Yes | Yes, project checks run in the Seatbelt sandbox |
+| macOS arm64 | Yes | Yes: the lead plans, the executor works, a separate reviewer reviews (run journal v2 since 1.5.8); a model per role in the project settings; the lead's proposed checks run in the Seatbelt sandbox |
 | Linux x86_64 | Yes | Not available: the orchestration items are shown inactive |
 | Windows x64 | Yes | Not available: the orchestration items are shown inactive |
 | macOS Intel | No builds | — |

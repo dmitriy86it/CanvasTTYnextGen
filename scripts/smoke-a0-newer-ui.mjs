@@ -13,7 +13,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, byText, canvasState, launch as launchApp, q, runs, sleep, startGoal, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, launch as launchApp, q, runs, sleep, startGoal, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 import { ZERO_HASH, canonical } from "../src/main/services/orchestration/journal.ts";
 
 const { D, project, script } = workspace("a0-ui-");
@@ -31,7 +31,7 @@ const planR = { report: { stages: [{ title: "Заметка", task: "Add src/not
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
 // With the development flag CANVASTTY_JOURNAL_V2=1 the run next to the newer one is written in v2: the lead answers in
 // the v2 shapes (journal-v2-format.md §2.7: conditions over the criteria R1, R2; the final review marks them met).
-const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const V2 = JOURNAL_V2;
 const change = (text, covers) => ({ keep: null, text, covers, evidence: { kind: "change", check: null } });
 const planV2 = { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant",
   conditions: [change("src/note.mjs exists", ["R1"]), change("node --test passes", ["R2"])] }], dropped: [], dropRequirements: [], question: null } };

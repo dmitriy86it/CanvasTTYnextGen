@@ -137,8 +137,8 @@ const DISPUTED = [PLAN, exec({ "a.txt": "2\n" }), review([finding()]), exec({ "b
 
 // ---------------- the switch ----------------
 
-test("v2 is not on by default: JOURNAL_V2_BY_DEFAULT is false, and the app enables v2 only through it or the development flag", () => {
-  assert.equal(JOURNAL_V2_BY_DEFAULT, false);
+test("v2 is on by default (1.5.8, after the real series): JOURNAL_V2_BY_DEFAULT is true, and the app enables v2 through it or the development flag", () => {
+  assert.equal(JOURNAL_V2_BY_DEFAULT, true);
   const main = fs.readFileSync(path.join(HERE, "..", "src", "main", "index.ts"), "utf8");
   assert.match(main, /journalV2: JOURNAL_V2_BY_DEFAULT \|\| developmentEnv\("CANVASTTY_JOURNAL_V2"\) === "1"/);
 });
