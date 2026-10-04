@@ -36,6 +36,11 @@ export interface ShellCheckOptions {
 
 export type ShellCheckResult = CheckResult & { deps: null; executableSha256: string };
 
+// In the profile git must not read the person's global or system configuration: the profile denies ~/.gitconfig and
+// ~/.config/git (credentials), and git exits 128 on a global config it may not read — every git command of a lead's
+// check would fail (real series, attempt 4, R2). The deny list stays; git just does not look there.
+const SANDBOX_ENV = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+
 export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; stop(): void; result: Promise<ShellCheckResult> } {
   const checkRunId = randomUUID();
   const clock = opts.clock ?? (() => Date.now());
@@ -89,7 +94,7 @@ export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; 
     // ---- the process, under the supervisor (its own process group; stop = INT, TERM, KILL) ----
     const line = c.argv.at(-1) ?? "";
     const run = runShell({
-      shell: c.executable, line, cwd: opts.ws.repo, env: sandboxed ? { ...opts.env, TMPDIR: sandboxed.tmp } : opts.env, launch: opts.launch,
+      shell: c.executable, line, cwd: opts.ws.repo, env: sandboxed ? { ...opts.env, ...SANDBOX_ENV, TMPDIR: sandboxed.tmp } : opts.env, launch: opts.launch,
       ...(sandboxed ? { profile: sandboxed.profilePath } : {}),
       timeoutMs: c.timeoutMs, maxOutputBytes: c.maxOutputBytes, clock
     });
