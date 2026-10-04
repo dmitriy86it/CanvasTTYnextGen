@@ -11,6 +11,9 @@ import { hermeticEnv, HERMETIC_PATH, step, watch } from "./smoke-watchdog.mjs";
 
 export const ROOT = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 export const FIXTURES = path.join(ROOT, "tests", "fixtures", "orchestration");
+// whether the built app writes new runs in journal v2, as src/main/index.ts decides: the switch or the development flag
+export const JOURNAL_V2 = process.env.CANVASTTY_JOURNAL_V2 === "1"
+  || /^export const JOURNAL_V2_BY_DEFAULT = true;/m.test(fs.readFileSync(path.join(ROOT, "src", "main", "services", "orchestration", "journal.ts"), "utf8"));
 export const NODE = fs.realpathSync(process.execPath);
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

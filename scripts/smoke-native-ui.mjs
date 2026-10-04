@@ -10,7 +10,7 @@
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-native-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, startGoal, visibleNow, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, startGoal, visibleNow, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 
 const { TMP, D, git, project, script } = workspace("cto-native-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -35,7 +35,15 @@ fs.writeFileSync(path.join(node, "README.md"), "the user's uncommitted work\n");
 
 // ---------- fake CLIs ----------
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
-const codexScript = script("codex", [{ report: { stages: [{ title: "Заметка", task: "Add src/note.mjs" }], question: null } }, verdict("accept"), verdict("complete")]);
+// journal v2 (the default since 1.5.8, or the development flag): the lead plans with conditions (R1 by the note, R2 by
+// the check), the reviewer answers the stage review and the final review (journal-v2-format.md §2.7, §2.8)
+const planV2 = { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs", conditions: [
+  { keep: null, text: "src/note.mjs exists", covers: ["R1"], evidence: { kind: "change", check: null } },
+  { keep: null, text: "node --test passes", covers: ["R2"], evidence: { kind: "check", check: "cmd-1" } }] }], dropped: [], dropRequirements: [], question: null } };
+const reviewV2 = { report: { conditions: [{ id: "C1", status: "met", paths: ["src/note.mjs"], note: "src/note.mjs exports note" }], findings: [], request: "none", question: null } };
+const finalV2 = { report: { conditions: [], findings: [], request: "none", question: null, requirements: ["R1", "R2"].map((id) => ({ id, status: "met", note: "done" })) } };
+const codexScript = script("codex", JOURNAL_V2 ? [planV2, reviewV2, finalV2]
+  : [{ report: { stages: [{ title: "Заметка", task: "Add src/note.mjs" }], question: null } }, verdict("accept"), verdict("complete")]);
 const claudeScript = script("claude", [{ report: { summary: "note added", done: true }, writes: [["src/note.mjs", "export const note = 'a';\n"]] }]);
 fs.writeFileSync(path.join(claudeScript, "1.asks.json"), JSON.stringify([
   { tool: "Bash", command: "node --test" },
@@ -108,7 +116,9 @@ try {
   await app.shot("02b-differences");
   await app.key("Escape", "Escape", 27);
   await app.waitFor(`!${q(".orch-dialog")}`, "dialog closed");
-  expect(ledgerCount() === 0 && (await runs(app)).length === 0, "readiness started no CLI and no run", [ledgerCount(), await runs(app)]);
+  // the readiness asks Codex for its models (model/list: one app-server, its pid and parent in the ledger, no thread)
+  const threads = () => fs.existsSync(D("mock-state", "codex-thread.jsonl"));
+  expect(ledgerCount() <= 2 && !threads() && (await runs(app)).length === 0, "readiness started no model turn and no run (only the models list)", [ledgerCount(), threads(), await runs(app)]);
 
   // ---------- 3. a run in the project folder ----------
   const N = await pair(node);

@@ -12,7 +12,7 @@
 // Needs `npm run build` first. Usage: node scripts/smoke-activity-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, launch, q, sleep, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, launch, q, sleep, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 
 const { D, project, script } = workspace("cto-activity-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -32,7 +32,7 @@ const FINDINGS = ["Экспорт в CSV не покрыт отдельной п
 // With the development flag CANVASTTY_JOURNAL_V2=1 the runs are written in v2: the lead plans with a condition (R1 by the
 // check), the reviewer answers the reviews — the final one's remarks as wishes, C's review with two blocking findings
 // (journal-v2-format.md §2.7, §2.8).
-const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const V2 = JOURNAL_V2;
 const planV2 = (title, task) => ({ report: { stages: [{ title, task, conditions: [{ keep: null, text: "node --test passes", covers: ["R1"], evidence: { kind: "check", check: "cmd-1" } }] }],
   dropped: [], dropRequirements: [], question: null } });
 const findingV2 = (severity, paths = []) => (problem) => ({ id: null, severity, condition: null, problem, evidence: "seen in the code", closeWhen: "it is done", status: "open", paths, relation: null });
