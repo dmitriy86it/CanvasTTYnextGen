@@ -336,7 +336,11 @@ test("1.5.8, v2 on by default: a run started in v1 goes on in v1 — paused unde
   const m = manager(env, { v2: true, root });
   const v = await settled(m, runId, "the paused v1 run");
   assert.notEqual((await send(m, v, { kind: "resume" })).status, "error");
-  const done = await until(async () => { const x = await view(m, runId); return x.status === "paused" ? (await send(m, x, { kind: "resume" }), null) : x.status === "completed" ? x : null; }, "completed");
+  const done = await until(async () => {
+    const x = await view(m, runId);
+    if (x.status === "paused") await send(m, x, { kind: "resume" }); // steps: each stage pauses
+    return x.status === "completed" ? x : null;
+  }, "completed");
   assert.equal(done.progress.completion, undefined, "a v1 view");
   const vs = journalOf(m, runId).toString().trim().split("\n").map((l) => JSON.parse(l).v);
   assert.deepEqual([...new Set(vs)], [1], "every record, before and after, is v1");
