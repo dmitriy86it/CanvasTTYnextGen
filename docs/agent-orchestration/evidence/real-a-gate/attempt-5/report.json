@@ -1,0 +1,398 @@
+{
+  "mode": "real",
+  "startedAt": "2026-10-04T08:47:56.536Z",
+  "budget": {
+    "calls": 22,
+    "minutes": 90
+  },
+  "models": {
+    "lead": "gpt-6-sol",
+    "executor": null,
+    "reviewer": "gpt-6-sol"
+  },
+  "versions": {
+    "codex": "codex-cli 0.155.1",
+    "claude": "2.1.287 (Claude Code)"
+  },
+  "scenarios": {
+    "R1": {
+      "workMode": "copy",
+      "commands": [
+        "node --test"
+      ],
+      "turnsLimit": 7,
+      "prompts": [],
+      "runId": "<R1>",
+      "ok": true,
+      "status": {
+        "completion": {
+          "basis": {
+            "bytes": 515,
+            "sha256": "08f37a71e227c8456dc1bdee6b7cf2940a6e21bd16ee590caf0387da385532c2"
+          },
+          "kind": "confirmed"
+        },
+        "reason": null,
+        "status": "completed"
+      },
+      "calls": 4,
+      "turns": [
+        "lead/codex",
+        "executor/claude",
+        "reviewer/codex",
+        "reviewer/codex"
+      ],
+      "turnOutcomes": [
+        "completed",
+        "completed",
+        "completed",
+        "completed"
+      ],
+      "protocolErrors": [],
+      "journalVersion": [
+        2
+      ],
+      "access": {
+        "claude": "workspace",
+        "codex": "workspace"
+      },
+      "modelsChosen": {
+        "lead": "gpt-6-sol",
+        "executor": null,
+        "reviewer": "gpt-6-sol"
+      },
+      "conditions": {
+        "met": 3,
+        "total": 3,
+        "requirements": [
+          "R1:met",
+          "R2:met"
+        ]
+      },
+      "checks": [
+        "undefined:passed"
+      ],
+      "checksFrom": "goal",
+      "permissionRecords": [],
+      "integrity": "ok",
+      "groundless": false,
+      "modelsReported": {
+        "lead": [
+          "gpt-6-sol"
+        ],
+        "executor": [
+          "claude-opus-5-5"
+        ],
+        "reviewer": [
+          "gpt-6-sol"
+        ]
+      },
+      "usageLimit": false
+    },
+    "R2": {
+      "workMode": "copy",
+      "commands": [],
+      "turnsLimit": 8,
+      "prompts": [],
+      "runId": "<R2>",
+      "ok": true,
+      "status": {
+        "completion": {
+          "basis": {
+            "bytes": 726,
+            "sha256": "8f6c05806e7e70d86315138836abd51c04604852254f15cbb78222801e150e9c"
+          },
+          "kind": "confirmed"
+        },
+        "reason": null,
+        "status": "completed"
+      },
+      "calls": 4,
+      "turns": [
+        "lead/codex",
+        "executor/claude",
+        "reviewer/codex",
+        "reviewer/codex"
+      ],
+      "turnOutcomes": [
+        "completed",
+        "completed",
+        "completed",
+        "completed"
+      ],
+      "protocolErrors": [],
+      "journalVersion": [
+        2
+      ],
+      "access": {
+        "claude": "workspace",
+        "codex": "workspace"
+      },
+      "modelsChosen": {
+        "lead": "gpt-6-sol",
+        "executor": null,
+        "reviewer": "gpt-6-sol"
+      },
+      "conditions": {
+        "met": 3,
+        "total": 3,
+        "requirements": [
+          "R1:met",
+          "R2:met"
+        ]
+      },
+      "checks": [
+        "undefined:passed",
+        "undefined:passed"
+      ],
+      "checksFrom": "proposal",
+      "permissionRecords": [],
+      "integrity": "ok",
+      "groundless": false,
+      "modelsReported": {
+        "lead": [
+          "gpt-6-sol"
+        ],
+        "executor": [
+          "claude-opus-5-5"
+        ],
+        "reviewer": [
+          "gpt-6-sol"
+        ]
+      },
+      "usageLimit": false
+    },
+    "R3": {
+      "workMode": "worktree",
+      "commands": [],
+      "turnsLimit": 7,
+      "prompts": [],
+      "runId": "<R3>",
+      "remoteBeforeDecision": "",
+      "finishPause": {
+        "confirm": {
+          "tree": "2ccd935af2f93dd019ed3cf2bb2be95e3b520b33",
+          "commit": "e61b73ba9220c36d523a883a737342f6a1420ff5",
+          "push": true,
+          "qa": false
+        }
+      },
+      "remoteAtEnd": "",
+      "ok": true,
+      "status": {
+        "completion": {
+          "basis": {
+            "bytes": 469,
+            "sha256": "64118eaba0727ba14d0a943afb6af7c4b8482fe431d5cdece28a5066393290f4"
+          },
+          "kind": "no_checks"
+        },
+        "reason": null,
+        "status": "completed"
+      },
+      "calls": 4,
+      "turns": [
+        "lead/codex",
+        "executor/claude",
+        "reviewer/codex",
+        "reviewer/codex"
+      ],
+      "turnOutcomes": [
+        "completed",
+        "completed",
+        "completed",
+        "completed"
+      ],
+      "protocolErrors": [],
+      "journalVersion": [
+        2
+      ],
+      "access": {
+        "claude": "workspace",
+        "codex": "workspace"
+      },
+      "modelsChosen": {
+        "lead": "gpt-6-sol",
+        "executor": null,
+        "reviewer": "gpt-6-sol"
+      },
+      "conditions": {
+        "met": 1,
+        "total": 1,
+        "requirements": [
+          "R1:met"
+        ]
+      },
+      "checks": [],
+      "checksFrom": "proposal",
+      "permissionRecords": [],
+      "integrity": "ok",
+      "groundless": false,
+      "modelsReported": {
+        "lead": [
+          "gpt-6-sol"
+        ],
+        "executor": [
+          "claude-opus-5-5"
+        ],
+        "reviewer": [
+          "gpt-6-sol"
+        ]
+      },
+      "usageLimit": false
+    },
+    "R4": {
+      "workMode": "copy",
+      "commands": [
+        "node --test"
+      ],
+      "turnsLimit": 3,
+      "prompts": [],
+      "runId": "<R4>",
+      "stoppedTurn": "stopped",
+      "leftProcesses": [],
+      "ok": true,
+      "status": {
+        "completion": null,
+        "reason": null,
+        "status": "stopped"
+      },
+      "calls": 2,
+      "turns": [
+        "lead/codex",
+        "executor/claude"
+      ],
+      "turnOutcomes": [
+        "completed",
+        "stopped"
+      ],
+      "protocolErrors": [],
+      "journalVersion": [
+        2
+      ],
+      "access": {
+        "claude": "workspace",
+        "codex": "workspace"
+      },
+      "modelsChosen": {
+        "lead": "gpt-6-sol",
+        "executor": null,
+        "reviewer": "gpt-6-sol"
+      },
+      "conditions": {
+        "met": 0,
+        "total": 3,
+        "requirements": [
+          "R1:not_checked",
+          "R2:not_checked"
+        ]
+      },
+      "checks": [
+        "undefined:not_run"
+      ],
+      "checksFrom": "goal",
+      "permissionRecords": [],
+      "integrity": "ok",
+      "modelsReported": {
+        "lead": [
+          "gpt-6-sol"
+        ],
+        "executor": [],
+        "reviewer": []
+      },
+      "usageLimit": false
+    },
+    "R5": {
+      "workMode": "copy",
+      "commands": [
+        "node --test"
+      ],
+      "turnsLimit": 7,
+      "prompts": [],
+      "runId": "<R5>",
+      "paused": {
+        "status": "paused",
+        "reason": "user_request",
+        "turn": "completed"
+      },
+      "ok": true,
+      "status": {
+        "completion": {
+          "basis": {
+            "bytes": 515,
+            "sha256": "af70b7283e3187e0bd8db00190a74ddf2241c149342e205899545769ad34020f"
+          },
+          "kind": "confirmed"
+        },
+        "reason": null,
+        "status": "completed"
+      },
+      "calls": 4,
+      "turns": [
+        "lead/codex",
+        "executor/claude",
+        "reviewer/codex",
+        "reviewer/codex"
+      ],
+      "turnOutcomes": [
+        "completed",
+        "completed",
+        "completed",
+        "completed"
+      ],
+      "protocolErrors": [],
+      "journalVersion": [
+        2
+      ],
+      "access": {
+        "claude": "workspace",
+        "codex": "workspace"
+      },
+      "modelsChosen": {
+        "lead": "gpt-6-sol",
+        "executor": null,
+        "reviewer": "gpt-6-sol"
+      },
+      "conditions": {
+        "met": 3,
+        "total": 3,
+        "requirements": [
+          "R1:met",
+          "R2:met"
+        ]
+      },
+      "checks": [
+        "undefined:passed"
+      ],
+      "checksFrom": "goal",
+      "permissionRecords": [],
+      "integrity": "ok",
+      "groundless": false,
+      "modelsReported": {
+        "lead": [
+          "gpt-6-sol"
+        ],
+        "executor": [
+          "claude-opus-5-5"
+        ],
+        "reviewer": [
+          "gpt-6-sol"
+        ]
+      },
+      "usageLimit": false
+    }
+  },
+  "failures": [],
+  "globalBefore": {
+    "~/.codex/config.toml": "47430266bb3012f4bf86940f5769301ff1a4f2fbe8a6919876cb1ae9353bf74c",
+    "~/.claude/settings.json": "3532624114b65856efab2f330a7372752b9405e8a84d4b5ad3d8126c606e5738"
+  },
+  "globalAfter": {
+    "~/.codex/config.toml": "47430266bb3012f4bf86940f5769301ff1a4f2fbe8a6919876cb1ae9353bf74c",
+    "~/.claude/settings.json": "3532624114b65856efab2f330a7372752b9405e8a84d4b5ad3d8126c606e5738"
+  },
+  "globalChanged": [],
+  "calls": 18,
+  "durationMs": 379546,
+  "ok": true
+}
