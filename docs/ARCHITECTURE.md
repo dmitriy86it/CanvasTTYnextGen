@@ -203,9 +203,9 @@ git cherry-pick refs/canvastty/<runId>/baseline..refs/canvastty/<runId>/stage-<n
 
 Diff against `baseline`, not `HEAD`. If you had uncommitted work at start, the baseline contains it.
 
-### Check sandbox of the lead's proposed commands (journal v2, development flag only)
+### Check sandbox of the lead's proposed commands (journal v2)
 
-With `CANVASTTY_JOURNAL_V2=1` a goal may leave its check commands empty: the lead proposes them, and the person accepts or edits them ([journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.6, §7а). Where Seatbelt is, a command the lead proposed runs in its own profile (`sandbox.ts` `buildCheckProfile`):
+In journal v2 (the default since 1.5.8) a goal may leave its check commands empty: the lead proposes them, and the person accepts or edits them ([journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.6, §7а). Where Seatbelt is, a command the lead proposed runs in its own profile (`sandbox.ts` `buildCheckProfile`):
 
 - writes: the run's work folder (the copy, the worktree or the project folder, by the work mode) and a temporary folder of the check (its `TMPDIR`), nothing else — and not the work folder's `.git` (a hook written there would run later by the person's own git);
 - reads: as the project-check profile — allowed by default, the user's credential stores and the orchestration data denied;
@@ -215,7 +215,7 @@ With `CANVASTTY_JOURNAL_V2=1` a goal may leave its check commands empty: the lea
 
 A self-test of the profile runs before every such check (a write to the work folder works; a write to `$HOME` or `.git`, a read of `~/Library/Keychains` or of the orchestration data and an outside connection fail with EPERM; 127.0.0.1 works). If it fails, the check does not run and the run pauses with `sandbox_unavailable`. Because the profile denies the outside network, the autopilot accepts the lead's commands itself. A check whose output reports a refusal (EPERM, a failed name lookup — the output, not the kernel, so the command can print it itself) is not a code failure: the run pauses with "A check needs more permissions". The lead's command is never run without the sandbox as it is: the person opens it in full ("Change the command") and saves it, changed or not, as their own command, which then runs in their shell without the sandbox; the decision is journaled (`checks.amended`) and holds for that command in that run. Commands the person entered run as before, in their login shell without a sandbox.
 
-### Requirements and readiness conditions (journal v2, development flag only)
+### Requirements and readiness conditions (journal v2)
 
 A2 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.7. The goal's acceptance criteria are the requirements R1, R2, … (set by the person, fixed). Every stage of a v2 plan lists 1–12 readiness conditions, each covering requirements and naming its evidence: `check` (a check command of the run passes) or `change` (the lead's review marks it met, naming files the run changed). The application numbers new conditions C1, C2, … (`plan.recorded.conditionsAssigned`); a new plan keeps every open one by id, and dropping one is not available before A4. `conditions.ts` holds the pure rules (plan check, numbering, marks, facts); the service validates the lead's answers before recording them (`invalid_report` otherwise) and computes the facts before every decision:
 
@@ -225,7 +225,7 @@ A2 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-forma
 
 The completion's basis records R → C → evidence; replay re-derives the conditions from the plans' and reviews' texts (`journal.ts` `conditionsConflict`) and marks a journal that says completed without that evidence as damaged (`phase: "texts"`). The result's "Conditions" section, the agent cards and the activity feed show the same facts (`conditionsView`, `conditionsLine`).
 
-### Findings and the reviewer (journal v2, development flag only)
+### Findings and the reviewer (journal v2)
 
 A3 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.8. In a v2 journal the stages and the final result are reviewed by a separate role, `reviewer`: the lead's CLI (Codex) in a new session for every review, with the lead's turn limit and rights. Its task carries the requirements and conditions, the paths changed (since the stage started and since the run started), the check results on the current tree and every finding of the run — never the executor's report or task, nor the lead's conversation. The lead only plans. A journal the lead already reviewed in (A1–A2, `review.recorded`) goes on with the lead; mixing the two is a replay conflict.
 
@@ -237,7 +237,7 @@ The reviewer has no verdict. It reports findings — `blocking` or `wish`, with 
 
 A stage is accepted only with its checks passing, its conditions met and no open blocking finding it owns; the completion function adds `blocking_open` and `disputed_pending`. Replay re-applies every result from the texts and marks a journal whose stage was accepted, or run completed, with an open blocking finding as damaged (`phase: "texts"`). The result's "Findings" section (number, severity, status, owning stage, history with the review and the tree), the cards and the activity feed say "Open blocking: N" through one function (`findingsView`, `findingsLine`); the run panel lists the reviewer as its own participant, and the Codex card shows its work.
 
-### Person decisions and the finish (journal v2; v2 still off by default)
+### Person decisions and the finish (journal v2)
 
 A4 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §2.9. Some decisions are the person's alone, and the run waits for them; neither the autopilot nor an agent makes one. Each is a command from the run panel (`person.decide`, `plan.decide`, exactly their fields: a renderer cannot say who decided). Main records it with the state the person saw: the `runKey` of the view, which must still be current (otherwise `stale_revision`), and the tree it computes itself.
 
@@ -250,7 +250,11 @@ A4 of [journal-v2-format.md](agent-orchestration/implementation/journal-v2-forma
 
 **Recovery.** A v2 journal's torn tail is cut off on opening: the bytes go to `quarantine/` and `journal.tail_repaired` is written. A decision already journaled stands after a restart; a command without one is `interrupted`. Continuing leads back to the person's pause.
 
-**Enabling v2** is one constant, `JOURNAL_V2_BY_DEFAULT`, `false` until a real series. Until then v2 is written only behind `CANVASTTY_JOURNAL_V2=1`. Journals of the A1–A3 development builds (`formatPreview`) keep opening under the flag; once v2 is on they are read-only, labelled as a trial build's.
+**Enabling v2** is one constant, `JOURNAL_V2_BY_DEFAULT`: `true` since 1.5.8, after the real series passed (`agent-orchestration/evidence/real-a-gate/attempt-5`). New native runs are written in v2; a run started in v1 goes on in v1. Journals of the A1–A3 development builds (`formatPreview`) are read-only, labelled as a trial build's, and never continued.
+
+**A model per role.** The project settings (`profile.models`) and, over them, the goal give the lead, the executor and the reviewer each a model or none ("As in the CLI", the default). A model goes only to that turn's CLI: Codex gets `model` in `thread/start`/`thread/resume`, Claude gets `--model`; `~/.codex/config.toml` and Claude's settings are never changed. Codex's choices come from `model/list` (`probe.ts` `codexModels`, no model turn; cached for the app session, refreshed on request); a Codex model the account is not offered is a readiness blocker (`model_unavailable`) and refuses the start before any model call. The goal records `models` only in a v2 journal ([journal-v2-format.md](agent-orchestration/implementation/journal-v2-format.md) §1). The run board and the participant cards show the model each CLI reported (its `session` activity entry).
+
+In the check profile git does not read the person's global or system configuration (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`): the profile denies `~/.gitconfig`, and git refuses every command on a global config it may not read.
 
 ### Agents' rights
 
