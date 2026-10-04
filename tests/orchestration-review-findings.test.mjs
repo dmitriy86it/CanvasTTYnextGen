@@ -453,7 +453,7 @@ test("A1 no_checks with the reviewer: completed without checks; a wish never blo
   await m.shutdown();
 });
 
-test("a journal the lead reviewed (A1–A2) opens and goes on with the lead; a reviewer's result in it — replay_conflict", OPTS, async () => {
+test("a journal the lead reviewed (A1–A2): with v2 on, read only and never continued; replayed as the development builds did, it goes with the lead, and a reviewer's result in it is a replay_conflict", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
   const MOCK_STATE = fs.mkdtempSync(path.join(TMP, "state-")); // the lead's session goes on in the second manager
   const m = manager({ MOCK_SCRIPT: script([PLAN, exec({ "a.txt": "2\n" }), review([]), final()]), MOCK_STATE });
@@ -474,24 +474,22 @@ test("a journal the lead reviewed (A1–A2) opens and goes on with the lead; a r
       return x;
     });
   };
-  fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, asA2, PREVIEW));
-  const leadFinal = { answer: { verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "met", note: "R1" }] } };
-  const m2 = manager({ MOCK_SCRIPT: script([leadFinal]), MOCK_STATE }, { root: m.root });
+  // with v2 on (1.5.8) such a journal is a development build's: shown read only, never continued
+  const preview = rewrite(buf, runId, asA2, PREVIEW);
+  fs.writeFileSync(journalFile(m, runId), preview);
+  const shown = await readRun(m.root, runId);
+  assert.deepEqual([shown.integrity.status, shown.integrity.detail.preview, shown.state], ["newer_version", true, null]);
+  const m2 = manager({ MOCK_SCRIPT: script([]), MOCK_STATE }, { root: m.root });
   const v = await view(m2, runId);
-  assert.equal(v.progress.findings, null, "no findings: the lead reviews");
   const r = await m2.command(runId, { commandId: randomUUID(), expectedRevision: v.revision, command: { kind: "resume" } });
-  assert.equal(r.value?.status, "accepted", JSON.stringify(r));
-  assert.equal((await settled(m2, runId)).status, "completed");
-  const all = await records(m2, runId);
-  assert.deepEqual(all.filter((x) => x.type === "turn.intent").map((x) => x.data.role), ["lead", "executor", "lead", "lead"]);
-  assert.equal(all.some((x) => x.type === "review.assessed"), false);
+  assert.equal(r.code, "run_newer_version", JSON.stringify(r));
   await m2.shutdown();
-  // a reviewer's result in the journal the lead reviews
-  fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, (recs) => {
-    const a2 = asA2(recs);
-    return [...a2, ...recs.slice(a2.length)];
-  }, PREVIEW));
-  assert.equal((await readRun(m.root, runId)).integrity.detail.code, "replay_conflict");
+  assert.deepEqual(fs.readFileSync(journalFile(m, runId)), preview);
+  // replayed as the development builds did (the switch off): the lead reviews; a reviewer's result in it — replay_conflict
+  const asDev = parseJournal(preview, runId, { previewReadOnly: false });
+  assert.deepEqual([asDev.integrity.status, asDev.state.findings ?? null], ["ok", null]);
+  const mixed = rewrite(buf, runId, (recs) => { const a2 = asA2(recs); return [...a2, ...recs.slice(a2.length)]; }, PREVIEW);
+  assert.equal(parseJournal(mixed, runId, { previewReadOnly: false }).integrity.detail.code, "replay_conflict");
   // A4's final form: the lead's review record is not of this form at all
   fs.writeFileSync(journalFile(m, runId), rewrite(buf, runId, asA2));
   assert.equal((await readRun(m.root, runId)).integrity.detail.code, "invalid_event");
