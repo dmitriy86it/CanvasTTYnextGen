@@ -77,6 +77,7 @@ export interface CodexSessionInput {
   // into the person's config.toml for every run that works with a workspace-write sandbox in a folder it does not know
   // (codex-cli 0.155.1, evidence/codex-trust-probe). The person's own project folder is never passed here.
   trustCwd?: boolean;
+  model?: string; // this thread's model (thread/start, thread/resume); absent: the user's config.toml decides
 }
 
 // An MCP form of either CLI, as the person is asked it.
@@ -184,9 +185,9 @@ export function codexAppServerDriver(input: CodexSessionInput): SessionDriver {
         io?.send({ method: "initialized" });
         // No approvalPolicy or sandbox: the user's own config.toml and profile decide, as in the terminal. With a chosen
         // rights mode, exactly its sandbox and approval policy for this thread. The only config is the trust of the run's
-        // own folder, for this thread (trustCwd).
+        // own folder, for this thread (trustCwd). A chosen model goes to this thread only (`model`), never to config.toml.
         const then = (r: Record<string, unknown>) => { threadId = str(rec(r.thread).id) || threadId; startTurn(); };
-        const params = { cwd: input.cwd, ...(input.access ?? {}), ...(input.trustCwd ? { config: { projects: { [input.cwd]: { trust_level: "trusted" } } } } : {}) };
+        const params = { cwd: input.cwd, ...(input.access ?? {}), ...(input.model ? { model: input.model } : {}), ...(input.trustCwd ? { config: { projects: { [input.cwd]: { trust_level: "trusted" } } } } : {}) };
         if (threadId) call("thread/resume", { threadId, ...params }, then);
         else call("thread/start", params, then);
       });

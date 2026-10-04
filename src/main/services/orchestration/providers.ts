@@ -142,7 +142,7 @@ export type ProviderTurnStart =
 
 const INPUT_KEYS = new Set(["cli", "cliVersion", "mode", "candidate", "model", "modelParams", "maxBudgetUsd", "cwd", "schema", "accept", "env",
   "task", "attemptDir", "session", "limits", "supervisor"]);
-const SAFE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,127}$/;
+export const SAFE_MODEL = /^[A-Za-z0-9][A-Za-z0-9._:/[\]-]{0,127}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODEX_THREAD = /^[A-Za-z0-9][A-Za-z0-9-]{0,127}$/; // never starts with "-": it is a positional argv item
 const MAX_NAMES = 32;
@@ -432,6 +432,9 @@ export interface NativeTurnInput {
   supervisor?: SupervisorTimings;
   access?: AgentAccess; // stage 13: the chosen rights mode per CLI (default: the user's own settings)
   ownFolder?: boolean; // cwd is the run's own copy or worktree (sessions.ts: Codex trusts it for the thread only)
+  // The model for this thread (Codex thread/start|resume `model`) or this run (claude --model); absent: the CLI's own
+  // configuration decides. Nothing is written to config.toml or Claude's settings.
+  model?: string;
 }
 
 export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
@@ -442,6 +445,7 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
   if (!parseCliVersion(provider, input.cliVersion)) return refuse("unsupported_version", `cannot read the ${provider} version from "${String(input.cliVersion).trim()}"`);
   if (typeof input.cwd !== "string" || !isAbsolute(input.cwd)) return refuse("invalid_input", "cwd must be absolute");
   if (typeof input.task !== "string") return refuse("invalid_input", "task must be a string");
+  if (input.model !== undefined && (typeof input.model !== "string" || !SAFE_MODEL.test(input.model))) return refuse("invalid_input", "model name is not allowed");
   let schema: AnswerSchema;
   let accept: AnswerSchema | null;
   try {
@@ -460,14 +464,16 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
     args = ["app-server"];
     driver = codexAppServerDriver({
       cwd: input.cwd, task: input.task, schema, threadId: sessionId, clientVersion: input.clientVersion, ask: input.ask,
-      access: codexAccessParams(input.access?.codex ?? "terminal"), ...(input.ownFolder ? { trustCwd: true } : {})
+      access: codexAccessParams(input.access?.codex ?? "terminal"), ...(input.ownFolder ? { trustCwd: true } : {}),
+      ...(input.model ? { model: input.model } : {})
     });
   } else {
     sessionId = input.session.id ?? randomUUID();
     if (!UUID.test(sessionId)) return refuse("invalid_input", "claude session id must be a UUID");
     args = [
       "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-      "--permission-prompt-tool", "stdio", ...claudeAccessArgs(input.access?.claude ?? "terminal"), "--json-schema", JSON.stringify(schema),
+      "--permission-prompt-tool", "stdio", ...claudeAccessArgs(input.access?.claude ?? "terminal"), ...(input.model ? ["--model", input.model] : []),
+      "--json-schema", JSON.stringify(schema),
       input.session.kind === "new" ? "--session-id" : "--resume", sessionId
     ];
     driver = claudeHostDriver({ task: input.task, ask: input.ask });

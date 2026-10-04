@@ -720,3 +720,14 @@ export function probeText(locale: LocaleId, text: string): string {
     .replace(/\(none\)/g, t(locale, "orchProbe_none"))
     .replace(/\(default\)/g, t(locale, "orchProbe_default"));
 }
+
+// The model a role works with: what its CLI reported at the start of its latest session (the activity's "session"
+// entry), else the model the goal chose, else null — as in the CLI (nothing was passed and the CLI said nothing yet).
+export function roleModel(role: "lead" | "executor" | "reviewer", entries: readonly OrchestrationActivityEntry[],
+  chosen: { lead: string | null; executor: string | null; reviewer: string | null } | null | undefined): { model: string | null; reported: boolean } {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i];
+    if (e.kind === "session" && e.role === role && typeof e.detail?.model === "string" && e.detail.model) return { model: e.detail.model, reported: true };
+  }
+  return { model: chosen?.[role] ?? null, reported: false };
+}

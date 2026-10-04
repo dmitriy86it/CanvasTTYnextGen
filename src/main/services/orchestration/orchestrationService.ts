@@ -24,6 +24,7 @@ import type { Applied, Finding, FindingsReplay, PlanChoices, ReportFinding } fro
 import { checkKey, findingsKey, runKey } from "./progress.ts";
 import type { CheckDef, DepsFacts } from "./progress.ts";
 import type { ProviderTurnResult } from "./providers.ts";
+import { SAFE_MODEL } from "./providers.ts";
 import { compileSchema, validateAnswer } from "./schema.ts";
 import { applyRestore, inspectWorkspaceRefs, matchesCheckpointIntent, prepareRestore } from "./snapshots.ts";
 import { createCheckpoint } from "./snapshots.ts";
@@ -69,6 +70,9 @@ export interface GoalInput {
   prepare?: { steps: readonly PrepareStep[] };
   finish?: GoalFinish;
   access?: AgentAccess;
+  // journal v2 only: the model of a role (absent or a role left out: as in the CLI). A v1 journal has no place for it
+  // that a reader of 1.5.7 would not drop silently (it would run the role with the CLI's model).
+  models?: Partial<Record<AgentRole, string>>;
 }
 
 // Stage 12: the checks of a goal with commands are those command lines, run by the user's login shell.
@@ -165,6 +169,7 @@ export interface RunProgress {
   mode: "autopilot" | "steps";
   branch: string | null; // worktree mode: the run's branch
   access: AgentAccess | null;
+  models?: Record<AgentRole, string | null>; // journal v2: the goal's models (null: as in the CLI)
   checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: FailureClass | null }[]; // the latest result of each
   prepare: { status: string; failed: string | null; class: FailureClass | null; command: string | null; output: TextRef | null } | null;
   finish: { step: FinishStep; asked: boolean; status: string; established: boolean; commit: string | null; evidence: string | null; version?: OrchestrationQaVersion | null; observed?: string | null; declined?: boolean }[];
@@ -442,6 +447,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
   const finish = input.finish === undefined ? undefined : checkFinish(input.finish, bad);
   if (finish && (finish.commit || finish.push || finish.qa) && input.workMode === "copy") bad("actions after success need the project folder or a worktree");
   if (input.access !== undefined && (!isClaudeAccess(input.access?.claude) || !isCodexAccess(input.access?.codex))) bad("access: unknown mode");
+  const models = input.models === undefined ? undefined : checkModels(input.models, v2, bad);
   const registry = registryOf(commands);
   if (typeof input?.text !== "string" || input.text.trim() === "" || input.text.length > 8000) bad("text must be 1..8000 characters");
   if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 32
@@ -461,8 +467,21 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
     limits: limits as RunLimits, createdAt: now,
     ...(commands ? { commands } : {}), ...(input.workMode ? { workMode: input.workMode } : {}),
     ...(input.mode ? { mode: input.mode } : {}), ...(prepare ? { prepare } : {}), ...(finish ? { finish } : {}),
-    ...(input.access ? { access: { claude: input.access.claude, codex: input.access.codex } } : {})
+    ...(input.access ? { access: { claude: input.access.claude, codex: input.access.codex } } : {}),
+    ...(models ? { models } : {})
   };
+}
+
+function checkModels(m: GoalInput["models"], v2: boolean, bad: (m: string) => never): Partial<Record<AgentRole, string>> | undefined {
+  if (!m || typeof m !== "object" || Array.isArray(m)) bad("models must be an object");
+  const out: Partial<Record<AgentRole, string>> = {};
+  for (const [role, name] of Object.entries(m!)) {
+    if (role !== "lead" && role !== "executor" && role !== "reviewer") bad(`models: unknown role ${role}`);
+    if (typeof name !== "string" || !SAFE_MODEL.test(name)) bad(`models.${role}: model name is not allowed`);
+    out[role as AgentRole] = name;
+  }
+  if (Object.keys(out).length && !v2) bad("models: a role's model is recorded only in a journal v2 goal");
+  return Object.keys(out).length ? out : undefined;
 }
 
 const LINE = (v: unknown) => typeof v === "string" && v.trim() !== "" && v.length <= 1000 && !/[\0\r\n]/.test(v);
@@ -1069,7 +1088,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       schema: offered, ...(offered !== schema ? { accept: schema } : {}), sessionId: role === "reviewer" ? null : sessionFor(st, role),
       // the role's own limit, cut to what is left of the run: the deadline is not extended by a long turn
       timeoutMs: Math.max(1, Math.min(role === "executor" ? limits.executorTurnMs : limits.leadTurnMs, deadline() - clock())),
-      ask: askPerson(role), ...(goal.access ? { access: goal.access } : {}), ...(ws.mode !== "project" ? { ownFolder: true } : {})
+      ask: askPerson(role), ...(goal.access ? { access: goal.access } : {}), ...(ws.mode !== "project" ? { ownFolder: true } : {}),
+      ...(goal.models?.[role] ? { model: goal.models[role] } : {})
     };
     const roleTimeoutMs = role === "executor" ? limits.executorTurnMs : limits.leadTurnMs;
     const prepared = deps.agents.prepare(request);
@@ -2665,6 +2685,7 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
   const confirmed = st.orch.confirmations.filter((c) => c.seq > commitSeq).at(-1);
   return {
     mode: goal.mode ?? "autopilot", branch, access: goal.access ?? null, checks,
+    ...(goal.models ? { models: { lead: goal.models.lead ?? null, executor: goal.models.executor ?? null, reviewer: goal.models.reviewer ?? null } } : {}),
     // the failed step's command (the goal's steps) and the preparation's output, for the run panel to say why
     prepare: p ? { status: p.status, failed: p.failed === null ? null : String(p.failed), class: p.class,
       command: p.failed === null ? null : goal.prepare?.steps[p.failed]?.command ?? null, output: p.output } : null,

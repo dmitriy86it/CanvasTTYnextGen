@@ -7,7 +7,7 @@ import { access, constants, lstat, readFile, readdir } from "node:fs/promises";
 import { delimiter, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { orchestrationAvailable } from "../../../shared/orchestration.ts";
-import type { OrchestrationReadiness, OrchestrationReadinessItem } from "../../../shared/orchestration.ts";
+import type { OrchestrationCodexModels, OrchestrationReadiness, OrchestrationReadinessItem, OrchestrationRoleModels } from "../../../shared/orchestration.ts";
 import { laravelTestDb, neededSteps, worktreeSteps } from "./prepare.ts";
 import { parseCliVersion } from "./providers.ts";
 import type { LaravelTestDb, PrepareStep } from "./prepare.ts";
@@ -115,7 +115,7 @@ export interface ReadinessInput {
   platform: string; // process.platform
   gitPath: string | null;
   // The measured runtime, or why it could not be measured (the CLIs, the login shell).
-  runtime: { ok: true; versions: Record<"codex" | "claude", string>; env: Readonly<Record<string, string>>; shell: string; direnv?: string } | { ok: false; code: string; detail: string };
+  runtime: { ok: true; versions: Record<"codex" | "claude", string>; env: Readonly<Record<string, string>>; shell: string; direnv?: string; executables?: Record<"codex" | "claude", string>; codexEnv?: Readonly<Record<string, string>> } | { ok: false; code: string; detail: string };
   checkedVersions: Readonly<Record<"codex" | "claude", readonly string[]>>; // protocol shapes compared with these
   busy: boolean; // another run of this application works in this folder now
 }
@@ -212,4 +212,22 @@ export async function assessReadiness(input: ReadinessInput): Promise<Orchestrat
 
   add({ id: "permissions", level: "info", detail: "the CLIs' own settings decide; their prompts come to this panel" });
   return { ready: !items.some((i) => i.level === "blocker"), items };
+}
+
+// The models of the roles before any model turn. Codex: the model a role would run with (the chosen one, else the one its
+// configuration names) must be in what model/list offers this account; otherwise a blocker. Claude has no such list
+// without a model turn: its choice is shown, never checked. codexRoles: the roles Codex plays in this run.
+export function modelItem(list: OrchestrationCodexModels, chosen: OrchestrationRoleModels, codexRoles: readonly ("lead" | "executor" | "reviewer")[]): OrchestrationReadinessItem {
+  const roles = { lead: chosen.lead ?? "cli", executor: chosen.executor ?? "cli", reviewer: chosen.reviewer ?? "cli" };
+  if (!list.ok) return { id: "model", level: "warning", detail: `the models Codex offers could not be read: ${list.error ?? "no answer"}`, facts: { code: "model_list_failed", ...roles } };
+  const missing = codexRoles.map((role) => ({ role, model: chosen[role] ?? list.configModel, chosen: chosen[role] !== null }))
+    .filter((x) => x.model !== null && !list.ids.includes(x.model));
+  if (missing.length) {
+    const model = missing[0].model!;
+    return {
+      id: "model", level: "blocker", detail: `Codex: model ${model} is not available to your account`,
+      facts: { code: "model_unavailable", provider: "codex", model, roles: missing.filter((x) => x.model === model).map((x) => x.role).join(", "), source: missing[0].chosen ? "chosen" : "config", ...roles }
+    };
+  }
+  return { id: "model", level: "ok", detail: "models", facts: { ...roles, ...(list.configModel ? { config: list.configModel } : {}) } };
 }

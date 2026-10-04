@@ -56,6 +56,7 @@ export function createOrchestrationClient(ipc: OrchestrationIpc, platform: strin
     readiness: (input) => ipc.invoke(IPC.orchestrationReadiness, input),
     profile: (linkId, capabilities) => ipc.invoke(IPC.orchestrationProfileGet, linkId, capabilities === true),
     saveProfile: (linkId, profile) => ipc.invoke(IPC.orchestrationProfileSave, linkId, profile),
+    codexModels: (linkId, refresh) => ipc.invoke(IPC.orchestrationCodexModels, linkId, refresh === true),
     probe: (linkId, options) => (options === undefined ? ipc.invoke(IPC.orchestrationProbe, linkId) : ipc.invoke(IPC.orchestrationProbe, linkId, options)),
     onActivity(runId, listener) {
       let set = activity.get(runId);

@@ -7,10 +7,11 @@ import { execFile } from "node:child_process";
 import { mkdir, open, readFile, rename } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
-import type { OrchestrationGrant, OrchestrationProjectProfile } from "../../../shared/orchestration.ts";
+import type { OrchestrationGrant, OrchestrationProjectProfile, OrchestrationRoleModels } from "../../../shared/orchestration.ts";
 import { DEFAULT_ACCESS, isClaudeAccess, isCodexAccess } from "./access.ts";
 import { canonical } from "./journal.ts";
 import { suggestPrepare } from "./prepare.ts";
+import { SAFE_MODEL } from "./providers.ts";
 import { suggestCommands } from "./readiness.ts";
 
 const run = promisify(execFile);
@@ -46,6 +47,7 @@ export function validateProfile(input: unknown): OrchestrationProjectProfile {
   if (!p!.env || typeof p!.env.direnv !== "boolean") bad("env: {direnv}");
   const access = p!.access ?? DEFAULT_ACCESS;
   if (!isClaudeAccess(access.claude) || !isCodexAccess(access.codex)) bad("access: unknown mode");
+  const models = validModels(p!.models);
   const f = p!.finish;
   if (!f || typeof f.commit !== "boolean") bad("finish: {commit, push, qa}");
   let push = null;
@@ -65,9 +67,24 @@ export function validateProfile(input: unknown): OrchestrationProjectProfile {
   const grants = p!.grants!.map(validGrant);
   return {
     v: 1, workMode: p!.workMode!, checks, prepare: { steps, auto: prep!.auto }, env: { direnv: p!.env!.direnv },
-    access: { claude: access.claude, codex: access.codex }, finish: { commit: f!.commit, push, qa }, grants,
+    access: { claude: access.claude, codex: access.codex }, ...(models ? { models } : {}), finish: { commit: f!.commit, push, qa }, grants,
     savedAt: typeof p!.savedAt === "string" ? p!.savedAt : null
   };
+}
+
+// The model of each role (null: as in the CLI). Absent, or every role as in the CLI, is not kept.
+export function validModels(m: unknown): OrchestrationRoleModels | null {
+  if (m === undefined || m === null) return null;
+  if (typeof m !== "object" || Array.isArray(m)) bad("models: {lead, executor, reviewer}");
+  const r = m as Record<string, unknown>;
+  if (Object.keys(r).some((k) => k !== "lead" && k !== "executor" && k !== "reviewer")) bad("models: {lead, executor, reviewer}");
+  const one = (k: string): string | null => {
+    const v = r[k] ?? null;
+    if (v !== null && (typeof v !== "string" || !SAFE_MODEL.test(v))) bad(`models.${k}: model name is not allowed`);
+    return v as string | null;
+  };
+  const out = { lead: one("lead"), executor: one("executor"), reviewer: one("reviewer") };
+  return out.lead || out.executor || out.reviewer ? out : null;
 }
 
 function validGrant(g: unknown): OrchestrationGrant {

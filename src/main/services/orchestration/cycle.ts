@@ -37,6 +37,7 @@ export interface Goal {
   prepare?: { steps: PrepareStep[] }; // run by CanvasTTY when needed; absent or empty: nothing is prepared
   finish?: GoalFinish;
   access?: AgentAccess;
+  models?: Partial<Record<"lead" | "executor" | "reviewer", string>>; // journal v2 only (checkGoal)
   // A1.1, the service's own (never in the goal text): the decided checks that run in the check profile — the lead's
   // lines the person did not let out of it (journal-v2-format.md §2.6)
   sandboxed?: string[];

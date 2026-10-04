@@ -96,14 +96,28 @@ try {
   // =============== none: the autopilot goes on without checks ===============
   await scenario("none", 9800 + Math.floor(Math.random() * 100), { MOCK_CHECKS: "none" }, [change("src/note.mjs exists", ["R1", "R2"])], async (app, ids, root) => {
     let dialog = null;
+    let models = null;
     await startGoal(app, ids.link, {
       onDialog: async () => {
         await app.type(q("[data-orch-commands]"), "");
         dialog = await app.ev(`({ hint: !!${q("[data-orch-commands-optional]")}, value: ${q("[data-orch-commands]")}.value })`);
         await app.shot("v2-01-dialog-empty-commands");
+        // the model of each role (journal v2): Codex's list from model/list (no hidden one), Claude's aliases and «Другая»
+        await app.waitFor(`${q('[data-orch-codex-models="ok"]')} && true`, "the Codex model list");
+        models = await app.ev(`(() => {
+          const lead = ${q('[data-orch-model="lead"] select')};
+          Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(lead, "gpt-mock-mini");
+          lead.dispatchEvent(new Event("change", { bubbles: true }));
+          return { roles: [...document.querySelectorAll("[data-orch-model]")].map((e) => e.dataset.orchModel),
+            lead: [...lead.options].map((o) => o.value), executor: [...${q('[data-orch-model="executor"] select')}.options].map((o) => o.textContent) };
+        })()`);
+        await app.ev(`${q("[data-orch-models]")}.closest("details").open = true; ${q("[data-orch-models]")}.scrollIntoView()`);
+        await app.shot("v2-01b-dialog-models");
       }
     });
     expect(dialog?.hint === true && dialog.value === "", "none: the commands field left empty, with the hint", dialog);
+    expect(models?.roles.join() === "lead,executor,reviewer" && models.lead.join() === ",gpt-mock,gpt-mock-mini"
+      && models.executor.join() === "Как в CLI,opus,sonnet,haiku,Другая…", "none: a model per role — Codex from model/list (no hidden one), Claude's aliases", models);
     const runId = (await runs(app))[0].runId;
     await app.waitFor(`window.canvasTTY.orchestration.get(${JSON.stringify(runId)}).then((r) => r.value.view.status === "completed")`, "completed", 120_000);
     await app.waitFor(`${chip(ids.link)}?.querySelector(".agent-link__state")?.textContent === ${JSON.stringify(NO_CHECKS)}`, "the chip says completed without checks");
@@ -123,6 +137,8 @@ try {
     // «ничем не подтверждён» is the warning itself; «Завершён в <time>» is when it ended
     expect(!/(?<!не )подтвержд/i.test(result.text) && !/Завершён(?! без проверок| в )/.test(result.text), "none: nowhere «Подтверждено» or plain «Завершён»", result.text.slice(0, 600));
     await app.shot("v2-02-completed-without-checks");
+    const board = await app.ev(`${q('[data-board="models"]')}?.textContent ?? null`);
+    expect(board === "Лид — gpt-mock-mini · Исполнитель — mock-claude · Проверяющий — mock", "none: the board names the model each CLI reported", board);
     const conds = await app.ev(`({ count: ${q("[data-sum-conditions-count]")}?.textContent ?? null,
       reqs: [...document.querySelectorAll("[data-requirement]")].map((e) => e.dataset.requirement + ":" + e.dataset.requirementStatus),
       conds: [...document.querySelectorAll('[data-requirement="R1"] [data-condition]')].map((e) => e.dataset.condition + ":" + e.dataset.conditionStatus),
@@ -132,6 +148,8 @@ try {
     await app.ev(`${q('[data-sum="conditions"]')}?.scrollIntoView()`);
     await app.shot("v2-02b-conditions");
     const lines = fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const goalText = JSON.parse(fs.readFileSync(path.join(root, "runs", runId, "texts", lines[0].data.goal.sha256)));
+    expect(JSON.stringify(goalText.models) === JSON.stringify({ lead: "gpt-mock-mini" }), "none: the goal records the lead's model only", goalText.models);
     expect(lines.every((l) => l.v === 2) && lines[0].minReaderVersion === 2 && !("formatPreview" in lines[0]), "none: the journal is v 2, minReaderVersion 2 in its first record, no formatPreview (A4)", lines[0]);
     expect(!lines.some((l) => l.type === "run.status" && l.data.reason === "awaiting_checks_decision"), "none: the autopilot did not wait (A1.1 Q1)", null);
     const last = lines.at(-1);

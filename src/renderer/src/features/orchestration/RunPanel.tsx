@@ -52,6 +52,7 @@ import {
   orchestrationAvailableHere,
   orchestrationEntry,
   participantState,
+  roleModel,
   resultFacts,
   runHeadline,
   type HistoryLine,
@@ -230,6 +231,9 @@ function LineDetails({ runId, text, dropped, locale }: { runId: string; text: Li
   );
 }
 
+// What a role works with: the model its CLI reported, else the chosen one (marked), else «As in the CLI».
+const modelLabel = (locale: LocaleId, m: { model: string | null; reported: boolean }): string =>
+  m.model === null ? t(locale, "orchModelCli") : m.reported ? m.model : `${m.model} (${t(locale, "orchModelChosen")})`;
 const roleName = (locale: LocaleId, role: PanelRole) =>
   role === "lead" ? `Codex · ${t(locale, "orchRoleLead")}` : role === "executor" ? `Claude · ${t(locale, "orchRoleExecutor")}`
     : role === "reviewer" ? `Codex · ${t(locale, "orchRoleReviewer")}` : t(locale, "orchObserveChecks");
@@ -1245,6 +1249,12 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                     <dd data-board="access">Claude — {tr(locale, `orchAccess_${progress.access.claude}`)} · Codex — {tr(locale, `orchAccess_${progress.access.codex}`)}</dd>
                   </div>
                 )}
+                {progress.models && (
+                  <div><dt>{t(locale, "orchBoardModels")}:</dt>
+                    <dd data-board="models">{(byReviewer(view) ? ["lead", "executor", "reviewer"] as const : ["lead", "executor"] as const)
+                      .map((role) => `${t(locale, role === "lead" ? "orchRoleLead" : role === "executor" ? "orchRoleExecutor" : "orchRoleReviewer")} — ${modelLabel(locale, roleModel(role, activity.entries, progress.models))}`).join(" · ")}</dd>
+                  </div>
+                )}
                 {top.grantsApplied > 0 && <div><dt>{t(locale, "orchBoardGrants")}:</dt><dd data-board="grants">{top.grantsApplied}</dd></div>}
               </dl>
             )}
@@ -1427,6 +1437,10 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                               {t(locale, "orchBoardAccess")}: {tr(locale, `orchAccess_${progress.access[info.provider]}`)}
                             </span>
                           )}
+                          {(() => {
+                            const m = roleModel(role, activity.entries, progress?.models);
+                            return <span className="orch-access-badge" data-participant-model={m.model ?? "cli"} data-model-reported={m.reported ? "yes" : "no"}>{t(locale, "orchModels")}: {modelLabel(locale, m)}</span>;
+                          })()}
                           <span>{phaseText(locale, p, now)}{p.lastEventAt ? ` · ${t(locale, "orchLastEvent")} ${time(locale, p.lastEventAt)}` : ""}</span>
                           <button type="button" onClick={() => onView({ tab: "activity", role })}>{t(locale, "orchObserve")}</button>
                         </li>
