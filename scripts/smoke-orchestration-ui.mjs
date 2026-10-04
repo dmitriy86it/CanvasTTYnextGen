@@ -29,7 +29,20 @@ const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } }
 // fixes it, the check passes, review accept, final review. run 2: plan (then the plan review pause). run 3: plan
 // (then the held executor is stopped).
 const FINDINGS = ["tests/extra.test.mjs fails: 1 + 1 is not 3", "keep sum() pure"];
-const codexScript = script("codex", [planR, { report: { verdict: "fix", findings: FINDINGS, question: null } }, verdict("accept"), verdict("complete"), planR, planR]);
+// With the development flag CANVASTTY_JOURNAL_V2=1 the run is written in v2: the lead plans with conditions (R1 by the
+// note, R2 by the check), the reviewer answers the reviews — the same two findings as blocking ones, closed in round 2
+// (journal-v2-format.md §2.7, §2.8).
+const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const planV2 = { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs exporting a constant", conditions: [
+  { keep: null, text: "src/note.mjs exists", covers: ["R1"], evidence: { kind: "change", check: null } },
+  { keep: null, text: "node --test passes", covers: ["R2"], evidence: { kind: "check", check: "cmd-1" } }] }], dropped: [], dropRequirements: [], question: null } };
+const findingV2 = (problem, id = null, status = "open") => ({ id, severity: "blocking", condition: null, problem, evidence: "tests/extra.test.mjs", closeWhen: "the test passes",
+  status, paths: ["tests/extra.test.mjs"], relation: null });
+const reviewV2 = (findings) => ({ report: { conditions: [{ id: "C1", status: "met", paths: ["src/note.mjs"], note: "src/note.mjs exports note" }], findings, request: "none", question: null } });
+const finalV2 = { report: { conditions: [], findings: [], request: "none", question: null, requirements: ["R1", "R2"].map((id) => ({ id, status: "met", note: "done" })) } };
+const codexScript = script("codex", V2
+  ? [planV2, reviewV2(FINDINGS.map((f) => findingV2(f))), reviewV2(FINDINGS.map((f, i) => findingV2(f, `F${i + 1}`, "closed"))), finalV2, planV2, planV2]
+  : [planR, { report: { verdict: "fix", findings: FINDINGS, question: null } }, verdict("accept"), verdict("complete"), planR, planR]);
 const failing = 'import test from "node:test";\nimport assert from "node:assert/strict";\ntest("extra", () => assert.equal(1 + 1, 3));\n';
 const passing = 'import test from "node:test";\nimport assert from "node:assert/strict";\ntest("extra", () => assert.equal(1 + 1, 2));\n';
 const claudeScript = script("claude", [
@@ -150,7 +163,8 @@ try {
   expect((await cardText(app, exec.agentId, ".agent-card__state")) === "Работает", "the executor stays shown as working for the whole turn", null);
   fs.rmSync(HOLD);
   await app.waitFor(`${q(".orch-panel__status--completed")} && true`, "run 1 completed", 90_000);
-  await app.waitFor(`${q("[data-orch-result]")} && true`, "final verdict shown", 10_000);
+  // v1: the lead's final verdict; v2 has none (the reviewer marks requirements): the result line itself
+  await app.waitFor(`${q(V2 ? '[data-fact="accepted"]' : "[data-orch-result]")} && true`, "final verdict shown", 10_000);
   const run1 = link.runIds[0] ?? (await canvasState(app)).links[0].runIds[0];
   expect(await app.ev(`document.querySelectorAll(".orch-checks li").length > 0 && document.querySelectorAll(".orch-plan li").length === 1`), "completed: plan and check results in the overview", null);
   await openTab(app, "history");
@@ -167,10 +181,22 @@ try {
   expect(await app.ev(`!!${failedCheck} && ${failedCheck}.textContent.includes("код выхода 1")`), "the failed check is in the history with its exit code", await app.ev(`[...document.querySelectorAll(".orch-history li")].map((l) => l.textContent).join(" | ")`));
   await app.clickEl(`${failedCheck}.querySelector(".orch-details__toggle")`);
   await app.waitFor(`${failedCheck}.querySelector(".orch-details__body pre")?.textContent.includes("extra")`, "check output shown");
-  await app.clickEl(`${li("review", "нужны исправления")}.querySelector(".orch-details__toggle")`);
-  await app.waitFor(`${li("review", "нужны исправления")}.querySelectorAll(".orch-details__body li").length === 2`, "findings shown");
-  const findingsShown = await app.ev(`[...${li("review", "нужны исправления")}.querySelectorAll(".orch-details__body li")].map((x) => x.textContent)`);
-  expect(JSON.stringify(findingsShown) === JSON.stringify(FINDINGS), "the lead's findings open as a list", findingsShown);
+  if (V2) {
+    // v2: the reviewer's findings are in the result («Замечания»), each with its history — opened, then closed
+    await openTab(app, "summary");
+    await app.waitFor(`document.querySelectorAll("[data-finding]").length === 2`, "findings shown");
+    const shown = await app.ev(`[...document.querySelectorAll("[data-finding]")].map((e) => [e.dataset.finding, e.dataset.findingSeverity, e.dataset.findingStatus, ${JSON.stringify(FINDINGS)}.some((f) => e.textContent.includes(f))].join(":"))`);
+    expect(shown.join() === "F1:blocking:closed:true,F2:blocking:closed:true", "the reviewer's findings: both blocking, closed in round 2", shown);
+    await openTab(app, "history");
+    // the tab switch closed the check's output: opened again, so the panel is long enough to scroll
+    await app.clickEl(`${failedCheck}.querySelector(".orch-details__toggle")`);
+    await app.waitFor(`${failedCheck}.querySelector(".orch-details__body pre")?.textContent.includes("extra")`, "check output shown");
+  } else {
+    await app.clickEl(`${li("review", "нужны исправления")}.querySelector(".orch-details__toggle")`);
+    await app.waitFor(`${li("review", "нужны исправления")}.querySelectorAll(".orch-details__body li").length === 2`, "findings shown");
+    const findingsShown = await app.ev(`[...${li("review", "нужны исправления")}.querySelectorAll(".orch-details__body li")].map((x) => x.textContent)`);
+    expect(JSON.stringify(findingsShown) === JSON.stringify(FINDINGS), "the lead's findings open as a list", findingsShown);
+  }
   const firstReport = `[...document.querySelectorAll('.orch-history li[data-history-kind="report"]')].at(-1)`;
   await app.clickEl(`${firstReport}.querySelector(".orch-details__toggle")`);
   await app.waitFor(`${firstReport}.querySelector(".orch-details__body li")?.textContent === "note and extra test added"`, "executor report shown");

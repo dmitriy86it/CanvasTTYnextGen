@@ -29,7 +29,22 @@ const projectC = project("gamma-project");
 const OPEN_REMARKS = ["API возвращает 500 на пустой фильтр", "Нет проверки прав на экспорт"];
 const LONG_TITLE = "Интерфейс анализа: таблица результатов, фильтры по периодам, экспорт отчёта и подробная карточка каждой записи";
 const FINDINGS = ["Экспорт в CSV не покрыт отдельной проверкой", "Полный MVP не завершён: вне цели этого запуска остались уведомления и роли"];
-const codexScript = script("codex", [
+// With the development flag CANVASTTY_JOURNAL_V2=1 the runs are written in v2: the lead plans with a condition (R1 by the
+// check), the reviewer answers the reviews — the final one's remarks as wishes, C's review with two blocking findings
+// (journal-v2-format.md §2.7, §2.8).
+const V2 = process.env.CANVASTTY_JOURNAL_V2 === "1";
+const planV2 = (title, task) => ({ report: { stages: [{ title, task, conditions: [{ keep: null, text: "node --test passes", covers: ["R1"], evidence: { kind: "check", check: "cmd-1" } }] }],
+  dropped: [], dropRequirements: [], question: null } });
+const findingV2 = (severity, paths = []) => (problem) => ({ id: null, severity, condition: null, problem, evidence: "seen in the code", closeWhen: "it is done", status: "open", paths, relation: null });
+const reviewV2 = (findings = []) => ({ report: { conditions: [], findings, request: "none", question: null } });
+const codexScript = script("codex", V2 ? [
+  planV2(LONG_TITLE, "Add src/note.mjs exporting a constant"), // A: plan
+  planV2("Импорт", "Add src/import.mjs"), // B: plan (after the question)
+  reviewV2(), // A: review
+  { report: { conditions: [], findings: FINDINGS.map(findingV2("wish")), request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "node --test passes" }] } }, // A: final
+  planV2("Фильтры отчёта", "Add src/filter.mjs"), // C: plan
+  reviewV2(OPEN_REMARKS.map(findingV2("blocking", ["src/filter.mjs"]))) // C: review with blocking findings (the run is paused after it)
+] : [
   { report: { stages: [{ title: LONG_TITLE, task: "Add src/note.mjs exporting a constant" }], question: null } }, // A: plan
   { report: { stages: [{ title: "Импорт", task: "Add src/import.mjs" }], question: null } }, // B: plan (after the question)
   { report: { verdict: "accept", findings: [], question: null } }, // A: review
@@ -116,7 +131,8 @@ try {
   expect((await text(row(runA))).includes("alpha-project") && (await text(row(runA))).includes("Оркестрация"), "A: project and kind named", await text(row(runA)));
   expect((await text(row(runA))).includes("Claude выполняет этап 1"), "A: who works on which stage", await text(row(runA)));
   expect(await app.ev(`document.querySelectorAll("[data-activity-run]").length`) === 2, "one row per run, not one per participant", null);
-  expect(await app.ev(`${row(runA, ".activity-run__people")}.querySelectorAll("li").length`) === 2, "the participants fold out inside the row", null);
+  const people = await app.ev(`[...${row(runA, ".activity-run__people")}.querySelectorAll("li")].map((l) => l.textContent)`);
+  expect(people.length === (V2 ? 3 : 2), "the participants fold out inside the row (v2: the reviewer as well)", people);
   await app.reveal(q("[data-activity-load]"));
   await app.shot("01-widget-two-projects-1280");
 
@@ -133,7 +149,8 @@ try {
   hold("codex", true);
   hold("claude", false);
   await waitView(runA, (v) => v.active?.kind === "turn" && v.active.purpose === "review", "A: the lead reviews", 60_000);
-  await app.waitFor(`${cardSel(execA.agentId, "[data-agent-doing]")}?.textContent === "Claude закончил ход и ждёт ревью"`, "executor card: waits for the review", 20_000);
+  await app.waitFor(`${cardSel(execA.agentId, "[data-agent-doing]")}?.textContent === "Claude закончил ход и ждёт ревью"`, "executor card: waits for the review", 20_000)
+    .catch(async (e) => { throw new Error(`${e.message}: ${await text(cardSel(execA.agentId, "[data-agent-doing]"))} | lead: ${await text(cardSel(leadA.agentId, "[data-agent-doing]"))}`); });
   expect((await text(cardSel(execA.agentId, ".agent-card__state"))) !== "Запуск завершён", "the executor card is not done while the lead reviews", await text(cardSel(execA.agentId, ".agent-card__state")));
   expect((await text(cardSel(leadA.agentId, "[data-agent-doing]")))?.startsWith("Codex проверяет этап 1: Интерфейс анализа"), "lead card: reviews the stage by its title", await text(cardSel(leadA.agentId, "[data-agent-doing]")));
   expect(!(await app.ev(`!!${cardSel(execA.agentId, ".agent-card__summary")}`)), "no summary button before the end", null);
@@ -159,14 +176,16 @@ try {
 
   // ---------- 5. the summary ----------
   await app.clickEl(q("[data-orch-ended] button"));
-  await app.waitFor(`${q("[data-orch-run-summary]")} && ${q('[data-sum="remarks"] [data-sum-findings]')} && true`, "summary loaded", 20_000);
+  // v1: the lead's remarks of its final review; v2: the reviewer's findings (the final review's remarks as wishes)
+  await app.waitFor(`${q("[data-orch-run-summary]")} && ${q(V2 ? "[data-finding]" : '[data-sum="remarks"] [data-sum-findings]')} && true`, "summary loaded", 20_000);
   const sum = await app.ev(`${q("[data-orch-run-summary]")}.innerText`);
-  expect((await text(q("[data-sum-outcome]"))).includes("Лид принял цель этого запуска"), "outcome: the goal of this run", await text(q("[data-sum-outcome]")));
+  expect((await text(q("[data-sum-outcome]"))).includes(V2 ? "Проверяющий подтвердил цель финальным ревью" : "Лид принял цель этого запуска"), "outcome: the goal of this run", await text(q("[data-sum-outcome]")));
   expect(!!(await text(q("[data-sum-scope]"))), "completed is said to be about this run, not the project", null);
-  expect((await text(q("[data-sum-stage-count]"))) === "1 из 1 приняты лидом", "stages counted apart", await text(q("[data-sum-stage-count]")));
+  expect((await text(q("[data-sum-stage-count]"))) === (V2 ? "1 из 1 приняты" : "1 из 1 приняты лидом"), "stages counted apart", await text(q("[data-sum-stage-count]")));
   expect((await text(q("[data-sum-check-count]"))).startsWith("Обязательные команды проверки: 1 из 1 прошли"), "check commands counted apart, never as tests", await text(q("[data-sum-check-count]")));
   expect(!!(await text(q("[data-sum-tests]"))), "the test count is not claimed", null);
-  expect(await app.ev(`document.querySelectorAll('[data-sum-findings] li').length`) === FINDINGS.length, "the lead's remaining remarks listed", null);
+  const remaining = await app.ev(V2 ? `[...document.querySelectorAll("[data-finding]")].map((e) => e.dataset.findingSeverity + ":" + e.dataset.findingStatus)` : `[...document.querySelectorAll('[data-sum-findings] li')].map(() => "remark")`);
+  expect(remaining.length === FINDINGS.length && (!V2 || remaining.every((x) => x === "wish:open")), "the remaining remarks listed (v2: the reviewer's open wishes)", remaining);
   expect(sum.includes("Полный MVP не завершён"), "the lead's own words about what is left are shown", null);
   expect((await app.ev(`${q('[data-sum="next"]')}.innerText`)).includes("Не указано"), "no next step in the report: not specified, not invented", await app.ev(`${q('[data-sum="next"]')}.innerText`));
   expect(sum.includes("Добавлен src/note.mjs"), "what the executor did (its claim)", null);
@@ -252,17 +271,30 @@ try {
   await app.clickEl(row(runC, ".usage-row"));
   await app.waitFor(`${q("[data-orch-tab=summary]")} && true`, "C's panel");
   await app.clickEl(q("[data-orch-tab=summary]"));
-  await app.waitFor(`document.querySelectorAll('[data-sum="remarks"] [data-sum-findings] li').length === ${OPEN_REMARKS.length}`, "C: the open remarks", 20_000);
-  const remarks = await app.ev(`${q('[data-sum="remarks"]')}.innerText`);
-  expect(OPEN_REMARKS.every((r) => remarks.includes(r)), "R3: the lead's open remarks are shown while paused, before any final review", remarks);
-  expect((await text(q("[data-sum-current-review]")))?.includes("Последнее ревью лида — Этап 1: Фильтры отчёта"), "R3: which review they come from", await text(q("[data-sum-current-review]")));
-  await app.reveal(q('[data-sum="lead"]'));
+  if (V2) {
+    // v2: the reviewer's blocking findings of the stage, open while paused
+    await app.waitFor(`document.querySelectorAll("[data-finding]").length === ${OPEN_REMARKS.length}`, "C: the open findings", 20_000)
+      .catch(async (e) => { const v = await viewOf(runC); throw new Error(`${e.message}: ${JSON.stringify({ status: v.status, reason: v.reason, findings: v.progress?.findings, shown: await app.ev(`document.querySelectorAll("[data-finding]").length`) }).slice(0, 600)}`); });
+    const open = await app.ev(`[...document.querySelectorAll("[data-finding]")].map((e) => e.dataset.findingSeverity + ":" + e.dataset.findingStatus + ":" + ${JSON.stringify(OPEN_REMARKS)}.some((r) => e.textContent.includes(r)))`);
+    expect(open.join() === "blocking:open:true,blocking:open:true", "R3: the reviewer's open blocking findings are shown while paused, before any final review", open);
+    await app.reveal(q('[data-sum="findings"]'));
+  } else {
+    await app.waitFor(`document.querySelectorAll('[data-sum="remarks"] [data-sum-findings] li').length === ${OPEN_REMARKS.length}`, "C: the open remarks", 20_000);
+    const remarks = await app.ev(`${q('[data-sum="remarks"]')}.innerText`);
+    expect(OPEN_REMARKS.every((r) => remarks.includes(r)), "R3: the lead's open remarks are shown while paused, before any final review", remarks);
+    expect((await text(q("[data-sum-current-review]")))?.includes("Последнее ревью лида — Этап 1: Фильтры отчёта"), "R3: which review they come from", await text(q("[data-sum-current-review]")));
+    await app.reveal(q('[data-sum="lead"]'));
+  }
   await app.shot("11-summary-paused-open-remarks");
   await app.clickEl(q(".orch-panel__close"));
 
   // ---------- 9. R4: a journal and a report text that cannot be read, then a retry ----------
   const runDir = (id) => D("user-data", "orchestration", "runs", id);
-  const findingsSha = await api(`o.history(${JSON.stringify(runA)}, 0, 200)`).then((p) => p.records.find((r) => r.type === "review.recorded" && r.data.stage === null).data.findings.sha256);
+  // the text the summary loads: v1 the lead's final remarks; v2 (no lead review) the executor's report
+  const textSection = V2 ? "executor" : "remarks";
+  const findingsSha = await api(`o.history(${JSON.stringify(runA)}, 0, 200)`).then((p) => V2
+    ? p.records.find((r) => r.type === "turn.finished" && r.data.report?.ref && p.records.some((t) => t.type === "orch.turn" && t.data.turnId === r.data.turnId && t.data.purpose === "execute")).data.report.ref.sha256
+    : p.records.find((r) => r.type === "review.recorded" && r.data.stage === null).data.findings.sha256);
   const locked = [path.join(runDir(runB), "journal.jsonl"), path.join(runDir(runA), "texts", findingsSha)];
   const ledgerAtErrors = ledgerCount();
   for (const f of locked) fs.chmodSync(f, 0o000);
@@ -295,14 +327,15 @@ try {
     await reload();
     await app.reveal(cardSel(leadA.agentId));
     await app.clickEl(cardSel(leadA.agentId, ".agent-card__open"));
-    await app.waitFor(`${q('[data-sum="remarks"] [data-sum-failed]')} && true`, "A: the findings text fails to load", 20_000);
-    await app.reveal(q('[data-sum="remarks"]'));
+    await app.waitFor(`${q(`[data-sum="${textSection}"] [data-sum-failed]`)} && true`, "A: the text fails to load", 20_000);
+    await app.reveal(q(`[data-sum="${textSection}"]`));
     await app.shot("14-load-error-text");
   } finally {
     for (const f of locked.slice(1)) fs.chmodSync(f, 0o644);
   }
-  await app.clickEl(q('[data-sum="remarks"] [data-sum-failed] button'));
-  await app.waitFor(`document.querySelectorAll('[data-sum="remarks"] [data-sum-findings] li').length === ${FINDINGS.length}`, "A: findings after the retry", 20_000);
+  await app.clickEl(q(`[data-sum="${textSection}"] [data-sum-failed] button`));
+  await app.waitFor(V2 ? `!${q('[data-sum="executor"] [data-sum-failed]')} && ${q('[data-sum="executor"]')}.innerText.includes("Добавлен src/note.mjs")`
+    : `document.querySelectorAll('[data-sum="remarks"] [data-sum-findings] li').length === ${FINDINGS.length}`, "A: the text after the retry", 20_000);
   expect(true, "R4: a report text that failed loads on its own retry", null);
   await app.shot("15-after-retry-text");
   await sleep(1000);

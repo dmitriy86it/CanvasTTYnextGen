@@ -34,6 +34,15 @@ test("the lead reviewing a stage is said with the stage's title; the executor th
   assert.equal(roleStatus("ru", "lead", input(v, entries)).doing, "Codex проверяет этап 3: Интерфейс анализа");
 });
 
+test("journal v2: the reviewer reviews the stage — the executor that finished waits for the review there too", () => {
+  const entries = [
+    entry("executor", "task_sent", "", 0, "e1"), entry("executor", "process_started", "", 1, "e1"), entry("executor", "turn_finished", "completed", 2, "e1"),
+    entry("reviewer", "task_sent", "", 3, "r1"), entry("reviewer", "process_started", "", 3, "r1")
+  ];
+  const v = view({ active: turn("review"), progress: { findings: { items: [], openBlocking: 0 } } });
+  assert.equal(roleStatus("ru", "executor", input(v, entries)).doing, "Claude закончил ход и ждёт ревью");
+});
+
 test("a turn just given shows no action of the previous turn; a started process is said as such", () => {
   const old = [entry("lead", "task_sent", "", 0, "plan"), entry("lead", "process_started", "", 1, "plan"), entry("lead", "process_exited", "", 2, "plan"), entry("lead", "turn_finished", "completed", 3, "plan")];
   const review = runStatus("ru", input(view({ active: turn("review") }), old));
