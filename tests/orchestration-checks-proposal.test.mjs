@@ -325,6 +325,23 @@ test("without the flag: a new run is written in v1 and its commands are required
   assert.equal(info.ok ? info.value.optionalChecks : "error", undefined, "the dialog keeps the field required");
   await m.shutdown();
 });
+test("1.5.8, v2 on by default: a run started in v1 goes on in v1 — paused under a build without v2, continued under one with it", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const root = path.join(TMP, `root-${++n}`);
+  const env = { MOCK_SCRIPT: script([PLAN_V1, EXEC, REVIEW_V1, FINAL_V1]), MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")) };
+  const old = manager(env, { v2: false, root });
+  const runId = await start(old, src, { commands: ["grep -qx 2 a.txt"], mode: "steps" });
+  assert.equal((await settled(old, runId)).status, "paused");
+  await old.shutdown();
+  const m = manager(env, { v2: true, root });
+  const v = await settled(m, runId, "the paused v1 run");
+  assert.notEqual((await send(m, v, { kind: "resume" })).status, "error");
+  const done = await until(async () => { const x = await view(m, runId); return x.status === "paused" ? (await send(m, x, { kind: "resume" }), null) : x.status === "completed" ? x : null; }, "completed");
+  assert.equal(done.progress.completion, undefined, "a v1 view");
+  const vs = journalOf(m, runId).toString().trim().split("\n").map((l) => JSON.parse(l).v);
+  assert.deepEqual([...new Set(vs)], [1], "every record, before and after, is v1");
+  await m.shutdown();
+});
 async function linkOf(m, src) {
   const at = (x) => ({ position: { x, y: 0 }, size: { width: 300, height: 200 } });
   const [lead, exec, linkId] = [randomUUID(), randomUUID(), randomUUID()];
