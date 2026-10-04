@@ -11,6 +11,8 @@
 // person's safe answer); it is the evidence of what the work-folder mode asks.
 //   --rehearse   fake CLIs (no model request): checks this script
 //   --real       the installed codex and claude (REAL model requests)
+// --codex-model <name>: the lead's and the reviewer's model, set in the project settings (the application passes it to
+// each Codex thread; config.toml is not touched); the executor stays «Как в CLI».
 // --only R1,R3 · --out <dir> (default docs/agent-orchestration/evidence/real-a-gate) · --calls <n> the series' model
 // call budget (default 36) · --minutes <n> (default 90). A scenario starts only if its turn limit fits what is left;
 // the series stops at the first scenario that does not reach its expected state, and on a CLI usage limit (its feed is
@@ -28,15 +30,17 @@ const arg = (name) => { const i = process.argv.indexOf(name); return i > 0 ? pro
 const ORDER = (arg("--only") ?? "R1,R2,R3,R4,R5").split(",");
 const CALLS = Number(arg("--calls") ?? 36);
 const SERIES_MS = Number(arg("--minutes") ?? 90) * 60_000;
+const CODEX_MODEL = arg("--codex-model") ?? null;
+const MODELS = { lead: CODEX_MODEL, executor: null, reviewer: CODEX_MODEL };
 const { TMP, D, git } = workspace(REAL ? "cto-a-gate-" : "cto-a-gate-rh-");
 const OUT = path.resolve(arg("--out") ?? (REAL ? path.join(FIXTURES, "..", "..", "..", "docs", "agent-orchestration", "evidence", "real-a-gate") : D("out")));
 fs.mkdirSync(OUT, { recursive: true });
 const SHOTS = D("shots");
 fs.mkdirSync(SHOTS, { recursive: true });
 const t0 = Date.now();
-const report = { mode: REAL ? "real" : "rehearse", startedAt: new Date(t0).toISOString(), budget: { calls: CALLS, minutes: SERIES_MS / 60_000 }, versions: {}, scenarios: {}, failures: [] };
+const report = { mode: REAL ? "real" : "rehearse", startedAt: new Date(t0).toISOString(), budget: { calls: CALLS, minutes: SERIES_MS / 60_000 }, models: MODELS, versions: {}, scenarios: {}, failures: [] };
 const logLines = [];
-const anon = (s) => String(s ?? "").replaceAll(TMP, "<tmp>").replaceAll(os.homedir(), "~");
+const anon = (s) => String(s ?? "").replaceAll(TMP, "<tmp>").replaceAll(os.homedir(), "~").replaceAll(os.userInfo().username, "<user>");
 const log = (m) => { const l = `[+${((Date.now() - t0) / 1000).toFixed(1)}s] ${anon(m)}`; logLines.push(l); process.stderr.write(`${l}\n`); };
 class Halt extends Error {}
 const halt = (why) => { throw new Halt(why); };
@@ -94,7 +98,8 @@ function rehearsalProviders(name, dir) {
   const checks = name === "R2" ? { MOCK_CHECKS: "proposed", MOCK_CHECK_COMMAND: "node --test" } : name === "R3" ? { MOCK_CHECKS: "none" } : {};
   const file = path.join(dir, "providers.json");
   fs.writeFileSync(file, JSON.stringify({
-    codex: { executable: wrap("codex"), version: "codex-cli 0.155.1", path: `${path.dirname(NODE)}:/usr/bin:/bin`, env: env({ MOCK_SCRIPT: codex, CODEX_HOME: path.join(st, ".codex"), ...checks }) },
+    codex: { executable: wrap("codex"), version: "codex-cli 0.155.1", path: `${path.dirname(NODE)}:/usr/bin:/bin`,
+      env: env({ MOCK_SCRIPT: codex, CODEX_HOME: path.join(st, ".codex"), ...(CODEX_MODEL ? { MOCK_CODEX_MODELS: `${CODEX_MODEL},gpt-mock` } : {}), ...checks }) },
     claude: { executable: wrap("claude"), version: "2.1.287 (Claude Code)", path: `${path.dirname(NODE)}:/usr/bin:/bin`, env: env({ MOCK_SCRIPT: claude }) }
   }));
   return file;
@@ -158,12 +163,13 @@ async function scenario(name) {
     })()`);
     await app.ev("location.reload()");
     await app.waitFor(`${q(`[data-agent-link-id="${ids}"]`)} && true`, "the link chip");
-    if (s.push) {
-      const saved = await app.ev(`(async () => { const o = window.canvasTTY.orchestration; const info = (await o.profile(${JSON.stringify(ids)})).value;
-        const r = await o.saveProfile(${JSON.stringify(ids)}, { ...info.profile, finish: { ...info.profile.finish, commit: true, push: { remote: "origin", branch: "gate", remoteUrl: null } } });
-        return r.ok ? r.value.access : r; })()`);
-      log(`${name}: push to origin/gate configured; access ${JSON.stringify(saved)}`);
-    }
+    // the project settings: the roles' models (the application passes them per thread or run), and R3's push target
+    const saved = await app.ev(`(async () => { const o = window.canvasTTY.orchestration; const info = (await o.profile(${JSON.stringify(ids)})).value;
+      const r = await o.saveProfile(${JSON.stringify(ids)}, { ...info.profile, models: ${JSON.stringify(MODELS)},
+        ${s.push ? `finish: { ...info.profile.finish, commit: true, push: { remote: "origin", branch: "gate", remoteUrl: null } }` : ""} });
+      return r.ok ? { access: r.value.access, models: r.value.models ?? null } : r; })()`);
+    if (!saved?.access) halt(`${name}: the project settings were not saved: ${JSON.stringify(saved)}`);
+    log(`${name}: settings saved; access ${JSON.stringify(saved.access)}; models ${JSON.stringify(saved.models)}${s.push ? "; push to origin/gate" : ""}`);
     try {
       await startGoal(app, ids, {
         task: s.goal.task, criteria: s.goal.criteria, commands: s.commands, workMode: s.workMode,
@@ -270,6 +276,7 @@ async function scenario(name) {
     rec.protocolErrors = j.filter((r) => /protocol/.test(JSON.stringify(r.data ?? {}))).map((r) => `${r.type}: ${JSON.stringify(r.data).slice(0, 300)}`);
     rec.journalVersion = [...new Set(j.map((r) => r.v))];
     rec.access = v.progress?.access ?? null;
+    rec.modelsChosen = v.progress?.models ?? null;
     rec.conditions = v.progress?.conditions ? { met: v.progress.conditions.met, total: v.progress.conditions.total, requirements: v.progress.conditions.requirements?.map((r) => `${r.id}:${r.status}`) } : null;
     rec.checks = v.progress?.checks?.map((c) => `${c.command ?? c.checkId}:${c.status}`) ?? null;
     rec.checksFrom = v.progress?.checksFrom ?? null;
@@ -282,7 +289,15 @@ async function scenario(name) {
       if (rec.groundless) rec.ok = false;
     }
     if (rec.protocolErrors.length) rec.ok = false;
-    const activity = await app.ev(`window.canvasTTY.orchestration.activity(${JSON.stringify(runId)}, 0, 5000).then((r) => r.value.entries)`).catch(() => []);
+    // every page (the IPC gives at most 500 entries a call); a failure is recorded, never read as an empty feed
+    const activity = await app.ev(`(async () => { const out = []; let after = 0;
+      for (;;) { const r = await window.canvasTTY.orchestration.activity(${JSON.stringify(runId)}, after, 500);
+        if (!r.ok) throw new Error(r.code + ": " + r.message);
+        out.push(...r.value.entries); if (!r.value.more || !r.value.entries.length) return out; after = r.value.entries.at(-1).id; } })()`)
+      .catch((e) => { rec.activityError = String(e?.message ?? e).slice(0, 300); return []; });
+    // the model each role actually ran with: what its CLI said at the start of each session
+    rec.modelsReported = Object.fromEntries(["lead", "executor", "reviewer"].map((role) => [role,
+      [...new Set(activity.filter((e) => e.kind === "session" && e.role === role && e.detail?.model).map((e) => e.detail.model))]]));
     rec.usageLimit = activity.some((e) => (e.kind === "error" || e.kind === "warning") && LIMIT_TEXT.test(JSON.stringify(e.detail ?? e.text ?? "")));
     fs.mkdirSync(path.join(OUT, name), { recursive: true });
     fs.writeFileSync(path.join(OUT, name, "journal.jsonl"), anon(fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"), "utf8")));
