@@ -114,7 +114,7 @@ async function appServer(args) {
       continue;
     }
     const lists = {
-      "config/read": { config: { model: "gpt-mock", approval_policy: "on-request", sandbox_mode: "workspace-write", ...(trusted && Object.keys(own).length ? { mcp_servers: own } : {}) }, origins: {},
+      "config/read": { config: { model: process.env.MOCK_CODEX_CONFIG_MODEL ?? "gpt-mock", approval_policy: "on-request", sandbox_mode: "workspace-write", ...(trusted && Object.keys(own).length ? { mcp_servers: own } : {}) }, origins: {},
         ...(p.includeLayers ? { layers: [{ name: { type: "user" } }, ...(fs.existsSync(path.join(p.cwd ?? process.cwd(), ".codex"))
           ? [{ name: { type: "project", dotCodexFolder: path.join(p.cwd ?? process.cwd(), ".codex") }, config: { mcp_servers: own },
             ...(trusted ? {} : { disabledReason: `To load project-local config, hooks, and exec policies, add ${p.cwd} as a trusted project in ~/.codex/config.toml.` }) }] : [])] } : {}) },
@@ -122,7 +122,11 @@ async function appServer(args) {
       "plugin/installed": { marketplaces: [{ name: "m", plugins: [{ name: "mock-plugin", installed: true }] }] },
       "mcpServerStatus/list": { data: [{ name: "mock-mcp", runtimeStatus: "ready", authStatus: "notLoggedIn" }] },
       "hooks/list": { data: [{ cwd: "", hooks: [{ eventName: "SessionStart" }] }] },
-      "account/read": { account: { type: "chatgpt", planType: "pro" }, requiresOpenaiAuth: false }
+      "account/read": { account: { type: "chatgpt", planType: "pro" }, requiresOpenaiAuth: false },
+      // MOCK_CODEX_MODELS: the account's models, comma-separated (a "~" prefix: hidden from the picker)
+      "model/list": { data: (process.env.MOCK_CODEX_MODELS ?? "gpt-mock,gpt-mock-mini,~gpt-mock-hidden").split(",").filter(Boolean)
+        .filter((m) => p.includeHidden === true || !m.startsWith("~"))
+        .map((m) => ({ id: m.replace(/^~/, ""), model: m.replace(/^~/, ""), displayName: m, hidden: m.startsWith("~"), isDefault: false })), nextCursor: null }
     };
     if (lists[m.method]) {
       if (process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/codex-probe.jsonl`, JSON.stringify(m.method) + "\n");
@@ -140,6 +144,7 @@ async function appServer(args) {
       continue;
     }
     if (m.method === "thread/start" || m.method === "thread/resume") {
+      if (process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/codex-thread.jsonl`, JSON.stringify({ method: m.method, model: p.model ?? null }) + "\n");
       threadId = m.method === "thread/resume" ? p.threadId : randomUUID();
       prev = m.method === "thread/resume" ? loadState(threadId) : null;
       if (m.method === "thread/resume" && !prev) { await emit({ id: m.id, error: { code: -32602, message: `no thread ${threadId}` } }); continue; }
@@ -153,7 +158,7 @@ async function appServer(args) {
       }
       const sandboxType = { "read-only": "readOnly", "workspace-write": "workspaceWrite", "danger-full-access": "dangerFullAccess" }[p.sandbox ?? "workspace-write"];
       // MOCK_REPORT_APPROVAL: the thread gets another policy than asked (a managed configuration may decide so)
-      await reply(m.id, { thread: { id: threadId }, model: "mock", cwd: p.cwd ?? process.cwd(), approvalPolicy: process.env.MOCK_REPORT_APPROVAL ?? p.approvalPolicy ?? "on-request",
+      await reply(m.id, { thread: { id: threadId }, model: p.model ?? "mock", cwd: p.cwd ?? process.cwd(), approvalPolicy: process.env.MOCK_REPORT_APPROVAL ?? p.approvalPolicy ?? "on-request",
         sandbox: { type: sandboxType }, instructionSources: ["/x/AGENTS.md"] });
       await emit({ method: "thread/started", params: { thread: { id: threadId } } });
       continue;

@@ -236,7 +236,7 @@ async function host() {
     process.exit(0);
   };
   void watchInterrupt();
-  await emit({ type: "system", subtype: "init", session_id: sessionId, cwd: process.cwd(), model: "mock-claude",
+  await emit({ type: "system", subtype: "init", session_id: sessionId, cwd: process.cwd(), model: flags["--model"] ?? "mock-claude",
     tools: ["Task", "Bash", "Glob", "Grep", "Read", "Edit", "Write", "WebFetch", "AskUserQuestion", "StructuredOutput"],
     mcp_servers: [{ name: "mock-mcp", status: "connected" }], skills: ["mock-skill"], plugins: [{ name: "mock-plugin", path: "/x" }],
     slash_commands: ["compact", "mock-skill"],

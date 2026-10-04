@@ -1161,6 +1161,7 @@ export const IPC = {
   orchestrationProfileGet: "orchestration:profile-get",
   orchestrationProfileSave: "orchestration:profile-save",
   orchestrationProbe: "orchestration:probe",
+  orchestrationCodexModels: "orchestration:codex-models",
   evenG2State: "even-g2:state",
   evenG2Command: "even-g2:command",
   evenG2BrowserRequest: "even-g2:browser-request",

@@ -9,10 +9,12 @@ import type {
   OrchestrationGoalInput,
   OrchestrationProviderKind,
   OrchestrationResult,
+  OrchestrationRoleModels,
   OrchestrationRunEvent
 } from "../../shared/orchestration.ts";
 import type { RunCommand } from "../services/orchestration/orchestrationService.ts";
 import type { RunManager } from "../services/orchestration/manager.ts";
+import { SAFE_MODEL } from "../services/orchestration/providers.ts";
 
 type Handle = (channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) => void;
 
@@ -52,7 +54,7 @@ export function parseCreate(v: unknown): OrchestrationCreateRequest {
 }
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
-  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish"]);
+  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models"]);
   // A goal names its checks either by catalog ids or (stage 12) by its own commands, then `checks` is [].
   // Stage 13: a goal with a mode may leave its commands to the project profile.
   const checks = (g.commands !== undefined || g.mode !== undefined) && Array.isArray(g.checks) && g.checks.length === 0 ? [] : strings(g.checks, "goal.checks", 16, 64);
@@ -77,8 +79,16 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
     text: str(g.text, "goal.text", 8000), criteria: strings(g.criteria, "goal.criteria", 32, 500), checks,
     ...(g.reviewPlan !== undefined ? { reviewPlan: g.reviewPlan as boolean } : {}), ...(limits ? { limits } : {}),
     ...(commands !== undefined ? { commands } : {}), ...(g.workMode !== undefined ? { workMode: g.workMode as "project" | "copy" } : {}),
-    ...(g.mode !== undefined ? { mode: g.mode as "autopilot" | "steps" } : {}), ...(finish ? { finish } : {})
+    ...(g.mode !== undefined ? { mode: g.mode as "autopilot" | "steps" } : {}), ...(finish ? { finish } : {}),
+    ...(g.models !== undefined ? { models: roleModels(g.models, "goal.models") } : {})
   };
+}
+
+// A role's model over the project setting: lead, executor, reviewer — each a model name or null (as in the CLI).
+function roleModels(v: unknown, what: string): Partial<OrchestrationRoleModels> {
+  const o = obj(v, what, [], ["lead", "executor", "reviewer"]);
+  for (const [k, m] of Object.entries(o)) if (m !== null && !(typeof m === "string" && SAFE_MODEL.test(m))) bad(`${what}.${k} must be a model name or null`);
+  return o as Partial<OrchestrationRoleModels>;
 }
 
 // The user's own check command lines (stage 12): 0..16 lines of 1..1000 characters, no NUL or line break.
@@ -308,10 +318,11 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     return [uuid(runId, "runId"), p] as [string, string];
   }, manager.diff));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
-    const o = obj(input, "request", ["linkId", "commands", "workMode"]);
+    const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");
     const commands = Array.isArray(o.commands) && o.commands.length === 0 ? [] : commandLines(o.commands, "commands");
-    return [{ linkId: uuid(o.linkId, "linkId"), commands, workMode: o.workMode as "project" }] as [{ linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree" }];
+    return [{ linkId: uuid(o.linkId, "linkId"), commands, workMode: o.workMode as "project", ...(o.models !== undefined ? { models: roleModels(o.models, "models") } : {}) }] as
+      [{ linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels> }];
   }, manager.readiness));
   // Stage 13: the project profile (its fields are checked by validateProfile in main) and the environment probe.
   handleMain(IPC.orchestrationProfileGet, (_e, linkId: unknown, capabilities: unknown) => checked(() => {
@@ -323,6 +334,10 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     if (JSON.stringify(profile).length > 256 * 1024) bad("profile is too large");
     return [uuid(linkId, "linkId"), profile] as [string, unknown];
   }, manager.saveProfile));
+  handleMain(IPC.orchestrationCodexModels, (_e, linkId: unknown, refresh: unknown) => checked(() => {
+    if (refresh !== undefined && typeof refresh !== "boolean") bad("refresh must be a boolean");
+    return [uuid(linkId, "linkId"), refresh === true] as [string, boolean];
+  }, manager.codexModels));
   handleMain(IPC.orchestrationProbe, (_e, linkId: unknown, options: unknown) => checked(() => {
     // options: absent, or { mcpReady: the name of one MCP server }
     const o = options === undefined ? {} : options as Record<string, unknown>;

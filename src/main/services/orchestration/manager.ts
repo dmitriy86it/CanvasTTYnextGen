@@ -22,12 +22,12 @@ import type { AvailableProviderCli, ProviderCliRegistry } from "../providerCliRe
 import { createActivityLog, createRunActivity } from "./activity.ts";
 import { createNativeAgents, createProviderAgents } from "./agents.ts";
 import { applyDirenv, captureLoginEnv } from "./loginEnv.ts";
-import { assessReadiness, platformItem, suggestCommands, testDbItem } from "./readiness.ts";
+import { assessReadiness, modelItem, platformItem, suggestCommands, testDbItem } from "./readiness.ts";
 import { accessMapping, claudeModesFromHelp, codexModesFor } from "./access.ts";
 import type { AgentAccess } from "./access.ts";
 import { commitMessage } from "./finish.ts";
 import { laravelTestDb, neededSteps, worktreeSteps } from "./prepare.ts";
-import { probeClaude, probeCodex } from "./probe.ts";
+import { codexModels, probeClaude, probeCodex } from "./probe.ts";
 import { createProfileStore, currentBranch, gitRemotes, suggestProfile, validateProfile } from "./profile.ts";
 import { NATIVE_PROTOCOL_CHECKED, parseCliVersion } from "./providers.ts";
 import type { AgentAdapter } from "./agents.ts";
@@ -53,6 +53,8 @@ import type {
   OrchestrationEnvironmentReport,
   OrchestrationFolderHolder,
   OrchestrationGoalInput,
+  OrchestrationCodexModels,
+  OrchestrationRoleModels,
   OrchestrationProfileInfo,
   OrchestrationProjectProfile,
   OrchestrationProviderKind
@@ -104,9 +106,12 @@ export interface NativeRuntime {
   executables?: Record<"codex" | "claude", string>; // for the environment probe
   direnv?: string; // DirenvState
   claudeHelp?(): Promise<string>; // `claude --help`: the permission modes this version offers
+  codexEnv?: Record<string, string>; // Codex's environment where it is not `env` (the fake CLIs of a test runtime)
 }
 
 type R<T> = OrchestrationResult<T>;
+// model/list and config/read of Codex (codexModels): an app-server start and two lists, no thread
+const MODELS_MS = 20_000;
 class Refusal extends Error {
   readonly code: string;
   constructor(code: string, message: string) { super(message); this.code = code; }
@@ -157,6 +162,23 @@ export function createRunManager(deps: RunManagerDeps) {
   const profiles = createProfileStore(deps.root); // reads nothing until asked
   const direnvOf = async (project: string) => ({ direnv: (await profiles.get(project))?.env.direnv ?? true });
   const runtimes = new Map<string, { at: number; value: Parameters<typeof assessReadiness>[0]["runtime"] }>();
+  // What Codex offers (model/list, config/read; no model turn), per Codex program and folder, for the application's
+  // session: asked again only by «Обновить» (refresh). A failed answer is not kept.
+  const codexModelLists = new Map<string, Promise<OrchestrationCodexModels>>();
+  const codexModelsAt = (executable: string, cwd: string, env: Readonly<Record<string, string>>, refresh = false): Promise<OrchestrationCodexModels> => {
+    const key = `${executable}\0${cwd}`;
+    const kept = codexModelLists.get(key);
+    if (kept && !refresh) return kept;
+    const p = codexModels({ executable, cwd, env: { ...env }, timeoutMs: MODELS_MS });
+    codexModelLists.set(key, p);
+    void p.then((r) => { if (!r.ok && codexModelLists.get(key) === p) codexModelLists.delete(key); });
+    return p;
+  };
+  // The roles' models of a goal: the project's setting, then the goal's own choice over it.
+  const roleModels = (profile: { models?: OrchestrationRoleModels } | null, over?: Partial<OrchestrationRoleModels>): OrchestrationRoleModels =>
+    ({ lead: null, executor: null, reviewer: null, ...(profile?.models ?? {}), ...(over ?? {}) });
+  // Codex plays the lead and (journal v2) the reviewer, a new session of the lead's CLI.
+  const codexRoles = (): ("lead" | "reviewer")[] => (deps.journalV2 ? ["lead", "reviewer"] : ["lead"]);
   const activityWatchers = new Map<string, Set<(e: OrchestrationActivityEvent) => void>>();
   // A link is busy while one of its runs can still act or be resumed: deleting it then needs a Stop first.
   const BUSY = ["preparing", "running", "pausing", "paused", "stopping"];
@@ -413,7 +435,7 @@ export function createRunManager(deps: RunManagerDeps) {
       source, goal: {
         text: g.text, criteria: g.criteria, checks: g.checks, reviewPlan: g.reviewPlan ?? false, limits: { ...DEFAULT_LIMITS, ...(g.limits ?? {}) },
         ...(g.commands ? { commands: g.commands } : {}), ...(g.workMode ? { workMode: g.workMode } : {}),
-        ...(g.mode ? { mode: g.mode } : {}), ...(g.finish ? { finish: g.finish } : {})
+        ...(g.mode ? { mode: g.mode } : {}), ...(g.finish ? { finish: g.finish } : {}), ...(g.models ? { models: g.models } : {})
       }
     })).digest("hex");
     return { key, source };
@@ -467,7 +489,17 @@ export function createRunManager(deps: RunManagerDeps) {
     if (item.level === "blocker") refuse("test_database_unsafe", item.detail);
   }
   async function resolveGoal(source: string, runId: string, g: OrchestrationGoalInput, rt: NativeRuntime | null): Promise<GoalInput & { prepareAuto?: boolean }> {
-    const { mode, finish, ...rest } = g;
+    const { mode, finish, models: over, ...given } = g;
+    const chosen = roleModels(await profiles.get(source), over);
+    const models = Object.fromEntries(Object.entries(chosen).filter(([, m]) => m !== null)) as Partial<Record<keyof OrchestrationRoleModels, string>>;
+    // a role's model is recorded only in a journal v2 goal: never dropped on the quiet in a v1 one
+    if (Object.keys(models).length && !deps.journalV2) refuse("invalid_goal", "a role's model needs journal v2");
+    // Before the first model call: a Codex role's model (chosen, or the configuration's) that this account is not offered
+    if (rt?.executables) {
+      const item = modelItem(await codexModelsAt(rt.executables.codex, source, rt.codexEnv ?? rt.env), chosen, codexRoles());
+      if (item.level === "blocker") refuse("model_unavailable", `Codex: model ${String(item.facts?.model)} is not available to your account. Choose another model in the project settings`);
+    }
+    const rest: Omit<GoalInput, "mode" | "finish"> = { ...given, ...(Object.keys(models).length ? { models } : {}) };
     if (!mode) {
       if (finish) refuse("invalid_goal", "actions after success need a run mode");
       await refuseUnsafeTestDb(source, rest.workMode, rt);
@@ -662,7 +694,7 @@ export function createRunManager(deps: RunManagerDeps) {
 
     // The checks the start would make, and more, without starting anything (no model call, no run, no file written).
     // The runtime (CLI versions, the login shell's environment) is measured at most every 30 s per project.
-    readiness: (input: { linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree" }) => result(async () => {
+    readiness: (input: { linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels> }) => result(async () => {
       const c = await canvas.read(exists);
       const link = c.links.find((l) => l.linkId === input.linkId) ?? refuse("link_not_found", "no such link");
       const lead = c.agents.find((a) => a.agentId === link.fromAgentId) ?? refuse("link_not_found", "the link has no lead");
@@ -674,7 +706,7 @@ export function createRunManager(deps: RunManagerDeps) {
       const cached = runtimes.get(key);
       const measured = cached && Date.now() - cached.at < 30_000 ? cached.value
         : await (deps.native ? deps.native(lead.project, { direnv: profile.env.direnv, worktreePending: input.workMode === "worktree" }) : Promise.reject(new Refusal("provider_unavailable", "no native agent runtime"))).then(
-          (rt) => ({ ok: true as const, versions: rt.versions, env: rt.env, shell: rt.shell, direnv: rt.direnv }),
+          (rt) => ({ ok: true as const, versions: rt.versions, env: rt.env, shell: rt.shell, direnv: rt.direnv, ...(rt.executables ? { executables: rt.executables } : {}), ...(rt.codexEnv ? { codexEnv: rt.codexEnv } : {}) }),
           (e) => ({ ok: false as const, code: typeof e?.code === "string" ? e.code : "provider_unavailable", detail: String(e?.message ?? e) }));
       runtimes.set(key, { at: Date.now(), value: measured });
       let gitPath: string | null = null;
@@ -684,6 +716,12 @@ export function createRunManager(deps: RunManagerDeps) {
         prepare: profile.prepare,
         runtime: measured, checkedVersions: NATIVE_PROTOCOL_CHECKED, busy: holder !== null
       });
+      // the roles' models: the same check the start makes (no model turn); "permissions" stays the last item
+      if (measured.ok && measured.executables) {
+        const item = modelItem(await codexModelsAt(measured.executables.codex, lead.project, measured.codexEnv ?? measured.env), roleModels(profile, input.models), codexRoles());
+        r.items.splice(Math.max(0, r.items.length - 1), 0, item);
+        r.ready = r.ready && item.level !== "blocker";
+      }
       // the same run a start would be refused for (folder_busy), so the renderer can name it and go to its workspace
       return holder ? { ...r, items: r.items.map((i) => (i.id === "busy" ? { ...i, facts: { ...i.facts, ...holder } } : i)) } : r;
     }),
@@ -737,6 +775,16 @@ export function createRunManager(deps: RunManagerDeps) {
       runtimes.delete(`folder:${project}`);
       runtimes.delete(`worktree:${project}`);
       return profiles.save(project, { ...p, grants: before.filter((g) => keep.has(g.id)), finish: { ...p.finish, push } });
+    }),
+    // The models Codex offers for the settings and the goal (model/list, config/read; no model turn). refresh: «Обновить».
+    codexModels: (linkId: string, refresh = false) => result(async (): Promise<OrchestrationCodexModels> => {
+      notOpen();
+      platformOk();
+      const project = await leadProject(linkId);
+      if (!deps.native) refuse("provider_unavailable", "no native agent runtime");
+      const rt = await deps.native!(project, await direnvOf(project));
+      if (!rt.executables) refuse("provider_unavailable", "this runtime cannot be asked for its models");
+      return codexModelsAt(rt.executables!.codex, project, rt.codexEnv ?? rt.env, refresh);
     }),
     // What the CLIs report they loaded for this project, asked without a model turn. Only on the person's request.
     probe: (linkId: string, options: { mcpReady?: string } = {}) => result(async (): Promise<OrchestrationEnvironmentReport> => {
@@ -951,7 +999,7 @@ export function testNativeRuntime(file: string, launch: () => SupervisorLaunch, 
       clis: { codex: { cli: cli("codex"), cliVersion: cfg.codex.version }, claude: { cli: cli("claude"), cliVersion: cfg.claude.version } },
       roles: { lead: "codex", executor: "claude" }, env: { codex: envOf("codex"), claude: envOf("claude") }, launch: launch(), clientVersion: "test"
     }),
-    executables: { codex: cfg.codex.executable, claude: cfg.claude.executable }, direnv: "off",
+    executables: { codex: cfg.codex.executable, claude: cfg.claude.executable }, direnv: "off", codexEnv: envOf("codex"),
     claudeHelp: () => run(cfg.claude.executable, ["--help"], { timeout: 20_000, env: envOf("claude") }).then((r) => r.stdout),
     shell: cfg.shell ?? shell ?? "/bin/sh",
     env: cfg.checkEnv ?? { PATH: cfg.codex.path, HOME: cfg.codex.env.HOME ?? "/nonexistent" },

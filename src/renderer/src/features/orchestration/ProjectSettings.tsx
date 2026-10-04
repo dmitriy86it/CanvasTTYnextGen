@@ -11,6 +11,7 @@ import type {
 } from "../../../../shared/orchestration";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { outcomeOf, probeText } from "./runModel";
+import { NO_MODELS, RoleModelsField } from "./RoleModels";
 import { outcomeText } from "./useOrchestration";
 
 const tr = (locale: LocaleId, key: string): string => t(locale, key as TranslationKey) ?? key;
@@ -182,6 +183,10 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
           </label>
         )}
       </fieldset>
+      {/* journal v2: a role's model is recorded in the goal only there */}
+      {info.optionalChecks && (
+        <RoleModelsField locale={locale} linkId={linkId} value={p.models ?? NO_MODELS} hint={t(locale, "orchModelsSettingsHint")} onChange={(models) => set({ models })} />
+      )}
 
       <details className="orch-advanced" data-orch-advanced>
         <summary>{t(locale, "orchAdvanced")}</summary>

@@ -2,12 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocaleId } from "../../../../shared/contracts";
 import type {
-  OrchestrationGoalInput, OrchestrationLimitKind, OrchestrationProfileInfo, OrchestrationReadiness, OrchestrationReadinessItem, OrchestrationRunMode, OrchestrationWorkMode
+  OrchestrationGoalInput, OrchestrationLimitKind, OrchestrationProfileInfo, OrchestrationReadiness, OrchestrationReadinessItem, OrchestrationRoleModels, OrchestrationRunMode,
+  OrchestrationWorkMode
 } from "../../../../shared/orchestration";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
+import { NO_MODELS, RoleModelsField } from "./RoleModels";
 import { Differences, RunPanel } from "./RunPanel";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import { outcomeText, type Orchestration } from "./useOrchestration";
@@ -106,6 +108,11 @@ export function readinessLine(locale: LocaleId, item: OrchestrationReadinessItem
     case "command": return f.later === true ? `${tr(locale, "orchReady_command_later")} ${String(f.command ?? "")}`
       : `${base} ${String(f.command ?? "")}${item.level === "warning" ? ` — ${String(f.program ?? "")}` : ""}`;
     case "tests": return item.level === "ok" ? `${base} ${String(f.testFiles ?? "?")}` : base;
+    case "model": {
+      if (item.level === "blocker") return base.replace("{model}", String(f.model ?? ""));
+      const m = (v: unknown) => (v === "cli" || v === undefined ? t(locale, "orchModelCli") : String(v));
+      return `${base} ${t(locale, "orchRoleLead")} — ${m(f.lead)} · ${t(locale, "orchRoleExecutor")} — ${m(f.executor)} · ${t(locale, "orchRoleReviewer")} — ${m(f.reviewer)}`;
+    }
     default: return base;
   }
 }
@@ -114,20 +121,20 @@ export function readinessLine(locale: LocaleId, item: OrchestrationReadinessItem
 const rightsText = (locale: LocaleId, access: { claude: string; codex: string }) =>
   `Claude — ${tr(locale, `orchAccess_${access.claude}`)} · Codex — ${tr(locale, `orchAccess_${access.codex}`)}`;
 
-function Readiness({ linkId, commands, workMode, access, locale, onChange, onSuggest, onBusy }: {
-  linkId: string; commands: string[]; workMode: OrchestrationWorkMode; access: { claude: string; codex: string } | null; locale: LocaleId;
+function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy }: {
+  linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: OrchestrationRoleModels; access: { claude: string; codex: string } | null; locale: LocaleId;
   onChange(ok: boolean): void; onSuggest(commands: string[]): void;
   onBusy(facts: unknown): void; // the "busy" item's facts: the run main says holds the folder (none: undefined)
 }): React.JSX.Element {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; value: OrchestrationReadiness }>({ kind: "loading" });
   const [acks, setAcks] = useState<Record<string, boolean>>({});
   const [attempt, setAttempt] = useState(0);
-  const key = JSON.stringify([linkId, commands, workMode]);
+  const key = JSON.stringify([linkId, commands, workMode, models]);
   useEffect(() => {
     let live = true;
     setState({ kind: "loading" });
     const id = window.setTimeout(async () => {
-      const r = await window.canvasTTY.orchestration.readiness({ linkId, commands, workMode }).catch((e: unknown) => ({ ok: false as const, code: "transport", message: String(e) }));
+      const r = await window.canvasTTY.orchestration.readiness({ linkId, commands, workMode, ...(models ? { models } : {}) }).catch((e: unknown) => ({ ok: false as const, code: "transport", message: String(e) }));
       if (!live) return;
       if (r.ok) {
         setState({ kind: "ready", value: r.value });
@@ -138,7 +145,7 @@ function Readiness({ linkId, commands, workMode, access, locale, onChange, onSug
     }, 350);
     return () => { live = false; window.clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt]);
+  }, [key, attempt, models]);
   const items = state.kind === "ready" ? state.value.items : [];
   const confirms = items.filter((i) => i.level === "confirm");
   const ok = state.kind === "ready" && state.value.ready && confirms.every((i) => acks[i.id]);
@@ -212,6 +219,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const suggest = useCallback((lines: string[]) => { if (!edited.current) setCommandsText((cur) => cur || lines.join("\n")); }, []);
   const [limits, setLimits] = useState<Record<string, string>>({});
   const [reviewPlan, setReviewPlan] = useState(false);
+  const [models, setModels] = useState<OrchestrationRoleModels>(NO_MODELS);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
@@ -229,6 +237,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     if (!edited.current) setCommandsText(info.profile.checks.join("\n"));
     setWorkMode(info.profile.workMode);
     setFinish({ commit: info.profile.finish.commit, push: false, qa: false });
+    setModels(info.profile.models ?? NO_MODELS);
   }, [info]);
   if (!link || !lead) return null;
 
@@ -236,7 +245,10 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const canFinish = workMode !== "copy";
   // push and QA deliver this run's commit: ticking either takes the commit with it
   const chosen = canFinish ? { commit: finish.commit || finish.push || finish.qa, push: finish.push && !!info?.profile.finish.push, qa: finish.qa && !!info?.profile.finish.qa } : null;
+  // journal v2 (development flag until A4): the commands may be left empty — the lead proposes them; a role's model
+  const optionalChecks = info?.optionalChecks === true;
   const goal: OrchestrationGoalInput = {
+    ...(optionalChecks ? { models } : {}),
     text: text.trim(),
     criteria: criteria.split("\n").map((c) => c.trim()).filter(Boolean),
     checks: [], commands, workMode, mode,
@@ -248,8 +260,6 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       return [[kind, kind === "runMs" ? n * 60_000 : n]];
     }))
   };
-  // journal v2 (development flag until A4): the commands may be left empty — the lead proposes them
-  const optionalChecks = info?.optionalChecks === true;
   const complete = goal.text !== "" && goal.criteria.length > 0 && (commands.length > 0 || optionalChecks);
   const submit = async (): Promise<void> => {
     const fingerprint = JSON.stringify([link.linkId, goal]);
@@ -370,8 +380,9 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
               <span>{t(locale, "orchReviewPlan")}</span>
             </label>
           )}
+          {optionalChecks && <RoleModelsField locale={locale} linkId={link.linkId} value={models} hint={t(locale, "orchModelsGoalHint")} onChange={setModels} />}
         </details>
-        <Readiness linkId={link.linkId} commands={commands} workMode={workMode} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld} />
+        <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld} />
         {(() => {
           const other = folderBusy?.(held);
           return other && (

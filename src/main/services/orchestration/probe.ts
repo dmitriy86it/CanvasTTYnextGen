@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
-import type { OrchestrationEnvironmentItem, OrchestrationListIncomplete, OrchestrationMcpReadiness, OrchestrationMcpServer, OrchestrationProbeOutcome, OrchestrationProbeTiming } from "../../../shared/orchestration.ts";
+import type { OrchestrationCodexModels, OrchestrationEnvironmentItem, OrchestrationListIncomplete, OrchestrationMcpReadiness, OrchestrationMcpServer, OrchestrationProbeOutcome, OrchestrationProbeTiming } from "../../../shared/orchestration.ts";
 
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -323,5 +323,46 @@ async function codexReadiness(call: Call, cwd: string, server: string, until: nu
     if (RUNTIME_SETTLED.has(r.found?.connection ?? "")) return out;
     if (left() <= 250) return { ...out, error: "timeout: the server's connection did not settle" };
     await new Promise((res) => setTimeout(res, 250));
+  }
+}
+
+// The models Codex offers this account (model/list, every page, hidden ones included) and the model its configuration
+// names for the folder (config/read). No thread, no turn: nothing is asked of a model and nothing is written.
+const MODEL_PAGES = 10;
+export async function codexModels(input: ProbeInput): Promise<OrchestrationCodexModels> {
+  const c = conversation(input, ["app-server"]);
+  let next = 1;
+  const out = (r: Partial<OrchestrationCodexModels>): OrchestrationCodexModels =>
+    ({ ok: false, error: null, ids: [], shown: [], configModel: null, checkedAt: new Date().toISOString(), ...r });
+  const call = async (method: string, params: unknown) => {
+    const id = next++;
+    const r = await c.request(method, null, () => c.send({ id, method, params }), (x) => x.id === id && !("method" in x), (x) => x.error !== undefined);
+    if ("end" in r) return { ok: false as const, error: `${method}: ${ENDED[r.end]}` };
+    return r.m.error !== undefined ? { ok: false as const, error: `${method}: ${cliText(rec(r.m.error).message) || "refused"}` } : { ok: true as const, value: rec(r.m.result) };
+  };
+  try {
+    const init = await call("initialize", { clientInfo: { name: "canvastty", title: "Raoden Loom", version: "models" }, capabilities: null });
+    if (!init.ok) return out({ error: init.error });
+    c.send({ method: "initialized" });
+    const ids: string[] = [], shown: string[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; ; page++) {
+      if (page === MODEL_PAGES) return out({ error: `model/list: more than ${MODEL_PAGES} pages` });
+      const r = await call("model/list", { includeHidden: true, ...(cursor ? { cursor } : {}) });
+      if (!r.ok) return out({ error: r.error });
+      for (const m of arr(r.value.data).map(rec)) {
+        const id = s(m.id) || s(m.model);
+        if (!id || ids.includes(id)) continue;
+        ids.push(id);
+        if (m.hidden !== true) shown.push(id);
+      }
+      const nc = r.value.nextCursor;
+      if (typeof nc !== "string" || nc === "" || nc === cursor) break;
+      cursor = nc;
+    }
+    const cfg = await call("config/read", { includeLayers: false, cwd: input.cwd });
+    return out({ ok: true, ids, shown, configModel: cfg.ok ? s(rec(cfg.value.config).model) || null : null, ...(cfg.ok ? {} : { error: cfg.error }) });
+  } finally {
+    await c.end();
   }
 }

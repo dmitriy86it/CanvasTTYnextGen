@@ -36,6 +36,7 @@ export interface OrchestrationProjectProfile {
   prepare: { steps: OrchestrationPrepareStep[]; auto: boolean }; // auto: the autopilot runs the needed steps itself
   env: { direnv: boolean }; // apply an allowed .envrc (direnv) on top of the login shell
   access: { claude: string; codex: string }; // access.ts modes
+  models?: OrchestrationRoleModels; // journal v2; absent — every role as in the CLI
   finish: {
     commit: boolean;
     push: { remote: string; branch: string; remoteUrl: string | null } | null;
@@ -48,6 +49,12 @@ export interface OrchestrationProjectProfile {
   savedAt: string | null; // null: suggested from the repository, never saved
 }
 export interface OrchestrationAccessOption { mode: string; mapping: string }
+// The model of each role, passed to that role's CLI for one thread or one run; null — as in the CLI: nothing is passed,
+// the CLI's own configuration decides. The reviewer is the lead's CLI in a new session.
+export interface OrchestrationRoleModels { lead: string | null; executor: string | null; reviewer: string | null }
+// What Codex offers this account (model/list, no model turn) and the model its configuration names (config/read).
+// ids: every model of the list, hidden ones included (a hidden one is still available); shown: the picker's own.
+export interface OrchestrationCodexModels { ok: boolean; error: string | null; ids: string[]; shown: string[]; configModel: string | null; checkedAt: string }
 export interface OrchestrationProfileInfo {
   profile: OrchestrationProjectProfile;
   saved: boolean;
@@ -102,6 +109,8 @@ export interface OrchestrationGoalInput {
   // Stage 13 (from the dialog; the rest comes from the saved project profile in main)
   mode?: OrchestrationRunMode;
   finish?: { commit: boolean; push: boolean; qa: boolean }; // this goal's actions after success, each explicitly chosen
+  // journal v2: the model of a role for this goal, over the project setting; null — as in the CLI (nothing is passed)
+  models?: Partial<OrchestrationRoleModels>;
 }
 
 export interface OrchestrationCreateRequest {
@@ -268,6 +277,7 @@ export interface OrchestrationRunProgress {
   mode: OrchestrationRunMode;
   branch: string | null;
   access: { claude: string; codex: string } | null;
+  models?: OrchestrationRoleModels | null; // the models the goal chose (null: as in the CLI); what ran is in the activity
   checks: { id: string; title: string; status: "passed" | "failed" | "not_verified" | "not_run"; class: "code" | "environment" | "external" | "sandbox" | null }[]; // the latest result of each
   prepare: { status: string; failed: string | null; class: "code" | "environment" | "external" | "sandbox" | null; command: string | null; output: { sha256: string; bytes: number } | null } | null;
   // version (QA): what the verification established about the deployed version (see OrchestrationQaVersion);
@@ -530,7 +540,10 @@ export interface OrchestrationApi {
   changes(runId: string): Promise<OrchestrationResult<OrchestrationChanges>>;
   diff(runId: string, path: string): Promise<OrchestrationResult<OrchestrationDiff>>;
   // The same checks the start makes, without starting anything (no model, no run).
-  readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode }): Promise<OrchestrationResult<OrchestrationReadiness>>;
+  readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels> }): Promise<OrchestrationResult<OrchestrationReadiness>>;
+  // The models Codex offers (model/list and config/read, no model turn), kept for the application's session; refresh:
+  // ask Codex again (the «Обновить» button).
+  codexModels(linkId: string, refresh?: boolean): Promise<OrchestrationResult<OrchestrationCodexModels>>;
   // Stage 13: the project settings of a link's lead project, and what the CLIs report they loaded there (no model turn).
   profile(linkId: string, capabilities?: boolean): Promise<OrchestrationResult<OrchestrationProfileInfo>>; // capabilities: asks the CLIs (settings only)
   // confirmTerminal: the person confirmed the warning of "as in my terminal" (needed to switch a CLI to it; not saved)
