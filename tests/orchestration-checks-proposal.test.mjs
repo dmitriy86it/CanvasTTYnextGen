@@ -58,12 +58,12 @@ const CLAUDE = wrapper("claude", "mock-claude.mjs");
 const SHELL = path.join(TMP, "test-shell");
 fs.writeFileSync(SHELL, `#!/bin/sh\ncase "$1" in -ilc|-c) shift ;; esac\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 
-function providersFile(env) {
+function providersFile(env, checkEnv = {}) {
   const file = path.join(TMP, `providers-${++n}.json`);
   const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), ...env } };
   fs.writeFileSync(file, JSON.stringify({
     codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p },
-    shell: SHELL, checkEnv: { ...GIT_ENV, PATH: `/usr/bin:/bin:${path.dirname(GIT)}`, HOME: TMP }
+    shell: SHELL, checkEnv: { ...GIT_ENV, PATH: `/usr/bin:/bin:${path.dirname(GIT)}`, HOME: TMP, ...checkEnv }
   }));
   return file;
 }
@@ -90,10 +90,10 @@ const FINAL_V1 = { answer: { verdict: "complete", findings: [], question: null }
 const EXEC = { answer: { summary: "done", done: true }, writes: [{ rel: "a.txt", base64: Buffer.from("2\n").toString("base64") }] };
 
 // leadSandbox false: as without Seatbelt (A1) — the lead's commands would run in the user's shell, the person decides
-function manager(env, { v2 = true, leadSandbox, root = path.join(TMP, `root-${++n}`) } = {}) {
+function manager(env, { v2 = true, leadSandbox, checkEnv, root = path.join(TMP, `root-${++n}`) } = {}) {
   const m = createRunManager({
     platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
-    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env), () => LAUNCH),
+    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(providersFile(env, checkEnv), () => LAUNCH),
     ...(v2 ? { journalV2: true } : {}), ...(leadSandbox !== undefined ? { leadSandbox } : {})
   });
   m.root = root;
@@ -541,6 +541,24 @@ test("A1.1: the autopilot accepts the lead's commands itself and they run in the
   const all = await records(m, runId);
   assert.equal(all.some((r) => r.type === "run.status" && r.data.reason === "awaiting_checks_decision"), false, "no pause for the decision");
   assert.deepEqual([all.find((r) => r.type === "checks.proposed").data.sandboxNetwork, all.find((r) => r.type === "checks.decided").data.by], ["denied", "autopilot"]);
+  assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"]]);
+  assert.deepEqual([v.progress.completion, v.progress.checksFrom], ["confirmed", "proposal"]);
+  await m.shutdown();
+});
+
+test("A1.1 (real series attempt 4, R2): git runs in the check profile — it does not read the global config the profile denies; reading ~/.gitconfig is still refused", DARWIN, async () => {
+  const src = project({ "a.txt": "1\n", "b.txt": "b\n" });
+  // a home of the person with a .gitconfig, as the profile's deny list sees it (realHome) and as git looks for it (HOME)
+  const home = fs.mkdtempSync(path.join(TMP, "home-"));
+  fs.writeFileSync(path.join(home, ".gitconfig"), "[user]\n\tname = person\n");
+  fs.mkdirSync(path.join(home, "Library", "Keychains"), { recursive: true }); // the profile's self-test reads it (refused)
+  const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL]), MOCK_CHECKS: "proposed",
+    MOCK_CHECK_COMMAND: `git diff HEAD --exit-code -- b.txt && grep -qx 2 a.txt && cat ${home}/.gitconfig 2>&1 | grep -q "Operation not permitted"` },
+  // the person's environment: no GIT_CONFIG_* of the test's own (undefined: left out of the file), so git looks in $HOME
+  { leadSandbox: { realHome: home }, checkEnv: { HOME: home, GIT_CONFIG_GLOBAL: undefined, GIT_CONFIG_NOSYSTEM: undefined } });
+  const runId = await start(m, src, { commands: [] });
+  const v = await settled(m, runId);
+  assert.equal(v.status, "completed", JSON.stringify(v));
   assert.deepEqual(await startedOf(m, runId), [["cmd-1", "profile"]]);
   assert.deepEqual([v.progress.completion, v.progress.checksFrom], ["confirmed", "proposal"]);
   await m.shutdown();
