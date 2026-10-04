@@ -70,25 +70,24 @@ test("a v2 journal of this build (A4's final form): the first record declares mi
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "runs", runId, "journal.jsonl"), "utf8").trim().split("\n").at(-1)).v, 2);
 });
 
-test("v2 is not the default (A4): the one switch is off; a journal of an A1–A3 development build (formatPreview) goes on under the flag while it is, read only once v2 is on", async () => {
-  assert.equal(JOURNAL_V2_BY_DEFAULT, false, "v2 is enabled for people only after a real series (ROADMAP)");
+test("v2 is the default (1.5.8): the one switch is on; a journal of an A1–A3 development build (formatPreview) is read only — it went on only while the switch was off", async () => {
+  assert.equal(JOURNAL_V2_BY_DEFAULT, true, "v2 is the person's after the real series (evidence/real-a-gate/attempt-5)");
   const root = path.join(TMP, "preview");
   const runId = randomUUID();
   fs.mkdirSync(path.join(root, "runs", runId, "texts"), { recursive: true });
   const file = path.join(root, "runs", runId, "journal.jsonl");
   fs.writeFileSync(file, lines(runId, [["run.created", { goal: GOAL }], RUNNING, ["run.status", { status: "paused", reason: "user_request", completion: null }]], { head: PREVIEW }));
   const buf = fs.readFileSync(file);
-  // the flag on, v2 off by default: replayed and continued as before A4
-  const p = parseJournal(buf, runId);
+  // the switch off (as under the development flag before 1.5.8): replayed and continued
+  const p = parseJournal(buf, runId, { previewReadOnly: false });
   assert.deepEqual([p.integrity.status, p.state.version, p.state.preview], ["ok", 2, true]);
-  const w = await openRun(root, runId);
-  await w.setRunStatus("running", null);
-  await w.close();
-  assert.equal(parseJournal(fs.readFileSync(file), runId).integrity.status, "ok");
-  // v2 on: shown read only — the records as they are, no state, said as a development build's
-  const on = parseJournal(fs.readFileSync(file), runId, { previewReadOnly: true });
-  assert.deepEqual([on.integrity.status, on.integrity.detail.preview, on.state, on.records.length], ["newer_version", true, null, 4]);
-  assert.equal(newerVersion(buf, undefined, true), 2);
+  // v2 on (the default): shown read only — the records as they are, no state, said as a development build's; never
+  // continued: opening it for writing is refused and the file stays as it was
+  const on = parseJournal(buf, runId);
+  assert.deepEqual([on.integrity.status, on.integrity.detail.preview, on.state, on.records.length], ["newer_version", true, null, 3]);
+  assert.equal(newerVersion(buf), 2);
+  await assert.rejects(openRun(root, runId));
+  assert.deepEqual(fs.readFileSync(file), buf);
   // the final form is this build's own either way
   assert.equal(parseJournal(lines(runId, [["run.created", { goal: GOAL }], RUNNING]), runId, { previewReadOnly: true }).integrity.status, "ok");
   // the reader of 1.5.7: either is newer, never "a development build's" (it does not know)
@@ -114,7 +113,11 @@ test("the version is the first record's: another v later, a head key on a later 
   const at = (buf) => { const p = parseJournal(buf, runId); return [p.integrity.status, p.integrity.detail?.line, p.integrity.detail?.code]; };
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null }, { v: 1 }]])), ["corrupt", 2, "invalid_event"]);
   assert.deepEqual(at(lines(runId, [created, ["run.status", { status: "running", reason: null, completion: null }, { minReaderVersion: 2 }]])), ["corrupt", 2, "invalid_event"]);
-  assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 2, formatPreview: true, extra: 1 } })), ["corrupt", 1, "invalid_event"]);
+  // a development build's head is checked where it is replayed (the switch off); with v2 on it is only shown read only
+  const preview = lines(runId, [created, RUNNING], { head: { minReaderVersion: 2, formatPreview: true, extra: 1 } });
+  const replayed = parseJournal(preview, runId, { previewReadOnly: false });
+  assert.deepEqual([replayed.integrity.status, replayed.integrity.detail?.line, replayed.integrity.detail?.code], ["corrupt", 1, "invalid_event"]);
+  assert.deepEqual([parseJournal(preview, runId).integrity.status, parseJournal(preview, runId).state], ["newer_version", null]);
   assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 2, formatPreview: false } })), ["corrupt", 1, "invalid_event"]);
   // the first record of v2 declares minReaderVersion 2, exactly (A4's final form; A1.1 Q3)
   assert.deepEqual(at(lines(runId, [created, RUNNING], { head: { minReaderVersion: 1 } })), ["corrupt", 1, "invalid_event"]);

@@ -11,8 +11,8 @@ import type { ConditionMark, PlanText, RequirementMark, Status } from "./conditi
 export const JOURNAL_VERSION = 1; // new runs, unless the run asks for v2 (journal-v2-format.md, behind a dev flag in A1)
 // A4 (journal-v2-format.md §3.4, §2.9): v2 for the person's runs — new native runs written in v2 without the
 // development flag, and the journals of A1–A3 development builds (formatPreview) shown read only. The one switch of
-// that; off until the real series on real CLIs.
-export const JOURNAL_V2_BY_DEFAULT = false;
+// that; on since 1.5.8, after the real series on real CLIs (evidence/real-a-gate/attempt-5).
+export const JOURNAL_V2_BY_DEFAULT = true;
 // The highest journal version this build reads and writes as its own: above it a journal is a newer version's (A0).
 export const MAX_JOURNAL_VERSION = 2;
 // The highest minReaderVersion this build can read: a newer journal that declares it is replayed by the rules of that
