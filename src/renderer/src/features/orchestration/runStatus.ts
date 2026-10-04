@@ -182,7 +182,8 @@ export function roleStatus(locale: LocaleId, role: Role, input: StatusInput): St
   const p = participantState(role, view, entries, input.open);
   const finishedTurn = p.outcome === "completed" && p.turnId !== null;
   const doing = !finishedTurn ? tr(locale, "orchNow_waitsFor", { who: who(role) })
-    : role === "executor" && act?.actor === "lead" && view.active?.kind === "turn" && view.active.purpose === "review"
+    // the review is the lead's (v1) or, in journal v2, the reviewer's
+    : role === "executor" && (act?.actor === "lead" || act?.actor === "reviewer") && view.active?.kind === "turn" && view.active.purpose === "review"
       ? tr(locale, "orchNow_doneAwaitReview", { who: who(role) })
       : tr(locale, "orchNow_doneTurn", { who: who(role) });
   return { ...base, state: "waiting_agent", doing, now: null, wait: act ? act.doing : t(locale, "orchNow_between"), quiet: null };
