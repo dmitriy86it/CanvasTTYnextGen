@@ -47,6 +47,8 @@ Thumbs.db
 
 # Binary orchestration evidence stays outside git; checksums: docs/agent-orchestration/evidence/BINARY-MANIFEST.sha256
 docs/agent-orchestration/evidence/**/*.png
+# UX audit screenshots stay outside git; checksums: docs/ux-audit/<date>/BINARY-MANIFEST.sha256
+docs/ux-audit/**/*.png
 docs/agent-orchestration/evidence/**/*.jpg
 docs/agent-orchestration/evidence/**/*.jpeg
 docs/agent-orchestration/evidence/**/*.gif
