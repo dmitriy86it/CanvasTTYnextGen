@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Copying from terminals keeps Cyrillic and box drawing: "Этап 0" copied from Claude Code or Codex in a terminal card no longer becomes "–≠—В–∞–њ 0". An app started from Finder or the Dock had no locale, and the CLIs a card starts directly (not through a login shell) copied through `pbcopy` as Mac Roman. At startup the app now sets `LANG` to the system locale in UTF-8 (`ru_RU.UTF-8`, else `en_US.UTF-8`; `C.UTF-8` on Linux) when none of `LC_ALL`, `LC_CTYPE`, `LANG` is set; terminals, agent CLIs, preparation and checks inherit it. Values you set are kept; a non-UTF-8 one is logged. ⌥ + drag selects as the terminal does over a CLI that tracks the mouse.
+
 ## 1.5.8 — 2026-10-04
 
 - **Journal v2 is on by default** (stage A done). New runs are written in v2 without the development flag: the lead plans with requirements and conditions, a separate reviewer reviews, the check commands may be left empty for the lead to propose, a run without checks ends as «Completed without checks» and pushes or deploys only after your confirmation. The items below marked "development flag only" are all in this release. Runs started in v1 go on in v1; a journal of an A1–A3 development build is shown read only. The gate was a real series on real CLIs: R1–R5 passed (`docs/agent-orchestration/evidence/real-a-gate/attempt-5`).

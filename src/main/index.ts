@@ -58,6 +58,10 @@ import { JOURNAL_V2_BY_DEFAULT } from "./services/orchestration/journal";
 import { runOrchestrationIpcSmoke } from "./services/orchestration/ipcSmoke";
 import { startupPageUrl } from "./startupPage";
 import { mainWindowChromeOptions } from "./windowChrome";
+import { ensureUtf8Locale } from "./services/utf8Locale";
+
+// before anything is spawned: every terminal, agent CLI and check inherits a UTF-8 locale (utf8Locale.ts)
+ensureUtf8Locale();
 
 if (process.env.CANVASTTY_USER_DATA_DIR) {
   if (!isAbsolute(process.env.CANVASTTY_USER_DATA_DIR)) throw new Error("CANVASTTY_USER_DATA_DIR must be absolute");

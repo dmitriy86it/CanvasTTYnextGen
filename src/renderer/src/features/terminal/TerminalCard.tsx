@@ -160,6 +160,8 @@ export function TerminalCard({
       lineHeight: 1.2,
       scrollback: 5_000,
       allowTransparency: true,
+      // Claude Code and Codex track the mouse: ⌥ + drag selects as the terminal does, over the TUI
+      macOptionClickForcesSelection: true,
       theme: terminalTheme(palette),
       // OSC 8 hyperlinks are handled by xterm itself rather than WebLinksAddon.
       // Without an explicit handler, xterm shows its own confirm() prompt and
