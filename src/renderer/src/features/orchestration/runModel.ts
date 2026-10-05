@@ -565,6 +565,91 @@ export function nextStepText(locale: LocaleId, view: OrchestrationRunView, entri
   return t(locale, `orchNext_${key}` as TranslationKey) ?? key;
 }
 
+// ---------- a pause in words: what happened, why, what to do, the one main button ----------
+
+// Every pause reason of the journal (PAUSED_REASONS_V2): its main action — one main accepts on that pause (the service's
+// sets above) — and whether the person has to do something (the link chip, the cards and the widget say "Waiting for
+// you") or may simply resume ("Paused"). Its words are orchPause_<reason>_what/_why/_do/_button. A reason missing here is
+// a red test (orchestration-pause-texts.test.mjs).
+export type PausePrimary = "resume" | "step" | "stop" | "answer" | "raise_limit" | "recover" | "checks_decide" | "check_amend"
+  | "finish_confirm" | "person_decide" | "plan_decide";
+export const PAUSES: Readonly<Record<string, { primary: PausePrimary; you: boolean }>> = {
+  user_request: { primary: "resume", you: false }, step_done: { primary: "resume", you: false },
+  recovered: { primary: "resume", you: false }, app_closed: { primary: "resume", you: false },
+  plan_review: { primary: "resume", you: true }, stage_done: { primary: "resume", you: true },
+  permission_denied: { primary: "resume", you: true }, loop_suspected: { primary: "resume", you: true },
+  environment_error: { primary: "resume", you: true }, external_failure: { primary: "resume", you: true },
+  needs_user_action: { primary: "resume", you: true }, finish_unconfirmed: { primary: "resume", you: true },
+  tree_changed_during_review: { primary: "resume", you: true },
+  invalid_report: { primary: "step", you: true }, protocol_error: { primary: "step", you: true },
+  lead_modified_tree: { primary: "stop", you: true }, shared_git_tampered: { primary: "stop", you: true },
+  journal_corrupt: { primary: "stop", you: true }, sandbox_unavailable: { primary: "stop", you: true },
+  awaiting_answer: { primary: "answer", you: true }, limit_reached: { primary: "raise_limit", you: true },
+  outcome_unknown: { primary: "recover", you: true }, awaiting_checks_decision: { primary: "checks_decide", you: true },
+  check_needs_permissions: { primary: "check_amend", you: true }, awaiting_finish_confirmation: { primary: "finish_confirm", you: true },
+  awaiting_person_decision: { primary: "person_decide", you: true }, coverage_lost: { primary: "plan_decide", you: true }
+};
+
+// The key set of a pause: the reason's, but where orchestration runs (macOS) a sandbox that is unavailable failed its
+// self-test — "run on macOS" is said only where the platform has no sandbox; a lead that found no checks has its own.
+function pauseSet(reason: string, onMac: boolean, noChecks = false): string {
+  if (reason === "sandbox_unavailable" && !onMac) return "sandbox_unsupported";
+  if (reason === "awaiting_checks_decision" && noChecks) return "awaiting_checks_none";
+  return reason;
+}
+const pauseKey = (set: string, field: "what" | "why" | "do" | "button") => `orchPause_${set}_${field}` as TranslationKey;
+
+// What happened, in a few words: the panel's headline; lowercased after "Waiting for you:" / "Paused:".
+function pauseWhat(locale: LocaleId, cause: PauseCause, onMac: boolean, noChecks = false): string {
+  if (cause.kind === "provider_limit" || cause.kind === "model_unsupported") return t(locale, `orchHeadline_${cause.kind}`);
+  if (cause.kind === "prepare") return t(locale, "orchPause_prepare_failed_what");
+  return t(locale, pauseKey(pauseSet(cause.reason, onMac, noChecks), "what")) ?? cause.reason;
+}
+
+// Why, in a sentence: the widget's and the cards' second line, the panel's.
+export function pauseWhy(locale: LocaleId, cause: PauseCause, onMac = orchestrationAvailableHere(), noChecks = false): string {
+  return cause.kind === "reason" ? t(locale, pauseKey(pauseSet(cause.reason, onMac, noChecks), "why")) ?? causeText(locale, cause) : causeText(locale, cause);
+}
+
+// The one short form the link chip, the agent cards, the activity feed and the widget say a pause with.
+export function pauseLabel(locale: LocaleId, cause: PauseCause, onMac = orchestrationAvailableHere(), noChecks = false): string {
+  const what = pauseWhat(locale, cause, onMac, noChecks);
+  return `${t(locale, PAUSES[cause.reason]?.you === false ? "orchPauseNotYou" : "orchPauseYou")}: ${what.charAt(0).toLocaleLowerCase(locale) + what.slice(1)}`;
+}
+
+// A paused run's short form (null: not paused): the link chip, the cards and the widget.
+export function viewPauseLabel(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[], onMac = orchestrationAvailableHere()): string | null {
+  if (view.status !== "paused" || view.halted || view.newer || !view.reason) return null;
+  return pauseLabel(locale, viewCause(view, entries) ?? { kind: "reason", reason: view.reason }, onMac, view.proposal?.checks.length === 0);
+}
+
+// The panel's header of a paused run: what happened, why, what to do and the main action with its words. A turn's end
+// that explains the pause (a provider's limit, a model, a failed preparation, an application failure) says its own why
+// and next step, as before; a failed or unknown action after success keeps its own next step and button.
+export interface PauseText { what: string; why: string; todo: string; button: string; primary: PausePrimary; you: boolean }
+export function pauseText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[], onMac = orchestrationAvailableHere()): PauseText | null {
+  if (view.status !== "paused" || view.halted || !view.reason || !PAUSES[view.reason]) return null;
+  const cause = viewCause(view, entries) ?? { kind: "reason", reason: view.reason };
+  const set = pauseSet(view.reason, onMac, view.proposal?.checks.length === 0);
+  const own = cause.kind !== "reason" || nextStepKey(view, entries) === "app_failure" || view.reason === "finish_unconfirmed";
+  const pending = view.reason === "finish_unconfirmed" ? finishPending(view) : null;
+  return {
+    what: pauseWhat(locale, cause, onMac, view.proposal?.checks.length === 0),
+    why: pauseWhy(locale, cause, onMac, view.proposal?.checks.length === 0),
+    todo: own ? nextStepText(locale, view, entries) : t(locale, pauseKey(set, "do")),
+    button: pending?.status === "failed" ? `${t(locale, "orchFinishRetry")}: ${t(locale, `orchFinishStep_${pending.step}` as TranslationKey)}` : t(locale, pauseKey(set, "button")),
+    ...PAUSES[view.reason]
+  };
+}
+
+// The main action of the run's header: the pause's own; while the run works, Pause; while it pauses, keep it running.
+export function primaryAction(view: OrchestrationRunView): RunAction | null {
+  if (view.halted || view.newer) return null;
+  if (view.status === "running") return "pause";
+  if (view.status === "pausing") return "keep_running";
+  return view.status === "paused" && view.reason ? PAUSES[view.reason]?.primary ?? null : null;
+}
+
 // ---------- why a preparation failed ----------
 
 // Lines an interactive login shell prints before the command's own output (steps run in `zsh -ilc`, stdout and stderr

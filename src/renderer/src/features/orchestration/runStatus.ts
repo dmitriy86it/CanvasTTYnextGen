@@ -11,7 +11,7 @@ import type {
 import { closedByPerson } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
-import { activeRole, byReviewer, causeText, finishStatus, headlineKey, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
+import { activeRole, byReviewer, causeText, finishStatus, headlineKey, PAUSES, pauseWhy, viewPauseLabel, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
 
 // read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
 export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "completed_no_checks" | "stopped" | "failed" | "read_only";
@@ -128,8 +128,11 @@ function heldState(locale: LocaleId, view: OrchestrationRunView, entries: readon
   }
   if (view.status === "stopping") return { state: "stopping", doing: t(locale, "orchHeadline_stopping"), wait: null };
   if (view.status === "paused") {
-    const head = runHeadline(view).headline;
-    const user = head !== "paused";
+    // the one short form of the pause ("Waiting for you: …" / "Paused: …") and its why (runModel PAUSES)
+    const label = viewPauseLabel(locale, view, entries);
+    const cause = viewCause(view, entries);
+    if (label && cause) return { state: PAUSES[view.reason ?? ""]?.you === false ? "paused" : "waiting_user", doing: label, wait: pauseWhy(locale, cause, undefined, view.proposal?.checks.length === 0) };
+    const user = runHeadline(view).headline !== "paused";
     return { state: user ? "waiting_user" : "paused", doing: t(locale, `orchHeadline_${headlineKey(view, entries)}` as TranslationKey), wait: reasonText(locale, view, entries) };
   }
   return null;

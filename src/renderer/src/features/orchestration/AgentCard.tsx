@@ -39,6 +39,7 @@ interface AgentCardProps {
   onOpenRun(agentId: string): void;
   onObserve(agentId: string): void;
   onSummary(agentId: string): void;
+  pause?: string | null; // a paused run's short form ("Waiting for you: …"), the link chip's words (runModel viewPauseLabel)
 }
 
 const STATE_KEY: Record<AgentState, TranslationKey> = {
@@ -113,7 +114,8 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
           <span><strong>{name}</strong><small>{card.project}</small></span>
         </div>
         <div className="agent-card__status" role="status">
-          <span className={`agent-card__state agent-card__state--${state}`}>{t(locale, STATE_KEY[state])}</span>
+          <span className={`agent-card__state agent-card__state--${state}`} data-agent-pause={props.pause && (state === "paused" || state === "needs_you") ? "yes" : undefined}>
+            {props.pause && (state === "paused" || state === "needs_you") ? props.pause : t(locale, STATE_KEY[state])}</span>
           {/* the pill already names a held state (paused, ended, waiting for you); the sentence adds what moves */}
           {status && MOVING.includes(status.state) && <span className="agent-card__doing" data-agent-doing title={status.doing}>{status.doing}</span>}
         </div>

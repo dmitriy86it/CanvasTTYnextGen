@@ -167,7 +167,7 @@ try {
       headline: document.querySelector(".orch-summary__headline")?.textContent ?? "" }; })()`);
     expect(panel.id === "cmd-1" && panel.title === "Проверке нужно больше прав" && panel.buttons.join("|") === "Изменить команду",
       "refused: the panel offers «Изменить команду» only — no «Запустить без песочницы»", panel);
-    expect(!panel.actions.some((b) => /Продолжить|Шаг/.test(b)) && /больше прав/.test(panel.headline), "refused: no Resume or Step, the headline says so", panel);
+    expect(!panel.actions.some((b) => /Продолжить|Шаг/.test(b)) && /не хватило прав/.test(panel.headline), "refused: no Resume or Step, the headline says so", panel);
     expect(!fs.existsSync(outside), "refused: nothing was written outside the work folder", null);
     const runId = (await runs(app))[0].runId;
     await new Promise((r) => setTimeout(r, 1000));
@@ -310,8 +310,8 @@ try {
     await app.waitFor(`${q("[data-orch-plan-proposal]")} && true`, "the proposal", 120_000);
     const shown = await app.ev(`({ drops: [...document.querySelectorAll("[data-orch-proposal-drop]")].map((e) => e.dataset.orchProposalDrop + ":" + e.textContent.includes("WHY-")),
       uncovered: ${q("[data-orch-proposal-uncovered]")}?.textContent ?? null, buttons: [...document.querySelectorAll("[data-orch-plan-proposal] button")].map((b) => b.textContent.trim()) })`);
-    expect(shown.drops.join() === "C2:true,R2:true" && /R2/.test(shown.uncovered ?? "") && shown.buttons.join("|") === "Принять|Вернуть лиду",
-      "drop (A4): the proposal says what goes and why, what is left uncovered; «Принять» / «Вернуть лиду»", shown);
+    expect(shown.drops.join() === "C2:true,R2:true" && /R2/.test(shown.uncovered ?? "") && shown.buttons.join("|") === "Вернуть лиду|Принять снятие",
+      "drop (A4): the proposal says what goes and why, what is left uncovered; «Вернуть лиду» first (the safe choice), then «Принять снятие»", shown);
     await new Promise((r) => setTimeout(r, 1000));
     expect((await viewOf(app, runId)).reason === "coverage_lost", "drop (A4): the autopilot does not accept it", null);
     await app.ev(`${q("[data-orch-proposal-accept]")}.scrollIntoView({ block: "center" })`);
