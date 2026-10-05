@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+## 1.5.9 — 2026-10-05
+
 - Copying from terminals keeps Cyrillic and box drawing: "Этап 0" copied from Claude Code or Codex in a terminal card no longer becomes "–≠—В–∞–њ 0". An app started from Finder or the Dock had no locale, and the CLIs a card starts directly (not through a login shell) copied through `pbcopy` as Mac Roman. At startup the app now sets `LANG` to the system locale in UTF-8 (`ru_RU.UTF-8`, else `en_US.UTF-8`; `C.UTF-8` on Linux) when none of `LC_ALL`, `LC_CTYPE`, `LANG` is set; terminals, agent CLIs, preparation and checks inherit it. Values you set are kept; a non-UTF-8 one is logged. ⌥ + drag selects as the terminal does over a CLI that tracks the mouse.
 
 ## 1.5.8 — 2026-10-04
