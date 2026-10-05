@@ -44,6 +44,10 @@ const LOCALE = "ru";
 const REASON = t(LOCALE, "orchReason_provider_limit").replace("{provider}", "Codex");
 const HEADLINE = t(LOCALE, "orchHeadline_provider_limit");
 const ENV = t(LOCALE, "orchReason_environment_error");
+// UX audit PR 1: a pause is said as "Ждёт вас: <what happened>" on the canvas, in the widget and the feed; the panel's
+// headline is what happened
+const LABEL = `${t(LOCALE, "orchPauseYou")}: ${HEADLINE.charAt(0).toLowerCase()}${HEADLINE.slice(1)}`;
+const ENV_WHY = t(LOCALE, "orchPause_environment_error_why");
 
 function panel(tab) {
   const orch = {
@@ -64,11 +68,11 @@ test("a Codex usage limit: the same reason and headline in the panel, the activi
   const input = { view, entries, open: true, stageTitles: null, now: Date.parse("2026-09-26T05:31:00Z") };
   const row = runStatus(LOCALE, input);
   assert.equal(row.wait, REASON, "activity row on the canvas and in HOME");
-  assert.equal(row.doing, HEADLINE);
+  assert.equal(row.doing, LABEL);
   for (const role of ["lead", "executor"]) {
     const card = roleStatus(LOCALE, role, input);
     assert.equal(card.wait, REASON, `agent card: ${role}`);
-    assert.equal(card.doing, HEADLINE);
+    assert.equal(card.doing, LABEL);
   }
   const rows = activityRuns(LOCALE, { links: [{ linkId: "L", fromAgentId: "a", runIds: ["r"] }], agents: [{ agentId: "a", project: "/p" }],
     runs: { r: { view, open: true } }, entries: () => entries, lastRecordAt: () => null, runErrors: {}, stageTitles: () => null, now: input.now });
@@ -80,8 +84,8 @@ test("a Codex usage limit: the same reason and headline in the panel, the activi
   assert.match(text(overview), new RegExp(HEADLINE));
   const summary = text(panel("summary"));
   assert.match(summary, new RegExp(`${t(LOCALE, "orchSum_reason")}: ${REASON}`), "run panel: summary");
-  assert.match(text(panel("activity")), new RegExp(`${t(LOCALE, "orchAct_status")}: [^—]+ — ${REASON}`), "run panel: feed");
-  assert.match(text(panel("history")), new RegExp(`— ${REASON}`), "run panel: history");
+  assert.match(text(panel("activity")), new RegExp(`${t(LOCALE, "orchAct_status")}: ${LABEL}`), "run panel: feed");
+  assert.match(text(panel("history")), new RegExp(`: ${LABEL}`), "run panel: history");
   for (const [where, html] of [["overview", overview], ["summary", summary], ["activity", panel("activity")], ["history", panel("history")]]) {
     assert.doesNotMatch(text(html), new RegExp(`— ${ENV}|: ${ENV}|>${ENV}<`), `${where}: never "environment error" for this pause`);
   }
@@ -90,7 +94,7 @@ test("a Codex usage limit: the same reason and headline in the panel, the activi
 test("an ordinary failed turn stays an environment error everywhere", () => {
   const plain = entries.map((e) => (e.kind === "error" ? { ...e, text: "turn failed: mock failure" } : e));
   const input = { view, entries: plain, open: true, stageTitles: null, now: 0 };
-  assert.equal(runStatus(LOCALE, input).wait, ENV);
-  assert.equal(roleStatus(LOCALE, "lead", input).wait, ENV);
+  assert.equal(runStatus(LOCALE, input).wait, ENV_WHY);
+  assert.equal(roleStatus(LOCALE, "lead", input).wait, ENV_WHY);
   assert.equal(causeText(LOCALE, viewCause(view, plain)), ENV);
 });

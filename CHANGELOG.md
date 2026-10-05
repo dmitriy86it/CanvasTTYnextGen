@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- Pauses say what happened, why and what to do (UX audit 2026-10-05). Each of the 27 pause reasons has its own headline, one sentence of why, a concrete next step and one main button — an action the run actually accepts on that pause. The headline is no longer repeated in the line under it, and six pauses are no longer all called «Needs your decision». An unavailable check sandbox on macOS no longer advises to «run on macOS»: it says the sandbox's self-test failed and to set the check commands in the goal; only a platform without the sandbox says it has none.
+- The main button of the run panel is the pause's own action («Resume», «Retry the turn», «Answer the question», «Raise the limit»…); Stop is secondary, outlined and last — the main action only where stopping is all a pause allows. While the run works, Pause is the main button.
+- The link chip, the agent cards, the activity feed and the widget say «Waiting for you: …» for a pause that needs you and «Paused: …» for one you may simply resume, in the same words as the panel.
+- A plan proposal that drops readiness criteria offers «Return to the lead» first and as the main button; «Accept dropping» is secondary and says the dropped criteria will no longer be checked. A blocking finding's «Make it a wish» and «Close» say that leaving it be is the safe choice.
+
 ## 1.5.9 — 2026-10-05
 
 - Copying from terminals keeps Cyrillic and box drawing: "Этап 0" copied from Claude Code or Codex in a terminal card no longer becomes "–≠—В–∞–њ 0". An app started from Finder or the Dock had no locale, and the CLIs a card starts directly (not through a login shell) copied through `pbcopy` as Mac Roman. At startup the app now sets `LANG` to the system locale in UTF-8 (`ru_RU.UTF-8`, else `en_US.UTF-8`; `C.UTF-8` on Linux) when none of `LC_ALL`, `LC_CTYPE`, `LANG` is set; terminals, agent CLIs, preparation and checks inherit it. Values you set are kept; a non-UTF-8 one is logged. ⌥ + drag selects as the terminal does over a CLI that tracks the mouse.

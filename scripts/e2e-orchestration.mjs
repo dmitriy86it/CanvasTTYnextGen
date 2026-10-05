@@ -298,7 +298,7 @@ try {
   const statusC = await panelStatus(app);
   const actionsC = await panelActions(app);
   notes.turnCrashPanel = { statusC, actionsC };
-  expect(statusC?.cls.includes("paused") && statusC.reason?.includes("результат хода неизвестен"),
+  expect(statusC?.cls.includes("paused") && statusC.text?.includes("Неизвестно, чем закончился ход"),
     "3: the interrupted turn is shown as paused, outcome unknown", statusC);
   expect(["Принять результат хода", "Повторить ход", "Вернуть к последнему checkpoint", "Стоп"].every((a) => actionsC.includes(a)) && !actionsC.includes("Продолжить"),
     "3: the recovery actions are offered (accept, retry, reset, Stop), not Resume", actionsC);
@@ -369,7 +369,7 @@ try {
   const statusD = await panelStatus(app);
   const actionsD = await panelActions(app);
   notes.checkCrashPanel = { statusD, actionsD };
-  expect(statusD?.cls.includes("paused") && statusD.reason?.includes("восстановлен"), "3: the run with the interrupted check is shown paused, recovered", statusD);
+  expect(statusD?.cls.includes("paused") && statusD.text?.includes("восстановлен"), "3: the run with the interrupted check is shown paused, recovered", statusD);
   expect(["Продолжить", "Один шаг", "Стоп"].every((a) => actionsD.includes(a)), "3: Resume, Step and Stop are offered", actionsD);
   expect(count(runD, "check.started") === 1 && JSON.stringify(calls()) === JSON.stringify(callsD), "3: the interrupted check is not run again by itself", timeline(runD));
   await app.shot("12-run-d-after-restart");
