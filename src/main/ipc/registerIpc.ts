@@ -672,8 +672,9 @@ export function registerIpc({
     const n = note as { runId?: unknown; title?: unknown; body?: unknown } | null;
     if (!n || typeof n.runId !== "string" || !/^[\w-]{1,80}$/.test(n.runId) || typeof n.title !== "string" || typeof n.body !== "string") throw new Error("Invalid notification.");
     if (notesToLog) { console.log(`[smoke] notify ${JSON.stringify({ runId: n.runId, title: n.title, body: n.body })}`); return { shown: true }; }
-    if (!Notification.isSupported()) return { shown: false };
+    if (!Notification.isSupported()) { console.log(`[notify] unsupported ${n.runId}`); return { shown: false }; }
     const runId = n.runId;
+    console.log(`[notify] requested ${runId}`);
     const shown = new Notification({ title: n.title.slice(0, 120), body: n.body.slice(0, 240), silent: false });
     const done = (): void => { shownNotes.delete(shown); };
     shown.on("click", () => {
