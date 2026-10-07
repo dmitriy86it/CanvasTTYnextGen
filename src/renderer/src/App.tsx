@@ -119,7 +119,8 @@ const FALLBACK_SETTINGS: AppSettings = {
   browserCanvas: null,
   browserAgentAccess: true,
   browserShowAgentPresence: true,
-  browserRestoreTabs: true
+  browserRestoreTabs: true,
+  notifications: { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false }
 };
 
 const EMPTY_BROWSER_SNAPSHOT: BrowserSnapshot = {

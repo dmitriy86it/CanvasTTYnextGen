@@ -103,19 +103,35 @@ function executables(pids) {
   return out;
 }
 
-// Processes under `rootPid` not seen before whose program (or, for an interpreter, its script) is outside `roots`.
+const PS_ENV = { ...process.env, LC_ALL: "C" }; // lstart in English whatever the machine's locale
+
+// The start time of each pid still alive (ps lstart): the same pid with another start is another process.
+function startTimes(pids) {
+  const out = new Map();
+  if (!pids.length) return out;
+  const r = spawnSync("/bin/ps", ["-o", "pid=,lstart=", "-p", pids.join(",")], { encoding: "utf8", timeout: 10_000, env: PS_ENV });
+  for (const l of (r.stdout ?? "").split("\n")) { const m = /^\s*(\d+)\s+(.+?)\s*$/.exec(l); if (m) out.set(Number(m[1]), m[2]); }
+  return out;
+}
+const SYSTEM = { tree: (root) => processTree(root), executables, startTimes };
+
+// Processes under `rootPid` (its descendants by ppid — never the machine's other processes) not seen before whose
+// program (or, for an interpreter, its script) is outside `roots`. The program is read after the tree: a process of
+// the app that ended in between may have handed its pid to an unrelated one (a parallel `npm test`'s node), so a pid
+// whose start time changed since the tree was taken is not judged by the newcomer's program.
 // ponytail: a sample every 500 ms misses a program that lives shorter than that; a long-lived one (an app-server, a
 // daemon) is what costs quota and outlives the run.
-export function checkProcesses(rootPid, roots = ALLOWED, seen = new Set()) {
+export function checkProcesses(rootPid, roots = ALLOWED, seen = new Set(), probe = SYSTEM) {
   const ok = (p) => roots.some((r) => (r.endsWith("/") ? p.startsWith(r) : p === r));
   // keyed by pid and command line: a process that execs another program is looked at again
-  const fresh = processTree(rootPid).filter((p) => !seen.has(`${p.pid} ${p.command}`));
-  const exe = executables(fresh.map((p) => p.pid));
+  const fresh = probe.tree(rootPid).filter((p) => !seen.has(`${p.pid} ${p.command}`));
+  const exe = probe.executables(fresh.map((p) => p.pid));
+  const still = probe.startTimes(fresh.map((p) => p.pid));
   const out = [];
   for (const p of fresh) {
-    seen.add(`${p.pid} ${p.command}`);
     const file = exe.get(p.pid);
-    if (!file) continue; // gone before lsof saw it
+    if (!file || still.get(p.pid) !== p.start) continue; // gone before lsof saw it, or its pid is another process's now
+    seen.add(`${p.pid} ${p.command}`);
     const args = p.command.split(/\s+/).slice(1);
     // `sh -c "<command line>"` (and `node -e`) runs no script file: a "/word" in that line (a commit message's "/health:")
     // is not a program; what the line starts is a process of its own, looked at by itself
@@ -138,12 +154,18 @@ process.on("exit", () => {
   if (foreign.length) process.exitCode = 1;
 });
 
-// pid, ppid and command of every process under `root`, parents first.
+// pid, ppid, start time and command of every process under `root`, parents first (one ps: one consistent table).
 export function processTree(root = process.pid) {
-  const rows = execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid=,command="], { encoding: "utf8", timeout: 10_000 }).split("\n").flatMap((l) => {
-    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l);
-    return m && !(Number(m[2]) === process.pid && m[3].startsWith("/bin/ps -A")) ? [{ pid: Number(m[1]), ppid: Number(m[2]), command: m[3] }] : []; // not this ps
+  const rows = execFileSync("/bin/ps", ["-A", "-o", "pid=,ppid=,lstart=,command="], { encoding: "utf8", timeout: 10_000, env: PS_ENV }).split("\n").flatMap((l) => {
+    // lstart: "Tue Oct  7 14:03:01 2026"
+    const m = /^\s*(\d+)\s+(\d+)\s+(\w{3}\s+\w{3}\s+\d+\s+[\d:]{8}\s+\d{4})\s+(.*)$/.exec(l);
+    return m && !(Number(m[2]) === process.pid && m[4].startsWith("/bin/ps -A")) ? [{ pid: Number(m[1]), ppid: Number(m[2]), start: m[3], command: m[4] }] : []; // not this ps
   });
+  return descendants(rows, root);
+}
+
+// The rows under `root` by ppid, parents first.
+export function descendants(rows, root) {
   const out = [];
   const seen = new Set([root]);
   for (let added = true; added;) {

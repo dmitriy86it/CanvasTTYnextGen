@@ -419,6 +419,7 @@ async function initializeServices(): Promise<void> {
     orchestration: droppedReplies && isAbsolute(droppedReplies) ? dropCommandReplies(orchestration, droppedReplies) : orchestration,
     workspaces: workspaceStore,
     getMainWindow: () => mainWindow,
+    notesToLog: hermeticSmoke(),
     applyBrowserSettings: async (next) => {
       agentRuntimeBridge?.setCoreHooksEnabled(next.agentLifecycleHooksEnabled);
       terminalManager?.setLifecycleHooksEnabled(next.agentLifecycleHooksEnabled);

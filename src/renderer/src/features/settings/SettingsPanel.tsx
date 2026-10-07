@@ -1,7 +1,9 @@
 import { EvenG2Controls } from "./EvenG2Controls";
+import { NOTIFY_UNAVAILABLE_KEY } from "../orchestration/notify";
 import { useEffect, useState } from "react";
 import type {
   AppSettings,
+  NotificationSettings,
   BrowserActivityEvent,
   BrowserCommandType,
   BrowserDownloadSnapshot,
@@ -62,7 +64,7 @@ import {
   setHomeLauncherProviderEnabled
 } from "../../lib/providers";
 import { shortcutFromKeyboardEvent, shortcutFromPointerEvent } from "../../lib/shortcuts";
-import { t } from "../../lib/i18n";
+import { t, type TranslationKey } from "../../lib/i18n";
 import { PluginSettingsSection } from "../plugins/PluginSettingsSection";
 import { HomeAppearanceSettings } from "../home/HomeAppearanceSettings";
 import {
@@ -77,13 +79,14 @@ import { setCanvasLauncherItemEnabled } from "../launcher/canvasLauncher";
 import { itemLabel } from "../launcher/QuickRadialMenu";
 import { setRadialLauncherItemEnabled } from "../launcher/radialLauncher";
 
-type SettingsSection = "general" | "appearance" | "agents" | "controls" | "browser" | "plugins" | "about";
+type SettingsSection = "general" | "notifications" | "appearance" | "agents" | "controls" | "browser" | "plugins" | "about";
 
 const SETTINGS_SECTIONS: ReadonlyArray<{
   id: SettingsSection;
   icon: UiIconName;
 }> = [
   { id: "general", icon: "app-window" },
+  { id: "notifications", icon: "bell" },
   { id: "appearance", icon: "palette" },
   { id: "agents", icon: "terminal" },
   { id: "controls", icon: "sliders-horizontal" },
@@ -377,6 +380,8 @@ export function SettingsPanel({
               </SettingGroup>
             </>
           )}
+
+          {section === "notifications" && <NotificationSettingsGroup settings={settings} onChange={onChange} />}
 
           {section === "appearance" && (
             <>
@@ -1136,6 +1141,34 @@ function PlacementChoices({
         >{label}</button>
       ))}
     </div>
+  );
+}
+
+// Orchestration notifications (UX audit PR 3): each event on its own switch, and how to allow them in macOS.
+function NotificationSettingsGroup({ settings, onChange }: { settings: AppSettings; onChange(patch: Partial<AppSettings>): Promise<void> }): React.JSX.Element {
+  const locale = settings.locale;
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => { try { setUnavailable(localStorage.getItem(NOTIFY_UNAVAILABLE_KEY) === "1"); } catch { /* no storage: nothing to say */ } }, []);
+  const rows: [keyof NotificationSettings, TranslationKey, TranslationKey][] = [
+    ["waiting", "notifyWaiting", "notifyWaitingDescription"], ["completed", "notifyCompleted", "notifyCompletedDescription"],
+    ["failed", "notifyFailed", "notifyFailedDescription"], ["dockBadge", "notifyDockBadge", "notifyDockBadgeDescription"],
+    ["bounce", "notifyBounce", "notifyBounceDescription"]
+  ];
+  return (
+    <>
+      <p className="setting-group__description" data-notify-intro>{t(locale, "notifyIntro")}</p>
+      {unavailable && <p className="setting-group__description notify-unavailable" role="status" data-notify-unavailable>{t(locale, "notifyUnavailable")}</p>}
+      {rows.map(([key, label, description]) => (
+        <SettingGroup key={key} label={t(locale, label)} description={t(locale, description)}>
+          <Segmented
+            value={settings.notifications[key] ? "on" : "off"}
+            options={[["off", t(locale, "notifyOff")], ["on", t(locale, "notifyOn")]]}
+            onChange={(value) => void onChange({ notifications: { ...settings.notifications, [key]: value === "on" } })}
+          />
+        </SettingGroup>
+      ))}
+      <p className="setting-group__description" data-notify-system-hint>{t(locale, "notifySystemHint")}</p>
+    </>
   );
 }
 

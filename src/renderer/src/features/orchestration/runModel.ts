@@ -550,6 +550,10 @@ export function providerLimit(view: OrchestrationRunView, entries: readonly Orch
   return cause?.kind === "provider_limit" ? { provider: cause.provider, resetsAt: cause.resetsAt } : null;
 }
 
+// UX audit PR 3: a completed run whose next step is the «Changes» tab has that as its main button; «New goal» second.
+export const changesFirst = (view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): boolean =>
+  view.status === "completed" && !view.newer && ["take_result", "review_in_place"].includes(nextStepKey(view, entries));
+
 // The next step as said to the person: a provider's limit is waited out (or the account changed), not fixed in the
 // environment and not raised in the run's budget; everything else is orchNext_<nextStepKey>.
 export function nextStepText(locale: LocaleId, view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string {
@@ -792,7 +796,13 @@ export const GLOSSARY = {
   push: { ru: "push", en: "push" },
   qa: { ru: "QA", en: "QA" },
   criterion: { ru: "критери(?:й|я|ю|ем|и|ев|ям|ями|ях)", en: "criteri(?:on|a)" },
-  finding: { ru: "замечани(?:е|я|ю|ем|и|й|ям|ями|ях)", en: "findings?" }
+  finding: { ru: "замечани(?:е|я|ю|ем|и|й|ям|ями|ях)", en: "findings?" },
+  // UX audit PR 3
+  checkpoint: { ru: "контрольн(?:ая|ой|ую|ые|ых) точк(?:а|и|е|у|ой)", en: "checkpoints?" },
+  worktree: { ru: "worktree", en: "worktrees?" },
+  journal: { ru: "подтверждено журналом", en: "confirmed by the journal" },
+  claim: { ru: "со слов агента", en: "the agent's claim" },
+  branch: { ru: "canvastty/[\\w./-]*", en: "canvastty/[\\w./-]*" }
 } as const;
 export type Term = keyof typeof GLOSSARY;
 const termRegex = (locale: LocaleId) => new RegExp(Object.entries(GLOSSARY)
@@ -887,3 +897,8 @@ export function roleModel(role: "lead" | "executor" | "reviewer", entries: reado
   }
   return { model: chosen?.[role] ?? null, reported: false };
 }
+
+// UX audit PR 3: a requirement line that reads like a check command (the goal dialog offers to move it, never moves
+// it by itself). Lower-case program names only: «Make sure …» is a sentence, «make test» a command.
+const COMMAND_LIKE = /^(?:(?:npm|npx|node|php|composer|pytest|cargo|make)(?:\s|$)|python3? -m\s|go test(?:\s|$)|\.\/)|(?:^|\s)--test(?:\s|=|$)/;
+export const commandLike = (line: string): boolean => COMMAND_LIKE.test(line.trim());

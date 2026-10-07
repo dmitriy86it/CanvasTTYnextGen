@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import type {
   AgentProviderId,
   AppSettings,
+  NotificationSettings,
   BrowserCanvasState,
   CanvasLauncherItemId,
   CanvasRegion,
@@ -313,7 +314,8 @@ function createDefaults(systemLocale: string, platform: CanvasNavigationPlatform
     browserCanvas: null,
     browserAgentAccess: true,
     browserShowAgentPresence: true,
-    browserRestoreTabs: true
+    browserRestoreTabs: true,
+    notifications: { ...DEFAULT_NOTIFICATIONS }
   };
 }
 
@@ -488,8 +490,17 @@ export function normalizeSettings(
       : fallback.browserShowAgentPresence,
     browserRestoreTabs: typeof source.browserRestoreTabs === "boolean"
       ? source.browserRestoreTabs
-      : fallback.browserRestoreTabs
+      : fallback.browserRestoreTabs,
+    notifications: normalizeNotifications(source.notifications, fallback.notifications ?? DEFAULT_NOTIFICATIONS)
   };
+}
+
+// Each switch on its own: a missing or broken one keeps its default, the others stay as saved.
+const DEFAULT_NOTIFICATIONS: NotificationSettings = { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false };
+function normalizeNotifications(value: unknown, fallback: NotificationSettings = DEFAULT_NOTIFICATIONS): NotificationSettings {
+  const o = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const pick = (k: keyof NotificationSettings): boolean => (typeof o[k] === "boolean" ? o[k] as boolean : fallback[k]);
+  return { waiting: pick("waiting"), completed: pick("completed"), failed: pick("failed"), dockBadge: pick("dockBadge"), bounce: pick("bounce") };
 }
 
 export function normalizeCanvasLauncherItems(

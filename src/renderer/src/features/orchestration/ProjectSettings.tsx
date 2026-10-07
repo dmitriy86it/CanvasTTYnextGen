@@ -11,6 +11,7 @@ import type {
 } from "../../../../shared/orchestration";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { outcomeOf, probeText } from "./runModel";
+import { Termed } from "./RunPanel";
 import { NO_MODELS, RoleModelsField } from "./RoleModels";
 import { outcomeText } from "./useOrchestration";
 
@@ -162,7 +163,7 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
         {(["project", "worktree"] as const).map((m) => (
           <label key={m} className="orch-check">
             <input type="radio" name="orch-settings-workmode" checked={p.workMode === m} onChange={() => set({ workMode: m })} />
-            <span><b>{tr(locale, `orchWorkMode_${m}`)}</b> — {tr(locale, `orchWorkMode_${m}Hint`)}</span>
+            <span><b><Termed locale={locale} text={tr(locale, `orchWorkMode_${m}`)} /></b> — <Termed locale={locale} text={tr(locale, `orchWorkMode_${m}Hint`)} /></span>
           </label>
         ))}
       </fieldset>
