@@ -687,7 +687,14 @@ export function registerIpc({
       window.webContents.send(IPC.notifyClick, runId);
     });
     shown.on("close", done);
-    shown.on("failed", () => { done(); const window = getMainWindow(); if (window && !window.isDestroyed()) window.webContents.send(IPC.notifyFailed, runId); });
+    // what macOS did with it goes to the log (no text of the notification): the packaged check reads it
+    shown.on("show", () => console.log(`[notify] shown ${runId}`));
+    shown.on("failed", (_e, error) => {
+      console.log(`[notify] failed ${runId}: ${String(error).slice(0, 200)}`);
+      done();
+      const window = getMainWindow();
+      if (window && !window.isDestroyed()) window.webContents.send(IPC.notifyFailed, runId);
+    });
     shownNotes.add(shown);
     shown.show();
     return { shown: true };
