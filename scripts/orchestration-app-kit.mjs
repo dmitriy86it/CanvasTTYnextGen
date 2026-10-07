@@ -201,7 +201,10 @@ export async function launch({ userData, providers, port, shots, env = {}, execu
         for (let i = 0; i < 30; i++) {
           const r = await app.ev(`(() => { const el = ${selector}; if (!el) return null; const r = el.getBoundingClientRect();
             const scroller = el.closest(".orch-summary, .orch-panel__body, .orch-dialog"); // the panel's body or a dialog taller than the window
-            const box = scroller?.getBoundingClientRect() ?? { left: 0, top: 40, right: innerWidth, bottom: innerHeight };
+            const sbox = scroller?.getBoundingClientRect() ?? { left: 0, top: 40, right: innerWidth, bottom: innerHeight };
+            // a dialog's pinned bottom (Start / Save) covers what scrolls under it: the visible part ends above it
+            const foot = scroller?.matches(".orch-dialog") ? scroller.querySelector(".orch-form__actions") : null;
+            const box = { left: sbox.left, top: sbox.top, right: sbox.right, bottom: foot && !foot.contains(el) ? Math.min(sbox.bottom, foot.getBoundingClientRect().top) : sbox.bottom };
             return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, top: r.top, bottom: r.bottom, left: r.left, right: r.right,
               panel: !!scroller, box: { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
               scene: !!el.closest(".workspace__scene"), w: innerWidth, h: innerHeight }; })()`);

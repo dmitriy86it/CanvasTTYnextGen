@@ -7,6 +7,7 @@ import type { OrchestrationAgentCard, OrchestrationAgentLink } from "../../../..
 import { t, type TranslationKey } from "../../lib/i18n";
 import { agentLayerId, pastCanvasDragThreshold } from "../workspace/canvasSelectionGesture";
 import { AgentCard } from "./AgentCard";
+import { chipCenter, chipSize } from "./linkChip";
 import { linkTrace } from "./linkTrace";
 import { ACTIVE_STATUSES, activeRole, agentState, cardRole, orchestrationAvailableHere, orchestrationEntry, participantState, runStatusKey, viewPauseLabel, TERMINAL_STATUSES, type AgentState } from "./runModel";
 import { ReleaseNewerLink } from "./RunPanel";
@@ -29,6 +30,7 @@ interface AgentSceneProps {
 
 const rightMid = (b: SessionBounds): Point => ({ x: b.position.x + b.size.width, y: b.position.y + b.size.height / 2 });
 const leftMid = (b: SessionBounds): Point => ({ x: b.position.x, y: b.position.y + b.size.height / 2 });
+const rect = (b: SessionBounds) => ({ x: b.position.x, y: b.position.y, width: b.size.width, height: b.size.height });
 
 function Line({ from, to, className }: { from: Point; to: Point; className: string }): React.JSX.Element {
   const dx = to.x - from.x;
@@ -183,17 +185,18 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
         const from = boundsOf.get(link.fromAgentId);
         const to = boundsOf.get(link.toAgentId);
         if (!from || !to) return null;
-        const a = rightMid(from);
-        const b = leftMid(to);
         const view = runOf(link);
         const busy = view !== null && (ACTIVE_STATUSES.includes(view.status) || !!view.newer); // a newer version's run holds its link whatever its journaled status
+        const label = view?.permission ? t(locale, "orchLinkNeedsYou") : view?.newer ? t(locale, "orchReadOnly") : view ? viewPauseLabel(locale, view, orch.activity[view.runId]?.entries ?? []) ?? t(locale, `orchStatus_${runStatusKey(view)}` as TranslationKey) : t(locale, "orchNoRun");
+        // never over a card (Н14): between the two cards, else under or above them (linkChip.ts)
+        const at = chipCenter(rect(from), rect(to), agents.map(({ bounds }) => rect(bounds)), chipSize(label, (busy ? 0 : 1) + (view ? 1 : 0) + (view?.newer ? 1 : 0)));
         return (
           <div key={link.linkId} className={`agent-link__chip${view?.permission ? " agent-link__chip--needs-you" : ""}`} data-interactive="true" data-agent-link-id={link.linkId}
             role="group" aria-label={t(locale, "orchLink")}
-            style={{ left: (a.x + b.x) / 2, top: (a.y + b.y) / 2,
+            style={{ left: at.x, top: at.y,
               zIndex: Math.max(props.zIndexOf(agentLayerId(link.fromAgentId)), props.zIndexOf(agentLayerId(link.toAgentId))) }}>
             <span className="agent-link__state">
-              {view?.permission ? t(locale, "orchLinkNeedsYou") : view?.newer ? t(locale, "orchReadOnly") : view ? viewPauseLabel(locale, view, orch.activity[view.runId]?.entries ?? []) ?? t(locale, `orchStatus_${runStatusKey(view)}` as TranslationKey) : t(locale, "orchNoRun")}
+              {label}
             </span>
             {!busy && <button type="button" disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
               onClick={() => ui.openGoal(link.linkId)}>{t(locale, "orchNewGoal")}</button>}

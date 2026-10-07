@@ -479,8 +479,8 @@ test("the UI model: «N из M условий выполнено» on the result
     met: 1, total: 2
   };
   const v = { runId: "r", status: "running", progress: { conditions } };
-  assert.equal(conditionsLine("ru", v), "1 из 2 условий выполнено");
-  assert.equal(conditionsLine("en", v), "1 of 2 conditions met");
+  assert.equal(conditionsLine("ru", v), "1 из 2 критериев выполнено");
+  assert.equal(conditionsLine("en", v), "1 of 2 criteria met");
   assert.equal(conditionsLine("ru", { progress: { conditions: null } }), null);
   assert.equal(conditionsLine("ru", { progress: null }), null);
   assert.equal(conditionsLine("ru", { progress: { conditions: { ...conditions, met: 0, total: 0, conditions: [] } } }), null);
@@ -489,8 +489,27 @@ test("the UI model: «N из M условий выполнено» on the result
     links: [{ linkId: "l", fromAgentId: "a", runIds: ["r"] }], agents: [{ agentId: "a", project: "/p" }], runs: { r: { view, open: false } },
     entries: () => [], lastRecordAt: () => null, runErrors: {}, stageTitles: () => null, now: Date.now()
   });
-  assert.equal([...rows.active, ...rows.recent][0].conditions, "1 из 2 условий выполнено");
+  assert.equal([...rows.active, ...rows.recent][0].conditions, "1 из 2 критериев выполнено");
   // the lead's marks are the «Условия» section's, not the report's other fields
   const parts = reportParts(JSON.stringify({ verdict: "complete", findings: [], question: null, requirements: [{ id: "R1", status: "met", note: "" }], conditions: [], extra: 1 }));
   assert.deepEqual(parts.other, [["extra", "1"]]);
+});
+
+// UX audit PR 2: the texts the person reads (plan, findings, notes, questions) are asked for in the interface's
+// language at the goal's creation; ids, paths and commands stay. A goal without it (an older one) asks for none.
+test("the agents' tasks ask for the person-facing texts in the interface's language of the goal", OPTS, async () => {
+  for (const [language, word] of [["ru", "in Russian"], ["en", "in English"], [undefined, null]]) {
+    const src = project({ "a.txt": "1\n" });
+    const m = manager({ MOCK_SCRIPT: script([plan(["a", [change("a.txt says 2", ["R1"])]])]), MOCK_CHECKS: "none" });
+    const runId = await start(m, src, language ? { language } : {});
+    await until(async () => (await records(m, runId)).some((x) => x.type === "turn.intent"), "the first task");
+    const task = (await records(m, runId)).filter((x) => x.type === "turn.intent").map((x) => fs.readFileSync(path.join(m.root, "runs", runId, "texts", x.data.task.sha256), "utf8"))[0];
+    if (word) assert.match(task, new RegExp(`^Language: write every text the person reads[^\\n]*${word}\\. Keep ids \\(R1, C1, F1\\)`, "m"), language);
+    else assert.doesNotMatch(task, /^Language:/m);
+    await m.shutdown();
+  }
+  const m = manager({});
+  const r = await m.create({ requestId: randomUUID(), source: project({ "a.txt": "1\n" }), goal: { text: "x", criteria: ["y"], checks: [], commands: [], language: "de" } });
+  assert.equal(r.ok, false, "an unknown language is refused");
+  await m.shutdown();
 });

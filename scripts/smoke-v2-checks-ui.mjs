@@ -124,7 +124,7 @@ try {
     const cards = await app.ev(`[${JSON.stringify(ids.lead)}, ${JSON.stringify(ids.exec)}].map((id) => document.querySelector('[data-agent-id="' + id + '"] .agent-card__state')?.textContent ?? null)`);
     expect(cards.every((c) => c === NO_CHECKS), "none: both cards say completed without checks", cards);
     const cardConds = await app.ev(`[...document.querySelectorAll("[data-agent-conditions]")].map((e) => e.textContent)`);
-    expect(cardConds.length === 2 && cardConds.every((c) => c === "1 из 1 условий выполнено"), "none (A2): both cards say 1 of 1 conditions met", cardConds);
+    expect(cardConds.length === 2 && cardConds.every((c) => c === "1 из 1 критериев выполнено"), "none (A2): both cards say 1 of 1 conditions met", cardConds);
     await app.clickEl(`[...document.querySelectorAll('[data-agent-link-id="${ids.link}"] button')].find((b) => b.textContent.trim() === "Открыть запуск")`);
     await app.waitFor(`${q(".orch-panel")} && true`, "the run panel");
     await openTab(app, "summary");
@@ -143,7 +143,7 @@ try {
       reqs: [...document.querySelectorAll("[data-requirement]")].map((e) => e.dataset.requirement + ":" + e.dataset.requirementStatus),
       conds: [...document.querySelectorAll('[data-requirement="R1"] [data-condition]')].map((e) => e.dataset.condition + ":" + e.dataset.conditionStatus),
       proof: ${q('[data-condition-proof="review"]')}?.textContent ?? null })`);
-    expect(conds.count === "1 из 1 условий выполнено" && conds.reqs.join() === "R1:met,R2:met" && conds.conds.join() === "C1:met" && /src\/note\.mjs/.test(conds.proof ?? ""),
+    expect(conds.count === "1 из 1 критериев выполнено" && conds.reqs.join() === "R1:met,R2:met" && conds.conds.join() === "C1:met" && /src\/note\.mjs/.test(conds.proof ?? ""),
       "none (A2): «Условия» — R1, R2 met by C1, its evidence the lead's review on src/note.mjs", conds);
     await app.ev(`${q('[data-sum="conditions"]')}?.scrollIntoView()`);
     await app.shot("v2-02b-conditions");
@@ -188,7 +188,7 @@ try {
     await app.waitFor(`${q("[data-sum-conditions-count]")} && true`, "«Условия»");
     const conds = await app.ev(`({ count: ${q("[data-sum-conditions-count]")}.textContent,
       c2: (() => { const e = ${q('[data-condition="C2"]')}; return e ? { status: e.dataset.conditionStatus, proof: !!e.querySelector('[data-condition-proof="run"]'), text: e.textContent } : null; })() })`);
-    expect(conds.count === "2 из 2 условий выполнено" && conds.c2?.status === "met" && conds.c2.proof && conds.c2.text.includes("test -f src/note.mjs"),
+    expect(conds.count === "2 из 2 критериев выполнено" && conds.c2?.status === "met" && conds.c2.proof && conds.c2.text.includes("test -f src/note.mjs"),
       "refused (A2): 2 of 2 conditions met; C2's evidence is the check run of the command as saved", conds);
     await app.ev(`${q('[data-condition-proof="run"]')}.open = true; ${q('[data-sum="conditions"]')}.scrollIntoView()`);
     await app.shot("v2-06-conditions-check-evidence");
@@ -239,12 +239,12 @@ try {
     await app.waitFor(`${q("[data-orch-person-decide]")} && true`, "the disputed item", 120_000);
     const shown = await app.ev(`({ item: ${q("[data-orch-disputed]")}.textContent, buttons: [...document.querySelectorAll("[data-orch-person-decide] button")].map((b) => b.textContent.trim()),
       actions: [...document.querySelectorAll(".orch-panel__actions button")].map((b) => b.textContent.trim()), next: ${q("[data-orch-next]")}?.textContent ?? "" })`);
-    expect(shown.item.includes("LIKE-F1") && shown.item.includes("note is not documented") && shown.buttons.join("|") === "Новый дефект|Повтор F1",
-      "disputed (A4): the item and its closed candidate side by side, «Новый дефект» / «Повтор F1»", shown);
+    expect(shown.item.includes("LIKE-F1") && shown.item.includes("note is not documented") && shown.buttons.join("|") === "Новый дефект|Повтор замечания 1",
+      "disputed (A4): the item and its closed candidate side by side, «Новый дефект» / «Повтор замечания 1»", shown);
     expect(!shown.actions.some((b) => /Продолжить|Шаг/.test(b)) && /Повтор/.test(shown.next), "disputed (A4): no Resume or Step; the next step says what to decide", shown);
     await new Promise((r) => setTimeout(r, 1000));
     expect((await viewOf(app, runId)).reason === "awaiting_person_decision", "disputed (A4): the autopilot does not decide it", null);
-    await app.ev(`${q("[data-orch-disputed-new]")}.scrollIntoView({ block: "center" })`);
+    await app.ev(`${q("[data-orch-disputed-new]")}.closest("[data-orch-disputed]").scrollIntoView({ block: "start" })`);
     await app.shot("v2-08-disputed-item");
     await app.clickEl(q('[data-orch-disputed-repeat="F1"]'));
     await waitView(app, runId, `v.status === "completed"`, "completed after the decision");
@@ -296,7 +296,7 @@ try {
     await openTab(app, "summary");
     await app.waitFor(`${q("[data-sum-person]")} && true`, "the person's decisions in the result");
     const sum = await app.ev(`({ person: ${q("[data-sum-person]")}.textContent, f1: ${q('[data-finding="F1"]')}.dataset.findingDowngraded, text: ${q('[data-finding="F1"]')}.textContent })`);
-    expect(sum.person === "Решения человека вместо доказательств: понижено F1" && sum.f1 === "yes" && sum.text.includes("понижено человеком, не исправлено"),
+    expect(sum.person === "Решения человека вместо доказательств: понижено: замечание 1" && sum.f1 === "yes" && sum.text.includes("понижено человеком, не исправлено"),
       "downgrade (A4): the result says «понижено человеком», never fixed", sum);
     await app.ev(`${q('[data-sum="findings"]')}?.scrollIntoView()`);
     await app.shot("v2-11-downgraded");
@@ -310,11 +310,15 @@ try {
     await app.waitFor(`${q("[data-orch-plan-proposal]")} && true`, "the proposal", 120_000);
     const shown = await app.ev(`({ drops: [...document.querySelectorAll("[data-orch-proposal-drop]")].map((e) => e.dataset.orchProposalDrop + ":" + e.textContent.includes("WHY-")),
       uncovered: ${q("[data-orch-proposal-uncovered]")}?.textContent ?? null, buttons: [...document.querySelectorAll("[data-orch-plan-proposal] button")].map((b) => b.textContent.trim()) })`);
-    expect(shown.drops.join() === "C2:true,R2:true" && /R2/.test(shown.uncovered ?? "") && shown.buttons.join("|") === "Вернуть лиду|Принять снятие",
+    expect(shown.drops.join() === "C2:true,R2:true" && /Требование 2/.test(shown.uncovered ?? "") && shown.buttons.join("|") === "Вернуть лиду|Принять снятие",
       "drop (A4): the proposal says what goes and why, what is left uncovered; «Вернуть лиду» first (the safe choice), then «Принять снятие»", shown);
     await new Promise((r) => setTimeout(r, 1000));
     expect((await viewOf(app, runId)).reason === "coverage_lost", "drop (A4): the autopilot does not accept it", null);
     await app.ev(`${q("[data-orch-proposal-accept]")}.scrollIntoView({ block: "center" })`);
+    // UX audit PR 2: scrolled to the choices, the decision's headline and what is dropped stay in view (sticky)
+    const head = await app.ev(`(() => { const h = ${q("[data-orch-proposal-head]")}; let s = h.parentElement; while (s && getComputedStyle(s).overflowY === "visible") s = s.parentElement;
+      const r = h.getBoundingClientRect(), sr = s.getBoundingClientRect(); return { sticky: getComputedStyle(h).position, inView: r.top >= sr.top - 1 && r.bottom <= sr.bottom, drops: h.querySelectorAll("[data-orch-proposal-drop]").length }; })()`);
+    expect(head.sticky === "sticky" && head.inView && head.drops === 2, "drop (UX PR 2): the proposal's headline and dropped list stay in view by the buttons", head);
     await app.shot("v2-12-plan-proposal");
     await app.clickEl(q("[data-orch-proposal-accept]"));
     await waitView(app, runId, `v.status === "completed"`, "completed after the decision");
@@ -322,7 +326,7 @@ try {
     await app.waitFor(`${q("[data-sum-person]")} && true`, "the person's decisions in the result");
     const sum = await app.ev(`({ person: ${q("[data-sum-person]")}.textContent, reqs: [...document.querySelectorAll("[data-requirement]")].map((e) => e.dataset.requirement + ":" + e.dataset.requirementStatus),
       dropped: [...document.querySelectorAll("[data-conditions-dropped] [data-condition]")].map((e) => e.dataset.condition + ":" + e.dataset.conditionStatus), count: ${q("[data-sum-conditions-count]")}?.textContent ?? null })`);
-    expect(sum.person === "Решения человека вместо доказательств: снято C2, R2" && sum.reqs.join() === "R1:met,R2:dropped" && sum.dropped.join() === "C2:dropped" && sum.count === "1 из 1 условий выполнено",
+    expect(sum.person === "Решения человека вместо доказательств: снято: критерий 2, требование 2" && sum.reqs.join() === "R1:met,R2:dropped" && sum.dropped.join() === "C2:dropped" && sum.count === "1 из 1 критериев выполнено",
       "drop (A4): the result lists C2 and R2 as dropped by the person, never met", sum);
     await app.ev(`${q('[data-sum="conditions"]')}?.scrollIntoView()`);
     await app.shot("v2-13-dropped");
@@ -353,7 +357,10 @@ try {
     const shown = await app.ev(`({ steps: [...document.querySelectorAll("[data-orch-finish-step]")].map((e) => e.dataset.orchFinishStep), warn: ${q("[data-orch-finish-no-checks]")}?.textContent ?? null,
       submit: ${q("[data-orch-finish-submit]")}.disabled })`);
     expect(shown.steps.join() === "push,qa" && !!shown.warn && shown.submit === true, "finish (A4): push and QA decided apart; nothing sent before both are chosen", shown);
-    await app.ev(`${q("[data-orch-finish-submit]")}.scrollIntoView({ block: "center" })`);
+    const groups = await app.ev(`[...document.querySelectorAll("[data-orch-finish-step]")].map((e) => e.querySelector("legend")?.textContent + ":" + e.querySelectorAll("input").length)`);
+    expect(groups.join("|") === "Отправка изменений (push):2|Выкладка на тестовый сервер (деплой на QA):2" && await app.ev(`!!${q("[data-orch-finish-independent]")}`),
+      "finish (UX PR 2): two groups, «Push» and «Деплой на QA», each confirmed or declined, said to be independent", groups);
+    await app.ev(`${q("[data-orch-finish-confirm]")}.scrollIntoView({ block: "start" })`);
     await app.shot("v2-14-finish-confirm");
     await app.clickEl(q('[data-orch-finish-choice="push:confirm"]'));
     await app.clickEl(q('[data-orch-finish-choice="qa:decline"]'));

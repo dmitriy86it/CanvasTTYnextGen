@@ -226,8 +226,8 @@ test("a blocking finding made a wish by the person: the stage is accepted and th
   assert.equal(done.status, "completed", JSON.stringify((await records(m, runId)).slice(-12).map((r) => [r.type, r.data.status ?? r.data.purpose ?? r.data.kind ?? "", r.data.reason ?? ""])));
   const f1 = done.progress.findings.items[0];
   assert.deepEqual([f1.severity, f1.status, f1.downgraded, f1.history.at(-1).kind, f1.history.at(-1).by], ["wish", "open", true, "to_wish", "person"]);
-  assert.equal(personDecisionsLine("ru", done), "Решения человека вместо доказательств: понижено F1");
-  assert.equal(personDecisionsLine("en", done), "The person's decisions instead of evidence: downgraded F1");
+  assert.equal(personDecisionsLine("ru", done), "Решения человека вместо доказательств: понижено: замечание 1");
+  assert.equal(personDecisionsLine("en", done), "The person's decisions instead of evidence: downgraded: finding 1");
   const all = await records(m, runId);
   const basis = JSON.parse(textOf(m, runId, all.at(-1).data.completion.basis));
   assert.deepEqual(basis.person.downgraded, ["F1"]);
@@ -279,7 +279,7 @@ test("a plan dropping a condition and a requirement is a proposal: the autopilot
   assert.deepEqual(c.requirements.map((r) => [r.id, r.status, r.why ?? null]), [["R1", "met", null], ["R2", "dropped", "WHY-R2"]]);
   assert.deepEqual(c.dropped.map((x) => [x.id, x.why]), [["C2", "WHY-C2"]]);
   assert.deepEqual([c.met, c.total], [1, 1], "a dropped condition is not counted as met");
-  assert.equal(personDecisionsLine("ru", done), "Решения человека вместо доказательств: снято C2, R2");
+  assert.equal(personDecisionsLine("ru", done), "Решения человека вместо доказательств: снято: критерий 2, требование 2");
   // the completion's basis: the requirement dropped, not met; the person's section names both
   const basis = JSON.parse(textOf(m, runId, all.at(-1).data.completion.basis));
   assert.deepEqual(basis.requirements, [{ id: "R1", conditions: ["C1"], met: true }, { id: "R2", conditions: [], met: false, dropped: true }]);
@@ -382,7 +382,7 @@ test("review 1: a finding the person closed stays «closed by the person» after
   const f = { id: "F1", status: "closed", severity: "blocking", downgraded: false, history: [ev("opened"), ev("closed_by_person", "person"), ev("disputed"), ev("refused", "person")] };
   assert.equal(closedByPerson(f), true);
   assert.equal(closedByPerson({ ...f, history: [...f.history, ev("reopened"), ev("closed")] }), false, "closed again by a review");
-  assert.equal(personDecisionsLine("ru", { progress: { findings: { items: [f], disputed: [], openBlocking: 0 } } }), "Решения человека вместо доказательств: закрыто человеком F1");
+  assert.equal(personDecisionsLine("ru", { progress: { findings: { items: [f], disputed: [], openBlocking: 0 } } }), "Решения человека вместо доказательств: закрыто человеком: замечание 1");
 });
 
 test("review 1: a waiting plan proposal pauses for the person even past the run's deadline", () => {

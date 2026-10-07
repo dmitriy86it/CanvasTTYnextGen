@@ -101,7 +101,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
         <span className="agent-card__identity">
           <ProviderIcon provider={card.provider} size="small" />
           <strong>{card.provider === "codex" ? "Codex" : "Claude"}</strong>
-          <small>{t(locale, card.role === "lead" ? "orchRoleLead" : "orchRoleExecutor")}</small>
+          <small title={t(locale, card.role === "lead" ? "orchTerm_lead" : "orchTerm_executor")} data-term={card.role}>{t(locale, card.role === "lead" ? "orchRoleLead" : "orchRoleExecutor")}</small>
         </span>
         <button className="agent-card__close" type="button" onClick={() => (props.linked ? setConfirming(true) : props.onDelete(card.agentId))}
           title={t(locale, "orchDeleteCard")} aria-label={t(locale, "orchDeleteCard")}>

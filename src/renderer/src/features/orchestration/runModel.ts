@@ -752,14 +752,84 @@ export function resultFacts(view: OrchestrationRunView | null, d: RunDigest, cha
     : latest.some((c) => c.status === null) ? "running"
       : latest.some((c) => c.status === "failed") ? "failed"
         : latest.some((c) => c.status === "not_verified") ? "not_verified" : "passed";
+  const changes: ResultFacts["changes"] = changedFiles === null ? "unknown" : changedFiles > 0 ? "yes" : "no";
   return {
     reportedDone,
-    changes: changedFiles === null ? "unknown" : changedFiles > 0 ? "yes" : "no",
+    // main paused because the lead changed the tree: "no changes" (against the start) would say the opposite
+    changes: changes === "no" && view?.status === "paused" && view.reason === "lead_modified_tree" ? "unknown" : changes,
     checks,
     checkpoint: d.checkpoints.length ? Math.max(...d.checkpoints) : null,
-    goalAccepted: view?.status === "completed" && d.finalVerdict === "complete",
+    // main completes a run only after its final review accepted the goal (the lead's or the reviewer's verdict): a
+    // completed run is never "not accepted", whichever review's record the digest read
+    goalAccepted: view?.status === "completed" || (d.finalVerdict === "complete" && view?.status !== "failed" && view?.status !== "stopped"),
     transferred: false
   };
+}
+
+// UX audit PR 2 (Н5): the lines of the result block, from the same facts as the headline and the board. tests/
+// orchestration-summary-invariants.test.mjs checks that no line says the opposite of another or of the headline.
+export interface FactLine { key: "reported" | "changes" | "checks" | "checkpoint" | "accepted"; label: string; value: string }
+export function factLines(locale: LocaleId, view: OrchestrationRunView, facts: ResultFacts, journalReady: boolean): FactLine[] {
+  const noChecks = view.progress?.completion === "no_checks";
+  return [
+    { key: "reported", label: t(locale, "orchFactReported"), value: facts.reportedDone === null ? t(locale, "orchFactNoReport") : t(locale, facts.reportedDone ? "orchYes" : "orchNo") },
+    { key: "changes", label: t(locale, "orchFactChanges"), value: t(locale, `orchFactChanges_${facts.changes}`) },
+    { key: "checks", label: t(locale, "orchFactChecks"), value: noChecks ? t(locale, "orchBoardNoChecks") : t(locale, `orchFactChecks_${facts.checks}`) },
+    { key: "checkpoint", label: t(locale, "orchFactCheckpoint"), value: facts.checkpoint === null ? t(locale, "orchNo") : `${t(locale, "orchStage")} ${facts.checkpoint}` },
+    { key: "accepted", label: t(locale, "orchFactAccepted"), value: facts.goalAccepted ? t(locale, "orchYes") : !journalReady ? t(locale, "orchFactNotLoaded") : t(locale, TERMINAL_STATUSES.includes(view.status) ? "orchNo" : "orchFactNotYet") }
+  ];
+}
+
+// UX audit PR 2 (Н11): one table of the interface's terms, each with one sentence of explanation (orchTerm_<term>) —
+// shown on hover wherever a text names it. The forms are the words as the texts use them (ru cases, en plurals).
+export const GLOSSARY = {
+  lead: { ru: "лид(?:а|у|ом|е|ы|ов)?", en: "leads?" },
+  executor: { ru: "исполнител(?:ь|я|ю|ем|е|и|ей)", en: "executors?" },
+  reviewer: { ru: "проверяющ(?:ий|его|ему|им|ем|ие|их)", en: "reviewers?" },
+  turn: { ru: "ход(?:а|у|ом|е|ы|ов)?", en: "turns?" },
+  round: { ru: "раунд(?:а|у|ом|е|ы|ов)?", en: "rounds?" },
+  sandbox: { ru: "песочниц(?:а|ы|е|у|ей)", en: "sandbox(?:es)?" },
+  push: { ru: "push", en: "push" },
+  qa: { ru: "QA", en: "QA" },
+  criterion: { ru: "критери(?:й|я|ю|ем|и|ев|ям|ями|ях)", en: "criteri(?:on|a)" },
+  finding: { ru: "замечани(?:е|я|ю|ем|и|й|ям|ями|ях)", en: "findings?" }
+} as const;
+export type Term = keyof typeof GLOSSARY;
+const termRegex = (locale: LocaleId) => new RegExp(Object.entries(GLOSSARY)
+  .map(([k, f]) => `(?<${k}>(?<![\\p{L}\\p{N}_])${f[locale === "ru" ? "ru" : "en"]}(?![\\p{L}\\p{N}_]))`).join("|"), "giu");
+// A text cut into plain parts and the glossary's words, each with its term's explanation.
+export function glossarySplit(locale: LocaleId, text: string): Array<string | { text: string; term: Term; hint: string; at: number }> {
+  const out: Array<string | { text: string; term: Term; hint: string; at: number }> = [];
+  let at = 0;
+  for (const m of text.matchAll(termRegex(locale))) {
+    const term = Object.keys(m.groups ?? {}).find((k) => m.groups?.[k] !== undefined) as Term;
+    if (m.index > at) out.push(text.slice(at, m.index));
+    out.push({ text: m[0], term, hint: t(locale, `orchTerm_${term}`), at: m.index });
+    at = m.index + m[0].length;
+  }
+  if (at < text.length) out.push(text.slice(at));
+  return out;
+}
+
+// UX audit PR 2: the journal's ids (F1 a finding, C1 a condition, R1 a requirement) as the person reads them —
+// «Замечание 1», «Критерий 1», «Требование 1»; the id itself stays in the tooltip. Anything else as it is.
+const ID_WORD = { F: "orchIdFinding", C: "orchIdCondition", R: "orchIdRequirement" } as const;
+export function idLabel(locale: LocaleId, id: string): string {
+  const m = /^([FCR])(\d+)$/.exec(id);
+  return m ? `${t(locale, ID_WORD[m[1] as keyof typeof ID_WORD])} ${m[2]}` : id;
+}
+export const idNumber = (id: string): string => /^[FCR](\d+)$/.exec(id)?.[1] ?? id;
+
+// A condition's or a requirement's status in words. Without check commands (completion no_checks) "met" is only the
+// review's word: it never reads as if a command had confirmed it. A requirement not checked yet waits for its review.
+export function conditionStatusKey(status: string, noChecks: boolean, byCheck = false): TranslationKey {
+  if (status === "met" && noChecks && !byCheck) return "orchCond_met_review";
+  return `orchCond_${status}` as TranslationKey;
+}
+export function requirementStatusKey(status: string, noChecks: boolean): TranslationKey {
+  if (status === "met" && noChecks) return "orchCond_met_review";
+  if (status === "not_checked") return "orchReq_not_checked";
+  return `orchCond_${status}` as TranslationKey;
 }
 
 // ---------- stage 13: the board on top of the panel ----------
@@ -769,7 +839,7 @@ export function resultFacts(view: OrchestrationRunView | null, d: RunDigest, cha
 export interface Board {
   who: "nobody" | "lead" | "executor" | "check" | "prepare" | "finish";
   finishStep: "commit" | "push" | "qa" | null;
-  checked: { passed: number; total: number; failed: { title: string; class: string | null }[] };
+  checked: { passed: number; ran: number; total: number; failed: { title: string; class: string | null }[] };
   prepare: string | null; // the last preparation's status
   action: boolean; // the person has to do something now
   grantsApplied: number;
@@ -783,11 +853,12 @@ export function board(view: OrchestrationRunView): Board {
   return {
     who, finishStep: a?.kind === "finish" ? a.step : null,
     checked: {
-      passed: checks.filter((c) => c.status === "passed").length, total: checks.length,
+      passed: checks.filter((c) => c.status === "passed").length, ran: checks.filter((c) => c.status !== "not_run").length, total: checks.length,
       failed: checks.filter((c) => c.status === "failed").map((c) => ({ title: c.title, class: c.class }))
     },
     prepare: view.progress?.prepare?.status ?? null,
-    action: !!view.permission || ["awaiting_answer", "awaiting_plan_review", "needs_setup", "needs_decision", "needs_action", "awaiting_checks", "awaiting_checks_none", "awaiting_finish_confirmation", "check_needs_permissions"].includes(head)
+    // a paused run always waits for the person — at least for «Продолжить» (never "nothing needed" beside a pause)
+    action: !!view.permission || (view.status === "paused" && !view.halted) || ["awaiting_answer", "awaiting_plan_review", "needs_setup", "needs_decision", "needs_action", "awaiting_checks", "awaiting_checks_none", "awaiting_finish_confirmation", "check_needs_permissions"].includes(head)
       || (view.status === "paused" && view.reason === "stage_done"),
     grantsApplied: view.progress?.grantsApplied ?? 0
   };

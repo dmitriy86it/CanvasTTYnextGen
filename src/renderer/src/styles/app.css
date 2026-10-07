@@ -1057,6 +1057,10 @@ button { border: 0; }
 .orch-panel button.orch-primary, .orch-form button.orch-primary { background: var(--primary); }
 /* UX audit (PR 1): Stop beside a pause's main action is secondary — outlined, last in the row */
 .orch-panel button.orch-stop { margin-left: auto; color: var(--danger); background: transparent; box-shadow: inset 0 0 0 2px var(--danger); }
+/* UX audit PR 2: a decision's subject stays in view; push and QA are two separate groups */
+.orch-proposal__head { position: sticky; top: -10px; z-index: 1; margin: 0 -10px; padding: 6px 10px; background: color-mix(in srgb, var(--yellow) 22%, var(--surface)); }
+.orch-finish-group { margin: 8px 0; padding: 8px 10px; border: 2px solid color-mix(in srgb, var(--text) 25%, transparent); border-radius: 10px; }
+.orch-finish-group > legend { padding: 0 6px; font-weight: 800; }
 .orch-field.orch-field--inline { display: inline-flex; flex-direction: row; align-items: center; gap: .4em; }
 .agent-card__port { position: absolute; right: -.8em; top: 50%; width: 1.6em; height: 1.6em; margin-top: -.8em; border: 3px solid var(--surface); border-radius: 50%; background: var(--blue); cursor: crosshair; touch-action: none; }
 .agent-card__port:hover, .agent-card__port:focus-visible, .agent-card__port[aria-pressed="true"] { background: var(--yellow); box-shadow: 0 0 0 3px var(--yellow); }
@@ -1075,6 +1079,14 @@ button { border: 0; }
 .agent-link__state { font-weight: 800; }
 .orch-linking-hint { position: absolute; left: 50%; bottom: 24px; z-index: 520; padding: 10px 16px; border-radius: 12px; color: var(--text-dark); background: var(--yellow); box-shadow: var(--shadow-md); font-weight: 800; transform: translateX(-50%); pointer-events: none; }
 .orch-dialog { width: min(640px, 100%); max-height: calc(100vh - var(--titlebar-height) - 48px); overflow: auto; }
+/* UX audit PR 2: the dialog is light, so are its native controls (a dark scheme drew a chosen radio as an empty ring);
+   Start / Save stay in view at the dialog's bottom whatever is scrolled */
+.orch-dialog { color-scheme: light; scroll-padding-bottom: 84px; } /* scrolled-to fields stay above the pinned bottom */
+.orch-dialog .orch-form button.orch-primary { background: var(--text-dark); color: var(--primary); } /* the dialog is --primary itself */
+.orch-dialog .orch-form button.orch-primary:disabled { opacity: .45; }
+.orch-form__why { margin-right: auto; align-self: center; }
+.orch-term { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+.orch-dialog .orch-form__actions { position: sticky; bottom: -28px; z-index: 2; margin: 0 -28px -28px; padding: 12px 28px 20px; background: var(--primary); box-shadow: 0 -8px 12px -10px rgb(0 0 0 / .35); }
 .orch-dialog .launch-dialog__toolbar { justify-content: space-between; align-items: center; }
 .orch-dialog__title { font-size: 18px; }
 .orch-form { display: flex; flex-direction: column; gap: 12px; }

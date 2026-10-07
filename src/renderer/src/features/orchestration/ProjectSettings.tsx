@@ -142,7 +142,11 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
         <select value={current} onChange={(e) => set({ access: { ...p.access, [provider]: e.target.value } })}>
           {all.map((o) => <option key={o.mode} value={o.mode}>{tr(locale, `orchAccess_${o.mode}`)}</option>)}
         </select>
-        <small className="orch-hint">{t(locale, "orchAccessMaps")} {mapping === null ? t(locale, "orchAccessMapsNone") : <code>{mapping}</code>}</small>
+        {/* the CLI's own flags are a detail: folded under «Подробнее» */}
+        <details className="orch-hint" data-orch-access-details>
+          <summary>{t(locale, "orchMore")}</summary>
+          {t(locale, "orchAccessMaps")} {mapping === null ? t(locale, "orchAccessMapsNone") : <code>{mapping}</code>}
+        </details>
         {current === "workspace" && <small className="orch-hint">{t(locale, "orchAccessWorkspaceHint")}</small>}
         {current === "terminal" && <small className="orch-hint orch-hint--warn" data-orch-terminal-warning>{t(locale, "orchAccessTerminalWarn")}</small>}
         {current === "full" && <small className="dialog-error" data-orch-full-warning>{t(locale, "orchAccessFullWarn")}</small>}
@@ -170,7 +174,9 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
         <input type="checkbox" checked={p.prepare.auto} data-orch-settings-prepare onChange={(e) => set({ prepare: { ...p.prepare, auto: e.target.checked } })} />
         <span>{t(locale, "orchSettingsPrepareAuto")}</span>
       </label>
-      <p className="orch-hint" data-orch-needed>{info.facts.needed.length ? `${t(locale, "orchSettingsNeeded")} ${info.facts.needed.join(" · ")}` : t(locale, "orchSettingsNothingNeeded")}</p>
+      {/* the commands themselves under «More» (UX audit PR 2: technical details folded) */}
+      {info.facts.needed.length ? <details className="orch-hint" data-orch-needed><summary>{t(locale, "orchSettingsNeeded")} {info.facts.needed.length} · {t(locale, "orchMore")}</summary>{info.facts.needed.join(" · ")}</details>
+        : <p className="orch-hint" data-orch-needed>{t(locale, "orchSettingsNothingNeeded")}</p>}
       <fieldset className="orch-field">
         <legend>{t(locale, "orchSettingsAccess")}</legend>
         <p className="orch-hint">{t(locale, "orchSettingsAccessHint")}</p>

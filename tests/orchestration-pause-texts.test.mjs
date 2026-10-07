@@ -104,7 +104,7 @@ test("the header's main button is the pause's action; Stop is secondary and last
 
   const step = panel(view("paused", "invalid_report"));
   assert.equal(primaryOf(step)[0].text, "Повторить ход", "the button says what the text says");
-  assert.match(step, /Нажмите «Повторить ход»/);
+  assert.match(step.replace(/<[^>]+>/g, ""), /Нажмите «Повторить ход»/);
 
   // a pause decided in a form: the form's own main button, right under the next step, is the main one — before Stop
   const proposal = { checks: [{ id: "c1", command: "npm test", why: "the tests", source: [] }], none: null };
@@ -128,7 +128,8 @@ test("the header's main button is the pause's action; Stop is secondary and last
   assert.match(stopOf(running).attrs, /class="orch-stop"/);
 
   for (const reason of ["needs_user_action", "awaiting_person_decision", "coverage_lost"]) {
-    const html = panel(view("paused", reason)).replace(/<[^>]+>/g, "\n");
+    // the glossary wraps words in <abbr>: compare the text, not the markup
+    const html = panel(view("paused", reason)).replace(/<\/?abbr[^>]*>/g, "").replace(/<[^>]+>/g, "\n");
     const what = t("ru", `orchPause_${reason}_what`);
     assert.equal(html.split(what).length - 1, 1, `${reason}: the headline once`);
     assert.doesNotMatch(html, /Нужно ваше (действие|решение)/i);
@@ -166,7 +167,7 @@ test("a plan proposal that drops criteria: «Вернуть лиду» is the ma
   assert.match(ret.attrs, /orch-primary/);
   assert.doesNotMatch(acc.attrs, /orch-primary/);
   assert.equal(acc.text, "Принять снятие");
-  assert.ok(html.indexOf("data-orch-proposal-return") < html.indexOf("data-orch-proposal-accept"), "the safe choice first");
+  assert.ok(html.indexOf("data-orch-proposal-return") < html.indexOf("data-orch-proposal-accept=\"true\""), "the safe choice first");
   assert.match(html, /перестанут проверяться/);
 });
 

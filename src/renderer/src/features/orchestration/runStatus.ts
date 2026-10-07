@@ -11,7 +11,7 @@ import type {
 import { closedByPerson } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
-import { activeRole, byReviewer, causeText, finishStatus, headlineKey, PAUSES, pauseWhy, viewPauseLabel, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
+import { activeRole, byReviewer, idLabel, causeText, finishStatus, headlineKey, PAUSES, pauseWhy, viewPauseLabel, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
 
 // read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
 export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "completed_no_checks" | "stopped" | "failed" | "read_only";
@@ -209,9 +209,9 @@ export function personDecisionsLine(locale: LocaleId, view: Pick<OrchestrationRu
   const downgraded = (f?.items ?? []).filter((x) => x.downgraded).map((x) => x.id);
   const closed = (f?.items ?? []).filter(closedByPerson).map((x) => x.id);
   const parts = [
-    dropped.length ? tr(locale, "orchPersonDropped", { ids: dropped.join(", ") }) : null,
-    downgraded.length ? tr(locale, "orchPersonDowngraded", { ids: downgraded.join(", ") }) : null,
-    closed.length ? tr(locale, "orchPersonClosed", { ids: closed.join(", ") }) : null
+    dropped.length ? tr(locale, "orchPersonDropped", { ids: dropped.map((id) => idLabel(locale, id).toLocaleLowerCase(locale)).join(", ") }) : null,
+    downgraded.length ? tr(locale, "orchPersonDowngraded", { ids: downgraded.map((id) => idLabel(locale, id).toLocaleLowerCase(locale)).join(", ") }) : null,
+    closed.length ? tr(locale, "orchPersonClosed", { ids: closed.map((id) => idLabel(locale, id).toLocaleLowerCase(locale)).join(", ") }) : null
   ].filter((x): x is string => x !== null);
   return parts.length ? tr(locale, "orchPersonDecisions", { list: parts.join("; ") }) : null;
 }
