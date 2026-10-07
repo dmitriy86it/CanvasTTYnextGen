@@ -112,6 +112,12 @@ try {
   expect(await app.ev(`${q("[data-orch-commands]")}.value`) === "php artisan test", "the check command comes from the suggested settings", await app.ev(`${q("[data-orch-commands]")}.value`));
   expect(await app.ev(`${q("[data-orch-runmode]")}.dataset.orchRunmode`) === "autopilot", "autopilot is the default mode", null);
   await app.shot("01-goal-dialog");
+  // UX audit PR 2: Start / Save pinned at the dialog's bottom, in view without scrolling; the dialog's controls are light
+  const pinned = () => app.ev(`(() => { const d = [...document.querySelectorAll(".orch-dialog")].at(-1); const a = d.querySelector(".orch-form__actions");
+    const b = a.querySelector('button[type="submit"]'); const r = b.getBoundingClientRect(), dr = d.getBoundingClientRect();
+    return { sticky: getComputedStyle(a).position, visible: r.top >= dr.top && r.bottom <= dr.bottom + 1, scrolls: d.scrollHeight > d.clientHeight, scheme: getComputedStyle(d).colorScheme }; })()`);
+  const goalPinned = await pinned();
+  expect(goalPinned.sticky === "sticky" && goalPinned.visible && goalPinned.scrolls && goalPinned.scheme === "light", "goal dialog: «Старт» pinned and in view while the dialog scrolls", goalPinned);
   await app.clickEl(q("[data-orch-open-settings]"));
   await app.waitFor(`${q("[data-orch-settings]")} && true`, "settings");
   const needed = await app.ev(`${q("[data-orch-needed]")}.textContent`);
@@ -129,6 +135,8 @@ try {
   const mapping = await app.ev(`${q('[data-orch-access="claude"] code')}.textContent`);
   expect(mapping.includes("--permission-mode acceptEdits"), "the mapping says what is passed to Claude", mapping);
   await app.shot("02-settings");
+  const settingsPinned = await pinned();
+  expect(settingsPinned.sticky === "sticky" && settingsPinned.visible && settingsPinned.scrolls, "settings: «Сохранить» pinned and in view while the dialog scrolls", settingsPinned);
   await app.ev(`${q("[data-orch-advanced]")}.open = true`);
   await setValue(q("[data-orch-settings-qa-env]"), "qa");
   await setValue(q("[data-orch-settings-qa-command]"), `echo "$CANVASTTY_COMMIT" > ${deployed}`);

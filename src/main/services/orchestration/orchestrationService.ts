@@ -73,6 +73,9 @@ export interface GoalInput {
   // journal v2 only: the model of a role (absent or a role left out: as in the CLI). A v1 journal has no place for it
   // that a reader of 1.5.7 would not drop silently (it would run the role with the CLI's model).
   models?: Partial<Record<AgentRole, string>>;
+  // the interface language when the goal was created: the texts the person reads (plan, findings, notes, questions)
+  // are asked for in it. Absent (an older goal): no language is asked for.
+  language?: "ru" | "en";
 }
 
 // Stage 12: the checks of a goal with commands are those command lines, run by the user's login shell.
@@ -237,6 +240,12 @@ const STOP_ONLY: readonly string[] = ["lead_modified_tree", "shared_git_tampered
 const FINDING_PAUSES: readonly string[] = [...RESUMABLE, ...STEP_ONLY, "limit_reached", "awaiting_answer", "awaiting_person_decision"];
 const ACTIVE: readonly string[] = ["preparing", "running", "pausing", "paused"];
 const MAX_CHECK_OUTPUT_IN_TASK = 1500;
+// UX audit PR 2: what the person reads in the panel is written by the agents — in the interface's language. Ids (F1, C1),
+// paths, commands and code stay as they are.
+const LANGUAGE_NAME = { ru: "Russian", en: "English" } as const;
+export const languageLine = (language: "ru" | "en"): string =>
+  `Language: write every text the person reads — plan titles and tasks, questions, notes, why, findings' problem and closeWhen, `
+  + `condition texts — in ${LANGUAGE_NAME[language]}. Keep ids (R1, C1, F1), file paths, commands and code as they are.`;
 
 // ---------- reports (§4) ----------
 
@@ -448,6 +457,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
   if (finish && (finish.commit || finish.push || finish.qa) && input.workMode === "copy") bad("actions after success need the project folder or a worktree");
   if (input.access !== undefined && (!isClaudeAccess(input.access?.claude) || !isCodexAccess(input.access?.codex))) bad("access: unknown mode");
   const models = input.models === undefined ? undefined : checkModels(input.models, v2, bad);
+  if (input.language !== undefined && input.language !== "ru" && input.language !== "en") bad("language must be ru or en");
   const registry = registryOf(commands);
   if (typeof input?.text !== "string" || input.text.trim() === "" || input.text.length > 8000) bad("text must be 1..8000 characters");
   if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 32
@@ -468,7 +478,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
     ...(commands ? { commands } : {}), ...(input.workMode ? { workMode: input.workMode } : {}),
     ...(input.mode ? { mode: input.mode } : {}), ...(prepare ? { prepare } : {}), ...(finish ? { finish } : {}),
     ...(input.access ? { access: { claude: input.access.claude, codex: input.access.codex } } : {}),
-    ...(models ? { models } : {})
+    ...(models ? { models } : {}), ...(input.language ? { language: input.language } : {})
   };
 }
 
@@ -1926,6 +1936,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
     const reviewer = action.purpose !== "plan" && action.purpose !== "execute" && byReviewer(st);
     const parts: string[] = [
       `Role: ${action.purpose === "execute" ? "executor" : reviewer ? "reviewer" : "lead"}. Purpose: ${action.purpose}.`,
+      ...(goal.language ? [languageLine(goal.language)] : []),
       `Goal:\n${goal.text}`,
       `Acceptance criteria (fixed; you cannot change them):\n${goal.criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`,
       goal.commands?.length === 0

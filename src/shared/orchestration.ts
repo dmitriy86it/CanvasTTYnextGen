@@ -111,6 +111,7 @@ export interface OrchestrationGoalInput {
   finish?: { commit: boolean; push: boolean; qa: boolean }; // this goal's actions after success, each explicitly chosen
   // journal v2: the model of a role for this goal, over the project setting; null — as in the CLI (nothing is passed)
   models?: Partial<OrchestrationRoleModels>;
+  language?: "ru" | "en"; // the interface language: agents write the texts the person reads in it
 }
 
 export interface OrchestrationCreateRequest {

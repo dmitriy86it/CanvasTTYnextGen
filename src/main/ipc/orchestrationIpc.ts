@@ -54,7 +54,7 @@ export function parseCreate(v: unknown): OrchestrationCreateRequest {
 }
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
-  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models"]);
+  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language"]);
   // A goal names its checks either by catalog ids or (stage 12) by its own commands, then `checks` is [].
   // Stage 13: a goal with a mode may leave its commands to the project profile.
   const checks = (g.commands !== undefined || g.mode !== undefined) && Array.isArray(g.checks) && g.checks.length === 0 ? [] : strings(g.checks, "goal.checks", 16, 64);
@@ -75,12 +75,14 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
     limits = Object.fromEntries(Object.entries(l).map(([k, x]) => [k, int(x, `goal.limits.${k}`, 1)]));
   }
   if (g.reviewPlan !== undefined && typeof g.reviewPlan !== "boolean") bad("goal.reviewPlan must be a boolean");
+  if (g.language !== undefined && g.language !== "ru" && g.language !== "en") bad("goal.language must be ru or en");
   return {
     text: str(g.text, "goal.text", 8000), criteria: strings(g.criteria, "goal.criteria", 32, 500), checks,
     ...(g.reviewPlan !== undefined ? { reviewPlan: g.reviewPlan as boolean } : {}), ...(limits ? { limits } : {}),
     ...(commands !== undefined ? { commands } : {}), ...(g.workMode !== undefined ? { workMode: g.workMode as "project" | "copy" } : {}),
     ...(g.mode !== undefined ? { mode: g.mode as "autopilot" | "steps" } : {}), ...(finish ? { finish } : {}),
-    ...(g.models !== undefined ? { models: roleModels(g.models, "goal.models") } : {})
+    ...(g.models !== undefined ? { models: roleModels(g.models, "goal.models") } : {}),
+    ...(g.language !== undefined ? { language: g.language as "ru" | "en" } : {})
   };
 }
 

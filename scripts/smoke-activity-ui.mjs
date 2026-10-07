@@ -249,7 +249,7 @@ try {
   await app.waitFor(`${q("[data-sum-outcome]")}?.dataset.sumOutcome === "stopped"`, "B's summary: stopped", 20_000);
   expect((await text(q("[data-sum-outcome]"))).includes("цель не достигнута"), "a stopped run is not a success", await text(q("[data-sum-outcome]")));
   // R2: both required commands are listed, neither started
-  expect((await text(q("[data-sum-check-count]")))?.startsWith("Обязательные команды проверки: 0 из 2 прошли"), "R2: the required commands not started are counted", await text(q("[data-sum-check-count]")));
+  expect((await text(q("[data-sum-check-count]")))?.startsWith("Обязательные команды проверки: 2, ещё не запускались"), "R2: the required commands not started are counted", await text(q("[data-sum-check-count]")));
   expect(await app.ev(`[...document.querySelectorAll("[data-check-id]")].map((l) => l.dataset.checkStatus + ":" + l.dataset.checkRuns).join(",")`) === "not_run:0,not_run:0", "R2: each never started, zero attempts",
     await app.ev(`[...document.querySelectorAll("[data-check-id]")].map((l) => l.textContent).join(" | ")`));
   await app.reveal(q('[data-sum="checks"]'));

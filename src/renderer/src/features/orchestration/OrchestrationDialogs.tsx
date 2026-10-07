@@ -253,6 +253,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     criteria: criteria.split("\n").map((c) => c.trim()).filter(Boolean),
     checks: [], commands, workMode, mode,
     reviewPlan: mode === "steps" || reviewPlan,
+    language: locale === "ru" ? "ru" : "en", // the agents write what the person reads in the interface's language
     ...(chosen && (chosen.commit || chosen.push || chosen.qa) ? { finish: chosen } : {}),
     limits: Object.fromEntries(LIMITS.flatMap((kind) => {
       const n = Number(limits[kind]);
@@ -348,9 +349,9 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
         </fieldset>
         <label className="orch-field">
           <span>{t(locale, "orchGoalCommands")}</span>
-          <textarea rows={2} value={commandsText} spellCheck={false} data-orch-commands placeholder="php artisan test"
+          <textarea rows={2} value={commandsText} spellCheck={false} data-orch-commands placeholder={t(locale, "orchGoalCommandsPlaceholder")}
             onChange={(e) => { edited.current = true; setCommandsText(e.target.value); }} />
-          <small className="orch-hint">{t(locale, "orchGoalCommandsHint")}</small>
+          <small className="orch-hint">{t(locale, "orchGoalCommandsHint")}{commandsText.trim() && !edited.current ? ` ${t(locale, "orchGoalCommandsFilled")}` : ""}</small>
           {optionalChecks && <small className="orch-hint" data-orch-commands-optional>{t(locale, "orchCommandsOptional")}</small>}
         </label>
         <details className="orch-advanced">
@@ -392,9 +393,10 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
             </div>
           );
         })()}
-        {!complete && <div className="orch-hint">{t(locale, "orchGoalIncomplete")}</div>}
-        {complete && !ready && <div className="orch-hint" data-orch-not-ready>{t(locale, "orchReadyNotYet")}</div>}
         <div className="orch-form__actions">
+          {/* why Start is off, beside it in the pinned bottom (UX audit PR 2) */}
+          {!complete && <span className="orch-hint orch-form__why" data-orch-incomplete>{t(locale, optionalChecks ? "orchGoalIncompleteNoChecks" : "orchGoalIncomplete")}</span>}
+          {complete && !ready && <span className="orch-hint orch-form__why" data-orch-not-ready>{t(locale, "orchReadyNotYet")}</span>}
           <button type="button" onClick={ui.closeGoal}>{t(locale, "orchCancel")}</button>
           <button type="submit" className="orch-primary" disabled={busy || !complete || !ready}>{busy ? t(locale, "orchSending") : t(locale, "orchStart")}</button>
         </div>
