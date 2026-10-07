@@ -13,6 +13,7 @@ import bringToFrontIcon from "../assets/icons/lucide/bring-to-front.svg";
 import homeIcon from "../assets/icons/lucide/house.svg";
 import imagePlusIcon from "../assets/icons/lucide/image-plus.svg";
 import infoIcon from "../assets/icons/lucide/info.svg";
+import bellIcon from "../assets/icons/lucide/bell.svg";
 import maximizeIcon from "../assets/icons/lucide/square.svg";
 import minusIcon from "../assets/icons/lucide/minus.svg";
 import plusIcon from "../assets/icons/lucide/plus.svg";
@@ -34,6 +35,7 @@ export type UiIconName =
   | "sliders-horizontal"
   | "blocks"
   | "info"
+  | "bell"
   | "home"
   | "zoom-in"
   | "zoom-out"
@@ -74,6 +76,7 @@ const ICONS: Record<UiIconName, string> = {
   "sliders-horizontal": slidersHorizontalIcon,
   blocks: blocksIcon,
   info: infoIcon,
+  bell: bellIcon,
   home: homeIcon,
   "zoom-in": zoomInIcon,
   "zoom-out": zoomOutIcon,

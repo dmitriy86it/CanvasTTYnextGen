@@ -244,10 +244,16 @@ try {
     expect(!shown.actions.some((b) => /Продолжить|Шаг/.test(b)) && /Повтор/.test(shown.next), "disputed (A4): no Resume or Step; the next step says what to decide", shown);
     await new Promise((r) => setTimeout(r, 1000));
     expect((await viewOf(app, runId)).reason === "awaiting_person_decision", "disputed (A4): the autopilot does not decide it", null);
+    // UX audit PR 3: the run waits for the person — the Dock badge says 1 (a hermetic smoke logs it instead of setting it)
+    const badges = [...app.output().matchAll(/\[smoke\] notify badge (\d+)/g)].map((m) => m[1]);
+    expect(badges.at(-1) === "1", "notify (UX PR 3): the Dock badge counts the run waiting for the person", badges.slice(-5));
     await app.ev(`${q("[data-orch-disputed-new]")}.closest("[data-orch-disputed]").scrollIntoView({ block: "start" })`);
     await app.shot("v2-08-disputed-item");
     await app.clickEl(q('[data-orch-disputed-repeat="F1"]'));
     await waitView(app, runId, `v.status === "completed"`, "completed after the decision");
+    await new Promise((r) => setTimeout(r, 500));
+    const after = [...app.output().matchAll(/\[smoke\] notify badge (\d+)/g)].map((m) => m[1]);
+    expect(after.at(-1) === "0", "notify (UX PR 3): the badge is gone once the person decided", after.slice(-5));
     await openTab(app, "summary");
     await app.waitFor(`${q('[data-finding="F1"]')} && true`, "«Замечания»");
     const f1 = await app.ev(`[...document.querySelectorAll('[data-finding="F1"] [data-finding-event]')].map((e) => e.dataset.findingEvent + ":" + (e.dataset.findingBy ?? ""))`);

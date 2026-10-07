@@ -66,3 +66,30 @@ test("checkProcesses names a program outside the allowed folders, and a script a
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// UX audit PR 3 (native-ui flake): only the app's descendants by ppid are judged, and a pid that ended and was taken
+// by an unrelated process (a parallel `npm test`'s node) between the tree and lsof is not judged by the newcomer.
+test("checkProcesses judges only the app's descendants, and never a reused pid by its new program", async () => {
+  const { checkProcesses, descendants } = await import(HELPER);
+  const START = "Tue Oct  7 14:03:01 2026";
+  const rows = [
+    { pid: 10, ppid: 1, start: START, command: "/app/Electron" },
+    { pid: 11, ppid: 10, start: START, command: "/bin/sh -c node --test" },
+    { pid: 12, ppid: 11, start: START, command: "node --test" }, // the app's own check
+    { pid: 13, ppid: 10, start: START, command: "/tmp/codex-mock" },
+    { pid: 20, ppid: 1, start: START, command: "node --test --test-concurrency=1 tests/a.test.mjs" } // npm test, not the app's
+  ];
+  assert.deepEqual(descendants(rows, 10).map((r) => r.pid), [11, 12, 13]);
+  const roots = ["/bin/", "/allowed/node"];
+  const probe = (starts) => ({
+    tree: (root) => descendants(rows, root),
+    executables: () => new Map([[11, "/bin/sh"], [12, "/opt/homebrew/Cellar/node/26.8.1/bin/node"], [13, "/tmp/codex-mock"], [20, "/opt/homebrew/Cellar/node/26.8.1/bin/node"]]),
+    startTimes: () => new Map([[11, START], [12, starts], [13, START], [20, START]])
+  });
+  // pid 12 is still the app's check: its foreign node is named; npm test's (pid 20) never is
+  assert.deepEqual(checkProcesses(10, roots, new Set(), probe(START)).map((f) => f.pid), [12, 13]);
+  // pid 12 ended and was reused before lsof (another start time): not judged, and looked at again next sample
+  const seen = new Set();
+  assert.deepEqual(checkProcesses(10, roots, seen, probe("Tue Oct  7 14:05:44 2026")).map((f) => f.pid), [13]);
+  assert.equal(seen.has("12 node --test"), false);
+});

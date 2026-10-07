@@ -33,6 +33,7 @@ import { OrchestrationOverlays } from "../orchestration/OrchestrationDialogs";
 import { activityRuns } from "../orchestration/runStatus";
 import { useAgentCanvasUi } from "../orchestration/useAgentCanvasUi";
 import { useOrchestration } from "../orchestration/useOrchestration";
+import { NotifyBanner, useRunNotifications } from "../orchestration/useRunNotifications";
 import { PluginCanvasCard } from "../plugins/PluginCanvasCard";
 import { TerminalCard } from "../terminal/TerminalCard";
 import { CanvasCommandPalette } from "./CanvasCommandPalette";
@@ -253,6 +254,14 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     else if (link) agentUi.openPanel(link.linkId, { tab });
     else agentUi.openRunById(runId, tab);
   }, [agentUi, knownWorkspace, orch.canvas, ownerOfRun, workspace]);
+  // UX audit PR 3: a notification names the project (and its workspace where there are several), never a path
+  const noteTitle = useCallback((runId: string): string => {
+    const link = orch.canvas.links.find((l) => l.runIds.includes(runId));
+    const lead = link ? orch.canvas.agents.find((a) => a.agentId === link.fromAgentId) : undefined;
+    const project = lead?.project.split("/").filter(Boolean).at(-1) ?? "Raoden Loom";
+    return manyWorkspaces ? `${placeName(ownerOfRun(runId))} · ${project}` : project;
+  }, [manyWorkspaces, orch.canvas, ownerOfRun, placeName]);
+  const notes = useRunNotifications({ locale: settings.locale, prefs: settings.notifications, runs: orch.runs, activity: orch.activity, title: noteTitle, open: openRunInWorkspace });
   // The run holding the folder and its workspace are main's answer, not rebuilt here from snapshots.
   const folderBusy = useCallback((held: unknown) => {
     const h = folderHolderOf(held, knownWorkspace);
@@ -1205,6 +1214,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
       )}
 
       <OrchestrationOverlays orch={orch} ui={agentUi} locale={settings.locale} defaultProject={settings.lastDirectory} folderBusy={folderBusy} />
+      <NotifyBanner locale={settings.locale} notes={notes.banner} onOpen={notes.openNote} onDismiss={notes.dismiss} />
       <WorkspaceDialogs dialog={wsDialog} controls={workspace} orch={orch} layout={workspaceLayout} locale={settings.locale}
         onClose={() => setWsDialog(null)} onOpenRun={(runId) => openRunInWorkspace(runId)} />
       <BrowserElsewhereDialog controls={workspace} locale={settings.locale} />

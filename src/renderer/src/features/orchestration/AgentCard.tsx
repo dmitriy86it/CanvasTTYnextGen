@@ -7,6 +7,7 @@ import { t, type TranslationKey } from "../../lib/i18n";
 import { snapMove } from "../workspace/snap";
 import type { AgentState } from "./runModel";
 import type { StatusLine } from "./runStatus";
+import type { CardMessage } from "./useAgentCanvasUi";
 
 export const AGENT_CARD_SIZE = { width: 300, height: 222 };
 
@@ -21,7 +22,7 @@ interface AgentCardProps {
   conditions?: string | null; // A2: "N of M conditions met" (runStatus.ts conditionsLine)
   findings?: string | null; // A3: "open blocking: N" (runStatus.ts findingsLine)
   ended: boolean; // its link's latest run has ended: the summary is offered
-  message: string | null;
+  message: CardMessage | null;
   linking: "source" | "target" | null; // keyboard/click linking mode
   linked: boolean;
   hasRun: boolean;
@@ -123,7 +124,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
         {props.conditions && <div className="agent-card__line" data-agent-conditions>{props.conditions}</div>}
         {props.findings && <div className="agent-card__line" data-agent-findings>{props.findings}</div>}
         {props.statusTime && <div className="agent-card__line agent-card__line--time" data-agent-time>{props.statusTime}</div>}
-        {message && <div className="agent-card__message" role="alert">{message}</div>}
+        {message && <div className={`agent-card__message agent-card__message--${message.tone}`} role={message.tone === "error" ? "alert" : "status"}>{message.text}</div>}
         {confirming && (
           <div className="agent-card__confirm" role="alertdialog" aria-label={t(locale, "orchDeleteCard")}>
             <span>{t(locale, "orchDeleteCardLinked")}</span>

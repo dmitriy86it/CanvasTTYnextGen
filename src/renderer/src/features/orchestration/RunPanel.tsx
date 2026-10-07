@@ -44,6 +44,7 @@ import {
   headlineKey,
   pauseCause,
   glossarySplit,
+  changesFirst,
   idLabel,
   idNumber,
   factLines,
@@ -649,7 +650,7 @@ function SessionEnvironment({ locale, entries }: { locale: LocaleId; entries: re
 
 // Where a statement comes from: the application's own journal, or an agent's words.
 function Src({ locale, kind }: { locale: LocaleId; kind: "journal" | "agent" }): React.JSX.Element {
-  return <small className={`orch-src orch-src--${kind}`} data-src={kind}>{t(locale, kind === "journal" ? "orchSumConfirmed" : "orchSumClaim")}</small>;
+  return <small className={`orch-src orch-src--${kind}`} data-src={kind}><Termed locale={locale} text={t(locale, kind === "journal" ? "orchSumConfirmed" : "orchSumClaim")} /></small>;
 }
 // Nothing recorded — or, while the journal is only partly read, nothing recorded in the part read so far.
 function NotSpecified({ locale, incomplete }: { locale: LocaleId; incomplete: boolean }): React.JSX.Element {
@@ -944,7 +945,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
         {view.workMode ? (
           <p title={view.workDir}>
             {view.workMode === "worktree"
-              ? <>{t(locale, "orchWhereWorktree")} <code>{progress?.branch ?? "?"}</code> · <code>{view.workDir}</code></>
+              ? <>{t(locale, "orchWhereWorktree")} <code><Termed locale={locale} text={progress?.branch ?? "?"} /></code> · <code>{view.workDir}</code></>
               : <>{t(locale, view.workMode === "project" ? "orchWhereProject" : "orchWhereCopy")} <code>{view.workDir}</code></>}
           </p>
         ) : missing}
@@ -1380,11 +1381,12 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
             {view.workMode && (
               <p className={`orch-summary__where orch-summary__where--${view.workMode}`} data-orch-where={view.workMode} title={view.workDir}>
                 {view.workMode === "worktree"
-                  ? <>{t(locale, "orchWhereWorktree")} <code>{progress?.branch ?? "?"}</code> · <code>{view.workDir}</code></>
+                  ? <>{t(locale, "orchWhereWorktree")} <code><Termed locale={locale} text={progress?.branch ?? "?"} /></code> · <code>{view.workDir}</code></>
                   : <>{t(locale, view.workMode === "project" ? "orchWhereProject" : "orchWhereCopy")} <code>{view.workDir}</code></>}
               </p>
             )}
-            {!busy && onNewGoal && !view.newer && <button type="button" className="orch-primary" disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
+            {changesFirst(view, activity.entries) && <button type="button" className="orch-primary" data-orch-view-changes onClick={() => onView({ tab: "changes" })}>{t(locale, "orchViewChanges")}</button>}
+            {!busy && onNewGoal && !view.newer && <button type="button" className={changesFirst(view, activity.entries) ? undefined : "orch-primary"} data-orch-new-goal disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
               onClick={onNewGoal}>{t(locale, "orchNewGoal")}</button>}
             {entry.hint && actions.some(off) && <div className="orch-hint" data-orch-platform-hint>{t(locale, entry.hint)}</div>}
             {sending && <div className="orch-hint">{t(locale, "orchSending")}</div>}
@@ -1439,12 +1441,12 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                   <h4>{t(locale, "orchResult")}</h4>
                   <ul>
                     {factLines(locale, view, facts, journal?.status === "ready").map((f) => (
-                      <li key={f.key} data-fact={f.key} data-orch-result={f.key === "accepted" ? d.finalVerdict ?? undefined : undefined}>{f.label}: <b>{f.value}</b></li>
+                      <li key={f.key} data-fact={f.key} data-orch-result={f.key === "accepted" ? d.finalVerdict ?? undefined : undefined}><Termed locale={locale} text={f.label} />: <b>{f.value}</b></li>
                     ))}
                     {view.workMode === "project"
                       ? <li data-fact="in_place">{t(locale, "orchFactInPlace")} — {t(locale, "orchFactInPlaceHint")}</li>
                       : view.workMode === "worktree"
-                        ? <li data-fact="where">{t(locale, "orchResultWhere")}: <code>{progress?.branch ?? "?"}</code> · <code>{view.workDir}</code></li>
+                        ? <li data-fact="where">{t(locale, "orchResultWhere")}: <code><Termed locale={locale} text={progress?.branch ?? "?"} /></code> · <code>{view.workDir}</code></li>
                         : view.workMode === "copy" && <li data-fact="transferred">{t(locale, "orchFactTransferred")}: <b>{t(locale, "orchNo")}</b> — {t(locale, "orchFactTransferredHint")}</li>}
                     {progress?.checks.map((c) => (
                       <li key={c.id} data-fact="check" data-check-status={c.status}><code>{c.title}</code>: <b>{tr(locale, `orchCheck_${c.status}`)}</b>{c.class ? ` (${tr(locale, `orchClass_${c.class}`)})` : ""}</li>

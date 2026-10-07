@@ -10,7 +10,8 @@ import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 import { NO_MODELS, RoleModelsField } from "./RoleModels";
-import { Differences, RunPanel } from "./RunPanel";
+import { Differences, RunPanel, Termed } from "./RunPanel";
+import { commandLike } from "./runModel";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import { outcomeText, type Orchestration } from "./useOrchestration";
 
@@ -320,6 +321,17 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
         <label className="orch-field">
           <span>{t(locale, "orchGoalCriteria")}</span>
           <textarea rows={3} value={criteria} onChange={(e) => setCriteria(e.target.value)} />
+          {criteria.split("\n").some(commandLike) && (
+            <small className="orch-hint orch-hint--warn" data-orch-req-command>
+              {t(locale, "orchGoalReqLooksLikeCommand")}{" "}
+              <button type="button" data-orch-req-move onClick={() => {
+                const lines = criteria.split("\n");
+                edited.current = true;
+                setCommandsText((c) => [...c.split("\n").filter((l) => l.trim()), ...lines.filter(commandLike).map((l) => l.trim())].join("\n"));
+                setCriteria(lines.filter((l) => !commandLike(l)).join("\n"));
+              }}>{t(locale, "orchGoalReqMove")}</button>
+            </small>
+          )}
         </label>
         <fieldset className="orch-field orch-runmode" data-orch-runmode={mode}>
           <legend>{t(locale, "orchRunMode")}</legend>
@@ -361,7 +373,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
             {(["project", "worktree", "copy"] as const).map((m) => (
               <label key={m} className="orch-check">
                 <input type="radio" name="orch-workmode" value={m} checked={workMode === m} onChange={() => setWorkMode(m)} />
-                <span><b>{tr(locale, `orchWorkMode_${m}`)}</b> — {tr(locale, `orchWorkMode_${m}Hint`)}</span>
+                <span><b><Termed locale={locale} text={tr(locale, `orchWorkMode_${m}`)} /></b> — <Termed locale={locale} text={tr(locale, `orchWorkMode_${m}Hint`)} /></span>
               </label>
             ))}
           </fieldset>

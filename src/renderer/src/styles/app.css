@@ -1048,6 +1048,7 @@ button { border: 0; }
 .agent-card__state--completed_no_checks { background: var(--yellow); } /* a warning, never the completed mark */
 @keyframes agent-pulse { 50% { opacity: .62; } }
 .agent-card__message { padding: .4em .6em; border-radius: 8px; color: white; background: var(--danger); font-size: .88em; }
+.agent-card__message--info { color: var(--text-dark); background: color-mix(in srgb, var(--primary) 70%, white); }
 .agent-card__confirm { position: absolute; inset: 3.15em 0 0; z-index: 2; padding: .8em; display: flex; flex-direction: column; gap: .5em; border-radius: 0 0 13px 13px; background: var(--surface); }
 .agent-card__actions { margin-top: auto; display: flex; gap: .5em; }
 .agent-card__body button, .agent-link__chip button, .orch-panel button, .orch-form button { padding: .4em .8em; border-radius: 8px; color: var(--text-dark); background: var(--secondary); font-weight: 800; cursor: pointer; }
@@ -1332,3 +1333,11 @@ button { border: 0; }
 .ws-arrange__group legend { padding: 0 4px; font: 700 12px var(--font-mono); }
 .ws-arrange__item { display: flex; align-items: center; gap: 8px; }
 .orch-hint--warn { opacity: 1; display: grid; gap: 6px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, #f5c451 22%, transparent); }
+
+/* UX audit PR 3: the in-window banner where macOS shows no notification */
+.notify-banner { position: fixed; top: calc(var(--titlebar-height) + 12px); left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; gap: 6px; max-width: min(560px, calc(100vw - 32px)); }
+.notify-banner__item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius-lg, 12px); background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); border-left: 4px solid var(--yellow); }
+.notify-banner__item--completed, .notify-banner__item--completed_no_checks { border-left-color: var(--primary); }
+.notify-banner__item--failed { border-left-color: var(--red, #d65c5c); }
+.notify-banner__item > span { flex: 1; min-width: 0; }
+.notify-unavailable { color: var(--text); font-weight: 600; }

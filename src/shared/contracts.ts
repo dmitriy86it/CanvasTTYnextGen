@@ -215,6 +215,9 @@ export interface WorkspacesApi {
   remove(id: string): Promise<WorkspacesResult<WorkspacesState>>;
 }
 
+// Notifications of orchestration runs (UX audit PR 3): which events tell the person, and the Dock.
+export interface NotificationSettings { waiting: boolean; completed: boolean; failed: boolean; dockBadge: boolean; bounce: boolean }
+
 export interface AppSettings {
   locale: LocaleId;
   restoreTerminalSessions: boolean;
@@ -265,6 +268,7 @@ export interface AppSettings {
   browserAgentAccess: boolean;
   browserShowAgentPresence: boolean;
   browserRestoreTabs: boolean;
+  notifications: NotificationSettings;
 }
 
 export interface CreateSessionRequest {
@@ -959,6 +963,14 @@ export interface CanvasTTYApi {
   orchestration: import('./orchestration.ts').OrchestrationApi;
   workspaces: WorkspacesApi;
   appVersion(): Promise<string>;
+  notify: {
+    // shown: false where the system has no notifications; a later refusal comes by onFailed
+    show(note: { runId: string; title: string; body: string }): Promise<{ shown: boolean }>;
+    setBadge(count: number): void;
+    bounce(): void;
+    onClick(listener: (runId: string) => void): () => void;
+    onFailed(listener: (runId: string) => void): () => void;
+  };
   clipboard: {
     readText(): Promise<string>;
     writeText(text: string): void;
@@ -1227,5 +1239,10 @@ export const IPC = {
   windowToggleMaximize: "window:toggle-maximize",
   windowClose: "window:close",
   windowGetState: "window:get-state",
-  windowState: "window:state"
+  windowState: "window:state",
+  notifyShow: "notify:show",
+  notifyBadge: "notify:badge",
+  notifyBounce: "notify:bounce",
+  notifyClick: "notify:click",
+  notifyFailed: "notify:failed"
 } as const;

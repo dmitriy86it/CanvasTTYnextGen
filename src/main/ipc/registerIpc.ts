@@ -1,6 +1,6 @@
 import { extname, isAbsolute } from "node:path";
 import { readFile, stat } from "node:fs/promises";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, shell } from "electron";
 import type { IpcMainEvent, IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import type {
   AppSettings,
@@ -43,6 +43,8 @@ const MEDIA_MIME: Record<string, string> = {
 };
 
 interface Dependencies {
+  // a hermetic smoke of the development build: notifications go to stdout, never to the machine's Notification Center
+  notesToLog?: boolean;
   settings: SettingsStore;
   terminals: TerminalManager;
   limits: LimitsService;
@@ -85,7 +87,8 @@ export function registerIpc({
   closePluginWindows,
   requestPluginLauncher,
   requestPluginCanvas,
-  broadcastPluginStorageChange
+  broadcastPluginStorageChange,
+  notesToLog = false
 }: Dependencies): void {
   // Every channel is available only to the main renderer unless it authenticates its own sender.
   const handleMain = (
@@ -661,6 +664,40 @@ export function registerIpc({
 
   const mainWindow = getMainWindow();
   if (mainWindow) observeWindowState(mainWindow, () => publishWindowState(mainWindow));
+
+  // Orchestration notifications (UX audit PR 3). The renderer decides what to tell (notify.ts); here the system shows
+  // it, and a click brings the window forward and tells the renderer which run to open.
+  const shownNotes = new Set<Notification>(); // held until closed: a collected notification loses its click
+  handleMain(IPC.notifyShow, (_event, note: unknown) => {
+    const n = note as { runId?: unknown; title?: unknown; body?: unknown } | null;
+    if (!n || typeof n.runId !== "string" || !/^[\w-]{1,80}$/.test(n.runId) || typeof n.title !== "string" || typeof n.body !== "string") throw new Error("Invalid notification.");
+    if (notesToLog) { console.log(`[smoke] notify ${JSON.stringify({ runId: n.runId, title: n.title, body: n.body })}`); return { shown: true }; }
+    if (!Notification.isSupported()) return { shown: false };
+    const runId = n.runId;
+    const shown = new Notification({ title: n.title.slice(0, 120), body: n.body.slice(0, 240), silent: false });
+    const done = (): void => { shownNotes.delete(shown); };
+    shown.on("click", () => {
+      done();
+      const window = getMainWindow();
+      if (!window || window.isDestroyed()) return;
+      if (window.isMinimized()) window.restore();
+      window.show();
+      window.focus();
+      app.focus({ steal: true });
+      window.webContents.send(IPC.notifyClick, runId);
+    });
+    shown.on("close", done);
+    shown.on("failed", () => { done(); const window = getMainWindow(); if (window && !window.isDestroyed()) window.webContents.send(IPC.notifyFailed, runId); });
+    shownNotes.add(shown);
+    shown.show();
+    return { shown: true };
+  });
+  onMain(IPC.notifyBadge, (_event, count: unknown) => {
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0 || count >= 10_000) return;
+    if (notesToLog) console.log(`[smoke] notify badge ${count}`);
+    else app.setBadgeCount(count);
+  });
+  onMain(IPC.notifyBounce, () => { if (notesToLog) console.log("[smoke] notify bounce"); else app.dock?.bounce("informational"); });
 
   onMain(IPC.windowMinimize, (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
   handleMain(IPC.windowToggleMaximize, (event) => {

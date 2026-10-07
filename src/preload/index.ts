@@ -58,6 +58,13 @@ const api: CanvasTTYApi = {
     completeOpenBrowser: (requestId, ok) => ipcRenderer.send(IPC.evenG2BrowserResponse, { requestId, ok })
   },
   appVersion: () => ipcRenderer.invoke(IPC.appVersion),
+  notify: {
+    show: (note) => ipcRenderer.invoke(IPC.notifyShow, note),
+    setBadge: (count: number) => ipcRenderer.send(IPC.notifyBadge, count),
+    bounce: () => ipcRenderer.send(IPC.notifyBounce),
+    onClick: (listener) => subscribe<string>(IPC.notifyClick, listener),
+    onFailed: (listener) => subscribe<string>(IPC.notifyFailed, listener)
+  },
   clipboard: {
     readText: () => ipcRenderer.invoke(IPC.clipboardRead),
     writeText: (text: string) => ipcRenderer.send(IPC.clipboardWrite, text)

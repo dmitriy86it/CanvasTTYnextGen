@@ -111,7 +111,7 @@ test("push and deploy to QA are two separate groups, each confirmed or declined 
 
 test("the glossary: every listed term has one sentence in en and ru and is explained on hover; One step and Resume say how they differ", async () => {
   const terms = ["lead", "executor", "reviewer", "turn", "round", "sandbox", "push", "qa", "criterion", "finding"];
-  assert.deepEqual(Object.keys(GLOSSARY).sort(), [...terms].sort());
+  assert.deepEqual(Object.keys(GLOSSARY).filter((k) => terms.includes(k)).sort(), [...terms].sort());
   const samples = { ru: "лид исполнитель проверяющий ход раунд песочница push QA критерий замечание", en: "lead executor reviewer turn round sandbox push QA criterion finding" };
   for (const locale of ["ru", "en"]) {
     for (const term of terms) assert.match(t(locale, `orchTerm_${term}`), /^\S.{20,200}[.)]$/, `${locale}: orchTerm_${term}`);

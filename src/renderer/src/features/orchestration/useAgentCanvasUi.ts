@@ -15,6 +15,8 @@ export type PanelRole = "lead" | "executor" | "reviewer" | "check";
 // runId: a run opened by id (a workspace's history, a link that is gone); absent: the link's latest run.
 export interface PanelState { linkId: string | null; runId?: string; tab: PanelTab; role: PanelRole; focus: number }
 
+export interface CardMessage { text: string; tone: "error" | "info" }
+
 export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspaceId: string) {
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [createAt, setCreateAt] = useState<{ provider: OrchestrationProviderKind; point: Point } | null>(null);
@@ -22,17 +24,19 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
   const [panel, setPanel] = useState<PanelState | null>(null);
   const panelLinkId = panel?.linkId ?? null;
   const focusCount = useRef(0);
-  const [messages, setMessages] = useState<Record<string, string>>({});
+  const [messages, setMessages] = useState<Record<string, CardMessage>>({});
   // A link or card id is kept across a transport failure, so the retry names the same object.
   const ids = useRef(createIdKeeper(() => crypto.randomUUID())).current;
 
   // A refusal stays on the card for a while, then goes; the next action on the card replaces it.
-  const say = useCallback((agentId: string, text: string | null): void => {
+  // UX audit PR 3: what only informs (the cards are already linked) is not drawn as an error.
+  const say = useCallback((agentId: string, text: string | null, tone: CardMessage["tone"] = "error"): void => {
+    const said = text ? { text, tone } : null;
     setMessages((m) => {
       const { [agentId]: _, ...rest } = m;
-      return text ? { ...rest, [agentId]: text } : rest;
+      return said ? { ...rest, [agentId]: said } : rest;
     });
-    if (text) window.setTimeout(() => setMessages((m) => (m[agentId] === text ? (({ [agentId]: _, ...rest }) => rest)(m) : m)), 8000);
+    if (said) window.setTimeout(() => setMessages((m) => (m[agentId] === said ? (({ [agentId]: _, ...rest }) => rest)(m) : m)), 8000);
   }, []);
 
   const connect = useCallback(async (fromAgentId: string, toAgentId: string): Promise<void> => {
@@ -43,7 +47,7 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
     linkTrace("createLink.result", { kind: outcome.kind, code: "code" in outcome ? outcome.code : null });
     if (outcome.kind !== "transport") ids.settle(key);
     const text = outcomeText(locale, outcome);
-    say(fromAgentId, text);
+    say(fromAgentId, text, outcome.kind === "refused" && outcome.code === "link_duplicate" ? "info" : "error");
     if (toAgentId !== fromAgentId) say(toAgentId, null);
   }, [ids, locale, orch, say]);
 
