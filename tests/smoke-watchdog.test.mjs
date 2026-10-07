@@ -80,10 +80,11 @@ test("checkProcesses judges only the app's descendants, and never a reused pid b
     { pid: 20, ppid: 1, start: START, command: "node --test --test-concurrency=1 tests/a.test.mjs" } // npm test, not the app's
   ];
   assert.deepEqual(descendants(rows, 10).map((r) => r.pid), [11, 12, 13]);
-  const roots = ["/bin/", "/allowed/node"];
+  // paths that exist nowhere: the check resolves links (on Linux /bin/sh is /usr/bin/dash), these stay as they are
+  const roots = ["/allowed/bin/", "/allowed/node"];
   const probe = (starts) => ({
     tree: (root) => descendants(rows, root),
-    executables: () => new Map([[11, "/bin/sh"], [12, "/opt/homebrew/Cellar/node/26.8.1/bin/node"], [13, "/tmp/codex-mock"], [20, "/opt/homebrew/Cellar/node/26.8.1/bin/node"]]),
+    executables: () => new Map([[11, "/allowed/bin/sh"], [12, "/opt/homebrew/Cellar/node/26.8.1/bin/node"], [13, "/tmp/codex-mock"], [20, "/opt/homebrew/Cellar/node/26.8.1/bin/node"]]),
     startTimes: () => new Map([[11, START], [12, starts], [13, START], [20, START]])
   });
   // pid 12 is still the app's check: its foreign node is named; npm test's (pid 20) never is
