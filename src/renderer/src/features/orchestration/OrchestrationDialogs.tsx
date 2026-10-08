@@ -561,8 +561,9 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   );
 }
 
-export function OrchestrationOverlays({ orch, ui, locale, defaultProject, folderBusy }: {
+export function OrchestrationOverlays({ orch, ui, locale, defaultProject, folderBusy, taskOfRun }: {
   orch: Orchestration; ui: AgentCanvasUi; locale: LocaleId; defaultProject: string; folderBusy?: FolderBusy;
+  taskOfRun?(runId: string): { key: string; title: string } | null; // B2: the board task a run works on
 }): React.JSX.Element {
   const panelLink = orch.canvas.links.find((l) => l.linkId === ui.panelLinkId) ?? null;
   // A run opened by id stays open without its link; a link's panel shows the link's latest run.
@@ -574,7 +575,8 @@ export function OrchestrationOverlays({ orch, ui, locale, defaultProject, folder
       {ui.createAt && <AgentCreateDialog key={`${ui.createAt.provider}:${ui.createAt.point.x}:${ui.createAt.point.y}`} ui={ui} locale={locale} defaultProject={defaultProject} />}
       {ui.goalLinkId && <GoalDialog key={ui.goalLinkId} orch={orch} ui={ui} locale={locale} folderBusy={folderBusy} />}
       {ui.panel && (panelLink || ui.panel.runId) && <RunPanel key={ui.panel.runId ?? panelLink?.linkId} orch={orch} runId={panelRunId} locale={locale} panel={ui.panel}
-        onClose={ui.closePanel} onNewGoal={panelLink && latestOfLink ? () => ui.openGoal(panelLink.linkId) : null} onView={ui.setPanelView} />}
+        onClose={ui.closePanel} onNewGoal={panelLink && latestOfLink ? () => ui.openGoal(panelLink.linkId) : null} onView={ui.setPanelView}
+        task={panelRunId ? taskOfRun?.(panelRunId) ?? null : null} />}
     </>
   );
 }

@@ -19,10 +19,12 @@ export function useBoard(orch: Orchestration) {
     if (r.ok) { setView(r.value); setFailed(null); } else setFailed(r.code);
   }, [api]);
   // a run that changes (status, phase, permission) changes its task: read again, at most every 300 ms
+  const runs = orch.runs;
   useEffect(() => {
+    if (!runs) return;
     const id = window.setTimeout(() => void reload(), 300);
     return () => window.clearTimeout(id);
-  }, [orch.runs, reload]);
+  }, [runs, reload]);
 
   const statuses = useMemo(() => (view ? boardStatuses(view.board, view.facts) : new Map<string, TaskStatus>()), [view]);
   // the task of a run (agent cards, the summary): from the facts main read in its goal

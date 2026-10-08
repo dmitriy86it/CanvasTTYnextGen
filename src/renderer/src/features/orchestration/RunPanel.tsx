@@ -992,6 +992,7 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
 type RunPanelProps = {
   orch: Orchestration; runId: string | null; locale: LocaleId; panel: PanelState;
   onClose(): void; onNewGoal: (() => void) | null; onView(next: { tab?: PanelTab; role?: PanelRole }): void;
+  task?: { key: string; title: string } | null; // B2: the board task of the run — the summary starts with it
 };
 
 // «Забрать результат»: a new branch in the project (the safe one), or the patch applied to the working folder when it fits
@@ -1215,7 +1216,7 @@ function RaiseLimit({ locale, cost, budget, primary, sending, onRaise, children 
   );
 }
 
-function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onView }: RunPanelProps): React.JSX.Element {
+function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onView, task }: RunPanelProps): React.JSX.Element {
   const state = runId ? orch.runs[runId] ?? null : null;
   const view: OrchestrationRunView | null = state?.view ?? null;
   const activity = (runId && orch.activity[runId]) || { entries: [], gaps: [], firstId: 0, status: "loading" as const, resyncs: 0 };
@@ -1402,6 +1403,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
         <>
           <section ref={summary} tabIndex={-1} className={`orch-summary orch-summary--${head.headline} orch-panel__status orch-panel__status--${view.status}${flash ? " orch-summary--flash" : ""}${panel.tab !== "overview" ? " orch-summary--compact" : ""}`}
             role="status" aria-live="polite" data-orch-summary data-headline={head.headline}>
+            {task && <div className="orch-summary__task" data-orch-task={task.key} title={task.title}>{tr(locale, "boardTask")} {task.key} · {task.title}</div>}
             <div className="orch-summary__headline">
               <strong data-orch-what><Termed locale={locale} text={pause ? pause.what : headlineText(locale, view, activity.entries)} /></strong>
               {view.reason && <span data-orch-reason><Termed locale={locale} text={pause ? pause.why : reasonText(locale, view, activity.entries)} /></span>}

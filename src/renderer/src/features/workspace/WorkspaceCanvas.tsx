@@ -29,6 +29,8 @@ import { RadialLauncher } from "../launcher/QuickRadialMenu";
 import { StickyNoteCard } from "../notes/StickyNoteCard";
 import { stickyNoteAtPoint } from "../notes/stickyNoteBounds";
 import { AgentScene } from "../orchestration/AgentScene";
+import { BOARD_SIZE, BoardCard } from "../orchestration/BoardCard";
+import { useBoard } from "../orchestration/useBoard";
 import { OrchestrationOverlays } from "../orchestration/OrchestrationDialogs";
 import { activityRuns } from "../orchestration/runStatus";
 import { useAgentCanvasUi } from "../orchestration/useAgentCanvasUi";
@@ -71,6 +73,7 @@ import {
 import { boundsIntersect } from "./minimapGeometry";
 import {
   agentLayerId,
+  boardLayerId,
   browserLayerId,
   noteLayerId,
   parseCanvasLayerId,
@@ -208,6 +211,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
   // Orchestration agent cards live in main (stage-8-contract.md §2), not in settings.
   const orch = useOrchestration();
   const agentUi = useAgentCanvasUi(orch, settings.locale, workspace.activeId);
+  // B2: the task board; its place on this workspace's canvas is kept in board.json (absent: not shown)
+  const board = useBoard(orch);
+  const boardPlace = board.view?.board.places?.[workspace.activeId] ?? null;
   // Project workspaces (workspaces-spec.md §5–§6): this canvas draws the active workspace's agents; the widget, the
   // switcher's counts and the history read every workspace from the same state.
   const knownWorkspace = useMemo(() => knownWorkspaces(workspace.state), [workspace.state]);
@@ -393,8 +399,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     ...renderedPluginCanvas.filter((instance) => renderablePluginIds.has(instance.id)).map((instance) => pluginLayerId(instance.id)),
     ...(renderedBrowserCanvas ? [browserLayerId] : []),
     ...renderedStickyNotes.map((note) => noteLayerId(note.id)),
-    ...visibleAgents.map((card) => agentLayerId(card.agentId))
-  ], [visibleAgents, renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
+    ...visibleAgents.map((card) => agentLayerId(card.agentId)),
+    ...(boardPlace ? [boardLayerId(workspace.activeId)] : [])
+  ], [boardPlace, workspace.activeId, visibleAgents, renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
   const [layerOrder, setLayerOrder] = useState<string[]>(activeLayerIds);
   useEffect(() => {
     setLayerOrder((current) => reconcileCanvasLayerOrder(current, activeLayerIds));
@@ -411,8 +418,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     if (renderedBrowserCanvas) result.set(browserLayerId, renderedBrowserCanvas);
     for (const note of renderedStickyNotes) result.set(noteLayerId(note.id), note);
     for (const card of visibleAgents) result.set(agentLayerId(card.agentId), card.bounds);
+    if (boardPlace) result.set(boardLayerId(workspace.activeId), boardPlace);
     return result;
-  }, [visibleAgents, renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
+  }, [boardPlace, workspace.activeId, visibleAgents, renderablePluginIds, renderedBrowserCanvas, renderedPluginCanvas, renderedSessions, renderedStickyNotes]);
   const browserOccluded = renderedBrowserCanvas !== null
     && canvasLayerIsOccluded(browserLayerId, layerOrder, boundsByLayer);
   // Every window on the canvas, in the order they are rendered: terminals, plugin canvases, browser, notes, agents.
@@ -421,7 +429,8 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     ...renderedPluginCanvas.filter((instance) => renderablePluginIds.has(instance.id)),
     ...(renderedBrowserCanvas ? [renderedBrowserCanvas] : []),
     ...renderedStickyNotes,
-    ...visibleAgents.map((card) => card.bounds)
+    ...visibleAgents.map((card) => card.bounds),
+    ...(boardPlace ? [boardPlace] : [])
   ];
 
   const homeBounds: SessionBounds = {
@@ -490,9 +499,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
       else if (ref.kind === "plugin" && ref.targetId !== null) onPluginCanvasBoundsChange(ref.targetId, moved);
       else if (ref.kind === "note" && ref.targetId !== null) onStickyNoteBoundsChange(ref.targetId, moved);
       else if (ref.kind === "agent" && ref.targetId !== null) orch.moveAgent(ref.targetId, moved);
+      else if (ref.kind === "board" && ref.targetId !== null) void board.place(ref.targetId, moved);
       else if (ref.kind === "browser") onBrowserBoundsChange({ ...settings.browserCanvas, ...moved });
     }
-  }, [boundsByLayer, homeBounds, onBrowserBoundsChange, onPluginCanvasBoundsChange, orch.moveAgent,
+  }, [board.place, boundsByLayer, homeBounds, onBrowserBoundsChange, onPluginCanvasBoundsChange, orch.moveAgent,
     onSessionBoundsChange, onStickyNoteBoundsChange, renderedCanvasRegions, settings.browserCanvas, settings.snapToGrid]);
 
   const focusController = useCanvasWidgetFocus({
@@ -1034,6 +1044,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
             />
           ))}
           <AgentScene
+            taskOfRun={board.taskOfRun}
             orch={sceneOrch}
             ui={agentUi}
             locale={settings.locale}
@@ -1049,6 +1060,28 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
               ...[...boundsByLayer].filter(([id]) => id !== layerId).map(([, bounds]) => bounds)
             ]}
           />
+          {boardPlace && (
+            <BoardCard
+              board={board}
+              orch={sceneOrch}
+              ui={agentUi}
+              locale={settings.locale}
+              workspaceId={workspace.activeId}
+              bounds={withGroupNudge(boardLayerId(workspace.activeId), boardPlace)}
+              zoom={camera.zoom}
+              stackIndex={canvasLayerZIndex(layerOrder, boardLayerId(workspace.activeId))}
+              selected={marqueeSelection.has(boardLayerId(workspace.activeId))}
+              snapEnabled={settings.snapToGrid}
+              snapTargets={[
+                homeBounds,
+                ...renderedCanvasRegions.map((candidate) => ({ position: candidate.position, size: candidate.size })),
+                ...[...boundsByLayer].filter(([id]) => id !== boardLayerId(workspace.activeId)).map(([, bounds]) => bounds)
+              ]}
+              defaultProject={settings.lastDirectory ?? null}
+              onBoundsChange={(next) => void board.place(workspace.activeId, next)}
+              onHide={() => void board.place(workspace.activeId, null)}
+            />
+          )}
         </div>
       </div>
 
@@ -1213,7 +1246,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
         />
       )}
 
-      <OrchestrationOverlays orch={orch} ui={agentUi} locale={settings.locale} defaultProject={settings.lastDirectory} folderBusy={folderBusy} />
+      <OrchestrationOverlays taskOfRun={board.taskOfRun} orch={orch} ui={agentUi} locale={settings.locale} defaultProject={settings.lastDirectory} folderBusy={folderBusy} />
       <NotifyBanner locale={settings.locale} notes={notes.banner} onOpen={notes.openNote} onDismiss={notes.dismiss} />
       <WorkspaceDialogs dialog={wsDialog} controls={workspace} orch={orch} layout={workspaceLayout} locale={settings.locale}
         onClose={() => setWsDialog(null)} onOpenRun={(runId) => openRunInWorkspace(runId)} />
@@ -1221,7 +1254,12 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
 
       <div className="canvas-overlays" ref={overlays}>
         <div className="canvas-overlay-slot canvas-overlay-slot--top-center">
-          <WorkspaceBar controls={workspace} counts={counts} locale={settings.locale} onDialog={openWsDialog} />
+          <WorkspaceBar controls={workspace} counts={counts} locale={settings.locale} onDialog={openWsDialog}
+            board={{ shown: !!boardPlace, toggle: () => {
+              if (boardPlace) { raiseLayer(boardLayerId(workspace.activeId)); return; }
+              const c = viewportCenterWorldPoint();
+              void board.place(workspace.activeId, { position: { x: Math.round(c.x - BOARD_SIZE.width / 2), y: Math.round(c.y - BOARD_SIZE.height / 2) }, size: { ...BOARD_SIZE } });
+            } }} />
         </div>
         {CANVAS_OVERLAY_PLACEMENTS.map((placement) => (
           <div className={`canvas-overlay-slot canvas-overlay-slot--${placement}`} key={placement}>

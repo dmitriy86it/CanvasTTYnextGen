@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { LocaleId, Point, SessionBounds } from "../../../../shared/contracts";
+import type { LocaleId, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationActivityEntry, OrchestrationAgentCard } from "../../../../shared/orchestration";
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { UiIcon } from "../../components/UiIcon";
@@ -24,6 +24,7 @@ interface AgentCardProps {
   conditions?: string | null; // A2: "N of M conditions met" (runStatus.ts conditionsLine)
   findings?: string | null; // A3: "open blocking: N" (runStatus.ts findingsLine)
   cost?: string | null; // UX audit Н7: "Model calls: N · tokens: …" (runStatus.ts costLine)
+  task?: { key: string; title: string } | null; // B2: the board task its run works on, above the line of what it does
   ended: boolean; // its link's latest run has ended: the summary is offered
   message: CardMessage | null;
   linking: "source" | "target" | null; // keyboard/click linking mode
@@ -130,6 +131,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
           {props.statusTime && <span className="agent-card__time" data-agent-time title={props.statusTime}>{props.statusTime}</span>}
         </div>
         {/* the pill already names a held state (paused, ended, waiting for you); the sentence adds what moves */}
+        {props.task && <div className="agent-card__line agent-card__task" data-agent-task={props.task.key} title={props.task.title}>{props.task.key} · {props.task.title}</div>}
         {doing && <div className="agent-card__line agent-card__doing" data-agent-doing title={doing}>{doing}</div>}
         {extra && <div className="agent-card__line" data-agent-now title={extra}>{extra}</div>}
         {facts && (

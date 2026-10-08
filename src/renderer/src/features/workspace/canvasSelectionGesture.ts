@@ -4,7 +4,7 @@ import type { CameraState, Point, SessionBounds } from "../../../../shared/contr
 export const CANVAS_DRAG_THRESHOLD = 3;
 
 /** The kinds of window the canvas renders, side by side, in one scene. */
-export type CanvasLayerKind = "terminal" | "plugin" | "browser" | "note" | "agent";
+export type CanvasLayerKind = "terminal" | "plugin" | "browser" | "note" | "agent" | "board";
 
 /** A canvas layer id decoded into what it names. The browser has no target of its own. */
 export interface CanvasLayerRef {
@@ -31,6 +31,11 @@ export function agentLayerId(id: string): string {
   return `agent:${id}`;
 }
 
+/** The task board of a workspace (B2): one per workspace, named by it. */
+export function boardLayerId(workspaceId: string): string {
+  return `board:${workspaceId}`;
+}
+
 /**
  * The inverse of the layer-id helpers, and the single place that decodes the scheme.
  * Anything that is not one of the layer prefixes — including an id with nothing
@@ -42,7 +47,7 @@ export function parseCanvasLayerId(layerId: string): CanvasLayerRef | null {
   if (separator === -1 || separator === layerId.length - 1) return null;
   const kind = layerId.slice(0, separator);
   const targetId = layerId.slice(separator + 1);
-  if (kind !== "terminal" && kind !== "plugin" && kind !== "note" && kind !== "agent") return null;
+  if (kind !== "terminal" && kind !== "plugin" && kind !== "note" && kind !== "agent" && kind !== "board") return null;
   return { kind, targetId };
 }
 

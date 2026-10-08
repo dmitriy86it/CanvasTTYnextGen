@@ -26,6 +26,7 @@ interface AgentSceneProps {
   groupSelected(layerId: string): boolean;
   withNudge(layerId: string, bounds: SessionBounds): SessionBounds;
   snapTargetsFor(layerId: string): SessionBounds[];
+  taskOfRun?(runId: string): { key: string; title: string } | null; // B2: «T-4 · title» on a card at work
 }
 
 const EMPTY: readonly never[] = [];
@@ -126,6 +127,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             conditions={shown.conditions}
             findings={shown.findings}
             cost={shown.cost}
+            task={view && !TERMINAL_STATUSES.includes(view.status) ? props.taskOfRun?.(view.runId) ?? null : null}
             ended={view !== null && TERMINAL_STATUSES.includes(view.status)}
             message={ui.messages[card.agentId] ?? null}
             linking={ui.linkingFrom === card.agentId ? "source" : ui.linkingFrom && card.role === "executor" ? "target" : null}

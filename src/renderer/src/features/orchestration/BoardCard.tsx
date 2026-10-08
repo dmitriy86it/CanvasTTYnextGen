@@ -4,11 +4,12 @@
 import { useState } from "react";
 import type { LocaleId, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink } from "../../../../shared/orchestration";
-import type { BoardTask, TaskColumn, TaskStatus } from "../../../../shared/taskBoard";
-import { t, type TranslationKey } from "../../lib/i18n";
+import type { BoardTask, TaskColumn } from "../../../../shared/taskBoard";
+import { t } from "../../lib/i18n";
 import { Dialog } from "./OrchestrationDialogs";
 import { ACTIVE_STATUSES } from "./runModel";
-import { conditionsLine, costLine, findingsLine, runStatus } from "./runStatus";
+import { taskLine, tr } from "./boardModel";
+import { conditionsLine, costLine, findingsLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import type { Board } from "./useBoard";
 import { RESIZE_DIRECTIONS, useCardFrame } from "./useCardFrame";
@@ -17,8 +18,6 @@ import type { Orchestration } from "./useOrchestration";
 export const BOARD_SIZE = { width: 1040, height: 560 };
 const LIMITS = { min: { width: 560, height: 320 }, max: { width: 4000, height: 3000 } };
 const COLUMNS: TaskColumn[] = ["queue", "work", "review", "done"];
-const tr = (locale: LocaleId, key: string, vars: Record<string, string | number> = {}): string =>
-  Object.entries(vars).reduce((s, [k, v]) => s.replaceAll(`{${k}}`, String(v)), t(locale, key as TranslationKey) ?? key);
 
 export interface BoardCardProps {
   board: Board;
@@ -35,17 +34,6 @@ export interface BoardCardProps {
   defaultProject: string | null;
   onBoundsChange(bounds: SessionBounds): void;
   onHide(): void;
-}
-
-// One line of a task: «Done» of either kind, else the reason (§4.3), else what its run does now, else «not started».
-export function taskLine(locale: LocaleId, status: TaskStatus, run: { view: Parameters<typeof runStatus>[1]["view"]; entries: Parameters<typeof runStatus>[1]["entries"]; open: boolean } | null, limit: string | null): string {
-  if (status.done) return t(locale, status.done === "accepted" ? "boardDone_accepted" : "boardDone_confirmed");
-  const keys = status.waitsFor.join(", ");
-  if (status.reason === "waits_task" && status.cycle) return tr(locale, "boardReason_cycle", { keys });
-  if (status.reason === "limit_reached" && limit) return `${t(locale, "boardReason_limit_reached")}: ${t(locale, `orchLimit_${limit}` as TranslationKey) ?? limit}`;
-  if (status.reason) return tr(locale, `boardReason_${status.reason}`, { keys, n: status.attempts });
-  if (run && (status.column === "work" || status.column === "review")) return runStatus(locale, { ...run, stageTitles: null, now: Date.now() }).doing;
-  return t(locale, "boardNotStarted");
 }
 
 export function BoardCard(props: BoardCardProps): React.JSX.Element {
@@ -106,8 +94,8 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
           return (
             <section key={column} className={`board-card__column board-card__column--${column}`} data-board-column={column} aria-label={t(locale, `boardCol_${column}`)}>
               <h3>{showArchive && column === "queue" ? t(locale, "boardArchived") : t(locale, `boardCol_${column}`)} <span data-board-count>{items.length}</span></h3>
-              <div role="list" className="board-card__list">
-                {items.length === 0 && <p className="board-card__column-empty">{t(locale, "boardColumnEmpty")}</p>}
+              <ul className="board-card__list">
+                {items.length === 0 && <li className="board-card__column-empty">{t(locale, "boardColumnEmpty")}</li>}
                 {items.map((task) => {
                   const st = board.statuses.get(task.id)!;
                   const runId = st.current;
@@ -120,7 +108,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                   const after = task.dependsOn.length ? tr(locale, "boardAfter", { keys: keysOf(task.dependsOn) }) : null;
                   const archived = !!task.archivedAt;
                   return (
-                    <div key={task.id} role="listitem" className={`board-task board-task--${st.column}${st.done ? ` board-task--done-${st.done}` : ""}`}
+                    <li key={task.id} className={`board-task board-task--${st.column}${st.done ? ` board-task--done-${st.done}` : ""}`}
                       data-board-task={task.key} data-board-task-column={st.column} data-board-done={st.done ?? undefined} data-board-reason={st.reason ?? undefined}>
                       <button type="button" className="board-task__title" aria-label={`${task.key} ${task.title}. ${line}`}
                         onClick={() => (runId ? ui.openRunById(runId) : setForm({ task }))} title={task.title}>
@@ -128,7 +116,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                       </button>
                       <div className="board-task__line" data-board-line title={line}>
                         {st.done && <span className={`board-task__badge board-task__badge--${st.done}`} aria-hidden="true">{st.done === "confirmed" ? "✓" : "✋"}</span>}
-                        {line}
+                        <span data-board-line-text>{line}</span>
                       </div>
                       {facts && <div className="board-task__line board-task__facts" title={facts}>{facts}</div>}
                       {after && <div className="board-task__line" data-board-after title={after}>{after}</div>}
@@ -143,7 +131,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                             const f = failure(r);
                             if (f) say(task.id, f);
                           }}>{t(locale, "boardAcceptConfirm")}</button>
-                          <button type="button" autoFocus onClick={() => setAccepting(null)}>{t(locale, "orchCancel")}</button>
+                          <button type="button" onClick={() => setAccepting(null)}>{t(locale, "orchCancel")}</button>
                         </div>
                       )}
                       {!readOnly && (
@@ -163,10 +151,10 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                           )}
                         </div>
                       )}
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             </section>
           );
         })}
