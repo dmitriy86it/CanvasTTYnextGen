@@ -43,7 +43,7 @@ export function createOrchestrationClient(ipc: OrchestrationIpc, platform: strin
     text: (runId, sha256) => ipc.invoke(IPC.orchestrationText, runId, sha256),
     canvas: () => ipc.invoke(IPC.orchestrationCanvas),
     createAgent: (input) => ipc.invoke(IPC.orchestrationAgentCreate, input),
-    moveAgent: (agentId, bounds) => ipc.invoke(IPC.orchestrationAgentMove, agentId, bounds),
+    moveAgent: (agentId, bounds, expanded) => ipc.invoke(IPC.orchestrationAgentMove, agentId, bounds, expanded),
     deleteAgent: (agentId) => ipc.invoke(IPC.orchestrationAgentDelete, agentId),
     moveAgentGroup: (agentIds, workspaceId) => ipc.invoke(IPC.orchestrationAgentGroupMove, agentIds, workspaceId),
     createLink: (input) => ipc.invoke(IPC.orchestrationLinkCreate, input),

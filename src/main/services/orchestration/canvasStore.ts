@@ -185,8 +185,8 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
         return { next: { ...c, agents: [...c.agents, card] }, value: card };
       }),
 
-    moveAgent: (agentId: string, bounds: OrchestrationBounds) => change<OrchestrationAgentCard>(async (c) => {
-      const card = { ...agentOf(c, agentId), bounds: checkBounds(bounds) };
+    moveAgent: (agentId: string, bounds: OrchestrationBounds, expanded?: OrchestrationBounds["size"]) => change<OrchestrationAgentCard>(async (c) => {
+      const card = { ...agentOf(c, agentId), bounds: checkBounds(bounds), ...(expanded ? { expanded: checkBounds({ position: { x: 0, y: 0 }, size: expanded }).size } : {}) };
       return { next: { ...c, agents: c.agents.map((a) => (a.agentId === agentId ? card : a)) }, value: card };
     }),
 

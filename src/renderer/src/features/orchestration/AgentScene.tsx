@@ -28,6 +28,7 @@ interface AgentSceneProps {
   snapTargetsFor(layerId: string): SessionBounds[];
 }
 
+const EMPTY: readonly never[] = [];
 const rightMid = (b: SessionBounds): Point => ({ x: b.position.x + b.size.width, y: b.position.y + b.size.height / 2 });
 const leftMid = (b: SessionBounds): Point => ({ x: b.position.x, y: b.position.y + b.size.height / 2 });
 const rect = (b: SessionBounds) => ({ x: b.position.x, y: b.position.y, width: b.size.width, height: b.size.height });
@@ -119,6 +120,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             stackIndex={props.zIndexOf(layerId)}
             state={cardState(card, link)}
             status={shown.status}
+            activity={view ? orch.activity[view.runId]?.entries ?? EMPTY : EMPTY}
             pause={view ? viewPauseLabel(locale, view, orch.activity[view.runId]?.entries ?? []) : null}
             statusTime={shown.time}
             conditions={shown.conditions}
@@ -132,7 +134,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             selected={props.groupSelected(layerId)}
             snapEnabled={props.snapEnabled}
             snapTargets={props.snapTargetsFor(layerId)}
-            onBoundsChange={(agentId, next) => orch.moveAgent(agentId, next)}
+            onBoundsChange={(agentId, next, expanded) => orch.moveAgent(agentId, next, expanded)}
             onDelete={(agentId) => void ui.deleteAgent(agentId)}
             portDisabledHint={entry.hint ? t(locale, entry.hint) : undefined}
             onPortActivate={(agentId) => { if (!entry.disabled) ui.setLinkingFrom(ui.linkingFrom === agentId ? null : agentId); }}

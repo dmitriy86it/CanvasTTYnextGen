@@ -291,11 +291,11 @@ function phaseText(locale: LocaleId, p: ParticipantState, now: number): string {
 // ---------- activity feed ----------
 
 const LOG_KINDS = new Set(["stderr", "error", "process_started", "process_exited", "usage", "truncated", "session", "check_output", "turn_finished", "refusal"]);
-const FEED_KINDS = new Set(["task_sent", "process_started", "process_exited", "session", "thinking", "message", "tool_started", "tool_finished", "file_read",
+export const FEED_KINDS = new Set(["task_sent", "process_started", "process_exited", "session", "thinking", "message", "tool_started", "tool_finished", "file_read",
   "file_changed", "subagent", "refusal", "error", "turn_finished", "check_started", "check_finished", "status", "truncated",
   "permission_requested", "permission_decided", "permission_applied", "prepare_started", "prepare_finished", "external_action", "report_note"]);
 
-function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: readonly OrchestrationActivityEntry[]): string {
+export function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: readonly OrchestrationActivityEntry[]): string {
   const d = e.detail ?? {};
   switch (e.kind) {
     case "thinking": return tr(locale, "orchAct_thinking");
@@ -347,7 +347,7 @@ function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: re
 }
 
 // A structured answer a CLI wrote as its message (a report as JSON): shown as text and lists, never as raw JSON.
-function structured(e: OrchestrationActivityEntry): ReportParts | null {
+export function structured(e: OrchestrationActivityEntry): ReportParts | null {
   if (e.kind !== "message" || !/^\s*[[{]/.test(e.text)) return null;
   const p = reportParts(e.text);
   return p.text === null ? p : null;

@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { LocaleId, Point } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink, OrchestrationProviderKind } from "../../../../shared/orchestration";
-import { AGENT_CARD_SIZE } from "./AgentCard";
+import { AGENT_CARD_SIZE } from "./agentCardGeometry";
 import { linkTrace } from "./linkTrace";
 import { createIdKeeper, TERMINAL_STATUSES } from "./runModel";
 import { outcomeText, type Orchestration } from "./useOrchestration";

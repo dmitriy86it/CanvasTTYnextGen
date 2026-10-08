@@ -498,6 +498,7 @@ export interface OrchestrationAgentCard {
   bounds: OrchestrationBounds;
   createdAt: string;
   workspaceId?: string; // absent: the common canvas (cards made before workspaces)
+  expanded?: { width: number; height: number }; // the size "Expand" returns to (1.5.13); absent: the default expanded size
 }
 export interface OrchestrationAgentLink {
   linkId: string;
@@ -557,7 +558,8 @@ export interface OrchestrationApi {
   text(runId: string, sha256: string): Promise<OrchestrationResult<{ text: string }>>;
   canvas(): Promise<OrchestrationResult<OrchestrationCanvas>>;
   createAgent(input: { agentId: string; provider: OrchestrationProviderKind; project: string; bounds: OrchestrationBounds; workspaceId: string }): Promise<OrchestrationResult<OrchestrationAgentCard>>;
-  moveAgent(agentId: string, bounds: OrchestrationBounds): Promise<OrchestrationResult<OrchestrationAgentCard>>;
+  // expanded: the size "Expand" returns to — undefined keeps the saved one
+  moveAgent(agentId: string, bounds: OrchestrationBounds, expanded?: OrchestrationBounds["size"]): Promise<OrchestrationResult<OrchestrationAgentCard>>;
   deleteAgent(agentId: string): Promise<OrchestrationResult<null>>;
   // Moves a whole linked group to another workspace; agentIds must be exactly the group the person saw. Refused while
   // one of its links has a run that is not finished (paused included). The owners of its runs stay.
