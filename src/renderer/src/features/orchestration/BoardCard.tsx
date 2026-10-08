@@ -240,6 +240,7 @@ function TaskForm({ locale, task, tasks, projects, onClose, onSave, onDelete }: 
           </fieldset>
         )}
         {error && <p className="orch-error" role="alert">{error}</p>}
+        {!complete && <p className="orch-hint" data-board-form-incomplete>{t(locale, "boardFormIncomplete")}</p>}
         <div className="orch-actions">
           {onDelete && <button type="button" className="orch-danger" data-board-delete onClick={async () => setError(await onDelete())}>{t(locale, "boardDelete")}</button>}
           <button type="button" onClick={onClose}>{t(locale, "orchCancel")}</button>

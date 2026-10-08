@@ -1884,7 +1884,7 @@ const ru = {
   boardReason_waits_result: "Результат {keys} не забран",
   boardReason_last_stopped: "Последний запуск остановлен (попытка {n})",
   boardReason_last_failed: "Последний запуск завершился ошибкой (попытка {n})",
-  boardReason_no_checks: "Завершено без проверок: команды проверки не заданы и не запускались. Примите результат или запустите снова",
+  boardReason_no_checks: "Завершено без проверок: команды проверки не заданы и не запускались. Примите результат или запустите снова — команду проверки можно указать в окне запуска",
   boardReason_stopping: "Останавливается",
   boardReason_run_newer: "Создан более новой версией — только просмотр",
   boardReason_paused_other: "На паузе",
@@ -1921,6 +1921,7 @@ const ru = {
   boardTaskOf: "Задача {key}: {title}",
   boardByAgents: "по отметкам агентов",
   boardTaskFrom: "Задача с доски",
+  boardFormIncomplete: "Чтобы сохранить, заполните название, что сделать и хотя бы одно требование.",
   boardAcceptNext: "Дальше пойдут: {keys}.",
   boardAnswer: "Ответить на запрос",
   boardNoOtherTasks: "Других задач пока нет — связь можно задать позже, в «Изменить»."
@@ -3809,7 +3810,7 @@ const en: Record<keyof typeof ru, string> = {
   boardReason_waits_result: "The result of {keys} is not taken",
   boardReason_last_stopped: "The last run was stopped (attempt {n})",
   boardReason_last_failed: "The last run failed (attempt {n})",
-  boardReason_no_checks: "Completed without checks: no check commands were set or run. Accept the result or run again",
+  boardReason_no_checks: "Completed without checks: no check commands were set or run. Accept the result or run again — a check command can be set in the start window",
   boardReason_stopping: "Stopping",
   boardReason_run_newer: "Made by a newer version — view only",
   boardReason_paused_other: "Paused",
@@ -3846,6 +3847,7 @@ const en: Record<keyof typeof ru, string> = {
   boardTaskOf: "Task {key}: {title}",
   boardByAgents: "by the agents' marks",
   boardTaskFrom: "Task from the board",
+  boardFormIncomplete: "To save, fill in the title, what to do and at least one requirement.",
   boardAcceptNext: "Next to go: {keys}.",
   boardAnswer: "Answer the request",
   boardNoOtherTasks: "No other tasks yet — a link can be set later, in “Edit”."

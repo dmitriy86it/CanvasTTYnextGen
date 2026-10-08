@@ -1423,3 +1423,4 @@ button { border: 0; }
 .workspace-bar__board[aria-pressed="true"] { background: color-mix(in srgb, var(--primary) 40%, transparent); }
 .agent-card__line.agent-card__task { color: var(--text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .orch-summary__task { color: var(--text-muted-on-dark); font-weight: 800; }
+.board-form__depends legend { color: var(--text); font-weight: 800; }
