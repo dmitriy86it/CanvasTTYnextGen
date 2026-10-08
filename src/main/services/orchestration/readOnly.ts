@@ -32,12 +32,13 @@ function segments(line: string): Segment[] | null {
       i = end - 1;
       continue;
     }
+    // outside quotes a backslash only joins lines; anything else it escapes is refused (one rule less to read alike)
     if (c === "\\") {
       if (line[i + 1] === "\n") { i++; continue; }
-      word().text += line[i + 1] ?? "";
-      i++;
-      continue;
+      return null;
     }
+    // control characters (carriage return, vertical tab, NUL…) are read differently by different shells
+    if (c < " " && c !== "\n") return null;
     if (c === "'") {
       const end = line.indexOf("'", i + 1);
       if (end < 0) return null;
@@ -70,7 +71,8 @@ function segments(line: string): Segment[] | null {
       // only into /dev/null or another descriptor
       endWordIfNotFd();
       const rest = line.slice(i + 1).replace(/^>/, "").trimStart();
-      const fd = /^&\d/.exec(rest);
+      // >&2 only when the digits end the word: >&2foo is a file named "2foo" to bash
+      const fd = /^&\d+(?=$|[\s;|])/.exec(rest);
       const target = fd ? fd[0] : /^\/dev\/null(?=$|[\s;&|])/.exec(rest)?.[0];
       if (!target) return null;
       i = line.indexOf(target, i + 1) + target.length - 1;
