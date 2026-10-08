@@ -328,12 +328,16 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     return [uuid(runId, "runId"), p] as [string, string];
   }, manager.diff));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
-    const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride"]);
+    const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");
     const commands = Array.isArray(o.commands) && o.commands.length === 0 ? [] : commandLines(o.commands, "commands");
+    if (o.full !== undefined && typeof o.full !== "boolean") bad("full must be a boolean");
+    // «Проверить сейчас»: at most an hour for the preparation and the commands together
+    const timeoutMs = o.timeoutMs === undefined ? undefined : int(o.timeoutMs, "timeoutMs", 1_000, 60 * 60_000);
     return [{ linkId: uuid(o.linkId, "linkId"), commands, workMode: o.workMode as "project", ...(o.models !== undefined ? { models: roleModels(o.models, "models") } : {}),
-      ...(o.accessOverride !== undefined ? { accessOverride: accessOverride(o.accessOverride, "accessOverride") } : {}) }] as
-      [{ linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">> }];
+      ...(o.accessOverride !== undefined ? { accessOverride: accessOverride(o.accessOverride, "accessOverride") } : {}),
+      ...(o.full === true ? { full: true } : {}), ...(timeoutMs !== undefined ? { timeoutMs } : {}) }] as
+      [{ linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }];
   }, manager.readiness));
   // Stage 13: the project profile (its fields are checked by validateProfile in main) and the environment probe.
   handleMain(IPC.orchestrationProfileGet, (_e, linkId: unknown, capabilities: unknown) => checked(() => {

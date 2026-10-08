@@ -41,6 +41,17 @@ async function main() {
   }
   if (pos[0] === "app-server" && pos[1] === "generate-json-schema") return writeSchema(flags["--out"] ?? args[args.indexOf("--out") + 1]);
   if (pos[0] === "app-server") return appServer(args);
+  // `codex login --help` lists `status` as 0.160 does; MOCK_NO_AUTH_STATUS=1 — an older CLI without it
+  if (pos[0] === "login" && flags["--help"]) {
+    process.stdout.write(`Manage login\n\nUsage: codex login [OPTIONS] [COMMAND]\n\nCommands:\n${process.env.MOCK_NO_AUTH_STATUS ? "" : "  status  Show login status\n"}  help    Print this message\n`);
+    return;
+  }
+  // `codex login status` (0.160 prints it so; no model): MOCK_LOGGED_OUT=1 — not signed in
+  if (pos[0] === "login" && pos[1] === "status") {
+    if (process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/auth.jsonl`, JSON.stringify("codex") + "\n");
+    if (process.env.MOCK_LOGGED_OUT) { process.stderr.write("Not logged in\n"); process.exitCode = 1; } else process.stderr.write("Logged in using ChatGPT\n");
+    return;
+  }
   const reportFile = flags["-o"] ?? flags["--output-last-message"];
   if (pos[0] !== "exec" || !flags["--json"] || !reportFile || pos.at(-1) !== "-") {
     process.stderr.write(`mock-codex: unexpected argv ${JSON.stringify(args)}\n`);

@@ -44,7 +44,7 @@ function wrapper(name, mock) {
   return f;
 }
 // a manager whose fake CLIs report these versions and behave as `env` says (help, protocol schema, sandbox)
-function manager(env = {}, versions = {}) {
+function manager(env = {}, versions = {}, claudeProbeMs) {
   const state = fs.mkdtempSync(path.join(TMP, "state-"));
   const file = path.join(TMP, `providers-${++n}.json`);
   const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: state, ...env } };
@@ -56,7 +56,8 @@ function manager(env = {}, versions = {}) {
   const root = path.join(TMP, `root-${++n}`);
   const m = createRunManager({
     platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, journalV2: true,
-    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH), workspaceKnown: () => true
+    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH), workspaceKnown: () => true,
+    ...(claudeProbeMs ? { claudeProbeMs } : {})
   });
   return Object.assign(m, { root, state });
 }
@@ -140,11 +141,23 @@ test("the probe's answer is kept per program, version and modification time: a n
   const again = createCapabilityCache(path.join(TMP, `caps-${n}.json`));
   await again.get({ provider: "codex", executable: exe, version: "codex-cli 0.161.0" }, probe);
   assert.equal(probes, 3);
-  // an answer the probe could not get is not kept: the next readiness asks again
-  const failing = async () => ({ provider: "claude", version: "x", modes: ["terminal"], missing: { workspace: { why: "init_refused", detail: "no answer to initialize" } }, model: true, differences: [], n: ++probes });
-  await again.get({ provider: "claude", executable: exe, version: "2.1.293" }, failing);
-  await again.get({ provider: "claude", executable: exe, version: "2.1.293" }, failing);
+  // a real refusal (the CLI said no) is an answer for this version: kept
+  const refused = async () => ({ provider: "claude", version: "x", modes: ["terminal"], missing: { workspace: { why: "init_refused", detail: "Invalid settings" } }, model: true, differences: [], n: ++probes });
+  await again.get({ provider: "claude", executable: exe, version: "2.1.292" }, refused);
+  await createCapabilityCache(path.join(TMP, `caps-${n}.json`)).get({ provider: "claude", executable: exe, version: "2.1.292" }, refused);
+  assert.equal(probes, 4);
+  // no answer in time: kept for this session only, a new start of the application (a new cache) probes again
+  const slow = async () => ({ provider: "claude", version: "x", modes: ["terminal", "workspace"], missing: {}, unconfirmed: { workspace: "no answer" }, model: true, differences: [], n: ++probes });
+  await again.get({ provider: "claude", executable: exe, version: "2.1.293" }, slow);
+  await again.get({ provider: "claude", executable: exe, version: "2.1.293" }, slow);
   assert.equal(probes, 5);
+  await createCapabilityCache(path.join(TMP, `caps-${n}.json`)).get({ provider: "claude", executable: exe, version: "2.1.293" }, slow);
+  assert.equal(probes, 6);
+  // an unreadable schema: asked again at once
+  const unreadable = async () => ({ provider: "codex", version: "x", modes: ["terminal"], missing: { workspace: { why: "schema_unavailable", detail: "x" } }, model: false, differences: [], n: ++probes });
+  await again.get({ provider: "codex", executable: exe, version: "codex-cli 0.1" }, unreadable);
+  await again.get({ provider: "codex", executable: exe, version: "codex-cli 0.1" }, unreadable);
+  assert.equal(probes, 8);
 });
 
 test("readiness and start agree: the start never refuses the rights or the model for a reason the readiness did not show", OPTS, async () => {
@@ -202,4 +215,42 @@ test("the words of a blocker and of a refused start: the CLI, its version, what 
   assert.equal(accessProblemText("en", parseStartProblem("Codex 0.161.0: the rights mode workspace is not available (schema_missing: sandbox workspace-write)")),
     "Codex 0.161.0: its app-server protocol lacks: sandbox workspace-write — the «Work folder» mode is unavailable");
   assert.equal(parseStartProblem("something else"), null);
+});
+
+test("Claude slow to answer the probe: a warning, not a blocker; one slower retry in the background; never kept on disk", OPTS, async () => {
+  const probes = (m) => { const f = path.join(m.state, "claude-probe.jsonl"); return fs.existsSync(f) ? fs.readFileSync(f, "utf8").split("\n").filter(Boolean).length : 0; };
+  const kept = (m) => { const f = path.join(m.root, "cli-capabilities.json"); return fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")).entries.map((e) => JSON.parse(e.key)[0]) : []; };
+  // both probes too slow: the first (300 ms) and the retry (600 ms) get no answer from a Claude that needs 3 s
+  const m = manager({ MOCK_CLAUDE_SANDBOX: "slow:3000" }, {}, { first: 300, retry: 600 });
+  try {
+    const src = project();
+    const linkId = await linkOf(m, src);
+    const r = await ready(m, linkId);
+    const it = byId(r);
+    assert.equal(it.access_claude, undefined, "not a blocker");
+    assert.equal(it.access_claude_unconfirmed?.level, "warning", JSON.stringify(r.value.items.map((i) => [i.id, i.level])));
+    assert.equal(it.access_claude_unconfirmed.facts.mode, "workspace");
+    assert.equal(r.value.ready, true, "Start stays available");
+    await new Promise((res) => setTimeout(res, 1500)); // the retry in the background has given up
+    assert.equal(probes(m), 2, "the first probe and one retry");
+    const again = await ready(m, linkId);
+    assert.equal(byId(again).access_claude_unconfirmed?.level, "warning");
+    assert.equal(probes(m), 2, "no new probe in this session");
+    assert.deepEqual(kept(m).filter((p) => p === "claude"), [], "a timeout is never kept on disk");
+    const c = await create(m, src);
+    assert.ok(c.ok, `the start is not refused: ${JSON.stringify(c)}`);
+    await m.command?.(c.value.runId, { commandId: randomUUID(), expectedRevision: 0, command: { kind: "stop" } }).catch(() => {});
+  } finally { await m.shutdown?.(); }
+  // the retry answers (Claude needs 450 ms, the retry waits 2 s): kept, the warning is gone
+  const m2 = manager({ MOCK_CLAUDE_SANDBOX: "slow:450" }, {}, { first: 200, retry: 2000 });
+  try {
+    const src = project();
+    const linkId = await linkOf(m2, src);
+    assert.equal(byId(await ready(m2, linkId)).access_claude_unconfirmed?.level, "warning");
+    for (let i = 0; i < 60 && !kept(m2).includes("claude"); i++) await new Promise((res) => setTimeout(res, 100));
+    assert.ok(kept(m2).includes("claude"), "the retry's answer is kept");
+    const after = byId(await ready(m2, linkId));
+    assert.equal(after.access_claude_unconfirmed, undefined);
+    assert.equal(after.access_claude, undefined);
+  } finally { await m2.shutdown?.(); }
 });

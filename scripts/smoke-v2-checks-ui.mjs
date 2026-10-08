@@ -25,7 +25,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, launch as launchApp, openTab, q, runs, startGoal, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, launch as launchApp, openTab, q, runs, sleep, startGoal, workspace } from "./orchestration-app-kit.mjs";
 
 const { D, project, script } = workspace("v2-ui-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -275,7 +275,31 @@ try {
     } });
     const runId = (await runs(app))[0].runId;
     // until the review has opened F1; the pauses on the way are not this scenario's: answered through main
+    let limitSeen = false;
     const goOn = async (v) => {
+      // UX audit Н7: the limit pause shows each limit's value and what is used, the new value with its unit, one main button
+      if (v.reason === "limit_reached" && !limitSeen) {
+        limitSeen = true;
+        await app.waitFor(`${q("[data-orch-limit] [data-limit-kind=roundsPerStage]")} && true`, "the limit pause's table", 15_000);
+        const row = await app.ev(`(() => { const r = ${q("[data-orch-limit] [data-limit-kind=roundsPerStage]")}; return { reached: r.hasAttribute("data-limit-reached"), now: r.querySelector("[data-limit-now]").textContent }; })()`);
+        expect(row.reached && row.now === "1", "the limit pause: the limit it stopped at, marked, with its current value", row);
+        const turns = await app.ev(`(() => { const r = ${q("[data-orch-limit] [data-limit-kind=turns]")}; return { used: r.querySelector("[data-limit-used]").textContent, now: r.querySelector("[data-limit-now]").textContent }; })()`);
+        expect(/^\d+$/.test(turns.used) && /^\d+$/.test(turns.now), "the limit pause: turns used and the current limit", turns);
+        await app.waitFor(`!${q("[data-orch-raise]")}.disabled || !!${q("[data-orch-proposal-waits]")}`, "the raise button settles", 5_000).catch(() => {});
+        const form = await app.ev(`({ value: ${q("[data-orch-limit-value]")}.value, unit: ${q("[data-orch-limit-unit]")}.textContent, button: ${q("[data-orch-raise]")}.textContent, primary: ${q("[data-orch-raise]")}.dataset.orchPrimary, disabled: ${q("[data-orch-raise]")}.disabled, proposalWaits: !!${q("[data-orch-proposal-waits]")} })`);
+        // while a plan proposal waits main refuses raise_limit: the button is off and says why (A4)
+        expect(form.value === "2" && form.unit === "раз" && form.button === "Поднять лимит и продолжить" && form.primary === "raise_limit" && form.disabled === form.proposalWaits, "the limit pause: a proposed value with its unit and «Raise the limit and continue» as the main button", { ...form, view: { proposalWaits: v.proposalWaits } });
+        await app.ev(`${q("[data-orch-limit]")}.scrollIntoView({ block: "center" })`);
+        await sleep(200);
+        await app.shot("v2-10b-limit-pause");
+        // the main button raises the limit and the run goes on: no separate «Resume»
+        await app.clickEl(q("[data-orch-raise]"));
+        await waitView(app, runId, `v.revision > ${v.revision} + 1 && v.reason !== "user_request" && (v.status === "paused" || v.status === "completed" || v.status === "running")`, "the run goes on after the raise");
+        const after = await viewOf(app, runId);
+        expect(after.reason !== "limit_reached" || after.revision > v.revision + 2, "raise and continue: the run left the limit pause by itself", { status: after.status, reason: after.reason });
+        await waitView(app, runId, `v.status === "paused" || v.status === "completed"`, "the next pause");
+        return;
+      }
       const command = v.reason === "awaiting_checks_decision" ? { kind: "checks.decide", decision: "accept" }
         : v.reason === "limit_reached" ? { kind: "raise_limit", limit: "roundsPerStage", value: 2 } : { kind: "resume" };
       const r = await app.ev(`window.canvasTTY.orchestration.command({ runId: ${JSON.stringify(runId)}, commandId: crypto.randomUUID(), expectedRevision: ${v.revision}, command: ${JSON.stringify(command)} })`);

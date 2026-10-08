@@ -36,7 +36,7 @@ import type { AskPerson, PermissionAsk, PermissionReply } from "./sessions.ts";
 import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
 import type { OrchestrationConditions, OrchestrationDecisions, OrchestrationFindings, OrchestrationGrant, OrchestrationPermissionRequest, OrchestrationPersonDecide,
-  OrchestrationPlanChoice, OrchestrationPlanDecide, OrchestrationQaVersion } from "../../../shared/orchestration.ts";
+  OrchestrationPlanChoice, OrchestrationPlanDecide, OrchestrationQaVersion, OrchestrationRunProgress } from "../../../shared/orchestration.ts";
 import { closedByPerson } from "../../../shared/orchestration.ts";
 import { bookOf, changeIdsOf, conditionBlockers, decidedMarks, factsOf, finalMarksProblems, ignoredMarks, numberPlan, personIdsOf, planProblems, reportConditions, requirementIds, stageMarksProblems, unchangedPaths } from "./conditions.ts";
 import type { ConditionFacts, ConditionMark, ConditionsBook, PlanReportV2, PlanText, RequirementMark, Status } from "./conditions.ts";
@@ -182,7 +182,9 @@ export interface RunProgress {
   // journal v2: where the run's check commands came from — the goal, or the lead's proposal (accepted / edited)
   checksFrom?: "goal" | "proposal" | "edited" | null;
   conditions?: OrchestrationConditions | null; // A2 (journal-v2-format.md §2.7)
+  budget?: RunBudget; // UX audit Н7: limits and what is spent of them
 }
+export type RunBudget = NonNullable<OrchestrationRunProgress["budget"]>;
 
 export interface RunHandle {
   readonly runId: string;
@@ -2714,7 +2716,25 @@ export function progressOf(st: RunState, goal: Goal, branch: string | null): Run
     ...(st.version === 2 ? {
       completion: st.completion?.kind ?? null,
       checksFrom: st.orch.checksDecision ? (st.orch.checksDecision.decision === "edit" ? "edited" as const : "proposal" as const) : st.orch.checksProposal ? null : "goal" as const
-    } : {})
+    } : {}),
+    budget: budgetOf(st, goal)
+  };
+}
+
+// UX audit 2026-10-05, Н7: what the run has spent of its limits, from the journal and the goal. Model calls are the
+// turns (each one is one CLI run); reached: the limit a limit_reached pause stopped at, by the same rules as the cycle.
+export function budgetOf(st: RunState, goal: Goal, now = Date.now()): RunBudget {
+  const limits = effectiveLimits(goal, st);
+  const calls = { lead: 0, executor: 0, reviewer: 0 };
+  for (const t of Object.values(st.turns)) calls[t.role] += 1;
+  const used = Object.keys(st.turns).length;
+  const replans = Math.max(0, (st.orch.plan?.version ?? 0) - 1);
+  const reached = st.status !== "paused" || st.pausedReason !== "limit_reached" ? null
+    : now - goal.createdAt >= limits.runMs ? "runMs" : used >= limits.turns ? "turns" : (st.orch.plan?.version ?? 0) > limits.replans ? "replans" : "roundsPerStage";
+  return {
+    calls, startedAt: goal.createdAt, deadlineAt: goal.createdAt + limits.runMs, reached,
+    limits: { turns: limits.turns, runMs: limits.runMs, replans: limits.replans, roundsPerStage: limits.roundsPerStage },
+    used: { turns: used, replans }
   };
 }
 

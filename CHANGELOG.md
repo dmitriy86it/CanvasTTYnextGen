@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+- «Check now» in the goal dialog and in the project settings (UX audit 2026-10-05, top-10 №8): a check before the start with no model call. It lists each item as ok, warning or blocker, with one sentence on what to do and, where it can, a «Fix» button that opens the right setting or the check commands. Items: the CLIs and their rights modes (the capability probes of 1.5.11); the sign-in, only where the CLI's own help offers a status command (`codex login status`, `claude auth status`); the roles' models (Codex from its model list; Claude's is not checked before the start); the check sandbox's self-test and git in it; the preparation and the check commands on the source, in a temporary copy or worktree made as a run makes it, dependencies cloned the same way, within 10 minutes. Each command reads passed, failed (its first lines) or out of time; commands that already fail say «The checks already fail before any change — the agents will hold them as required». In «In the project folder» the commands are not run before the start. The temporary copy is removed, also on an error. A summary line says how many blockers and warnings there are; only blockers stop the start. The light check (no preparation, no commands) still runs by itself when the goal dialog opens.
+- The run board and the agent cards show what the run spends (Н9): model calls per role, the tokens each CLI reported (Codex and Claude both report them; never money), the time worked against the run's time limit, the turns used of the limit and the time left to the deadline.
+- The limit pause (Н7) shows each limit's current value and what is used of it, marks the one the run stopped at, proposes a new value with its unit, and has one main button «Raise the limit and continue» — the run goes on without a separate «Resume».
+- When Claude does not answer the capability probe within 30 s (slow hooks at its start), one slower probe (90 s) runs in the background. If that one does not answer either, «Work folder» is a warning, not a blocker: «The «Work folder» mode for Claude is not confirmed by the probe… Starting is safe: with the sandbox unavailable Claude refuses to work by itself». Start stays available; a timeout is not kept between starts of the application.
+- Settings → Notifications: if the number does not appear on the Dock icon, the settings say to turn on «Badge application icon» in System Settings → Notifications → Raoden Loom.
+- The smokes `workspaces-ui` and `workspaces-background` pass again: their fake lead answered in journal v1 forms after v2 became the default.
+
 ## 1.5.11 — 2026-10-08
 
 Updated CLIs no longer block the start: capability probes instead of version lists.

@@ -86,14 +86,34 @@ const tr = (locale: LocaleId, key: string): string => t(locale, key as Translati
 // Readiness before the start (stages 11–12): asked from main whenever the check commands or the work place change, shown
 // item by item. Start is possible only when main answered, no item is a blocker and every "confirm" item is
 // acknowledged. A failure to ask is said as such and never counts as ready.
+// the i18n key of an item: numbered ones (command_<n>, source_<n>) share one
+const readyKey = (id: string) => (id.startsWith("command_") ? "command" : /^source_\d+$/.test(id) ? "source_cmd" : id);
+// «Исправить»: where a problem item is fixed — the project settings, or the goal's check commands
+export type ReadyFix = "settings" | "commands";
+function fixTarget(item: OrchestrationReadinessItem): ReadyFix | null {
+  if (item.level === "ok" || item.level === "info") return null;
+  if (/^access_(claude|codex)$/.test(item.id) || /^model(_\w+_pass)?$/.test(item.id) || item.id === "source_prepare") return "settings";
+  if (/^source_\d+$/.test(item.id) || item.id === "source_failing" || item.id.startsWith("command_")) return "commands";
+  return null;
+}
+
 export function readinessLine(locale: LocaleId, item: OrchestrationReadinessItem): string {
   const f = item.facts ?? {};
-  const id = item.id.startsWith("command_") ? "command" : item.id;
+  const id = readyKey(item.id);
   const base = tr(locale, `orchReady_${id}_${item.level}`);
+  const cmd = String(f.command ?? "");
   switch (id) {
+    // «Проверить сейчас» (UX audit №8): the sign-in, the check sandbox, the preparation and the commands on the source
+    case "auth_codex": case "auth_claude": return item.level === "ok" && f.method ? `${base} (${String(f.method)})` : base;
+    case "sandbox": return item.level === "ok" ? `${base} (${tr(locale, "orchReadySandboxChecks").replace("{n}", String(f.checks ?? "?"))})` : `${base} ${String(f.failed ?? "")}`;
+    case "source_prepare": return item.level === "ok" ? base : `${tr(locale, `orchReady_source_prepare_${String(f.result ?? "failed")}`)} ${cmd}`;
+    case "source_cmd": return `${tr(locale, `orchReady_source_cmd_${String(f.result ?? "failed")}`)} ${cmd}${f.result === "passed" && typeof f.durationMs === "number" ? ` (${Math.max(1, Math.round(f.durationMs / 1000))} ${t(locale, "orchUnitSec")})` : ""}`;
+    case "source": return f.code === "workspace_failed" ? `${base} ${item.detail}` : base;
     case "clis": return item.level === "blocker" ? `${base} ${item.detail}`
       : `${base} Codex: ${String(f.codex ?? "")} · Claude: ${String(f.claude ?? "")}${item.level === "warning" && f.changes ? ` — ${String(f.changes).split("\n").join("; ")}` : ""}`;
     case "access_claude": case "access_codex": case "model_codex_pass": case "model_claude_pass": return accessProblemText(locale, f);
+    case "access_claude_unconfirmed": case "access_codex_unconfirmed":
+      return tr(locale, "orchAccessUnconfirmed").replaceAll("{cli}", f.provider === "codex" ? "Codex" : "Claude").replace("{mode}", tr(locale, `orchAccess_${String(f.mode ?? "")}`));
     case "access_claude_once": case "access_codex_once": return tr(locale, "orchAccessOnceInfo").replace("{cli}", f.provider === "codex" ? "Codex" : "Claude");
     case "env": return item.level === "blocker" ? `${base} ${item.detail}` : `${base} ${String(f.shell ?? "")} · PATH: ${String(f.pathEntries ?? "?")}`;
     case "git": return item.level === "info" ? `${base} ${String(f.changed ?? "")}` : base;
@@ -126,21 +146,30 @@ const rightsText = (locale: LocaleId, access: { claude: string; codex: string })
   `Claude — ${tr(locale, `orchAccess_${access.claude}`)} · Codex — ${tr(locale, `orchAccess_${access.codex}`)}`;
 
 const NO_OVERRIDE: Partial<Record<"claude" | "codex", "terminal">> = {};
-function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy, accessOverride = NO_OVERRIDE, onAccessOverride, onBlocker }: {
+function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy, accessOverride = NO_OVERRIDE, onAccessOverride, onBlocker, onFix, auto = true }: {
   linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: OrchestrationRoleModels; access: { claude: string; codex: string } | null; locale: LocaleId;
   onChange(ok: boolean): void; onSuggest(commands: string[]): void;
   onBusy(facts: unknown): void; // the "busy" item's facts: the run main says holds the folder (none: undefined)
   // «Как в моём терминале» for one CLI of this run only: offered on its access blocker, confirmed first
   accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; onAccessOverride?(next: Partial<Record<"claude" | "codex", "terminal">>): void;
   onBlocker?(text: string | null): void; // the first blocker in words: said beside the inactive Start
+  onFix?(target: ReadyFix): void; // «Исправить» on a problem item: open where it is fixed
+  // false (the project settings): nothing is asked until «Проверить сейчас»; true (the goal dialog): the light check
+  // (no preparation, no commands) is asked by itself on every change
+  auto?: boolean;
 }): React.JSX.Element {
+  // «Проверить сейчас»: the same readiness with the preparation and the commands on the source; its time, for the key
+  // it was asked for (a change of the goal brings back the light check)
+  const [checked, setChecked] = useState<{ key: string; ms: number } | null>(null);
+  const [checking, setChecking] = useState(false);
   const [confirming, setConfirming] = useState<"claude" | "codex" | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; value: OrchestrationReadiness }>({ kind: "loading" });
+  const [state, setState] = useState<{ kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; value: OrchestrationReadiness }>({ kind: auto ? "loading" : "idle" });
   const [acks, setAcks] = useState<Record<string, boolean>>({});
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([linkId, commands, workMode, models, accessOverride]);
   useEffect(() => {
+    if (!auto) { setState({ kind: "idle" }); return; }
     let live = true;
     setState({ kind: "loading" });
     const id = window.setTimeout(async () => {
@@ -155,7 +184,16 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
     }, 350);
     return () => { live = false; window.clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt, models, accessOverride]);
+  }, [key, attempt, models, accessOverride, auto]);
+  const checkNow = async (): Promise<void> => {
+    setChecking(true);
+    const started = performance.now();
+    const r = await window.canvasTTY.orchestration.readiness({ linkId, commands, workMode, full: true, ...(models ? { models } : {}), ...(Object.keys(accessOverride).length ? { accessOverride } : {}) })
+      .catch((e: unknown) => ({ ok: false as const, code: "transport", message: String(e) }));
+    setChecking(false);
+    if (r.ok) { setState({ kind: "ready", value: r.value }); setChecked({ key, ms: performance.now() - started }); onBusy(r.value.items.find((i) => i.id === "busy")?.facts); }
+    else setState({ kind: "error", message: r.code === "transport" ? t(locale, "orchTransportError") : tr(locale, `orchError_${r.code}`) });
+  };
   const items = state.kind === "ready" ? state.value.items : [];
   const confirms = items.filter((i) => i.level === "confirm");
   const ok = state.kind === "ready" && state.value.ready && confirms.every((i) => acks[i.id]);
@@ -164,21 +202,41 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
   const blockerText = blocker ? readinessLine(locale, blocker) : null;
   useEffect(() => { onBlocker?.(blockerText); }, [blockerText, onBlocker]);
   return (
-    <fieldset className="orch-field orch-ready" data-orch-readiness={state.kind === "ready" ? (state.value.ready ? (ok ? "ready" : "confirm") : "blocked") : state.kind}>
+    <fieldset className="orch-field orch-ready" data-orch-readiness={state.kind === "ready" ? (state.value.ready ? (ok ? "ready" : "confirm") : "blocked") : state.kind} data-orch-checked={checked && checked.key === key ? "full" : undefined}>
       <legend>{t(locale, "orchReadyTitle")}</legend>
+      <div className="orch-ready__now">
+        <button type="button" data-orch-check-now disabled={checking} onClick={() => void checkNow()}>{t(locale, "orchCheckNow")}</button>
+        {checking ? <small className="orch-hint" data-orch-check-running>{t(locale, workMode === "project" ? "orchCheckNowRunningProject" : "orchCheckNowRunning")}</small>
+          : checked && checked.key === key ? <small className="orch-hint" data-orch-check-done>{t(locale, "orchCheckNowDone").replace("{time}", `${Math.max(1, Math.round(checked.ms / 1000))} ${t(locale, "orchUnitSec")}`)}</small>
+            : <small className="orch-hint">{t(locale, "orchCheckNowHint")}</small>}
+      </div>
+      {state.kind === "ready" && (() => {
+        const blockers = items.filter((i) => i.level === "blocker").length;
+        const warnings = items.filter((i) => i.level === "warning").length;
+        return (
+          <p className={`orch-ready__summary${blockers ? " orch-ready__summary--blocked" : ""}`} data-orch-ready-summary={blockers ? "blocked" : warnings ? "warnings" : "ok"}>
+            {t(locale, "orchReadySummary").replace("{blockers}", String(blockers)).replace("{warnings}", String(warnings))}{" "}
+            {t(locale, blockers ? "orchReadySummaryBlocked" : "orchReadySummaryCan")}
+          </p>
+        );
+      })()}
       {state.kind === "loading" && <p className="orch-hint">{t(locale, "orchReadyChecking")}</p>}
       {state.kind === "error" && <p className="dialog-error" role="alert">{t(locale, "orchReadyFailed")}: {state.message} <button type="button" onClick={() => setAttempt((n) => n + 1)}>{t(locale, "orchRepeat")}</button></p>}
       {items.length > 0 && (
         <ul>
           {items.map((item) => {
-            const id = item.id.startsWith("command_") ? "command" : item.id;
+            const id = readyKey(item.id);
             const fix = item.level === "blocker" || item.level === "confirm" || item.level === "warning" ? t(locale, `orchReadyFix_${id}_${item.level}` as TranslationKey) : undefined;
+            const target = onFix ? fixTarget(item) : null;
+            const output = typeof item.facts?.output === "string" && item.facts.output ? item.facts.output : null;
             return (
               <li key={item.id} className={`orch-ready__item orch-ready__item--${item.level}`} data-ready-id={item.id} data-ready-level={item.level}>
                 <span className="orch-ready__mark" aria-hidden="true">{item.level === "ok" ? "✓" : item.level === "info" ? "i" : item.level === "blocker" ? "✕" : "!"}</span>
                 <span>
                   {item.id === "permissions" && access ? `${t(locale, "orchReady_permissions_access")} ${rightsText(locale, access)}.` : readinessLine(locale, item)}
+                  {output && <pre className="orch-ready__output" data-ready-output>{output}</pre>}
                   {fix && <small className="orch-ready__fix">{fix}</small>}
+                  {target && <button type="button" className="orch-ready__fix-button" data-orch-fix={target} onClick={() => onFix?.(target)}>{t(locale, "orchReadyFixButton")}</button>}
                   {item.level === "blocker" && /^access_(claude|codex)$/.test(item.id) && onAccessOverride && (() => {
                     const p = item.id === "access_codex" ? "codex" : "claude";
                     const cli = p === "codex" ? "Codex" : "Claude";
@@ -321,6 +379,8 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       <Dialog label={t(locale, "orchSettingsTitle")} onClose={() => setSettingsOpen(false)} locale={locale}>
         <div className="orch-field orch-field--static"><span>{t(locale, "orchProject")}</span><strong title={lead.project}>{lead.project}</strong></div>
         <ProjectSettings locale={locale} linkId={link.linkId} info={info} onCancel={() => setSettingsOpen(false)}
+          check={(draft) => <Readiness linkId={link.linkId} commands={draft.checks} workMode={draft.workMode} access={draft.access} locale={locale} auto={false}
+            onChange={() => {}} onSuggest={() => {}} onBusy={() => {}} />}
           onSaved={(saved) => { profile.set({ ...info, profile: saved, saved: true }); edited.current = false; setSettingsOpen(false); }} />
       </Dialog>
     );
@@ -429,7 +489,15 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           {optionalChecks && <RoleModelsField locale={locale} linkId={link.linkId} value={models} hint={t(locale, "orchModelsGoalHint")} onChange={setModels} />}
         </details>
         <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld}
-          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy} />
+          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy}
+          onFix={(target) => {
+            if (target === "settings") { setSettingsOpen(true); return; }
+            const field = document.querySelector<HTMLTextAreaElement>(".orch-dialog [data-orch-commands]");
+            const fold = field?.closest("details");
+            if (fold) fold.open = true;
+            field?.scrollIntoView({ block: "center" });
+            field?.focus();
+          }} />
         {(() => {
           const other = folderBusy?.(held);
           return other && (

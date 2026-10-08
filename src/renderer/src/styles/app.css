@@ -1239,6 +1239,23 @@ button { border: 0; }
 .orch-profile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; opacity: .85; }
 .orch-settings .dialog-error { display: block; }
 .orch-ready__fix { opacity: .8; }
+/* «Проверить сейчас» (UX audit №8) */
+.orch-ready__now { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.orch-ready__output { margin: 0; padding: 6px 8px; max-height: 8em; overflow: auto; border-radius: 6px; background: rgba(0,0,0,.25); font: 11px/1.4 var(--font-mono); white-space: pre-wrap; word-break: break-word; }
+.orch-ready__fix-button { align-self: flex-start; }
+.orch-ready__summary { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
+.orch-ready__summary--blocked { color: var(--danger); }
+/* the cost on the board (Н9) and the limit pause (Н7) */
+.orch-cost__role { display: block; }
+.orch-board .orch-cost { flex-basis: 100%; }
+.orch-board .orch-cost dd { font-weight: 600; }
+.orch-cost__roles { margin-top: 2px; }
+.orch-cost__roles > summary { cursor: pointer; opacity: .8; }
+.orch-limit { display: flex; flex-direction: column; gap: 8px; }
+.orch-limit__table { border-collapse: collapse; font-size: 12px; width: 100%; }
+.orch-limit__table th, .orch-limit__table td { text-align: left; padding: 3px 8px 3px 0; font-weight: normal; }
+.orch-limit__table thead th { opacity: .7; }
+.orch-limit__reached th, .orch-limit__reached td { font-weight: 600; color: var(--yellow); }
 
 /* Activity widget: terminals and orchestration runs, one row per run (runStatus.ts). */
 .usage-list[data-activity-load] { grid-auto-rows: auto; grid-template-columns: minmax(0, 1fr); }

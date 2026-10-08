@@ -149,7 +149,12 @@ export function createFrameMapper(provider: "codex" | "claude", role: "lead" | "
       }
     } else if (type === "result") {
       const denials = Array.isArray(v.permission_denials) ? v.permission_denials.length : 0;
+      // the tokens of the whole answer as the CLI reports them (input: new and cache-read and cache-written together)
+      const u = rec(v.usage);
+      const num = (x: unknown) => (typeof x === "number" ? x : 0);
+      const input = u && typeof u.input_tokens === "number" ? num(u.input_tokens) + num(u.cache_read_input_tokens) + num(u.cache_creation_input_tokens) : null;
       out.push(d(v.is_error === true ? "error" : "usage", v.is_error === true ? `CLI reported an error (${str(v.subtype) ?? "error"})` : "CLI finished its answer", {
+        inputTokens: input, outputTokens: u && typeof u.output_tokens === "number" ? u.output_tokens : null,
         costUsd: typeof v.total_cost_usd === "number" ? v.total_cost_usd : null,
         turns: typeof v.num_turns === "number" ? v.num_turns : null,
         durationMs: typeof v.duration_ms === "number" ? v.duration_ms : null, denials

@@ -30,6 +30,10 @@ export interface CliCapability {
   missing: Record<string, { why: CapabilityWhy; detail: string }>; // per mode not offered, and "model"
   model: boolean; // a role's model can be passed (Codex thread `model`, claude --model)
   differences: string[]; // what the application relies on and this version changed (English, short): the warning
+  // per mode offered but not confirmed: its probe got no answer in time (Claude slow to start, e.g. slow hooks). The mode
+  // stays offered — Claude runs «Рабочая папка» with failIfUnavailable, so an unavailable sandbox makes it refuse, never
+  // run with wider rights — and readiness says so in a warning. Never kept on disk.
+  unconfirmed?: Record<string, string>;
 }
 export type Capabilities = Record<"codex" | "claude", CliCapability>;
 
@@ -40,25 +44,28 @@ export type Capabilities = Record<"codex" | "claude", CliCapability>;
 const CLAUDE_SWITCHES = ["--input-format", "--output-format", "--verbose", "--permission-prompt-tool", "--json-schema", "--session-id", "--resume"];
 const MODE_NEEDS: Record<ClaudeAccess, CapabilityWhy> = { terminal: "no_choice", workspace: "no_settings", acceptEdits: "no_choice", auto: "no_choice", full: "no_skip" };
 
-export type ClaudeInit = (args: string[]) => Promise<{ ok: true } | { ok: false; error: string }>;
+export type ClaudeInit = (args: string[]) => Promise<{ ok: true } | { ok: false; error: string; timeout?: true }>;
 export async function probeClaude(input: { version: string; help: string; init: ClaudeInit }): Promise<CliCapability> {
   const version = parseCliVersion("claude", input.version) ?? input.version.trim().slice(0, 60);
   const has = (flag: string) => new RegExp(`(?:^|[\\s,])${flag.replace(/[-]/g, "\\-")}\\b`, "m").test(input.help);
   const offered = claudeModesFromHelp(input.help);
   const missing: CliCapability["missing"] = {};
+  const unconfirmed: Record<string, string> = {};
   for (const m of ["workspace", "acceptEdits", "auto", "full"] as ClaudeAccess[]) {
     if (!offered.includes(m)) missing[m] = { why: m === "workspace" && /choices:[^)]*"acceptEdits"/.test(input.help) ? "no_settings" : MODE_NEEDS[m], detail: m === "full" ? "--dangerously-skip-permissions" : m === "workspace" ? "--settings" : `--permission-mode ${m}` };
   }
   // «Рабочая папка» is offered only when a session with its switches (acceptEdits, the sandbox settings) really starts
   if (offered.includes("workspace")) {
     const r = await input.init(claudeAccessArgs("workspace"));
-    if (!r.ok) missing.workspace = { why: "init_refused", detail: r.error.slice(0, 200) };
+    if (!r.ok && r.timeout) unconfirmed.workspace = r.error.slice(0, 200);
+    else if (!r.ok) missing.workspace = { why: "init_refused", detail: r.error.slice(0, 200) };
   }
   const model = has("--model");
   if (!model) missing.model = { why: "no_model", detail: "--model" };
   return {
     provider: "claude", version, modes: offered.filter((m) => !missing[m]), missing, model,
-    differences: CLAUDE_SWITCHES.filter((f) => !has(f)).map((f) => `no ${f} in --help`)
+    differences: CLAUDE_SWITCHES.filter((f) => !has(f)).map((f) => `no ${f} in --help`),
+    ...(Object.keys(unconfirmed).length ? { unconfirmed } : {})
   };
 }
 
@@ -73,9 +80,10 @@ export function claudeInit(executable: string, env: Readonly<Record<string, stri
       let err = "";
       p.stderr.setEncoding("utf8").on("data", (d: string) => { if (err.length < 4000) err += d; });
       p.stdin.on("error", () => {});
-      const answer = await new Promise<{ ok: true } | { ok: false; error: string }>((resolve) => {
-        const timer = setTimeout(() => resolve({ ok: false, error: "no answer to initialize" }), timeoutMs);
-        const done = (r: { ok: true } | { ok: false; error: string }) => { clearTimeout(timer); resolve(r); };
+      type Answer = Awaited<ReturnType<ClaudeInit>>;
+      const answer = await new Promise<Answer>((resolve) => {
+        const timer = setTimeout(() => resolve({ ok: false, error: `no answer to initialize in ${Math.round(timeoutMs / 1000)} s`, timeout: true }), timeoutMs);
+        const done = (r: Answer) => { clearTimeout(timer); resolve(r); };
         readline.createInterface({ input: p.stdout }).on("line", (line) => {
           let m: { type?: unknown; response?: { subtype?: unknown; request_id?: unknown; error?: unknown } };
           try { m = JSON.parse(line); } catch { return; }
@@ -180,21 +188,39 @@ export function createCapabilityCache(file: string, keep = 16) {
     return JSON.stringify([k.provider, real, k.version.trim(), st ? Math.round(st.mtimeMs) : 0]);
   };
   const inFlight = new Map<string, Promise<CliCapability>>();
+  // An answer the probe did not get in time (unconfirmed) is kept in memory only, for this session: the readiness does
+  // not wait for the slow probe again on every dialog, and the next start of the application probes anew.
+  const unsure = new Map<string, CliCapability>();
+  const retried = new Set<string>();
+  const keepOnDisk = async (key: string, value: CliCapability) => {
+    unsure.delete(key);
+    mem = [{ key, at: new Date().toISOString(), value }, ...(mem ?? []).filter((e) => e.key !== key)].slice(0, keep);
+    await mkdir(dirname(file), { recursive: true }).catch(() => {});
+    await writeFile(file, JSON.stringify({ v: 1, entries: mem })).catch(() => {});
+  };
+  // an unreadable schema is asked again next time (cheap); an unconfirmed mode is kept in memory only
+  const settled = (value: CliCapability) => !value.unconfirmed && !Object.values(value.missing).some((m) => m.why === "schema_unavailable");
   return {
-    async get(k: CapabilityKey, probe: () => Promise<CliCapability>): Promise<CliCapability> {
+    // retry: a slower second probe, run once in the background after an unconfirmed answer; a settled answer from it is
+    // kept as any other
+    async get(k: CapabilityKey, probe: () => Promise<CliCapability>, retry?: () => Promise<CliCapability>): Promise<CliCapability> {
       const key = await keyOf(k);
       const entries = await load();
       const hit = entries.find((e) => e.key === key);
       if (hit) return hit.value;
+      const soft = unsure.get(key);
+      if (soft) return soft;
       const running = inFlight.get(key);
       if (running) return running;
       const p = probe().then(async (value) => {
-        // a probe that could not get an answer (a timeout, an unreadable schema) is asked again next time: kept, it
-        // would block every start until the next version
-        if (Object.values(value.missing).some((m) => m.why === "init_refused" || m.why === "schema_unavailable")) return value;
-        mem = [{ key, at: new Date().toISOString(), value }, ...(mem ?? []).filter((e) => e.key !== key)].slice(0, keep);
-        await mkdir(dirname(file), { recursive: true }).catch(() => {});
-        await writeFile(file, JSON.stringify({ v: 1, entries: mem })).catch(() => {});
+        if (settled(value)) await keepOnDisk(key, value);
+        else if (value.unconfirmed) {
+          unsure.set(key, value);
+          if (retry && !retried.has(key)) {
+            retried.add(key);
+            void retry().then(async (again) => { if (settled(again)) await keepOnDisk(key, again); else if (again.unconfirmed) unsure.set(key, again); }, () => {});
+          }
+        }
         return value;
       }).finally(() => inFlight.delete(key));
       inFlight.set(key, p);
@@ -227,6 +253,16 @@ export function startProblems(caps: Capabilities, access: AgentAccess | null, mo
     out.push({ id: `model_${p}_pass`, level: "blocker", detail: `${name(p)} ${caps[p].version}: a model cannot be passed`, facts: { provider: p, version: caps[p].version, why: "no_model", missing: caps[p].missing.model?.detail ?? "" } });
   }
   return out;
+}
+
+// A mode the project uses that is offered but not confirmed by its probe (no answer in time): a warning, the start stays
+// available (see CliCapability.unconfirmed).
+export function startWarnings(caps: Capabilities, access: AgentAccess | null): OrchestrationReadinessItem[] {
+  return (["claude", "codex"] as const).flatMap((p) => {
+    const mode = access?.[p];
+    const why = mode ? caps[p].unconfirmed?.[mode] : undefined;
+    return mode && why ? [{ id: `access_${p}_unconfirmed`, level: "warning" as const, detail: `${p === "codex" ? "Codex" : "Claude"} ${caps[p].version}: the rights mode ${mode} is not confirmed by the probe (${why})`, facts: { provider: p, version: caps[p].version, mode } }] : [];
+  });
 }
 
 // The readiness item of the CLIs: ok when everything a run relies on is there; a warning that names what changed.

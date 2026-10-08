@@ -23,8 +23,9 @@ import { createActivityLog, createRunActivity } from "./activity.ts";
 import { createNativeAgents, createProviderAgents } from "./agents.ts";
 import { applyDirenv, captureLoginEnv } from "./loginEnv.ts";
 import { assessReadiness, modelItem, platformItem, suggestCommands, testDbItem } from "./readiness.ts";
+import { PREFLIGHT_TIMEOUT_MS, authItems, sandboxItems, sourceChecks } from "./preflight.ts";
 import { accessMapping } from "./access.ts";
-import { claudeInit, clisItem, codexSchema, createCapabilityCache, probeClaude as probeClaudeCaps, probeCodex as probeCodexCaps, startProblems } from "./capabilities.ts";
+import { claudeInit, clisItem, codexSchema, createCapabilityCache, probeClaude as probeClaudeCaps, probeCodex as probeCodexCaps, startProblems, startWarnings } from "./capabilities.ts";
 import type { Capabilities } from "./capabilities.ts";
 import type { AgentAccess } from "./access.ts";
 import { commitMessage } from "./finish.ts";
@@ -92,6 +93,8 @@ export interface RunManagerDeps {
   // Does this workspace exist (hidden ones included)? A card of an unknown one is on the common canvas. Missing in a
   // plain-JS caller: every id counts as its own workspace (the raw comparison of before).
   workspaceKnown(workspaceId: string): boolean;
+  // the Claude capability probe's waits: the first, and the one retry in the background (default 30 s and 90 s)
+  claudeProbeMs?: { first: number; retry: number };
   appVersion?(): string; // written down when a newer version's link is let go
   // The machine's platform (process.platform by default). Where orchestrationAvailable() is false nothing new is
   // linked, started or continued; existing runs are read, stopped and unlinked. Engine tests on Linux pass "darwin".
@@ -172,17 +175,30 @@ export function createRunManager(deps: RunManagerDeps) {
   const capabilitiesOf = async (rt: { executables?: Record<"codex" | "claude", string>; versions: Record<"codex" | "claude", string>; env: Readonly<Record<string, string>>; codexEnv?: Readonly<Record<string, string>>; claudeEnv?: Readonly<Record<string, string>>; claudeHelp?: () => Promise<string> }): Promise<Capabilities | null> => {
     if (!rt.executables) return null; // a runtime without the programs (stages 4–11): nothing to probe
     const ex = rt.executables;
+    const claudeProbe = (ms: number) => async () =>
+      probeClaudeCaps({ version: rt.versions.claude, help: rt.claudeHelp ? await rt.claudeHelp().catch(() => "") : "", init: claudeInit(ex.claude, rt.claudeEnv ?? rt.env, ms) });
     const [codex, claude] = await Promise.all([
       capabilityCache.get({ provider: "codex", executable: ex.codex, version: rt.versions.codex },
         () => probeCodexCaps({ version: rt.versions.codex, schema: codexSchema(ex.codex, rt.codexEnv ?? rt.env) })),
+      // a probe with no answer in time is tried once more in the background, slower (CliCapability.unconfirmed)
       capabilityCache.get({ provider: "claude", executable: ex.claude, version: rt.versions.claude },
-        async () => probeClaudeCaps({ version: rt.versions.claude, help: rt.claudeHelp ? await rt.claudeHelp().catch(() => "") : "", init: claudeInit(ex.claude, rt.claudeEnv ?? rt.env) }))
+        claudeProbe(deps.claudeProbeMs?.first ?? 30_000), claudeProbe(deps.claudeProbeMs?.retry ?? 90_000))
     ]);
     return { codex, claude };
   };
   // The rights a goal runs with: the project's, with this goal's one-run choice of «Как в моём терминале» over them
   // (the project settings stay as they are).
   const accessFor = (profileAccess: AgentAccess, over?: Partial<Record<"claude" | "codex", "terminal">>): AgentAccess => ({ ...profileAccess, ...(over ?? {}) });
+  // «Проверить сейчас»: the sign-in (per CLI program, a minute) and the sandbox self-test (ten minutes) are asked again
+  // only when older; the dialog asks the readiness on every change of its commands
+  const preflightKept = new Map<string, { at: number; items: Promise<OrchestrationReadinessItem[]> }>();
+  const kept = (key: string, ms: number, make: () => Promise<OrchestrationReadinessItem[]>): Promise<OrchestrationReadinessItem[]> => {
+    const k = preflightKept.get(key);
+    if (k && Date.now() - k.at < ms) return k.items;
+    const items = make();
+    preflightKept.set(key, { at: Date.now(), items });
+    return items;
+  };
   // What Codex offers (model/list, config/read; no model turn), per Codex program and folder, for the application's
   // session: asked again only by «Обновить» (refresh). A failed answer is not kept.
   const codexModelLists = new Map<string, Promise<OrchestrationCodexModels>>();
@@ -706,7 +722,9 @@ export function createRunManager(deps: RunManagerDeps) {
 
     // The checks the start would make, and more, without starting anything (no model call, no run, no file written).
     // The runtime (CLI versions, the login shell's environment) is measured at most every 30 s per project.
-    readiness: (input: { linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">> }) => result(async () => {
+    // full («Проверить сейчас»): also the preparation and the commands on the source, in a temporary work folder of the
+    // chosen mode (never in the project folder), within timeoutMs for all of them.
+    readiness: (input: { linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }) => result(async () => {
       const c = await canvas.read(exists);
       const link = c.links.find((l) => l.linkId === input.linkId) ?? refuse("link_not_found", "no such link");
       const lead = c.agents.find((a) => a.agentId === link.fromAgentId) ?? refuse("link_not_found", "the link has no lead");
@@ -736,7 +754,7 @@ export function createRunManager(deps: RunManagerDeps) {
         // the one-run choice of the person, said as such (wider rights for this run only)
         const chosenHere = (["claude", "codex"] as const).filter((p) => input.accessOverride?.[p] === "terminal" && profile.access[p] !== "terminal")
           .map((p): OrchestrationReadinessItem => ({ id: `access_${p}_once`, level: "info", detail: `${p}: as in the terminal, for this run only`, facts: { provider: p, version: caps[p].version, mode: profile.access[p] } }));
-        r.items.splice(Math.max(0, r.items.length - 1), 0, ...blockers, ...chosenHere);
+        r.items.splice(Math.max(0, r.items.length - 1), 0, ...blockers, ...startWarnings(caps, access), ...chosenHere);
         r.ready = r.ready && blockers.length === 0;
       }
       // the roles' models: the same check the start makes (no model turn); "permissions" stays the last item
@@ -744,6 +762,25 @@ export function createRunManager(deps: RunManagerDeps) {
         const item = modelItem(await codexModelsAt(measured.executables.codex, lead.project, measured.codexEnv ?? measured.env), roleModels(profile, input.models), codexRoles());
         r.items.splice(Math.max(0, r.items.length - 1), 0, item);
         r.ready = r.ready && item.level !== "blocker";
+      }
+      // before the start, without a model call: the sign-in, Claude's model (no list without a turn), the check sandbox
+      if (measured.ok) {
+        const rt = measured;
+        const extra = [
+          ...await kept(`auth:${rt.executables?.codex ?? ""}:${rt.executables?.claude ?? ""}`, 60_000, () => authItems(rt)),
+          { id: "model_claude", level: "info" as const, detail: "Claude's model is not checked before the start" },
+          ...(deps.leadSandbox === false ? [] : await kept(`sandbox:${rt.shell}`, 10 * 60_000, () => {
+            let gitPath: string | null = null;
+            try { gitPath = deps.gitPath(); } catch { gitPath = null; }
+            return sandboxItems({ launch: deps.launch(), root: deps.root, realHome: deps.leadSandbox ? deps.leadSandbox.realHome : undefined, gitPath, rt });
+          })),
+          ...(input.full && gitPath ? (await sourceChecks({
+            project: lead.project, workMode: input.workMode, commands: input.commands, prepare: profile.prepare, rt, launch: deps.launch(),
+            gitPath, cloneDir: deps.cloneDir, timeoutMs: input.timeoutMs ?? PREFLIGHT_TIMEOUT_MS
+          })).items : [])
+        ];
+        r.items.splice(Math.max(0, r.items.length - 1), 0, ...extra);
+        r.ready = r.ready && !extra.some((i) => i.level === "blocker");
       }
       // the same run a start would be refused for (folder_busy), so the renderer can name it and go to its workspace
       return holder ? { ...r, items: r.items.map((i) => (i.id === "busy" ? { ...i, facts: { ...i.facts, ...holder } } : i)) } : r;
