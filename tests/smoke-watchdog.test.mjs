@@ -101,7 +101,9 @@ test("checkProcesses judges only the app's descendants, and never a reused pid b
 test("checkProcesses allows node-pty's spawn-helper, the file only", async () => {
   const { checkProcesses, descendants } = await import(HELPER);
   const root = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
-  const helper = fs.realpathSync(path.join(root, "node_modules/node-pty/build/Release/spawn-helper"));
+  // macOS only: node-pty has no spawn-helper on Linux; the watchdog keeps the path as written then
+  const file = path.join(root, "node_modules/node-pty/build/Release/spawn-helper");
+  const helper = fs.existsSync(file) ? fs.realpathSync(file) : file;
   const START = "Tue Oct  7 14:03:01 2026";
   const rows = [{ pid: 10, ppid: 1, start: START, command: "/app/Electron" }, { pid: 11, ppid: 10, start: START, command: `${helper} /home /bin/sh -l` },
     { pid: 12, ppid: 10, start: START, command: "other" }];
