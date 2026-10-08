@@ -1379,3 +1379,48 @@ button { border: 0; }
 .orch-failing { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--yellow); border-radius: 8px; }
 .orch-failing p, .orch-failing ul { margin: 0; }
 .orch-failing__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* B2: the task board on the canvas (stage-b-board.md §6) — a card like the agents', four columns inside */
+.board-card { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; overflow: visible; border: 1px solid color-mix(in srgb, var(--surface) 70%, transparent); border-radius: 14px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-lg); font-size: calc(13px * var(--ui-scale, 1)); }
+.board-card:focus-within, .board-card--selected { box-shadow: 0 0 0 3px var(--primary), var(--shadow-lg); }
+.board-card__header { height: 3.15em; flex: 0 0 auto; padding: 0 .5em 0 .9em; display: flex; align-items: center; gap: .8em; border-radius: 13px 13px 0 0; background: var(--surface-soft); cursor: move; touch-action: none; }
+.board-card__header strong { font-weight: 850; }
+.board-card__readonly { padding: .2em .6em; border-radius: 99px; color: var(--text-dark); background: var(--yellow); font-size: .82em; font-weight: 800; }
+.board-card__header-actions { margin-left: auto; display: flex; gap: .4em; }
+.board-card button { padding: .4em .8em; border-radius: 8px; color: var(--text-dark); background: var(--secondary); font-weight: 800; cursor: pointer; white-space: nowrap; }
+.board-card button:disabled { opacity: .5; cursor: default; }
+.board-card button.orch-primary { background: var(--primary); }
+.board-card button.board-card__hide { width: 2.15em; height: 2.15em; padding: 0; display: grid; place-items: center; color: var(--text-muted-on-dark); background: rgba(255,255,255,.08); }
+.board-card__message, .board-card__empty { margin: .5em .9em 0; color: var(--text-muted-on-dark); }
+.board-card__message { color: var(--text); }
+.board-card__columns { min-height: 0; flex: 1; padding: .6em; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .6em; }
+.board-card__column { min-height: 0; display: flex; flex-direction: column; border-radius: 10px; background: color-mix(in srgb, var(--surface-soft) 70%, transparent); }
+.board-card__column h3 { margin: 0; padding: .55em .7em; font-size: .9em; font-weight: 850; }
+.board-card__column h3 span { margin-left: .3em; padding: .05em .5em; border-radius: 99px; background: rgba(255,255,255,.12); font-weight: 800; }
+.board-card__list { margin: 0; list-style: none; min-height: 0; flex: 1; padding: 0 .5em .5em; display: flex; flex-direction: column; gap: .5em; overflow-y: auto; }
+.board-card__column-empty { margin: .2em .2em; color: var(--text-muted-on-dark); font-size: .86em; }
+/* a task card: every line whole (1.5.13: no cut by height), long ones end with «…» and say all in the tooltip */
+.board-task { flex: 0 0 auto; padding: .55em .65em; display: flex; flex-direction: column; gap: .25em; border-radius: 9px; border-left: 4px solid var(--secondary); background: var(--surface); }
+.board-task--work { border-left-color: var(--blue); }
+.board-task--review { border-left-color: var(--yellow); }
+.board-task--done-confirmed { border-left-color: var(--success); }
+/* accepted without checks: its own mark and words, never the confirmed green tick */
+.board-task--done-accepted { border-left-color: var(--accent); border-left-style: dashed; }
+.board-card .board-task__title { padding: 0; color: var(--text); background: none; text-align: left; font-weight: 800; white-space: normal; overflow-wrap: anywhere; }
+.board-task__key { font: 800 .85em/1 var(--font-mono); color: var(--text-muted-on-dark); }
+.board-task__line { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted-on-dark); font-size: .86em; }
+.board-task__line[data-board-line] { color: var(--text); font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
+.board-task__badge { margin-right: .35em; padding: 0 .35em; border-radius: 6px; font-weight: 900; }
+.board-task__badge--confirmed { color: var(--text-dark); background: var(--success); }
+.board-task__badge--accepted { color: var(--text-dark); background: var(--accent); }
+.board-task__actions { margin-top: .2em; display: flex; flex-wrap: wrap; gap: .35em; }
+.board-task__actions button { padding: .3em .6em; font-size: .9em; }
+.board-task__message { color: var(--text); font-size: .86em; }
+.board-task__confirm { padding: .5em; border-radius: 8px; background: color-mix(in srgb, var(--yellow) 22%, var(--surface)); display: flex; flex-wrap: wrap; gap: .4em; }
+.board-task__confirm p { margin: 0 0 .2em; flex-basis: 100%; font-size: .9em; }
+.board-form__depends { display: flex; flex-direction: column; gap: .3em; border: 0; padding: 0; }
+.workspace-bar__board { height: 32px; padding: 0 10px; border-radius: 8px; color: rgba(255,255,255,.86); background: rgba(255,255,255,.08); font-size: 12px; font-weight: 750; cursor: pointer; }
+.workspace-bar__board[aria-pressed="true"] { background: color-mix(in srgb, var(--primary) 40%, transparent); }
+.agent-card__line.agent-card__task { color: var(--text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.orch-summary__task { color: var(--text-muted-on-dark); font-weight: 800; }
+.board-form__depends legend { color: var(--text); font-weight: 800; }

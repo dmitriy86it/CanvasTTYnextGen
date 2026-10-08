@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { BOARD_VERSION, type Board, type BoardTask, type BoardTaskInput, type BoardTaskPatch } from "../../../shared/taskBoard.ts";
+import { BOARD_VERSION, type Board, type BoardPlace, type BoardTask, type BoardTaskInput, type BoardTaskPatch } from "../../../shared/taskBoard.ts";
 
 class Refusal extends Error {
   readonly code: string;
@@ -20,6 +20,11 @@ const KEY = /^T-(\d{1,6})$/;
 const MAX_TASKS = 2000;
 const empty = (): Board => ({ v: BOARD_VERSION, tasks: [], counters: {} });
 const text = (v: unknown, max: number) => typeof v === "string" && v.trim() !== "" && v.length <= max && !v.includes("\0");
+const coord = (v: unknown, min: number, max: number) => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+const isPlace = (p: unknown): p is BoardPlace => {
+  const o = p as { position?: { x?: unknown; y?: unknown }; size?: { width?: unknown; height?: unknown } } | null;
+  return !!o && coord(o.position?.x, -1e7, 1e7) && coord(o.position?.y, -1e7, 1e7) && coord(o.size?.width, 1, 1e5) && coord(o.size?.height, 1, 1e5);
+};
 const time = (v: unknown) => typeof v === "string" && v.length <= 40 && !Number.isNaN(Date.parse(v));
 
 function isTask(t: unknown): t is BoardTask {
@@ -62,7 +67,7 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     }
     const raw = await readFile(file, "utf8").catch((e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? null : Promise.reject(e)));
     if (raw === null) return { board: empty(), readOnly: null };
-    let v: { v?: unknown; tasks?: unknown; counters?: unknown } | null = null;
+    let v: { v?: unknown; tasks?: unknown; counters?: unknown; places?: unknown } | null = null;
     try { v = JSON.parse(raw); } catch { v = null; }
     if (v && typeof v.v === "number" && v.v > BOARD_VERSION) {
       // a newer version's board: shown as far as its tasks read, never written
@@ -75,7 +80,11 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     // a task written by hand without accepted or archivedAt has neither (never half a board: one bad task sets it aside)
     const tasks = Array.isArray(v?.tasks) ? v.tasks.map((t) => (t && typeof t === "object" ? { accepted: null, archivedAt: null, ...t } : t)) : null;
     if (v?.v === BOARD_VERSION && tasks?.every(isTask) && counters) {
-      return { board: { v: BOARD_VERSION, tasks: tasks as BoardTask[], counters }, readOnly: null };
+      // a place that does not read is dropped (the card shows again where the person puts it); the tasks never are
+      const places = v.places && typeof v.places === "object" && !Array.isArray(v.places)
+        ? Object.fromEntries(Object.entries(v.places as Record<string, unknown>).filter(([k, p]) => WORKSPACE_ID.test(k) && isPlace(p))) as Record<string, BoardPlace>
+        : {};
+      return { board: { v: BOARD_VERSION, tasks: tasks as BoardTask[], counters, ...(Object.keys(places).length ? { places } : {}) }, readOnly: null };
     }
     // damaged: set aside whole (nothing is dropped from it), the board starts empty
     const aside = `${file}.damaged-${randomUUID()}`;
@@ -166,6 +175,15 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
       if (await hasRuns()) refuse("task_has_runs", "a task with runs is archived, not deleted");
       const tasks = b.tasks.filter((x) => x.id !== id).map((x) => (x.dependsOn.includes(id) ? { ...x, dependsOn: x.dependsOn.filter((d) => d !== id) } : x));
       return { next: { ...b, tasks }, value: null };
+    }),
+
+    // B2: the board card's place on a workspace's canvas; null: off that canvas (the tasks stay)
+    place: (workspaceId: string, bounds: BoardPlace | null) => change(async (b) => {
+      if (!WORKSPACE_ID.test(workspaceId)) refuse("invalid_task", "workspaceId");
+      if (bounds !== null && !isPlace(bounds)) refuse("invalid_task", "bounds");
+      const { [workspaceId]: _, ...rest } = b.places ?? {};
+      const places = bounds ? { ...rest, [workspaceId]: { position: { ...bounds.position }, size: { ...bounds.size } } } : rest;
+      return { next: { ...b, places }, value: null };
     }),
 
     // «Accept the result»: the caller has checked that runId is the task's latest run, completed without checks.

@@ -1177,6 +1177,7 @@ export const IPC = {
   orchestrationBoardArchive: "orchestration:board-archive",
   orchestrationBoardRemove: "orchestration:board-remove",
   orchestrationBoardAccept: "orchestration:board-accept",
+  orchestrationBoardPlace: "orchestration:board-place",
   orchestrationReadiness: "orchestration:readiness",
   orchestrationProfileGet: "orchestration:profile-get",
   orchestrationProfileSave: "orchestration:profile-save",

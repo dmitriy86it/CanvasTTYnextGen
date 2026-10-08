@@ -21,6 +21,8 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [createAt, setCreateAt] = useState<{ provider: OrchestrationProviderKind; point: Point } | null>(null);
   const [goalLinkId, setGoalLinkId] = useState<string | null>(null);
+  // B2: the board task the goal dialog starts from (its text and requirements; the run names it in goal.task)
+  const [goalTask, setGoalTask] = useState<GoalTask | null>(null);
   const [panel, setPanel] = useState<PanelState | null>(null);
   const panelLinkId = panel?.linkId ?? null;
   const focusCount = useRef(0);
@@ -77,7 +79,8 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
     linkingFrom, setLinkingFrom, messages, connect, createAgent, deleteAgent, deleteLink,
     createAt, openCreate: (provider: OrchestrationProviderKind, point: Point) => setCreateAt({ provider, point }),
     closeCreate: () => setCreateAt(null),
-    goalLinkId, openGoal: (linkId: string) => { setPanel(null); setGoalLinkId(linkId); }, closeGoal: () => setGoalLinkId(null),
+    goalLinkId, goalTask, openGoal: (linkId: string, task: GoalTask | null = null) => { setPanel(null); setGoalTask(task); setGoalLinkId(linkId); },
+    closeGoal: () => { setGoalLinkId(null); setGoalTask(null); },
     panel, panelLinkId,
     // "Open run": the overview; "Observe": the live activity of one participant. The same panel either way.
     openPanel: (linkId: string, opts: { tab?: PanelTab; role?: PanelRole } = {}) => {
@@ -109,7 +112,8 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
     closePanel: () => setPanel(null),
     // The native browser view composites above the DOM; it hides while one of these is open.
     overlayOpen: createAt !== null || goalLinkId !== null || panel !== null
-  }), [connect, createAgent, createAt, deleteAgent, deleteLink, goalLinkId, linkingFrom, messages, orch.canvas.links, orch.runs, panel, panelLinkId]);
+  }), [connect, createAgent, createAt, deleteAgent, deleteLink, goalLinkId, goalTask, linkingFrom, messages, orch.canvas.links, orch.runs, panel, panelLinkId]);
 }
 
 export type AgentCanvasUi = ReturnType<typeof useAgentCanvasUi>;
+export interface GoalTask { id: string; key: string; title: string; text: string; criteria: string[] }

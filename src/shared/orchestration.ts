@@ -120,7 +120,7 @@ export interface OrchestrationGoalInput {
   task?: OrchestrationTaskRef;
 }
 
-import type { BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
+import type { BoardPlace, BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
 
 // A task of the board, as a run's goal names it: its id in orchestration/board.json and its number for people.
 export interface OrchestrationTaskRef { id: string; key: string }
@@ -602,6 +602,7 @@ export interface OrchestrationApi {
   boardArchive(id: string, archived: boolean): Promise<OrchestrationResult<BoardTask>>;
   boardRemove(id: string): Promise<OrchestrationResult<null>>;
   boardAccept(id: string): Promise<OrchestrationResult<BoardTask>>;
+  boardPlace(workspaceId: string, bounds: BoardPlace | null): Promise<OrchestrationResult<null>>; // B2: the card's place, null: hidden
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;

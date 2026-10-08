@@ -84,8 +84,9 @@ const countsHint = (locale: LocaleId, c: WorkspaceCounts): string => tr(locale, 
   runs: String(c.runs), cli: String(c.cli), attention: String(c.attention), shells: String(c.shells)
 });
 
-export function WorkspaceBar({ controls, counts, locale, onDialog }: {
+export function WorkspaceBar({ controls, counts, locale, onDialog, board }: {
   controls: WorkspaceControls; counts: Record<string, WorkspaceCounts>; locale: LocaleId; onDialog(d: WorkspaceDialog): void;
+  board?: { shown: boolean; toggle(): void }; // B2: «Board» shows the task board on this canvas, or brings it forward
 }): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -114,6 +115,9 @@ export function WorkspaceBar({ controls, counts, locale, onDialog }: {
           );
         })}
       </div>
+      {board && (
+        <button type="button" className="workspace-bar__board" data-board-button aria-pressed={board.shown} onClick={board.toggle}>{t(locale, "boardButton")}</button>
+      )}
       <button type="button" className="workspace-bar__icon" data-workspace-new title={tk(locale, "wsNew")} aria-label={tk(locale, "wsNew")}
         disabled={!controls.state.available} onClick={() => act({ kind: "create" })}><UiIcon name="plus" size={15} /></button>
       <div className="workspace-bar__menu-anchor">
