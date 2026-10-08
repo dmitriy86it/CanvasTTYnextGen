@@ -472,7 +472,7 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
       input.session.kind === "new" ? "--session-id" : "--resume", sessionId
     ];
     driver = claudeHostDriver({ task: input.task, ask: input.ask,
-      sandboxed: input.access?.claude === "workspace" && !claudeSandboxExclusions(input.cli.environment?.HOME ?? homedir(), input.cwd) });
+      sandboxed: input.access?.claude === "workspace" && !claudeSandboxExclusions(input.cli.environment?.HOME ?? homedir(), input.cwd, input.cli.environment?.CLAUDE_CONFIG_DIR) });
   }
   const launch = providerChildProcessLaunch(input.cli, args);
   return {

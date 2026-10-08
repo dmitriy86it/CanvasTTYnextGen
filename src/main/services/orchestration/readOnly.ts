@@ -23,6 +23,13 @@ function segments(line: string): Segment[] | null {
     const sep = SEPARATORS.find((s) => line.startsWith(s, i));
     if (sep) { endSegment(); i += sep.length - 1; continue; }
     if (c === " " || c === "\t") { endWord(); continue; }
+    // a comment runs to the end of the line, quotes in it included — as the shell reads it
+    if (c === "#" && cur === null) {
+      const end = line.indexOf("\n", i);
+      if (end < 0) break;
+      i = end - 1;
+      continue;
+    }
     if (c === "\\") {
       if (line[i + 1] === "\n") { i++; continue; }
       word().text += line[i + 1] ?? "";
@@ -51,9 +58,10 @@ function segments(line: string): Segment[] | null {
     }
     // a background job, a subshell, a substitution, input from a file or a here-document (2>&1 is taken with ">" below)
     if (c === "`" || c === "(" || c === ")" || c === "&" || c === "<") return null;
-    // ${…} may run commands (zsh ${(e)x}, bash ${x@P}); $[…] is arithmetic that may too: only a plain $name or $@
+    // ${…} may run commands (zsh ${(e)x}, bash ${x@P}); $[…] is arithmetic that may too; $'…' and $"…" quote by
+    // other rules (\' does not end $'…'): only a plain $name or $@
     if (c === "$") {
-      if ("({[".includes(line[i + 1] ?? "")) return null;
+      if ("({['\"".includes(line[i + 1] ?? "")) return null;
       word().dynamic = true;
     }
     if (c === ">") {

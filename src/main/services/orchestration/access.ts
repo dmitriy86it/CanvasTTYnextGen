@@ -27,15 +27,20 @@ export const CODEX_ACCESS: readonly CodexAccess[] = ["terminal", "workspace", "f
 
 // Commands the user's own settings run outside the sandbox (sandbox.excludedCommands, in any settings file Claude reads
 // for this folder). Then a Bash prompt in «Рабочая папка» is not answered by the session: such a command would not be
-// held by the sandbox. A file that cannot be read says nothing.
-export function claudeSandboxExclusions(home: string, cwd: string): boolean {
-  const files = [join(home, ".claude", "settings.json"), join(home, ".claude", "settings.local.json"), join(cwd, ".claude", "settings.json"),
+// held by the sandbox. A file that is there but cannot be read or parsed counts as one that lists some (fail closed).
+// configDir: CLAUDE_CONFIG_DIR of the CLI's environment, where the user's settings are then.
+export function claudeSandboxExclusions(home: string, cwd: string, configDir?: string): boolean {
+  const user = configDir || join(home, ".claude");
+  const files = [join(user, "settings.json"), join(user, "settings.local.json"), join(home, ".claude", "settings.json"), join(cwd, ".claude", "settings.json"),
     join(cwd, ".claude", "settings.local.json"), "/Library/Application Support/ClaudeCode/managed-settings.json", "/etc/claude-code/managed-settings.json"];
   return files.some((f) => {
+    let text: string;
+    try { text = readFileSync(f, "utf8"); } catch (e) { return (e as NodeJS.ErrnoException).code !== "ENOENT" && (e as NodeJS.ErrnoException).code !== "ENOTDIR"; }
     try {
-      const v = JSON.parse(readFileSync(f, "utf8")) as { sandbox?: { excludedCommands?: unknown } };
-      return Array.isArray(v?.sandbox?.excludedCommands) && v.sandbox.excludedCommands.length > 0;
-    } catch { return false; }
+      const v = JSON.parse(text) as { sandbox?: { excludedCommands?: unknown } } | null;
+      const list = v?.sandbox?.excludedCommands;
+      return list !== undefined && !(Array.isArray(list) && list.length === 0);
+    } catch { return true; }
   });
 }
 
