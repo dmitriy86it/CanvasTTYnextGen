@@ -32,6 +32,10 @@ for (const args of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q"
 
 const node = project("node-app");
 fs.writeFileSync(path.join(node, "README.md"), "the user's uncommitted work\n");
+// the check `node --test` says which node ran it: the run's own (PATHS), never one a login shell put in front
+const CHECK_NODE = D("check-node.txt");
+fs.mkdirSync(path.join(node, "test"));
+fs.writeFileSync(path.join(node, "test", "which-node.test.mjs"), `import fs from "node:fs";\nfs.appendFileSync(${JSON.stringify(CHECK_NODE)}, process.execPath + "\\n");\n`);
 
 // ---------- fake CLIs ----------
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
@@ -59,12 +63,17 @@ const wrap = (p) => {
   return f;
 };
 const PATHS = `${path.dirname(NODE)}:/usr/bin:/bin`;
+// The checks' shell, as in the other smokes: the command line without a login. A login /bin/sh on macOS runs path_helper,
+// which puts /etc/paths.d (Homebrew) in front of PATHS: the check `node --test` ran Homebrew's node, and the hermetic
+// watchdog caught it whenever the check lived longer than one 500 ms sample (a loaded machine).
+const SHELL = D("login-shell");
+fs.writeFileSync(SHELL, `#!/bin/sh\n[ "$1" = "-ilc" ] && shift\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 const env = (extra) => ({ HOME: D("mock-state"), MOCK_STATE: D("mock-state"), MOCK_LEDGER: ledger, ...extra });
 const providers = D("providers.json");
 fs.writeFileSync(providers, JSON.stringify({
   codex: { executable: wrap("codex"), version: "codex-cli 0.155.1", path: PATHS, env: env({ MOCK_SCRIPT: codexScript, CODEX_HOME: D("mock-state", ".codex") }) },
   claude: { executable: wrap("claude"), version: "2.1.281 (Claude Code)", path: PATHS, env: env({ MOCK_SCRIPT: claudeScript }) },
-  shell: "/bin/sh", checkEnv: { PATH: PATHS, HOME: D("mock-state") }
+  shell: SHELL, checkEnv: { PATH: PATHS, HOME: D("mock-state") }
 }));
 const ledgerCount = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, "utf8").split("\n").filter(Boolean).length : 0);
 const decisions = () => { const f = D("mock-state", "decisions.jsonl"); return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []; };
@@ -142,6 +151,8 @@ try {
   await app.waitFor(`window.canvasTTY.orchestration.list().then((r) => r.value.some((s) => ["completed", "paused", "failed"].includes(s.view.status)))`, "end", 90_000);
   const list = await runs(app);
   expect(list.some((r) => r.status === "completed"), "the run completed", list);
+  const checkNodes = fs.existsSync(CHECK_NODE) ? [...new Set(fs.readFileSync(CHECK_NODE, "utf8").trim().split("\n").map((p) => fs.realpathSync(p)))] : [];
+  expect(checkNodes.length > 0 && checkNodes.every((p) => p === NODE), "the check ran the run's node, not one a login shell put first", { checkNodes, NODE });
   const d = decisions();
   expect(d.length === 2 && d[0].reply?.behavior === "allow" && JSON.stringify(d[1].reply).includes("memo"), "the CLI got the allow and the chosen answer", d);
   expect(fs.readFileSync(path.join(node, "src", "note.mjs"), "utf8").includes("note"), "the executor wrote into the project folder", null);
