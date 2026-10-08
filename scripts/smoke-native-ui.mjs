@@ -10,7 +10,7 @@
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-native-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, startGoal, visibleNow, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, startGoal, visibleNow, waitForValue, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 
 const { TMP, D, git, project, script } = workspace("cto-native-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -87,7 +87,18 @@ async function pair(projectDir) {
   const c = await canvasState(app);
   const [lead, exec] = [c.agents.find((a) => a.provider === "codex" && a.project === projectDir), c.agents.find((a) => a.provider === "claude" && a.project === projectDir)];
   expect(c.agents.length === before + 2 && lead && exec, `two cards on ${path.basename(projectDir)}`, c.agents);
-  await app.drag(await app.center(card(lead.agentId, ".agent-card__port")), await app.center(card(exec.agentId, ".agent-card__body")), 20);
+  // under load the second card may still be laid out when the drag starts: the press then misses the port. The drag
+  // starts once the port and the target are where they are measured, twice in a row.
+  const ends = () => Promise.all([app.center(card(lead.agentId, ".agent-card__port")), app.center(card(exec.agentId, ".agent-card__body"))]);
+  const hit = (pt, agentId, cls) => app.ev(`(() => { const e = document.elementFromPoint(${pt.x}, ${pt.y}); return !!e?.closest(".${cls}") && e.closest("[data-agent-id]")?.dataset.agentId === ${JSON.stringify(agentId)}; })()`);
+  let prev = null;
+  const [from, to] = await waitForValue(async () => {
+    const [f, t] = await ends();
+    const still = prev && f.x === prev[0].x && f.y === prev[0].y && t.x === prev[1].x && t.y === prev[1].y;
+    prev = [f, t];
+    return still && await hit(f, lead.agentId, "agent-card__port") && await hit(t, exec.agentId, "agent-card__body") ? [f, t] : null;
+  }, "the cards laid out");
+  await app.drag(from, to, 20);
   await app.waitFor(`window.canvasTTY.orchestration.canvas().then((r) => r.value.links.some((l) => l.fromAgentId === ${JSON.stringify(lead.agentId)}))`, "link");
   const link = (await canvasState(app)).links.find((l) => l.fromAgentId === lead.agentId);
   return { lead, exec, link };
@@ -134,6 +145,7 @@ try {
   const N = await pair(node);
   await startGoal(app, N.link.linkId, { task: "Добавить src/note.mjs", criteria: "src/note.mjs есть\nnode --test проходит", commands: ["node --test"],
     onDialog: async () => { await app.waitFor(`${q("[data-orch-readiness]")} && true`, "readiness"); await app.shot("03-goal-dialog"); } });
+  await app.waitFor(`${q("[data-orch-where]")} && true`, "the panel's work folder"); // under load the panel renders after the start
   const where = await app.ev(`(() => { const el = ${q("[data-orch-where]")}; return el && { mode: el.dataset.orchWhere, text: el.textContent }; })()`);
   expect(where?.mode === "project" && where.text.includes(node), "the panel says: in the project folder, with its path", where);
   await app.waitFor(`${q("[data-orch-permission]")} && true`, "permission prompt", 60_000);
