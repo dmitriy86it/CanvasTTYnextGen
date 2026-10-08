@@ -6,7 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, launch, q, sleep, startGoal, workspace } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, launch, q, sleep, startGoal, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 
 const { D, project, script } = workspace("cto-workspaces-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -20,12 +20,21 @@ const expect = (ok, what, got) => { (ok ? passed : failures).push(ok ? what : `$
 const projectA = project("alpha");
 const projectB = project("beta");
 const projectOld = project("legacy");
+// The build's journal version (JOURNAL_V2): in v2 the lead plans with a condition (R1 by the check) and the reviewer
+// answers in v2 forms (journal-v2-format.md §2.7, §2.8), as in smoke-activity-ui.
+const planV2 = (title, task) => ({ report: { stages: [{ title, task, conditions: [{ keep: null, text: "node --test passes", covers: ["R1"], evidence: { kind: "check", check: "cmd-1" } }] }],
+  dropped: [], dropRequirements: [], question: null } });
+const reviewV2 = { report: { conditions: [], findings: [], request: "none", question: null } };
+const finalV2 = { report: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "node --test passes" }] } };
+const plan = (title, task) => (JOURNAL_V2 ? planV2(title, task) : { report: { stages: [{ title, task }], question: null } });
+const review = JOURNAL_V2 ? reviewV2 : { report: { verdict: "accept", findings: [], question: null } };
+const final = JOURNAL_V2 ? finalV2 : { report: { verdict: "complete", findings: [], question: null } };
 const codexScript = script("codex", [
-  { report: { stages: [{ title: "Заметка", task: "Add src/note.mjs" }], question: null } }, // A1: plan
-  { report: { stages: [{ title: "Импорт", task: "Add src/import.mjs" }], question: null } }, // B1: plan, after a question
-  { report: { verdict: "accept", findings: [], question: null } }, // A1: review
-  { report: { verdict: "complete", findings: [], question: null } }, // A1: final
-  { report: { stages: [{ title: "Вторая заметка", task: "Add src/second.mjs" }], question: null } } // A2: plan
+  plan("Заметка", "Add src/note.mjs"), // A1: plan
+  plan("Импорт", "Add src/import.mjs"), // B1: plan, after a question
+  review, // A1: review
+  final, // A1: final
+  plan("Вторая заметка", "Add src/second.mjs") // A2: plan
 ]);
 fs.writeFileSync(path.join(codexScript, "2.asks.json"), JSON.stringify([{ tool: "question", question: "Какой формат импорта первым?", options: ["CSV", "JSON"] }]));
 const claudeScript = script("claude", [
