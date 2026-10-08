@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 // Stage 13: the rights each CLI runs with, chosen per project, separate from how much the run does on its own
 // (autopilot or step by step). "terminal" adds nothing: the user's own settings decide, as in their terminal. The other
 // modes are the CLI's own documented switches for one session; nothing is written to a global configuration. The
@@ -21,6 +24,25 @@ export const CLAUDE_WORKSPACE_SETTINGS = Object.freeze({
   }
 });
 export const CODEX_ACCESS: readonly CodexAccess[] = ["terminal", "workspace", "full"];
+
+// Commands the user's own settings run outside the sandbox (sandbox.excludedCommands, in any settings file Claude reads
+// for this folder). Then a Bash prompt in «Рабочая папка» is not answered by the session: such a command would not be
+// held by the sandbox. A file that is there but cannot be read or parsed counts as one that lists some (fail closed).
+// configDir: CLAUDE_CONFIG_DIR of the CLI's environment, where the user's settings are then.
+export function claudeSandboxExclusions(home: string, cwd: string, configDir?: string): boolean {
+  const user = configDir || join(home, ".claude");
+  const files = [join(user, "settings.json"), join(user, "settings.local.json"), join(home, ".claude", "settings.json"), join(cwd, ".claude", "settings.json"),
+    join(cwd, ".claude", "settings.local.json"), "/Library/Application Support/ClaudeCode/managed-settings.json", "/etc/claude-code/managed-settings.json"];
+  return files.some((f) => {
+    let text: string;
+    try { text = readFileSync(f, "utf8"); } catch (e) { return (e as NodeJS.ErrnoException).code !== "ENOENT" && (e as NodeJS.ErrnoException).code !== "ENOTDIR"; }
+    try {
+      const v = JSON.parse(text) as { sandbox?: { excludedCommands?: unknown } } | null;
+      const list = v?.sandbox?.excludedCommands;
+      return list !== undefined && !(Array.isArray(list) && list.length === 0);
+    } catch { return true; }
+  });
+}
 
 // Extra arguments of `claude -p` for one session. "full" is the CLI's own bypass switch.
 export function claudeAccessArgs(a: ClaudeAccess): string[] {

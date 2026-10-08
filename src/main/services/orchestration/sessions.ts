@@ -235,7 +235,8 @@ function grantedOf(requested: unknown): Record<string, unknown> {
 
 // ---------------- Claude host protocol ----------------
 
-export interface ClaudeSessionInput { task: string; ask: AskPerson }
+// sandboxed: the «Рабочая папка» mode (access.ts): every Bash command runs in Claude's sandbox unless it asks to leave it
+export interface ClaudeSessionInput { task: string; ask: AskPerson; sandboxed?: boolean }
 
 export function claudeHostDriver(input: ClaudeSessionInput): SessionDriver {
   let io: SessionIO | null = null;
@@ -275,6 +276,14 @@ export function claudeHostDriver(input: ClaudeSessionInput): SessionDriver {
     // A prompt forced by the user's ask rule or a safety check, or one whose card is the answer, is always the person's.
     const alwaysAsk = r.matched_ask_rule !== undefined && r.matched_ask_rule !== null
       || r.decision_reason_type === "rule" || r.decision_reason_type === "safetyCheck" || r.requires_user_interaction === true;
+    // 1.5.13: in the sandbox, a Bash prompt that only says the CLI could not read the command line before it runs (a
+    // variable, a quoted brace, `bash -c '…'`: run 7303d772) is answered here. The command still runs in the sandbox —
+    // it writes only in the work folder and reaches no outside host; a command that asks to leave the sandbox, a user's
+    // ask rule and a safety check still reach the person.
+    if (input.sandboxed && tool === "Bash" && !toolInput.dangerouslyDisableSandbox && !alwaysAsk
+      && (r.decision_reason_type === "other" || r.decision_reason_type === "subcommandResults")) {
+      return respond(requestId, { behavior: "allow", updatedInput: toolInput });
+    }
     people.request(requestId, {
       kind: "tool", tool, summary, input: toolInput,
       options: suggestions.length ? ["allow_once", "allow_session", "deny"] : ["allow_once", "deny"],

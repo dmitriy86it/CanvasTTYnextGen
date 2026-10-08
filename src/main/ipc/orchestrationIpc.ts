@@ -143,7 +143,7 @@ export function parseCommand(v: unknown): { runId: string; commandId: string; ex
       command = { kind: c.kind, limit: c.limit as "turns", value: int(c.value, "command.value", 1) }; break;
     case "permission": {
       obj(c, "command", ["kind", "requestId", "decision"], ["answers", "content", "feedback"]);
-      if (!["allow_once", "allow_session", "allow_run", "allow_project", "deny"].includes(c.decision as string)) bad("command.decision is unknown");
+      if (!["allow_once", "allow_session", "allow_run", "allow_project", "allow_readonly_run", "deny"].includes(c.decision as string)) bad("command.decision is unknown");
       let answers: Record<string, string[]> | undefined;
       if (c.answers !== undefined) {
         const a = isObj(c.answers) ? c.answers : bad("command.answers must be a plain object");

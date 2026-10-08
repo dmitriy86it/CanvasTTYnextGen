@@ -181,7 +181,9 @@ export interface OrchestrationDecisions {
 // only carries it, never answers it by itself. Texts are sanitized (no secrets, paths relative to the work folder).
 // allow_run / allow_project (stage 13): CanvasTTY remembers the decision for exactly this action (same tool and
 // parameters) for the rest of the run, or for the project; the CLI is told "allow once" each time.
-export type OrchestrationPermissionOption = "allow_once" | "allow_session" | "allow_run" | "allow_project" | "deny";
+// allow_readonly_run (1.5.13): offered after more than 3 prompts of read-only commands in a run (readOnly.ts); every
+// later read-only command of this run is allowed without a dialog. Kept in memory: a restart asks again.
+export type OrchestrationPermissionOption = "allow_once" | "allow_session" | "allow_run" | "allow_project" | "allow_readonly_run" | "deny";
 export interface OrchestrationFormField {
   name: string;
   title: string;

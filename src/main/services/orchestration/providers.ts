@@ -5,11 +5,12 @@
 // "contract_violation" and never allows a next turn.
 // The contract check reads CLI metadata (system/init, thread.started). It is not proof of process isolation.
 // Only these modes exist here; the diagnostic probe plan lives in docs/ and is not imported.
-import { claudeAccessArgs, codexAccessParams } from "./access.ts";
+import { claudeAccessArgs, claudeSandboxExclusions, codexAccessParams } from "./access.ts";
 import type { AgentAccess } from "./access.ts";
 import { ACCESS_MISMATCH, type AccessMismatch } from "./activity.ts";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { AvailableProviderCli } from "../providerCliRegistry.ts";
 import { providerChildProcessLaunch } from "../providerCliRegistry.ts";
@@ -470,15 +471,19 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
       "--json-schema", JSON.stringify(schema),
       input.session.kind === "new" ? "--session-id" : "--resume", sessionId
     ];
-    driver = claudeHostDriver({ task: input.task, ask: input.ask });
   }
   const launch = providerChildProcessLaunch(input.cli, args);
+  // PATH of the registry only where the login shell gave none; everything else is the user's.
+  const env = { ...launch.environment, ...input.env };
+  // the sandbox exclusions are read where this very process will read its settings (its HOME, its CLAUDE_CONFIG_DIR)
+  if (provider === "claude") {
+    driver = claudeHostDriver({ task: input.task, ask: input.ask,
+      sandboxed: input.access?.claude === "workspace" && !claudeSandboxExclusions(env.HOME || homedir(), input.cwd, env.CLAUDE_CONFIG_DIR) });
+  }
   return {
     ok: true, sessionId, schemaFile: null,
     spec: {
-      provider, argv: [launch.command, ...launch.args], cwd: input.cwd,
-      // PATH of the registry only where the login shell gave none; everything else is the user's.
-      env: { ...launch.environment, ...input.env },
+      provider, argv: [launch.command, ...launch.args], cwd: input.cwd, env,
       task: "", schema, ...(accept ? { accept } : {}), expectSessionId: sessionId, limits: input.limits ?? DEFAULT_TURN_LIMITS, session: driver,
       ...(input.supervisor ? { supervisor: input.supervisor } : {})
     }
