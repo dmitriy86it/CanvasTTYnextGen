@@ -96,7 +96,7 @@ const records = async (m, runId) => (await m.history(runId, 0, 500)).value.recor
 const journalFile = (m, runId) => path.join(m.root, "runs", runId, "journal.jsonl");
 const textOf = (m, runId, ref) => fs.readFileSync(path.join(m.root, "runs", runId, "texts", ref.sha256), "utf8");
 async function start(m, src, goal = {}, profile = {}) {
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["false"], ...profile });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["false"], ...profile });
   const runId = randomUUID();
   const r = await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["a.txt says 2"], checks: [], commands: ["grep -qx 2 a.txt"], mode: "autopilot", ...goal } });
   assert.ok(r.ok, JSON.stringify(r));

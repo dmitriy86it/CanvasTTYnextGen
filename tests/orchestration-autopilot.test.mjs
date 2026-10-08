@@ -380,7 +380,7 @@ test("autopilot on a Laravel project from its profile: composer, .env and key ar
   const before = { composer: runs("composer"), php: runs("php") };
   const runId = randomUUID();
   // no commands: the profile suggested from the repository gives `php artisan test` and the preparation
-  const r = await m.create({ requestId: runId, source: src, goal: { text: "fix the app", criteria: ["tests pass"], checks: [], mode: "autopilot" } });
+  const r = await m.create({ requestId: runId, source: src, goal: { text: "fix the app", criteria: ["tests pass"], checks: [], mode: "autopilot", workMode: "project" } });
   assert.ok(r.ok, JSON.stringify(r));
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
@@ -403,7 +403,7 @@ test("an environment failure of a check is prepared once, not sent to the agents
   const runId = randomUUID();
   // the first check run removes node_modules (as a broken environment would) and fails like a missing module
   const cmd = `if [ ! -f ${flag} ]; then touch ${flag}; rm -rf node_modules; echo "Error: Cannot find module 'left-pad'"; exit 1; fi; test -f node_modules/.package-lock.json`;
-  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: [cmd], mode: "autopilot" } })).ok);
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: [cmd], mode: "autopilot", workMode: "project" } })).ok);
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
   const recs = await history(m, runId);
@@ -456,7 +456,7 @@ test("rights modes reach each CLI exactly; the probe asks without a model turn",
   const state = fs.mkdtempSync(path.join(TMP, "state-"));
   const m = manager({ MOCK_STATE: state, MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]), MOCK_ALLOW_ACCESS: "1" });
   const store = createProfileStore(m.root);
-  await store.save(src, { ...(await suggestProfile(src)), checks: ["true"], access: { claude: "acceptEdits", codex: "workspace" } });
+  await store.save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], access: { claude: "acceptEdits", codex: "workspace" } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot" } })).ok);
   const done = await settled(m, runId);
@@ -508,7 +508,7 @@ test("access defaults: a saved profile and a started run keep their mode", OPTS,
   const m = manager({ MOCK_STATE: state, MOCK_SCRIPT: script([PLAN, EXEC(), REVIEW, FINAL]) });
   const store = createProfileStore(m.root);
   // a profile saved before the default changed: "as in my terminal"
-  await store.save(src, { ...(await suggestProfile(src)), checks: ["true"], access: { claude: "terminal", codex: "terminal" } });
+  await store.save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], access: { claude: "terminal", codex: "terminal" } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot", reviewPlan: true } })).ok);
   const paused = await settled(m, runId, "the plan review");
@@ -617,7 +617,7 @@ test("a QA deploy whose answer was lost is never run again: only its verificatio
   const root = path.join(TMP, `root-${++n}`);
   const env = { MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) };
   const m = manager(env, root);
-  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), checks: ["true"],
+  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"],
     finish: { commit: true, push: null, qa: { environment: "qa", command: `echo run >> ${count}; echo "$CANVASTTY_COMMIT" > ${marker}; sleep 60`, verify: `cat ${marker} > "$CANVASTTY_QA_RESULT"`, reportsVersion: true } } });
   assert.equal((await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot", finish: { commit: false, push: false, qa: true } } })).code, "invalid_goal");
   const runId = randomUUID();
@@ -668,7 +668,7 @@ test("stop during preparation; after a restart a waiting prompt is not carried o
   // run's grace must outlast those graces for the step's end to be journaled before the run is "stopped" (the
   // application's default grace is 20 s).
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]) }, root, 20_000);
-  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), checks: ["true"], prepare: { steps: [{ command: "sleep 60", unless: null }], auto: true } });
+  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], prepare: { steps: [{ command: "sleep 60", unless: null }], auto: true } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot" } })).ok);
   const prep = await until(async () => { const v = await view(m, runId); return v.active?.kind === "prepare" ? v : null; }, "preparing");
@@ -720,7 +720,7 @@ test("a commit in the project folder takes only the run's files; the changes sta
   fs.writeFileSync(path.join(src, "mine.txt"), "the person's own edit\n");
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
   const runId = randomUUID();
-  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["c"], checks: [], commands: ["grep -qx 2 a.txt"], mode: "autopilot", finish: { commit: true, push: false, qa: false } } })).ok);
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["c"], checks: [], commands: ["grep -qx 2 a.txt"], mode: "autopilot", workMode: "project", finish: { commit: true, push: false, qa: false } } })).ok);
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
   assert.deepEqual(g(src, "show", "--name-only", "--format=", "HEAD").trim().split("\n"), ["a.txt"], "only the run's file is in the commit");

@@ -45,7 +45,7 @@ import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchest
 import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
 import type { SupervisorLaunch } from "./types.ts";
-import { diffTreeNames, diffTreePath, openWorkspace, readWorkspacePlace } from "./workspace.ts";
+import { applyToProject, branchCommit, branchNameOk, diffTreeNames, diffTreePath, openWorkspace, readTaken, readWorkspacePlace, snapshotCopyTree, takeToBranch, writeTaken } from "./workspace.ts";
 import type { CloneDir } from "./workspace.ts";
 import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
@@ -61,10 +61,21 @@ import type {
   OrchestrationProfileInfo,
   OrchestrationProjectProfile,
   OrchestrationProviderKind,
-  OrchestrationReadinessItem
+  OrchestrationReadinessItem,
+  OrchestrationTake,
+  OrchestrationTakeInput,
+  OrchestrationTakeOutcome
 } from "../../../shared/orchestration.ts";
 
 const run = promisify(execFile);
+
+// A branch name's part from the goal: Latin letters and digits, Cyrillic transliterated, the rest a dash; up to 32.
+const CYR: Record<string, string> = Object.fromEntries("а:a б:b в:v г:g д:d е:e ё:e ж:zh з:z и:i й:i к:k л:l м:m н:n о:o п:p р:r с:s т:t у:u ф:f х:h ц:c ч:ch ш:sh щ:sch ъ: ы:y ь: э:e ю:yu я:ya".split(" ").map((p) => p.split(":")));
+export function branchSlug(text: string): string {
+  const latin = [...text.toLowerCase()].map((c) => CYR[c] ?? c).join("");
+  const slug = latin.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/, "");
+  return slug || "result";
+}
 const MAX_HISTORY_PAGE = 200;
 
 // Written by a newer version: read-only here, whether its records replay by v1 rules or not.
@@ -601,6 +612,59 @@ export function createRunManager(deps: RunManagerDeps) {
     return { ws, st, target };
   }
 
+  // «Забрать результат»: what would be taken (the last checkpoint, or the working copy as it is now) and what was.
+  // One at a time per run: a second click waits for the first and then finds it done.
+  const taking = new Map<string, Promise<unknown>>();
+  async function takeState(runId: string) {
+    const view = (await snapshot(runId)).view;
+    const read = await readRun(deps.root, runId).catch(() => refuse("run_not_found", `run ${runId} not found`));
+    const st = continuable(read);
+    if (!st.workspace) refuse("run_not_found", "the run has no working copy");
+    const ws = await openWorkspace({ root: deps.root, runId, gitPath: deps.gitPath() });
+    if (ws.mode === "project") refuse("take_unavailable", "the changes are in the project folder already");
+    const cps = Object.keys(st.workspace!.checkpoints).map(Number).sort((a, b) => a - b);
+    const stage = cps.at(-1) ?? null;
+    const tree = stage !== null ? st.workspace!.checkpoints[String(stage)].tree : await snapshotCopyTree(ws, st.workspace!.baseline.tree);
+    const files = (await diffTreeNames(ws, st.workspace!.baseline.tree, tree)).files.length;
+    const taken = await readTaken(ws);
+    const goalText = await readText(deps.root, runId, st.goal).then((b) => String((JSON.parse(b.toString("utf8")) as { text?: unknown }).text ?? ""), () => "");
+    const runBranch = ws.mode === "worktree" ? taken?.branch?.name ?? ws.branch : null;
+    const base = `raoden/${branchSlug(goalText)}-${runId.slice(0, 8)}`;
+    let suggested = base;
+    for (let n = 2; n < 50 && await branchCommit(ws, suggested) !== null && suggested !== runBranch; n++) suggested = `${base}-${n}`;
+    const info: OrchestrationTake = {
+      mode: ws.mode as "copy" | "worktree", from: stage !== null ? "checkpoint" : "current", stage, files,
+      allowed: ["completed", "stopped", "paused"].includes(view.status) && !view.newer && files > 0,
+      suggested: taken?.branch && ws.mode === "worktree" ? taken.branch.name : suggested, runBranch,
+      branch: taken?.branch && taken.branch.tree === tree ? { name: taken.branch.name, at: taken.branch.at } : null,
+      applied: taken?.applied && taken.applied.tree === tree ? { at: taken.applied.at } : null
+    };
+    return { ws, st, tree, taken, info, message: commitMessage(goalText || "Raoden Loom run", runId) };
+  }
+  async function takeResult(runId: string, input: OrchestrationTakeInput): Promise<OrchestrationTakeOutcome> {
+    const { ws, st, tree, taken, info, message } = await takeState(runId);
+    const done = async (result: OrchestrationTakeOutcome["result"], extra: Partial<OrchestrationTakeOutcome> = {}) => ({ result, ...extra, take: (await takeState(runId)).info });
+    if (!info.allowed) return { result: "unavailable", take: info };
+    const at = new Date().toISOString();
+    if (input?.action === "branch") {
+      if (info.branch && (ws.mode === "copy" || info.branch.name === input.name)) return { result: "already", take: info };
+      if (typeof input.name !== "string" || !(await branchNameOk(ws, input.name))) return { result: "invalid_name", take: info };
+      const from = ws.mode === "worktree" ? info.runBranch! : undefined;
+      if (input.name !== from && await branchCommit(ws, input.name) !== null) return { result: "branch_exists", take: info };
+      const made = await takeToBranch(ws, { name: input.name, tree, message, ...(from ? { from } : {}) });
+      await writeTaken(ws, { v: 1, ...taken, branch: { name: input.name, commit: made.commit, tree, at } });
+      return done(made.renamed ? "renamed" : "created");
+    }
+    if (input?.action === "apply") {
+      if (info.applied) return { result: "already", take: info };
+      const r = await applyToProject(ws, st.workspace!.baseline.tree, tree);
+      if (!r.applied) return { result: "conflict", files: r.files, detail: r.detail, take: info };
+      await writeTaken(ws, { v: 1, ...taken, applied: { tree, at } });
+      return done("applied");
+    }
+    return refuse("invalid_argument", "action must be branch or apply");
+  }
+
   return {
     catalog: () => result(async (): Promise<OrchestrationCatalog> => ({
       ...CHECK_CATALOG,
@@ -718,6 +782,15 @@ export function createRunManager(deps: RunManagerDeps) {
       if (!names.files.some((f) => f.path === path)) refuse("invalid_argument", "the path is not in this run's changes");
       const d = await diffTreePath(ws, st.workspace!.baseline.tree, target.tree, path);
       return { path, text: d.text, truncated: d.truncated };
+    }),
+
+    take: (runId: string) => result(async () => (await takeState(runIdOk(runId))).info),
+    takeResult: (runId: string, input: OrchestrationTakeInput) => result(async () => {
+      runIdOk(runId);
+      while (taking.has(runId)) await taking.get(runId)!.catch(() => {});
+      const p = takeResult(runId, input);
+      taking.set(runId, p);
+      try { return await p; } finally { taking.delete(runId); }
     }),
 
     // The checks the start would make, and more, without starting anything (no model call, no run, no file written).

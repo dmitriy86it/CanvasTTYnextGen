@@ -344,7 +344,8 @@ export async function createAgent(app, label, projectDir) {
 // The goal dialog of a link, filled and submitted; resolves when the run panel is open. `onDialog` runs checks on the
 // open dialog before the submit.
 // Stage 12: `commands` are the check lines typed into the dialog (omitted: the ones readiness suggests from the project's
-// files are kept); `workMode` picks the work place (the dialog's default is the project folder).
+// files are kept); `workMode` picks the work place. Omitted: the project folder, as before PR 5 made «a separate copy»
+// the dialog's default for a new project — the smokes keep what they were written for unless they ask.
 export async function startGoal(app, linkId, { reviewPlan = false, task = "add a file src/note.mjs", criteria = "src/note.mjs exists\nnode --test passes", commands, workMode, onDialog, acknowledge = true } = {}) {
   await app.clickEl(byText(`[data-agent-link-id="${linkId}"] button`, "Новая цель"));
   await app.waitFor(`${q(".orch-dialog textarea")} && true`, "goal dialog");
@@ -353,8 +354,11 @@ export async function startGoal(app, linkId, { reviewPlan = false, task = "add a
   // stage 13: the dialog starts from the project settings; they are loaded before anything is changed
   await app.waitFor(`${q("[data-orch-profile]")} && ${q("[data-orch-profile]")}.dataset.orchProfile !== "loading"`, "project settings", 20_000);
   if (commands) await app.type(q("[data-orch-commands]"), commands.join("\n"));
-  if (workMode || reviewPlan) await app.ev(`${q(".orch-dialog .orch-advanced")}.open = true`);
-  if (workMode) await app.clickEl(q(`[data-orch-workmode] input[value="${workMode}"]`));
+  const mode = workMode ?? "project";
+  const switching = mode !== await app.ev(`${q("[data-orch-workmode]")}?.dataset.orchWorkmode`);
+  if (switching || reviewPlan) await app.ev(`${q(".orch-dialog .orch-advanced")}.open = true`);
+  if (switching) await app.clickEl(q(`[data-orch-workmode] input[value="${mode}"]`));
+  if (switching && !workMode && !reviewPlan) await app.ev(`${q(".orch-dialog .orch-advanced")}.open = false`);
   await onDialog?.();
   if (reviewPlan) await app.clickEl(`[...document.querySelectorAll(".orch-dialog .orch-check")].find((l) => l.textContent.includes("Показать план")).querySelector("input")`);
   // Readiness is asked from main after the text settles; items to confirm are acknowledged like a user would.

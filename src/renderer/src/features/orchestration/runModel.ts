@@ -7,11 +7,14 @@ import type {
   OrchestrationLimitKind,
   OrchestrationPermissionOption,
   OrchestrationQaVersion,
+  OrchestrationReadinessItem,
   OrchestrationResult,
   OrchestrationPersonDecide,
   OrchestrationPlanDecide,
   OrchestrationRunCommand,
-  OrchestrationRunView
+  OrchestrationRunView,
+  OrchestrationTake,
+  OrchestrationTakeOutcome
 } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
@@ -984,3 +987,34 @@ export function roleModel(role: "lead" | "executor" | "reviewer", entries: reado
 // it by itself). Lower-case program names only: «Make sure …» is a sentence, «make test» a command.
 const COMMAND_LIKE = /^(?:(?:npm|npx|node|php|composer|pytest|cargo|make)(?:\s|$)|python3? -m\s|go test(?:\s|$)|\.\/)|(?:^|\s)--test(?:\s|=|$)/;
 export const commandLike = (line: string): boolean => COMMAND_LIKE.test(line.trim());
+
+// ---------- «Забрать результат» (UX audit 2026-10-05, top-10 #10) ----------
+
+const hhmm = (iso: string) => { const d = new Date(iso); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+// What was taken of this result, said in the run's summary; empty: nothing yet.
+export function takenLines(locale: LocaleId, take: OrchestrationTake | null): string[] {
+  if (!take) return [];
+  return [
+    ...(take.branch ? [t(locale, "orchTakenBranch").replace("{name}", take.branch.name)] : []),
+    ...(take.applied ? [t(locale, "orchTakenApplied").replace("{time}", hhmm(take.applied.at))] : [])
+  ];
+}
+// Where the result comes from: the last checkpoint, or — said plainly — the working copy as it is now.
+export const takeSourceText = (locale: LocaleId, take: OrchestrationTake): string =>
+  (take.from === "checkpoint" ? t(locale, "orchTakeFromCheckpoint").replace("{stage}", String(take.stage)) : t(locale, "orchTakeFromCurrent"))
+    .replace("{files}", String(take.files));
+export function takeOutcomeText(locale: LocaleId, o: OrchestrationTakeOutcome, name: string): string {
+  return t(locale, `orchTake_${o.result}` as TranslationKey)
+    .replaceAll("{name}", o.result === "renamed" || o.result === "created" ? o.take.branch?.name ?? name : name)
+    .replace("{suggested}", o.take.suggested)
+    .replace("{files}", (o.files ?? []).join(", ") || "?");
+}
+
+// The goal dialog (UX audit PR 5): «In the project folder» with the person's uncommitted changes — how many (null: none or
+// another mode); and the commands a «Check now» found failing before any change (their lines, as written).
+export function dirtyInPlace(workMode: string, items: readonly OrchestrationReadinessItem[]): number | null {
+  const n = Number(items.find((i) => i.id === "git")?.facts?.changed ?? 0);
+  return workMode === "project" && n > 0 ? n : null;
+}
+export const failingOnSource = (items: readonly OrchestrationReadinessItem[]): string[] =>
+  items.filter((i) => /^source_\d+$/.test(i.id) && i.facts?.result === "failed").map((i) => String(i.facts?.command ?? "")).filter(Boolean);

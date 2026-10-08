@@ -39,6 +39,7 @@
     "smoke:workspaces-ui": "node scripts/smoke-workspaces-ui.mjs",
     "smoke:workspaces-background": "node scripts/smoke-workspaces-background.mjs",
     "smoke:preflight-ui": "node scripts/smoke-preflight-ui.mjs",
+    "smoke:take-result-ui": "node scripts/smoke-take-result-ui.mjs",
     "preview": "electron-vite preview",
     "audit:secrets": "node scripts/audit-secrets.mjs",
     "build:windows-pipe-host": "node scripts/build-windows-agent-pipe-host.mjs",

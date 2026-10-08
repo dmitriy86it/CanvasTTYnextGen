@@ -127,7 +127,7 @@ test("F-1: a Laravel project without a JS lock file is prepared without npm; no 
   const m = manager({ MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "app.php", base64: b64("<?php // fixed\n") }] }), REVIEW, FINAL]) });
   const before = { npm: runs("npm"), composer: runs("composer") };
   const runId = randomUUID();
-  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "fix the app", criteria: ["tests pass"], checks: [], mode: "autopilot" } })).ok);
+  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "fix the app", criteria: ["tests pass"], checks: [], mode: "autopilot", workMode: "project" } })).ok);
   const done = await settled(m, runId);
   assert.equal(done.status, "completed", JSON.stringify(done));
   assert.equal(runs("npm") - before.npm, 0, "npm was not run");

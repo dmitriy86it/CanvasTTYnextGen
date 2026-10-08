@@ -1360,3 +1360,13 @@ button { border: 0; }
 .notify-banner__item > span { flex: 1; min-width: 0; }
 .notify-banner__item > button { flex: none; font-size: 12px; }
 .notify-unavailable { color: var(--text); font-weight: 600; }
+
+/* «Забрать результат» (UX audit 2026-10-05, top-10 #10) */
+.orch-take { display: grid; gap: 6px; margin: 6px 0; padding: 8px 10px; border: 1px solid rgba(255,255,255,.18); border-radius: 8px; }
+.orch-take__from { margin: 0; font-weight: 600; }
+.orch-take__name input { width: 100%; font-family: var(--font-mono); }
+.orch-take__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.orch-take__done, .orch-take__taken { margin: 0; color: var(--success); font-weight: 600; }
+.orch-failing { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--yellow); border-radius: 8px; }
+.orch-failing p, .orch-failing ul { margin: 0; }
+.orch-failing__actions { display: flex; flex-wrap: wrap; gap: 6px; }

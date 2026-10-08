@@ -157,6 +157,9 @@ try {
   await app.ev(`${q("[data-orch-env-report]")}.scrollIntoView({ block: "center" })`);
   await sleep(200);
   await app.shot("03-environment-probe");
+  // a new project starts in a separate copy (PR 5); this one works in the project folder, where commit and QA are offered
+  expect(await app.ev(`${q("[data-orch-settings-workmode]")}.dataset.orchSettingsWorkmode`) === "copy", "settings: a new project's work place is a separate copy", null);
+  await app.clickEl(`document.querySelectorAll("[data-orch-settings-workmode] input")[2]`);
   // «Как в моём терминале» for Codex: shown with its warning, saved only once the warning is confirmed
   await setValue(q('[data-orch-access="codex"] select'), "terminal");
   expect(await app.ev(`!!${q("[data-orch-terminal-warning]")} && !!${q("[data-orch-terminal-confirm]")}`), "terminal mode shows its warning and a confirmation", null);
@@ -256,7 +259,7 @@ try {
   expect(/^\d+ из \d+$/.test(cost["turns-used"] ?? "") && / из /.test(cost.elapsed ?? ""), "the board: turns and time against the limits", cost);
   expect(/вызовов моделей: \d+, токенов: [\d,]/.test(await app.ev(`${q('[data-board="cost-total"]')}?.textContent ?? ""`)), "the board: what the run spent in all, on one line", null);
   await app.ev(`${q("[data-orch-cost-roles]")}.open = true`);
-  expect(/Вызовов модели: \d+ · токенов:/.test(await app.ev(`${q("[data-agent-cost]")}?.textContent ?? ""`)), "the cards: calls and tokens of their agent", await app.ev(`${q("[data-agent-cost]")}?.textContent ?? ""`));
+  expect(/Вызовы этого агента: \d+ · токенов:/.test(await app.ev(`${q("[data-agent-cost]")}?.textContent ?? ""`)), "the cards: calls and tokens of their agent", await app.ev(`${q("[data-agent-cost]")}?.textContent ?? ""`));
   await app.ev(`${q('[data-board="calls"]')}?.scrollIntoView({ block: "center" })`);
   await sleep(200);
   await app.shot("08b-board-cost");

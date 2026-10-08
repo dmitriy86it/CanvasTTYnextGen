@@ -89,7 +89,7 @@ const settled = (m, runId) => until(async () => {
 const records = async (m, runId) => (await m.history(runId, 0, 500)).value.records;
 const journalFile = (m, runId) => path.join(m.root, "runs", runId, "journal.jsonl");
 async function start(m, src, goal) {
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["false"] });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["false"] });
   const runId = randomUUID();
   const r = await m.create({ requestId: runId, source: src, goal: { text: "a and b to 2", criteria: ["a.txt says 2"], checks: [], commands: [], mode: "autopilot", ...goal } });
   assert.ok(r.ok, JSON.stringify(r));

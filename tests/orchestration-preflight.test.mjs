@@ -164,7 +164,7 @@ test("«Проверить сейчас» as main answers it: every item, and no
     platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000, journalV2: true, leadSandbox: false,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH), workspaceKnown: () => true
   });
-  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), checks: ["grep -qx 1 a.txt"] });
+  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["grep -qx 1 a.txt"] });
   const at = (x) => ({ position: { x, y: 0 }, size: { width: 300, height: 200 } });
   const [lead, exec, linkId] = [randomUUID(), randomUUID(), randomUUID()];
   assert.ok((await m.createAgent({ agentId: lead, provider: "codex", project: src, bounds: at(0) })).ok);

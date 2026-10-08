@@ -33,7 +33,7 @@ const MAX_GRANTS = 200;
 export function validateProfile(input: unknown): OrchestrationProjectProfile {
   const p = input as Partial<OrchestrationProjectProfile> | null;
   if (!p || typeof p !== "object") bad("profile must be an object");
-  if (p!.workMode !== "project" && p!.workMode !== "worktree") bad("workMode must be project or worktree");
+  if (p!.workMode !== "project" && p!.workMode !== "worktree" && p!.workMode !== "copy") bad("workMode must be copy, worktree or project");
   if (!Array.isArray(p!.checks) || p!.checks.length > 16) bad("checks: up to 16 command lines");
   const checks = p!.checks!.map((c, i) => line(c, `check ${i + 1}`));
   const prep = p!.prepare;
@@ -112,7 +112,7 @@ export async function currentBranch(gitPath: string, project: string): Promise<s
 export async function suggestProfile(project: string): Promise<OrchestrationProjectProfile> {
   const s = await suggestCommands(project);
   return {
-    v: 1, workMode: "project", checks: s.commands, prepare: { steps: await suggestPrepare(project), auto: true },
+    v: 1, workMode: "copy", checks: s.commands, prepare: { steps: await suggestPrepare(project), auto: true },
     env: { direnv: true }, access: { ...DEFAULT_ACCESS }, finish: { commit: false, push: null, qa: null }, grants: [], savedAt: null
   };
 }

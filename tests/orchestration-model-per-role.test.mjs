@@ -102,7 +102,7 @@ const lines = (m, file) => {
 const turns = (m) => fs.readdirSync(m.state).filter((f) => /^[0-9a-f-]{36}\.json$/.test(f))
   .reduce((k, f) => k + JSON.parse(fs.readFileSync(path.join(m.state, f), "utf8")).turns.length, 0);
 async function saveProfile(m, src, profile = {}) {
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["grep -qx 2 a.txt"], ...profile });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["grep -qx 2 a.txt"], ...profile });
 }
 async function create(m, src, goal = {}) {
   const runId = randomUUID();
