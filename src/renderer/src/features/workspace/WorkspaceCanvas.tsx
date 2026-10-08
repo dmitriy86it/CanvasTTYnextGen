@@ -1257,8 +1257,12 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
           <WorkspaceBar controls={workspace} counts={counts} locale={settings.locale} onDialog={openWsDialog}
             board={{ shown: !!boardPlace, toggle: () => {
               if (boardPlace) { raiseLayer(boardLayerId(workspace.activeId)); return; }
+              // the first free place in view, around its centre; over the other windows only when none is free
               const c = viewportCenterWorldPoint();
-              void board.place(workspace.activeId, { position: { x: Math.round(c.x - BOARD_SIZE.width / 2), y: Math.round(c.y - BOARD_SIZE.height / 2) }, size: { ...BOARD_SIZE } });
+              const taken = [homeBounds, ...allWindowBounds];
+              const at = (dx: number, dy: number): SessionBounds => ({ position: { x: Math.round(c.x - BOARD_SIZE.width / 2 + dx), y: Math.round(c.y - BOARD_SIZE.height / 2 + dy) }, size: { ...BOARD_SIZE } });
+              const steps = [0, 1, -1, 2, -2].flatMap((i) => [0, 1, -1, 2, -2].map((j) => at(i * (BOARD_SIZE.width / 2 + 40), j * (BOARD_SIZE.height / 2 + 40))));
+              void board.place(workspace.activeId, steps.find((b) => !taken.some((w) => boundsIntersect(b, w))) ?? at(0, 0));
             } }} />
         </div>
         {CANVAS_OVERLAY_PLACEMENTS.map((placement) => (

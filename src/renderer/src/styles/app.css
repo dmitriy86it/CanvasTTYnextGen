@@ -1408,7 +1408,7 @@ button { border: 0; }
 .board-task--done-accepted { border-left-color: var(--accent); border-left-style: dashed; }
 .board-card .board-task__title { padding: 0; color: var(--text); background: none; text-align: left; font-weight: 800; white-space: normal; overflow-wrap: anywhere; }
 .board-task__key { font: 800 .85em/1 var(--font-mono); color: var(--text-muted-on-dark); }
-.board-task__line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted-on-dark); font-size: .86em; }
+.board-task__line { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted-on-dark); font-size: .86em; }
 .board-task__line[data-board-line] { color: var(--text); font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
 .board-task__badge { margin-right: .35em; padding: 0 .35em; border-radius: 6px; font-weight: 900; }
 .board-task__badge--confirmed { color: var(--text-dark); background: var(--success); }

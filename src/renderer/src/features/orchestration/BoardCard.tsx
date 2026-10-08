@@ -86,7 +86,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
       </header>
       {board.failed && !view && <p className="board-card__message" role="alert">{t(locale, "boardLoadFailed")} ({board.failed})</p>}
       {message && !message.taskId && <p className="board-card__message" role="alert">{message.text}</p>}
-      {view && tasks.length === 0 && <p className="board-card__empty">{t(locale, "boardEmpty")}</p>}
+      {view && tasks.length === 0 && <p className="board-card__empty" data-board-empty>{t(locale, "boardEmpty")}</p>}
       <div className="board-card__columns" data-wheel-owner="local">
         {COLUMNS.map((column) => {
           const items = shown.filter((x) => (showArchive ? column === "queue" : board.statuses.get(x.id)?.column === column))
@@ -102,10 +102,20 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                   const run = runId ? orch.runs[runId] : undefined;
                   const entries = runId ? orch.activity[runId]?.entries ?? [] : [];
                   const fact = runId ? view?.facts.find((f) => f.runId === runId) : undefined;
-                  const line = taskLine(locale, st, run ? { view: run.view, entries, open: run.open } : null, fact?.limit ?? null);
-                  const facts = [run && conditionsLine(locale, run.view), run && findingsLine(locale, run.view), st.attempts > 0 && tr(locale, "boardAttempt", { n: st.attempts })].filter(Boolean).join(" · ");
+                  const base = taskLine(locale, st, run ? { view: run.view, entries, open: run.open } : null, fact?.limit ?? null);
+                  // what is asked, in the request's own words (answered in the run panel: one home for answers)
+                  const asked = st.reason === "waits_permission" ? run?.view.permission?.summary : null;
+                  const line = asked ? `${base}: ${asked}` : base;
+                  // without checks, the conditions are met by the agents' word only
+                  const met = run ? conditionsLine(locale, run.view) : null;
+                  const facts = [met && (st.completion === "no_checks" ? `${met} (${t(locale, "boardByAgents")})` : met), run && findingsLine(locale, run.view),
+                    st.attempts > 0 && tr(locale, "boardAttempt", { n: st.attempts })].filter(Boolean).join(" · ");
+                  // the tasks that go on once this one is accepted
+                  const next = tasks.filter((x) => !x.archivedAt && x.dependsOn.includes(task.id)).map((x) => x.key);
                   const cost = run ? costLine(locale, "executor", run.view, entries) : null;
-                  const after = task.dependsOn.length ? tr(locale, "boardAfter", { keys: keysOf(task.dependsOn) }) : null;
+                  // «after T-2» while T-2 is not done and the line does not say so already
+                  const open = task.dependsOn.filter((d) => !board.statuses.get(d)?.done);
+                  const after = open.length && st.reason !== "waits_task" ? tr(locale, "boardAfter", { keys: keysOf(open) }) : null;
                   const archived = !!task.archivedAt;
                   return (
                     <li key={task.id} className={`board-task board-task--${st.column}${st.done ? ` board-task--done-${st.done}` : ""}`}
@@ -124,7 +134,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                       {message?.taskId === task.id && <div className="board-task__message" role="alert">{message.text}</div>}
                       {accepting === task.id && (
                         <div className="board-task__confirm" role="alertdialog" aria-label={t(locale, "boardAccept")} data-board-accept-confirm>
-                          <p>{t(locale, "boardAcceptWhy")}</p>
+                          <p>{t(locale, "boardAcceptWhy")}{next.length ? ` ${tr(locale, "boardAcceptNext", { keys: next.join(", ") })}` : ""}</p>
                           <button type="button" className="orch-primary" data-board-accept-yes onClick={async () => {
                             setAccepting(null);
                             const r = await board.accept(task.id);
@@ -134,7 +144,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                           <button type="button" onClick={() => setAccepting(null)}>{t(locale, "orchCancel")}</button>
                         </div>
                       )}
-                      {!readOnly && (
+                      {!readOnly && accepting !== task.id && (
                         <div className="board-task__actions">
                           {archived ? (
                             <button type="button" data-board-unarchive onClick={() => void board.archive(task.id, false)}>{t(locale, "boardUnarchive")}</button>
@@ -143,7 +153,9 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                               {(st.column === "queue" || st.reason === "no_checks") && !st.reason?.startsWith("waits_") && st.reason !== "run_newer" && (
                                 <button type="button" data-board-start onClick={() => start(task)}>{t(locale, st.attempts ? "boardStartAgain" : "boardStart")}</button>
                               )}
-                              {runId && <button type="button" data-board-open onClick={() => ui.openRunById(runId)}>{t(locale, "orchOpenRun")}</button>}
+                              {runId && st.reason === "waits_permission"
+                                ? <button type="button" className="orch-primary" data-board-open data-board-answer onClick={() => ui.openRunById(runId)}>{t(locale, "boardAnswer")}</button>
+                                : runId && <button type="button" data-board-open onClick={() => ui.openRunById(runId)}>{t(locale, "orchOpenRun")}</button>}
                               {st.reason === "no_checks" && <button type="button" className="orch-primary" data-board-accept onClick={() => setAccepting(task.id)}>{t(locale, "boardAccept")}</button>}
                               {(st.column === "queue" || st.column === "done") && <button type="button" data-board-edit onClick={() => setForm({ task })}>{t(locale, "boardEdit")}</button>}
                               {(st.column === "queue" || st.column === "done") && <button type="button" data-board-archive onClick={() => void board.archive(task.id, true)}>{t(locale, "boardArchive")}</button>}
@@ -218,8 +230,9 @@ function TaskForm({ locale, task, tasks, projects, onClose, onSave, onDelete }: 
         <label className="orch-field"><span>{t(locale, "boardFieldProject")}</span>
           <input data-board-field="project" value={project} list="board-projects" disabled={!!task} onChange={(e) => setProject(e.target.value)} />
           <datalist id="board-projects">{projects.map((p) => <option key={p} value={p} />)}</datalist></label>
-        {others.length > 0 && (
+        {(
           <fieldset className="orch-field board-form__depends"><legend>{t(locale, "boardFieldDepends")}</legend>
+            {others.length === 0 && <small className="orch-hint">{t(locale, "boardNoOtherTasks")}</small>}
             {others.map((x) => (
               <label key={x.id}><input type="checkbox" data-board-depends={x.key} checked={depends.includes(x.id)}
                 onChange={(e) => setDepends((d) => (e.target.checked ? [...d, x.id] : d.filter((y) => y !== x.id)))} /> {x.key} · {x.title}</label>

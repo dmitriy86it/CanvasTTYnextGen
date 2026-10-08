@@ -76,10 +76,11 @@ async function newTask({ title, text, criteria, after = [] }) {
   await app.clickEl(q("[data-board-save]"));
   await app.waitFor(`!${q("[data-board-form]")}`, "task form closed");
 }
-async function startFromBoard(key, commands) {
+async function startFromBoard(key, commands, shot) {
   await app.clickEl(`${q(task(key))}.querySelector("[data-board-start]")`);
   await app.waitFor(`${q(".orch-dialog textarea")} && true`, "goal dialog");
   await app.waitFor(`${q("[data-orch-profile]")} && ${q("[data-orch-profile]")}.dataset.orchProfile !== "loading"`, "project settings", 20_000);
+  if (shot) { await app.ev(`${q(".orch-dialog")}.scrollTop = 0`); await app.shot(shot); }
   const filled = await app.ev(`({ task: ${q("[data-goal-task]")}?.dataset.goalTask ?? null, text: document.querySelectorAll(".orch-dialog textarea")[0].value,
     criteria: document.querySelectorAll(".orch-dialog textarea")[1].value })`);
   await app.type(q("[data-orch-commands]"), commands.join("\n"));
@@ -133,17 +134,16 @@ try {
   await newTask({ title: "Связать модули", text: "Импортировать two в one", criteria: "one импортирует two", after: ["T-2"] });
   const t3 = await shown("T-3");
   expect(t3?.column === "queue" && t3.reason === "waits_task" && t3.line.includes("T-2") && !t3.buttons.includes("Запустить"), "T-3 waits for T-2, no «Start»", t3);
-  expect(await app.ev(`${q(task("T-3"))}.textContent.includes("после T-2")`), "T-3 says «after T-2»");
+  expect(!await app.ev(`${q(task("T-3"))}.querySelector("[data-board-after]")`), "T-3 says «waits for T-2» once (no second «after T-2» line)");
   const fresh = await shown("T-1");
   expect(fresh?.column === "queue" && fresh.line === "Ещё не запускалась" && fresh.buttons.includes("Запустить"), "T-1 not started, «Start»", fresh);
   await app.shot("board-03-three-tasks");
   await boardShot("board-03-three-tasks-board");
 
   // ---------- 2. T-1 from the board, with the project's check ----------
-  const filled = await startFromBoard("T-1", ["node --test"]);
+  const filled = await startFromBoard("T-1", ["node --test"], "board-04-goal-dialog-from-task");
   expect(filled.task === "T-1" && filled.text === "Добавить src/one.mjs с константой one" && filled.criteria === "src/one.mjs есть\nnode --test проходит",
     "the goal dialog starts from T-1: its text, requirements, «Task T-1»", filled);
-  await app.shot("board-04-goal-dialog-from-task");
   await submitGoal();
   const runs1 = await app.ev("window.canvasTTY.orchestration.list().then((r) => r.value.map((s) => s.view.runId))");
   const run1 = runs1[0];
@@ -163,7 +163,8 @@ try {
   await app.waitFor(`${q("[data-orch-permission]")} && true`, "permission prompt", 60_000);
   await closePanel();
   const waiting = await until("T-2", (s) => s.reason === "waits_permission", "T-2 waits for a permission", 30_000);
-  expect(waiting.column === "work" && waiting.line === "Ждёт разрешения", "T-2 at work: «Waits for a permission»", waiting);
+  expect(waiting.column === "work" && waiting.line.startsWith("Ждёт разрешения: ") && waiting.buttons.includes("Ответить на запрос"),
+    "T-2 at work: «Waits for a permission: <what>», «Answer the request»", waiting);
   const cardTask = await app.ev(`${q(`[data-agent-id="${exec.agentId}"] [data-agent-task]`)}?.textContent ?? null`);
   expect(cardTask === "T-2 · Модуль two", "the agent card at work shows «T-2 · Модуль two»", cardTask);
   await app.shot("board-05a-waits-permission");
@@ -173,7 +174,7 @@ try {
   await app.clickEl(q(`[data-orch-permission] [data-decision="allow_once"]`));
   await closePanel();
   const review2 = await until("T-2", (s) => s.reason === "no_checks", "T-2 completed without checks");
-  expect(review2.column === "review" && review2.done === null && review2.line === "Завершено без проверок — примите результат или запустите снова"
+  expect(review2.column === "review" && review2.done === null && review2.line.startsWith("Завершено без проверок: команды проверки не заданы")
     && review2.buttons.includes("Принять результат") && review2.buttons.includes("Запустить снова"), "T-2: Review, completed without checks — accept or run again", review2);
   const agentState = await app.ev(`${q(`[data-agent-id="${lead.agentId}"]`)}.className`);
   expect(agentState.includes("agent-card--completed_no_checks"), "the agent card says the same: completed without checks", agentState);
@@ -184,7 +185,8 @@ try {
   await app.clickEl(`${q(task("T-2"))}.querySelector("[data-board-accept]")`);
   await app.waitFor(`${q("[data-board-accept-confirm]")} && true`, "accept explanation");
   const why = await app.ev(`${q("[data-board-accept-confirm]")}.textContent`);
-  expect(why.includes("Команды проверки не запускались") && why.includes("зависимые задачи пойдут дальше"), "«Accept the result» explains before it accepts", why);
+  expect(why.includes("Команды проверки не запускались") && why.includes("Дальше пойдут: T-3"), "«Accept the result» explains first and names what goes on", why);
+  expect(!await app.ev(`${q(task("T-2"))}.querySelector(".board-task__actions")`), "while asked, the card's other buttons are hidden");
   await app.shot("board-06-accept-explained");
   await boardShot("board-06-accept-explained-board");
   await app.clickEl(q("[data-board-accept-yes]"));

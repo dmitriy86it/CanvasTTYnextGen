@@ -1884,7 +1884,7 @@ const ru = {
   boardReason_waits_result: "Результат {keys} не забран",
   boardReason_last_stopped: "Последний запуск остановлен (попытка {n})",
   boardReason_last_failed: "Последний запуск завершился ошибкой (попытка {n})",
-  boardReason_no_checks: "Завершено без проверок — примите результат или запустите снова",
+  boardReason_no_checks: "Завершено без проверок: команды проверки не заданы и не запускались. Примите результат или запустите снова",
   boardReason_stopping: "Останавливается",
   boardReason_run_newer: "Создан более новой версией — только просмотр",
   boardReason_paused_other: "На паузе",
@@ -1906,11 +1906,11 @@ const ru = {
   boardShowArchive: "Показать архив",
   boardHideArchive: "Скрыть архив",
   boardArchived: "В архиве",
-  boardEmpty: "Задач пока нет. «Новая задача» — добавить первую.",
+  boardEmpty: "Задач пока нет. «Новая задача» — добавить первую. Задача — что нужно сделать; «Запустить» откроет новую цель с её текстом и требованиями.",
   boardColumnEmpty: "Пусто",
   boardFieldTitle: "Название",
   boardFieldText: "Что сделать",
-  boardFieldCriteria: "Требования — по одному в строке",
+  boardFieldCriteria: "Как понять, что готово — по одному требованию в строке",
   boardFieldDepends: "Выполнять после",
   boardFieldProject: "Папка проекта",
   boardSave: "Сохранить",
@@ -1918,7 +1918,12 @@ const ru = {
   boardReadOnly: "Доска записана более новой версией — только просмотр",
   boardHide: "Убрать доску с холста",
   boardLoadFailed: "Доска не загрузилась",
-  boardTaskOf: "Задача {key}: {title}"
+  boardTaskOf: "Задача {key}: {title}",
+  boardByAgents: "по отметкам агентов",
+  boardTaskFrom: "Задача с доски",
+  boardAcceptNext: "Дальше пойдут: {keys}.",
+  boardAnswer: "Ответить на запрос",
+  boardNoOtherTasks: "Других задач пока нет — связь можно задать позже, в «Изменить»."
 } as const;
 
 const en: Record<keyof typeof ru, string> = {
@@ -3804,7 +3809,7 @@ const en: Record<keyof typeof ru, string> = {
   boardReason_waits_result: "The result of {keys} is not taken",
   boardReason_last_stopped: "The last run was stopped (attempt {n})",
   boardReason_last_failed: "The last run failed (attempt {n})",
-  boardReason_no_checks: "Completed without checks — accept the result or run again",
+  boardReason_no_checks: "Completed without checks: no check commands were set or run. Accept the result or run again",
   boardReason_stopping: "Stopping",
   boardReason_run_newer: "Made by a newer version — view only",
   boardReason_paused_other: "Paused",
@@ -3826,11 +3831,11 @@ const en: Record<keyof typeof ru, string> = {
   boardShowArchive: "Show archive",
   boardHideArchive: "Hide archive",
   boardArchived: "Archived",
-  boardEmpty: "No tasks yet. “New task” adds the first.",
+  boardEmpty: "No tasks yet. “New task” adds the first. A task is what is to be done; “Start” opens a new goal with its text and requirements.",
   boardColumnEmpty: "Empty",
   boardFieldTitle: "Title",
   boardFieldText: "What to do",
-  boardFieldCriteria: "Requirements — one per line",
+  boardFieldCriteria: "How to tell it is done — one requirement per line",
   boardFieldDepends: "Run after",
   boardFieldProject: "Project folder",
   boardSave: "Save",
@@ -3838,7 +3843,12 @@ const en: Record<keyof typeof ru, string> = {
   boardReadOnly: "The board was written by a newer version — view only",
   boardHide: "Remove the board from the canvas",
   boardLoadFailed: "The board did not load",
-  boardTaskOf: "Task {key}: {title}"
+  boardTaskOf: "Task {key}: {title}",
+  boardByAgents: "by the agents' marks",
+  boardTaskFrom: "Task from the board",
+  boardAcceptNext: "Next to go: {keys}.",
+  boardAnswer: "Answer the request",
+  boardNoOtherTasks: "No other tasks yet — a link can be set later, in “Edit”."
 };
 
 export type TranslationKey = keyof typeof ru;

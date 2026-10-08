@@ -412,7 +412,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       <form className="orch-form" onSubmit={(event) => { event.preventDefault(); if (complete && ready) { if (failing.length) setChoosing(true); else void submit(); } }}>
         {task && (
           <div className="orch-field orch-field--static" data-goal-task={task.key}>
-            <span>{t(locale, "boardTask")}</span>
+            <span>{t(locale, "boardTaskFrom")}</span>
             <strong title={task.title}>{task.key} · {task.title}</strong>
           </div>
         )}
