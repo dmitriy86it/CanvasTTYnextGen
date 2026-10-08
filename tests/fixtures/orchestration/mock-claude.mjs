@@ -65,8 +65,16 @@ const HELP = [
   ...(HELP_VARIANT === "no_settings" ? [] : ["  --settings <file-or-json>  Path to a settings JSON file or a JSON string to load additional settings from"]),
   "  --verbose  Override verbose mode setting from config", ""
 ].join("\n");
-if (flags["--help"]) {
+if (args[0] === "auth" && flags["--help"]) {
+  // as 2.1.293 lists it; MOCK_NO_AUTH_STATUS=1 — an older CLI without `auth status`
+  process.stdout.write(`Usage: claude auth [options] [command]\n\nManage authentication\n\nCommands:\n  login [options]   Sign in\n${process.env.MOCK_NO_AUTH_STATUS ? "" : "  status [options]  Show authentication status\n"}`);
+} else if (flags["--help"]) {
   process.stdout.write(HELP);
+} else if (args[0] === "auth" && args[1] === "status") {
+  // `claude auth status` (JSON by default in 2.1.293; no model): MOCK_LOGGED_OUT=1 — not signed in
+  if (process.env.MOCK_STATE) fs.appendFileSync(path.join(process.env.MOCK_STATE, "auth.jsonl"), JSON.stringify("claude") + "\n");
+  process.stdout.write(JSON.stringify({ loggedIn: !process.env.MOCK_LOGGED_OUT, authMethod: process.env.MOCK_LOGGED_OUT ? "none" : "claude.ai", email: "someone@example.com" }, null, 2) + "\n");
+  if (process.env.MOCK_LOGGED_OUT) process.exitCode = 1;
 } else if (flags["--input-format"] === "stream-json" && !flags["--json-schema"]) {
   await probe();
 } else if (flags["--input-format"] === "stream-json") {
@@ -336,7 +344,7 @@ async function host() {
   } else {
     const report = script ? withProposal(script.answer, readSchema(flags["--json-schema"])) : reportFor(st, readSchema(flags["--json-schema"]), resumeId !== null);
     await emit({ type: "assistant", session_id: sessionId, message: { id: "msg_0", type: "message", role: "assistant", model: "mock", content: [{ type: "text", text: "Done." }], stop_reason: null } });
-    await emit({ type: "result", subtype: "success", is_error: false, session_id: sessionId, result: "Done.", duration_ms: 1, num_turns: 1, total_cost_usd: 0, structured_output: report });
+    await emit({ type: "result", subtype: "success", is_error: false, session_id: sessionId, result: "Done.", duration_ms: 1, num_turns: 1, total_cost_usd: 0, usage: { input_tokens: task.length, cache_read_input_tokens: 100, output_tokens: 7 }, structured_output: report });
   }
   await input.next(() => false); // EOF
 }
@@ -349,6 +357,9 @@ function projectDefaultMode() {
 // ---- stage 13: the environment probe (control requests without a user message) ----
 async function probe() {
   if (process.env.MOCK_STATE) fs.appendFileSync(path.join(process.env.MOCK_STATE, "claude-probe.jsonl"), JSON.stringify(args) + "\n");
+  // MOCK_CLAUDE_SANDBOX=slow:<ms>: a session with the sandbox settings answers only after <ms> (slow hooks at its start)
+  const slow = /^slow:(\d+)$/.exec(process.env.MOCK_CLAUDE_SANDBOX ?? "");
+  if (slow && /"sandbox"/.test(String(flags["--settings"] ?? ""))) await new Promise((r) => setTimeout(r, Number(slow[1])));
   // MOCK_CLAUDE_SANDBOX=refused: a session with the sandbox settings does not start (as a CLI that rejects them would)
   if (process.env.MOCK_CLAUDE_SANDBOX === "refused" && /"sandbox"/.test(String(flags["--settings"] ?? ""))) {
     process.stderr.write("Error: Invalid settings: sandbox is not supported\n");

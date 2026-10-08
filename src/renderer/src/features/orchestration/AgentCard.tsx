@@ -21,6 +21,7 @@ interface AgentCardProps {
   statusTime: string | null; // the last event's time or the silence, already in words
   conditions?: string | null; // A2: "N of M conditions met" (runStatus.ts conditionsLine)
   findings?: string | null; // A3: "open blocking: N" (runStatus.ts findingsLine)
+  cost?: string | null; // UX audit Н7: "Model calls: N · tokens: …" (runStatus.ts costLine)
   ended: boolean; // its link's latest run has ended: the summary is offered
   message: CardMessage | null;
   linking: "source" | "target" | null; // keyboard/click linking mode
@@ -123,6 +124,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
         {status && (status.wait || status.now) && <div className="agent-card__line" data-agent-now>{status.wait ?? status.now}</div>}
         {props.conditions && <div className="agent-card__line" data-agent-conditions>{props.conditions}</div>}
         {props.findings && <div className="agent-card__line" data-agent-findings>{props.findings}</div>}
+        {props.cost && <div className="agent-card__line" data-agent-cost>{props.cost}</div>}
         {props.statusTime && <div className="agent-card__line agent-card__line--time" data-agent-time>{props.statusTime}</div>}
         {message && <div className={`agent-card__message agent-card__message--${message.tone}`} role={message.tone === "error" ? "alert" : "status"}>{message.text}</div>}
         {confirming && (

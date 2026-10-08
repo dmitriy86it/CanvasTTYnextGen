@@ -4,6 +4,7 @@
 import type {
   OrchestrationActivityEntry,
   OrchestrationHistoryRecord,
+  OrchestrationLimitKind,
   OrchestrationPermissionOption,
   OrchestrationQaVersion,
   OrchestrationResult,
@@ -892,6 +893,67 @@ export function parseStartProblem(message: string): Record<string, string> | nul
   if (a) return { provider: a[1].toLowerCase(), version: a[2], mode: a[3], why: a[4], missing: a[5] };
   const m = /^(Codex|Claude) (\S+): a model cannot be passed$/.exec(message);
   return m ? { provider: m[1].toLowerCase(), version: m[2], why: "no_model", missing: "" } : null;
+}
+
+// ---------- UX audit 2026-10-05, Н7: what the run spends ----------
+
+// Model calls per role (the journal's turns), the run's time and turns against its limits, and the tokens each CLI
+// reported in the activity (Codex: per request; Claude: per answer). A role whose CLI reported none has tokens null.
+// partial: the oldest activity is not loaded (the counts of tokens are then a lower bound). Never money.
+export type CostRole = "lead" | "executor" | "reviewer";
+export interface Cost {
+  calls: Record<CostRole, number>;
+  tokens: Record<CostRole, { input: number; output: number } | null>;
+  partial: boolean;
+  turns: { used: number; limit: number };
+  elapsedMs: number | null; // from the start to now, or to the last activity of a finished run (null: not known)
+  runMs: number;
+  leftMs: number | null; // to the run's deadline (null: the run is over)
+  reached: OrchestrationLimitKind | null;
+}
+export function costOf(view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[], now: number, firstId = 0): Cost | null {
+  const b = view.progress?.budget;
+  if (!b) return null;
+  const tokens: Cost["tokens"] = { lead: null, executor: null, reviewer: null };
+  for (const e of entries) {
+    if (e.kind !== "usage" || !(e.role === "lead" || e.role === "executor" || e.role === "reviewer")) continue;
+    const i = e.detail?.inputTokens, o = e.detail?.outputTokens;
+    if (typeof i !== "number" && typeof o !== "number") continue;
+    const cur = tokens[e.role] ?? { input: 0, output: 0 };
+    tokens[e.role] = { input: cur.input + (typeof i === "number" ? i : 0), output: cur.output + (typeof o === "number" ? o : 0) };
+  }
+  const over = TERMINAL_STATUSES.includes(view.status);
+  const last = entries.at(-1)?.ts;
+  const end = over ? (last ? Date.parse(last) : null) : now;
+  return {
+    calls: b.calls, tokens, partial: firstId > 0 && (entries[0]?.id ?? 0) > firstId,
+    turns: { used: b.used.turns, limit: b.limits.turns },
+    elapsedMs: end === null ? null : Math.max(0, end - b.startedAt), runMs: b.limits.runMs,
+    leftMs: over ? null : Math.max(0, b.deadlineAt - now), reached: b.reached
+  };
+}
+// UX audit 2026-10-05, Н7: the limit pause's table — each limit's current value and what is used of it, in the unit the
+// person types (minutes for the run's time). used null: no single number (rounds are counted per stage).
+export const LIMIT_KINDS: readonly OrchestrationLimitKind[] = ["turns", "runMs", "replans", "roundsPerStage"];
+export interface LimitRow { kind: OrchestrationLimitKind; now: number; used: number | null; reached: boolean }
+export function limitRows(cost: Cost, budget: NonNullable<NonNullable<OrchestrationRunView["progress"]>["budget"]>): LimitRow[] {
+  const minutes = (ms: number) => Math.round(ms / 60_000);
+  return LIMIT_KINDS.map((kind) => ({
+    kind, reached: cost.reached === kind,
+    now: kind === "runMs" ? minutes(budget.limits.runMs) : budget.limits[kind],
+    used: kind === "turns" ? budget.used.turns : kind === "replans" ? budget.used.replans
+      : kind === "runMs" ? (cost.elapsedMs === null ? null : Math.ceil(cost.elapsedMs / 60_000))
+        // rounds are counted per stage: known only for the stage that reached its limit
+        : cost.reached === "roundsPerStage" ? budget.limits.roundsPerStage : null
+  }));
+}
+
+// thousands as «12,3 тыс.» / "12.3k"
+export function tokensText(locale: LocaleId, n: number): string {
+  if (n < 1000) return String(n);
+  const k = n / 1000;
+  const v = String(k >= 100 ? Math.round(k) : Math.round(k * 10) / 10);
+  return locale === "ru" ? `${v.replace(".", ",")} тыс.` : `${v}k`;
 }
 
 // ---------- stage 13: the environment probe ----------

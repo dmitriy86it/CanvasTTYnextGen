@@ -249,6 +249,17 @@ try {
   expect((await app.ev(`${q('[data-fact="changes"]')}.textContent`)).includes("да"), "the result says there are changes", await app.ev(`${q('[data-fact="changes"]')}.textContent`));
   await app.ev(`${q("[data-orch-board]")}?.scrollIntoView({ block: "start" })`);
   await app.shot("08-completed-board");
+  // UX audit Н9: what the run spent — model calls per role, the tokens each CLI reported, the turns and the time
+  const cost = await app.ev(`Object.fromEntries(["calls", "tokens", "turns-used", "elapsed"].map((k) => [k, document.querySelector('[data-board="' + k + '"]')?.textContent ?? null]))`);
+  expect(/Лид [1-9]/.test(cost.calls ?? "") && /Исполнитель [1-9]/.test(cost.calls ?? ""), "the board: model calls per role", cost);
+  expect(/Лид: [\d,]+/.test(cost.tokens ?? "") && /Исполнитель: [\d,]+/.test(cost.tokens ?? "") && !/\$|USD/.test(cost.tokens ?? ""), "the board: tokens per role as the CLIs reported them, no money", cost);
+  expect(/^\d+ из \d+$/.test(cost["turns-used"] ?? "") && / из /.test(cost.elapsed ?? ""), "the board: turns and time against the limits", cost);
+  expect(/вызовов моделей: \d+, токенов: [\d,]/.test(await app.ev(`${q('[data-board="cost-total"]')}?.textContent ?? ""`)), "the board: what the run spent in all, on one line", null);
+  await app.ev(`${q("[data-orch-cost-roles]")}.open = true`);
+  expect(/Вызовов модели: \d+ · токенов:/.test(await app.ev(`${q("[data-agent-cost]")}?.textContent ?? ""`)), "the cards: calls and tokens of their agent", await app.ev(`${q("[data-agent-cost]")}?.textContent ?? ""`));
+  await app.ev(`${q('[data-board="calls"]')}?.scrollIntoView({ block: "center" })`);
+  await sleep(200);
+  await app.shot("08b-board-cost");
   await app.ev(`${q("[data-orch-finish]")}.scrollIntoView({ block: "center" })`);
   await sleep(200);
   await app.shot("09-result");

@@ -116,13 +116,10 @@ try {
   await app.shot("02b-differences");
   await app.key("Escape", "Escape", 27);
   await app.waitFor(`!${q(".orch-dialog")}`, "dialog closed");
-  // the readiness asks Codex for its models (model/list: one app-server, its pid and parent in the ledger, no thread) and
-  // probes what the CLIs can do (Codex: its protocol schema; Claude: its --help and initialize with the rights' switches,
-  // no message) — each process its pid and parent in the ledger
-  const threads = () => fs.existsSync(D("mock-state", "codex-thread.jsonl"));
-  const lines = (f) => (fs.existsSync(D("mock-state", f)) ? fs.readFileSync(D("mock-state", f), "utf8").split("\n").filter(Boolean).length : 0);
-  const probes = lines("codex-schema.jsonl") + lines("claude-probe.jsonl");
-  expect(ledgerCount() - 2 * (probes + 1) <= 2 && !threads() && (await runs(app)).length === 0, "readiness started no model turn and no run (only the models list and the capability probes)", [ledgerCount(), probes, threads(), await runs(app)]);
+  // the readiness starts CLIs without a model: the models list (model/list), the capability probes, the sign-in status. A
+  // model turn leaves its record with the fake CLIs: a session file (<uuid>.json), codex-thread.jsonl, claude-argv.jsonl
+  const turns = () => fs.readdirSync(D("mock-state")).filter((f) => /^[0-9a-f-]{36}\.json$/.test(f) || f === "codex-thread.jsonl" || f === "claude-argv.jsonl");
+  expect(turns().length === 0 && (await runs(app)).length === 0, "readiness started no model turn and no run", [turns(), ledgerCount(), await runs(app)]);
 
   // ---------- 3. a run in the project folder ----------
   const N = await pair(node);

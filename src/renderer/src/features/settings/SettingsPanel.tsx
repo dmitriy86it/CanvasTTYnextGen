@@ -1168,6 +1168,7 @@ function NotificationSettingsGroup({ settings, onChange }: { settings: AppSettin
         </SettingGroup>
       ))}
       <p className="setting-group__description" data-notify-system-hint>{t(locale, "notifySystemHint")}</p>
+      <p className="setting-group__description" data-notify-badge-hint>{t(locale, "notifyBadgeHint")}</p>
     </>
   );
 }

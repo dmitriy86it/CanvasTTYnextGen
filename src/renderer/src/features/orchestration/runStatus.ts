@@ -11,7 +11,7 @@ import type {
 import { closedByPerson } from "../../../../shared/orchestration.ts";
 import type { LocaleId } from "../../../../shared/contracts.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
-import { activeRole, byReviewer, idLabel, causeText, finishStatus, headlineKey, PAUSES, pauseWhy, viewPauseLabel, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
+import { activeRole, byReviewer, costOf, tokensText, idLabel, causeText, finishStatus, headlineKey, PAUSES, pauseWhy, viewPauseLabel, participantState, runHeadline, runStatusKey, TERMINAL_STATUSES, viewCause } from "./runModel.ts";
 
 // read_only: a newer version's run (acceptance-review-spec.md §2.2): shown, never paused, continued or stopped here.
 export type ActivityState = "starting" | "working" | "checking" | "waiting_agent" | "waiting_user" | "paused" | "stopping" | "completed" | "completed_no_checks" | "stopped" | "failed" | "read_only";
@@ -221,6 +221,19 @@ export function personDecisionsLine(locale: LocaleId, view: Pick<OrchestrationRu
 export function conditionsLine(locale: LocaleId, view: Pick<OrchestrationRunView, "progress">): string | null {
   const c = view.progress?.conditions;
   return c && c.total > 0 ? tr(locale, "orchConditionsCount", { met: c.met, total: c.total }) : null;
+}
+
+// UX audit 2026-10-05, Н7: what a card's agent spent — its model calls and the tokens its CLI reported. The lead's card
+// counts the reviews too (the reviewer is a session of the lead's CLI). Null before the first call.
+export function costLine(locale: LocaleId, role: "lead" | "executor", view: OrchestrationRunView, entries: readonly OrchestrationActivityEntry[]): string | null {
+  const c = costOf(view, entries, Date.now());
+  if (!c) return null;
+  const roles = role === "lead" ? (["lead", "reviewer"] as const) : (["executor"] as const);
+  const calls = roles.reduce((n, r) => n + c.calls[r], 0);
+  if (!calls) return null;
+  const reported = roles.map((r) => c.tokens[r]).filter((x): x is { input: number; output: number } => x !== null);
+  const tokens = reported.reduce((n, x) => n + x.input + x.output, 0);
+  return reported.length ? tr(locale, "orchCardCostTokens", { calls, tokens: tokensText(locale, tokens) }) : tr(locale, "orchCardCost", { calls });
 }
 
 export function stateLabel(locale: LocaleId, state: ActivityState): string {

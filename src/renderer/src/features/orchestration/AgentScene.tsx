@@ -11,7 +11,7 @@ import { chipCenter, chipSize } from "./linkChip";
 import { linkTrace } from "./linkTrace";
 import { ACTIVE_STATUSES, activeRole, agentState, cardRole, orchestrationAvailableHere, orchestrationEntry, participantState, runStatusKey, viewPauseLabel, TERMINAL_STATUSES, type AgentState } from "./runModel";
 import { ReleaseNewerLink } from "./RunPanel";
-import { conditionsLine, duration, findingsLine, roleStatus, type StatusLine } from "./runStatus";
+import { conditionsLine, costLine, duration, findingsLine, roleStatus, type StatusLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import type { Orchestration } from "./useOrchestration";
 
@@ -81,15 +81,15 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
   // The concrete line under the state: the same rules as the home widget and the summary.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
-  const cardStatus = (card: OrchestrationAgentCard, link: OrchestrationAgentLink | undefined): { status: StatusLine | null; time: string | null; conditions: string | null; findings: string | null } => {
+  const cardStatus = (card: OrchestrationAgentCard, link: OrchestrationAgentLink | undefined): { status: StatusLine | null; time: string | null; conditions: string | null; findings: string | null; cost: string | null } => {
     const runId = link?.runIds.at(-1);
     const run = runId ? orch.runs[runId] : undefined;
-    if (!runId || !run) return { status: null, time: runId && orch.runErrors[runId] ? t(locale, "actRunError") : null, conditions: null, findings: null };
+    if (!runId || !run) return { status: null, time: runId && orch.runErrors[runId] ? t(locale, "actRunError") : null, conditions: null, findings: null, cost: null };
     const status = roleStatus(locale, cardRole(card.role, run.view), { view: run.view, entries: orch.activity[runId]?.entries ?? [], open: run.open, stageTitles: orch.stageTitles(runId), now });
     const time = status.quiet ?? (status.lastEventAt
       ? `${t(locale, "orchNow_lastEvent").replace("{time}", new Date(status.lastEventAt).toLocaleTimeString(locale))} · ${duration(locale, now - Date.parse(status.lastEventAt))}`
       : null);
-    return { status, time, conditions: conditionsLine(locale, run.view), findings: findingsLine(locale, run.view) };
+    return { status, time, conditions: conditionsLine(locale, run.view), findings: findingsLine(locale, run.view), cost: costLine(locale, card.role, run.view, orch.activity[runId]?.entries ?? []) };
   };
 
   return (
@@ -123,6 +123,7 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             statusTime={shown.time}
             conditions={shown.conditions}
             findings={shown.findings}
+            cost={shown.cost}
             ended={view !== null && TERMINAL_STATUSES.includes(view.status)}
             message={ui.messages[card.agentId] ?? null}
             linking={ui.linkingFrom === card.agentId ? "source" : ui.linkingFrom && card.role === "executor" ? "target" : null}

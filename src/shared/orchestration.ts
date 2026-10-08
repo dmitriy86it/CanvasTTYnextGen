@@ -298,6 +298,16 @@ export interface OrchestrationRunProgress {
   conditions?: OrchestrationConditions | null;
   // journal v2, A3 (journal-v2-format.md §2.8): the reviewer's findings; null — the lead reviews (v1, A1–A2 journals)
   findings?: OrchestrationFindings | null;
+  // UX audit 2026-10-05, Н7: the limits and what is spent of them (the journal and the goal; tokens are in the activity).
+  // calls: model calls (turns) per role; startedAt, deadlineAt: ms since the epoch; reached: the limit a limit_reached
+  // pause stopped at
+  budget?: {
+    calls: Record<"lead" | "executor" | "reviewer", number>;
+    limits: Record<OrchestrationLimitKind, number>;
+    used: { turns: number; replans: number };
+    startedAt: number; deadlineAt: number;
+    reached: OrchestrationLimitKind | null;
+  };
 }
 
 // F<n>: a finding of the reviewer, numbered by the application, never renumbered. stage: the stage that owns an open
@@ -435,7 +445,9 @@ export interface OrchestrationDiff { path: string; text: string; truncated: bool
 // agents can do. A blocker refuses the start; a confirm item needs the user's explicit acknowledgement.
 export type OrchestrationReadinessLevel = "ok" | "info" | "warning" | "confirm" | "blocker";
 export interface OrchestrationReadinessItem {
-  id: string; // stable: platform, clis, env, git, workdir, busy, stack, laravel, commands, command_<n>, tests, permissions
+  // stable: platform, clis, env, git, workdir, busy, stack, laravel, commands, command_<n>, tests, model, permissions;
+  // before the start: auth_codex, auth_claude, model_claude, sandbox, sandbox_git, and with full: source, source_prepare, source_<n>
+  id: string;
   level: OrchestrationReadinessLevel;
   detail: string; // facts found (English, short); the renderer shows its own words by id and level
   facts?: Record<string, string | number | boolean | null>;
@@ -544,7 +556,8 @@ export interface OrchestrationApi {
   changes(runId: string): Promise<OrchestrationResult<OrchestrationChanges>>;
   diff(runId: string, path: string): Promise<OrchestrationResult<OrchestrationDiff>>;
   // The same checks the start makes, without starting anything (no model, no run).
-  readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">> }): Promise<OrchestrationResult<OrchestrationReadiness>>;
+  // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
+  readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;
   // The models Codex offers (model/list and config/read, no model turn), kept for the application's session; refresh:
   // ask Codex again (the «Обновить» button).
   codexModels(linkId: string, refresh?: boolean): Promise<OrchestrationResult<OrchestrationCodexModels>>;

@@ -81,8 +81,10 @@ export function EnvironmentCheck({ locale, linkId }: { locale: LocaleId; linkId:
   );
 }
 
-export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
+export function ProjectSettings({ locale, linkId, info, onSaved, onCancel, check }: {
   locale: LocaleId; linkId: string; info: OrchestrationProfileInfo; onSaved(profile: OrchestrationProjectProfile): void; onCancel(): void;
+  // «Проверить сейчас» on these settings as they are being edited (the commands, the work place, the rights)
+  check?(draft: { checks: string[]; workMode: OrchestrationProjectProfile["workMode"]; access: OrchestrationProjectProfile["access"] }): React.ReactNode;
 }): React.JSX.Element {
   const [p, setP] = useState<OrchestrationProjectProfile>(info.profile);
   const [checks, setChecks] = useState(info.profile.checks.join("\n"));
@@ -252,6 +254,7 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel }: {
         <EnvironmentCheck locale={locale} linkId={linkId} />
       </details>
 
+      {check?.({ checks: checks.split("\n").map((c) => c.trim()).filter(Boolean), workMode: p.workMode, access: p.access })}
       <div className="orch-form__actions">
         <button type="button" onClick={onCancel}>{t(locale, "orchCancel")}</button>
         <button type="submit" className="orch-primary" disabled={busy}>{busy ? t(locale, "orchSending") : t(locale, "orchSettingsSave")}</button>

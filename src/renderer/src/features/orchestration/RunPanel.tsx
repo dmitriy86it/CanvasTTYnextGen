@@ -27,6 +27,12 @@ import {
   ACTIVE_STATUSES,
   activeRole,
   byReviewer,
+  costOf,
+  limitRows,
+  LIMIT_KINDS,
+  tokensText,
+  type Cost,
+  type CostRole,
   actionEnabled,
   availableActions,
   proposalBlocks,
@@ -1082,6 +1088,86 @@ function NewerRunPanel({ orch, runId, locale, onClose, newer }: {
   );
 }
 
+// UX audit 2026-10-05, Н9: what the run spends — model calls per role, the tokens each CLI reported (never money), the
+// time worked, the turns of the limit and the time left to the deadline.
+function CostRows({ locale, cost, reviewer }: { locale: LocaleId; cost: Cost; reviewer: boolean }): React.JSX.Element {
+  const roles: CostRole[] = reviewer ? ["lead", "executor", "reviewer"] : ["lead", "executor"];
+  const name = (r: CostRole) => t(locale, r === "lead" ? "orchRoleLead" : r === "executor" ? "orchRoleExecutor" : "orchRoleReviewer");
+  const atLeast = cost.partial ? `${t(locale, "orchCostAtLeast")} ` : "";
+  const tokens = (r: CostRole) => {
+    const x = cost.tokens[r];
+    if (!x) return t(locale, cost.calls[r] ? "orchCostTokensNone" : "orchCostTokensNoCalls");
+    return `${atLeast}${tokensText(locale, x.input + x.output)} (${t(locale, "orchCostIn")} ${tokensText(locale, x.input)}, ${t(locale, "orchCostOut")} ${tokensText(locale, x.output)})`;
+  };
+  const calls = roles.reduce((n, r) => n + cost.calls[r], 0);
+  const tok = roles.reduce((n, r) => n + (cost.tokens[r] ? cost.tokens[r]!.input + cost.tokens[r]!.output : 0), 0);
+  const of = (used: string, limit: string) => t(locale, "orchCostOf").replace("{used}", used).replace("{limit}", limit);
+  // one line in the pinned board (the plan to review must stay in view above it); the roles folded under it
+  return (
+    <div className="orch-cost">
+      <dt>{t(locale, "orchCostTotal")}:</dt>
+      <dd>
+        <span data-board="cost-total">{t(locale, "orchCostTotalValue").replace("{calls}", String(calls)).replace("{tokens}", `${atLeast}${tokensText(locale, tok)}`)}</span>
+        {" · "}{t(locale, "orchCostTurns")} <span data-board="turns-used">{of(String(cost.turns.used), String(cost.turns.limit))}</span>
+        {cost.elapsedMs !== null && <>{" · "}{t(locale, "orchCostElapsed")} <span data-board="elapsed">{of(duration(locale, cost.elapsedMs), duration(locale, cost.runMs))}</span></>}
+        {cost.leftMs !== null && <>{" · "}{t(locale, "orchCostLeft")} <span data-board="left">{duration(locale, cost.leftMs)}</span></>}
+        <details className="orch-cost__roles" data-orch-cost-roles>
+          <summary>{t(locale, "orchCostByRole")}</summary>
+          <div><span>{t(locale, "orchCostCalls")}:</span> <span data-board="calls">{roles.map((r) => `${name(r)} ${cost.calls[r]}`).join(" · ")}</span></div>
+          <div><span>{t(locale, "orchCostTokens")}:</span> <span data-board="tokens">{roles.map((r) => <span key={r} className="orch-cost__role" data-cost-role={r}>{name(r)}: {tokens(r)}</span>)}</span></div>
+        </details>
+      </dd>
+    </div>
+  );
+}
+
+// UX audit 2026-10-05, Н7: the limit pause — each limit's value and what is used of it (limitRows), the new value with
+// its unit, and «Raise the limit and continue» as the main action. The limit the run stopped at is chosen first.
+function RaiseLimit({ locale, cost, budget, primary, sending, onRaise, children }: {
+  locale: LocaleId; cost: Cost | null; budget: NonNullable<NonNullable<OrchestrationRunView["progress"]>["budget"]> | null; primary: boolean; sending: boolean;
+  onRaise(kind: OrchestrationLimitKind, value: number): void; children?: React.ReactNode;
+}): React.JSX.Element {
+  const rows = cost && budget ? limitRows(cost, budget) : [];
+  const nowOf = (k: OrchestrationLimitKind) => rows.find((r) => r.kind === k)?.now ?? null;
+  const proposed = (k: OrchestrationLimitKind) => { const c = nowOf(k); return c !== null ? String(Math.ceil(c * 1.5)) : ""; }; // half as much again
+  const [kind, setKind] = useState<OrchestrationLimitKind>(cost?.reached ?? "turns");
+  const [value, setValue] = useState(() => proposed(cost?.reached ?? "turns"));
+  const current = nowOf(kind);
+  const unit = t(locale, kind === "runMs" ? "orchLimitUnit_min" : kind === "turns" ? "orchLimitUnit_turns" : "orchLimitUnit_times");
+  const n = Number(value);
+  const valid = Number.isInteger(n) && n > 0 && (current === null || n > current);
+  return (
+    <div className="orch-limit" data-orch-limit>
+      {rows.length > 0 && (
+        <table className="orch-limit__table">
+          <thead><tr><th>{t(locale, "orchLimitName")}</th><th>{t(locale, "orchLimitUsed")}</th><th>{t(locale, "orchLimitNow")}</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.kind} data-limit-kind={r.kind} data-limit-reached={r.reached ? "" : undefined} className={r.reached ? "orch-limit__reached" : undefined}>
+                <th scope="row">{t(locale, `orchLimit_${r.kind}` as TranslationKey)}{r.reached && <small> — {t(locale, "orchLimitReached")}</small>}</th>
+                <td data-limit-used>{r.used ?? "—"}</td>
+                <td data-limit-now>{r.now}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <div className="orch-panel__row">
+        <label className="orch-field orch-field--inline"><span>{t(locale, "orchLimitWhich")}</span>
+          <select value={kind} onChange={(e) => { const k = e.target.value as OrchestrationLimitKind; setKind(k); setValue(proposed(k)); }}>
+            {LIMIT_KINDS.map((k) => <option key={k} value={k}>{t(locale, `orchLimit_${k}` as TranslationKey)}</option>)}
+          </select></label>
+        <label className="orch-field orch-field--inline"><span>{t(locale, "orchLimitNew")}</span>
+          <input type="number" min={1} value={value} data-orch-limit-value onChange={(e) => setValue(e.target.value)} /> <span data-orch-limit-unit>{unit}</span></label>
+        <button type="button" className={primary ? "orch-primary" : undefined} data-orch-primary={primary ? "raise_limit" : undefined} data-orch-raise
+          disabled={sending || !valid} onClick={() => onRaise(kind, kind === "runMs" ? n * 60_000 : n)}>{t(locale, "orchRaiseLimitContinue")}</button>
+      </div>
+      {!valid && value !== "" && current !== null && <small className="orch-hint orch-hint--warn" data-orch-limit-invalid>{t(locale, "orchLimitMore").replace("{now}", String(current))}</small>}
+      {children}
+    </div>
+  );
+}
+
 function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onView }: RunPanelProps): React.JSX.Element {
   const state = runId ? orch.runs[runId] ?? null : null;
   const view: OrchestrationRunView | null = state?.view ?? null;
@@ -1120,7 +1206,6 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const [notice, setNotice] = useState<string | null>(null);
   const [answer, setAnswer] = useState("");
   const [clarify, setClarify] = useState("");
-  const [limit, setLimit] = useState<{ kind: OrchestrationLimitKind; value: string }>({ kind: "turns", value: "" });
   const [confirmReset, setConfirmReset] = useState(false);
   const [changedFiles, setChangedFiles] = useState<number | null>(null);
   const summary = useRef<HTMLElement>(null);
@@ -1183,6 +1268,14 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const send = (action: RunAction, input: Parameters<typeof commandOf>[1] = {}, after?: () => void): Promise<void> =>
     view ? deliver(orch.commands.request(view.runId, view.revision, commandOf(action, input)), after) : Promise.resolve();
   const unknown = runId ? orch.commands.pending(runId) : [];
+  // «Поднять лимит и продолжить» (UX audit Н7): main records the new limit and leaves the run paused; the run goes on with
+  // a resume at the revision the raise made (two commands, as the person would send them)
+  const continueAfterRaise = async (): Promise<void> => {
+    if (!view) return;
+    const r = await api().get(view.runId).catch(() => null);
+    const v = r?.ok ? r.value.view : null;
+    if (v && v.status === "paused" && v.reason === "user_request") await deliver(orch.commands.request(v.runId, v.revision, commandOf("resume", {})));
+  };
 
   const actions = view ? availableActions(view) : [];
   const has = (a: RunAction) => actions.includes(a);
@@ -1209,6 +1302,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
         : active.kind === "finish" ? `${t(locale, "orchCanvasFinish")}: ${tr(locale, `orchFinishStep_${active.step}`)}`
           : `${roleName(locale, workingRole!)} — ${tr(locale, `orchPurpose_${active.purpose}`)}${stageText ? ` · ${stageText}` : ""} · ${workingState ? phaseText(locale, workingState, now) : ""}`;
   const top = view ? board(view) : null;
+  const cost = view ? costOf(view, activity.entries, now, activity.firstId) : null;
   const depsText = dependenciesText(locale, activity.entries);
   const accessMismatch = activity.entries.some((e) => e.kind === "error" && e.detail?.accessMismatch === true);
   const progress = view?.progress ?? null;
@@ -1306,17 +1400,10 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                 onDecide={(plan) => void send("plan_decide", { plan })} />
             )}
             {has("raise_limit") && (
-              <div className="orch-panel__row" data-orch-limit>
-                <select value={limit.kind} aria-label={t(locale, "orchRaiseLimit")} onChange={(e) => setLimit((l) => ({ ...l, kind: e.target.value as OrchestrationLimitKind }))}>
-                  {(["turns", "roundsPerStage", "replans", "runMs"] as const).map((k) => <option key={k} value={k}>{tr(locale, `orchLimit_${k}`)}</option>)}
-                </select>
-                <label className="orch-field orch-field--inline"><span>{t(locale, "orchLimitNew")}</span>
-                  <input type="number" min={1} value={limit.value} onChange={(e) => setLimit((l) => ({ ...l, value: e.target.value }))} /></label>
-                <button type="button" className={primary === "raise_limit" ? "orch-primary" : undefined} data-orch-primary={primary === "raise_limit" ? "raise_limit" : undefined}
-                  disabled={sending || !(Number(limit.value) > 0) || off("raise_limit")}
-                  onClick={() => void send("raise_limit", { limit: limit.kind, value: limit.kind === "runMs" ? Number(limit.value) * 60_000 : Number(limit.value) })}>{pause?.button ?? t(locale, "orchRaiseLimit")}</button>
+              <RaiseLimit key={`${view.revision}:${cost?.reached ?? ""}`} locale={locale} cost={cost} budget={view.progress?.budget ?? null} primary={primary === "raise_limit"}
+                sending={sending || off("raise_limit")} onRaise={(kind, value) => void send("raise_limit", { limit: kind, value }, () => void continueAfterRaise())}>
                 {proposalBlocks(view, "raise_limit") && <small className="orch-hint" data-orch-proposal-waits>{t(locale, "orchProposalWaitsHint")}</small>}
-              </div>
+              </RaiseLimit>
             )}
             {has("recover") && (
               <div className="orch-panel__actions">
@@ -1374,6 +1461,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                   </div>
                 )}
                 {top.grantsApplied > 0 && <div><dt>{t(locale, "orchBoardGrants")}:</dt><dd data-board="grants">{top.grantsApplied}</dd></div>}
+                {cost && <CostRows locale={locale} cost={cost} reviewer={byReviewer(view) || cost.calls.reviewer > 0} />}
               </dl>
             )}
             {accessMismatch && <p className="dialog-error" data-orch-access-mismatch>{t(locale, "orchAccessMismatchWarn")}</p>}
