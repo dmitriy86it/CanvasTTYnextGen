@@ -1,0 +1,3 @@
+[+25.7s] P6: the CLI asked (tool SandboxNetworkAccess: example.com); deny
+[+28.5s] P6: completed in 27.8 s; asks 1; tools Bash,Bash,Bash,Bash,Bash,Bash,Bash,StructuredOutput; answer {"done":true,"exitCode":56,"note":"ok ok failed ok ok failed failed"}
+[+28.5s] P6: as expected

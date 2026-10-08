@@ -626,6 +626,7 @@ function PermissionBlock({ locale, request, more, sending, onDecide }: {
         ))}
       </div>
       {request.options.includes("allow_run") && <p className="orch-hint">{t(locale, "orchPermScopeHint")}</p>}
+      {request.options.includes("allow_readonly_run") && <p className="orch-hint" data-orch-readonly-hint>{t(locale, "orchPermReadOnlyHint")}</p>}
       {request.alwaysAsk && <p className="orch-hint" data-orch-always-ask>{t(locale, "orchPermAlwaysAsk")}</p>}
       {foot}
     </div>

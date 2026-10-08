@@ -470,7 +470,7 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
       "--json-schema", JSON.stringify(schema),
       input.session.kind === "new" ? "--session-id" : "--resume", sessionId
     ];
-    driver = claudeHostDriver({ task: input.task, ask: input.ask });
+    driver = claudeHostDriver({ task: input.task, ask: input.ask, sandboxed: input.access?.claude === "workspace" });
   }
   const launch = providerChildProcessLaunch(input.cli, args);
   return {

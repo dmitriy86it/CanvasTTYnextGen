@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- «Work folder»: read-only commands no longer stop the run with permission prompts. In run 7303d772 Claude asked about every read-only command written as `cd … && bash -c '…'`, with a variable (`$f`, `$O`) or a brace with a quote: these were not requests to leave the sandbox, but Claude's own check that could not read the command line before running it. In the sandbox the application now answers such a prompt itself: the command still runs in Claude's sandbox, which writes only in the work folder and reaches no outside host. A request to leave the sandbox, the sandbox's network prompt, a write outside the folder, a user's ask rule and a safety check still reach the person. Checked on the real Claude 2.1.294: the commands of 7303d772 ran without a prompt, a write to the home folder failed with «operation not permitted», and a curl to an outside host was held for the person.
+- A permission prompt of a read-only command, after more than 3 of them in a run, offers «Allow read-only commands until the run ends» (viewing and searching files — cat, head, sed -n, grep, find without -exec, ls, wc…; no network, no writes, no git). It applies to this run only and is kept in memory: after the application restarts it asks again.
+
 ## 1.5.12 — 2026-10-08
 
 Check before the start, run cost, the limit pause, «Take the result», a separate copy by default.
