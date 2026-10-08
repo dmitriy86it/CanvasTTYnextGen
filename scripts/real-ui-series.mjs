@@ -69,7 +69,7 @@ if (REAL) {
   fs.mkdirSync(D("mock-state", ".codex"), { recursive: true });
   const wrap = (p) => {
     const f = D(`${p}-mock`);
-    fs.writeFileSync(f, `#!/bin/sh\n${p === "claude" ? `case "$1" in --help|--version) ;; *) while [ -e "${HOLD}" ]; do sleep 0.1; done ;; esac\n` : ""}exec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
+    fs.writeFileSync(f, `#!/bin/sh\n${p === "claude" ? `case "$*" in *--json-schema*) while [ -e "${HOLD}" ]; do sleep 0.1; done ;; esac\n` : ""}exec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
     return f;
   };
   const env = (extra) => ({ HOME: D("mock-state"), MOCK_STATE: D("mock-state"), MOCK_LEDGER: D("ledger.jsonl"), ...extra });
