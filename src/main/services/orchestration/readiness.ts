@@ -156,7 +156,7 @@ export async function assessReadiness(input: ReadinessInput): Promise<Orchestrat
     ? { id: "workdir", level: "info", detail: "the agents work in the project folder and change its files directly", facts: { path: root } }
     : input.workMode === "worktree"
       ? { id: "workdir", level: "info", detail: "a separate Git worktree on its own branch: node_modules/ and vendor/ are cloned from the project when their lock files match, the rest is prepared in it", facts: { path: root, mode: "worktree" } }
-      : { id: "workdir", level: "warning", detail: "a separate copy: node_modules/ and vendor/ are cloned from the project when their lock files match, the rest is prepared in it; .env is not in it", facts: { path: root } });
+      : { id: "workdir", level: "info", detail: "a separate copy: node_modules/ and vendor/ are cloned from the project when their lock files match, the rest is prepared in it; .env is not in it", facts: { path: root, mode: "copy" } });
   if (input.busy) add({ id: "busy", level: "blocker", detail: "another run works in this folder now" });
 
   const s = await suggestCommands(root);

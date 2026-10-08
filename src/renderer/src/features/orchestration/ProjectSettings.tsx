@@ -162,7 +162,7 @@ export function ProjectSettings({ locale, linkId, info, onSaved, onCancel, check
       <p className="orch-hint">{t(locale, "orchSettingsIntro")}</p>
       <fieldset className="orch-field orch-workmode" data-orch-settings-workmode={p.workMode}>
         <legend>{t(locale, "orchWorkMode")}</legend>
-        {(["project", "worktree"] as const).map((m) => (
+        {(["copy", "worktree", "project"] as const).map((m) => (
           <label key={m} className="orch-check">
             <input type="radio" name="orch-settings-workmode" checked={p.workMode === m} onChange={() => set({ workMode: m })} />
             <span><b><Termed locale={locale} text={tr(locale, `orchWorkMode_${m}`)} /></b> — <Termed locale={locale} text={tr(locale, `orchWorkMode_${m}Hint`)} /></span>

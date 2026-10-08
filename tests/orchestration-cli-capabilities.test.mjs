@@ -62,7 +62,7 @@ function manager(env = {}, versions = {}, claudeProbeMs) {
   return Object.assign(m, { root, state });
 }
 async function linkOf(m, src, access = { claude: "workspace", codex: "workspace" }) {
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), access, checks: ["grep -qx 1 a.txt"] });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", access, checks: ["grep -qx 1 a.txt"] });
   const at = (x) => ({ position: { x, y: 0 }, size: { width: 300, height: 200 } });
   const [lead, exec, linkId] = [randomUUID(), randomUUID(), randomUUID()];
   assert.ok((await m.createAgent({ agentId: lead, provider: "codex", project: src, bounds: at(0) })).ok);

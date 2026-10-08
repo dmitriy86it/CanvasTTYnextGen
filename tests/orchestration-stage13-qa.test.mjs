@@ -87,7 +87,7 @@ async function qaRun(verify, { reportsVersion, command = "" } = {}) {
   const deploys = tmp("deploys");
   const m = manager(root, providers);
   const qa = { environment: "qa", command: `echo run >> ${deploys}${command ? `; ${command}` : ""}`, verify, ...(reportsVersion !== undefined ? { reportsVersion } : {}) };
-  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), checks: ["true"], finish: { commit: true, push: null, qa } });
+  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], finish: { commit: true, push: null, qa } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["c"], checks: [], mode: "autopilot", finish: { commit: true, push: false, qa: true } } })).ok);
   return { src, root, providers, runId, m, deploys, base: g(src, "rev-parse", "HEAD").trim() };

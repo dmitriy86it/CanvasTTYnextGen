@@ -31,7 +31,7 @@ export interface OrchestrationGrant {
 // The one-time setup of a project, filled from facts of the repository and corrected by the user.
 export interface OrchestrationProjectProfile {
   v: 1;
-  workMode: "project" | "worktree";
+  workMode: OrchestrationWorkMode; // a new project: "copy" (UX audit 2026-10-05, PR 5); a saved profile keeps its own
   checks: string[]; // the project's check commands
   prepare: { steps: OrchestrationPrepareStep[]; auto: boolean }; // auto: the autopilot runs the needed steps itself
   env: { direnv: boolean }; // apply an allowed .envrc (direnv) on top of the login shell
@@ -441,6 +441,31 @@ export interface OrchestrationChanges {
 }
 export interface OrchestrationDiff { path: string; text: string; truncated: boolean }
 
+// «Забрать результат» (UX audit 2026-10-05, top-10 #10): the run's changes into the project, by the application.
+// Only for a separate copy or worktree, a run that is completed, stopped or paused, with changes. Kept in a file of the
+// run's workspace (taken.json), never in the journal.
+export interface OrchestrationTake {
+  mode: "copy" | "worktree";
+  from: "checkpoint" | "current"; // the last checkpoint; without one the working copy as it is now
+  stage: number | null; // the checkpoint's stage
+  files: number; // changed against the run's base
+  allowed: boolean; // the run's status allows it and there are changes
+  suggested: string; // a free branch name: raoden/<goal>-<id>
+  runBranch: string | null; // worktree: the run's branch as it is named now
+  branch: { name: string; at: string } | null; // taken into this branch (this result)
+  applied: { at: string } | null; // applied to the project folder (this result)
+}
+export type OrchestrationTakeInput = { action: "branch"; name: string } | { action: "apply" };
+export interface OrchestrationTakeOutcome {
+  // created / renamed: the branch is there; applied; already: this result was taken that way before (nothing done);
+  // branch_exists: the name is taken (nothing done); invalid_name; conflict: «apply» does not fit the project's files now
+  // (nothing written); unavailable: the run's status or mode does not allow it
+  result: "created" | "renamed" | "applied" | "already" | "branch_exists" | "invalid_name" | "conflict" | "unavailable";
+  files?: string[]; // conflict: the files the patch does not fit
+  detail?: string; // conflict: git's words
+  take: OrchestrationTake;
+}
+
 // Readiness of a goal before any model turn (stage 11): what the application can check, what is prepared, what the
 // agents can do. A blocker refuses the start; a confirm item needs the user's explicit acknowledgement.
 export type OrchestrationReadinessLevel = "ok" | "info" | "warning" | "confirm" | "blocker";
@@ -555,6 +580,8 @@ export interface OrchestrationApi {
   onActivity(runId: string, listener: (event: OrchestrationActivityEvent) => void): () => void;
   changes(runId: string): Promise<OrchestrationResult<OrchestrationChanges>>;
   diff(runId: string, path: string): Promise<OrchestrationResult<OrchestrationDiff>>;
+  take(runId: string): Promise<OrchestrationResult<OrchestrationTake>>;
+  takeResult(runId: string, input: OrchestrationTakeInput): Promise<OrchestrationResult<OrchestrationTakeOutcome>>;
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;

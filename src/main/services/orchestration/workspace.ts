@@ -784,6 +784,12 @@ export async function publishRef(ws: Workspace, name: string, commit: string): P
   if (existing === commit) return "exists_same";
   if (existing !== null) fail("ref_conflict", `${ref} already points elsewhere`, { ref, existing });
 
+  return fetchInto(ws, commit, () => createRef(src, ref, commit));
+}
+
+// The commit's objects into the source through a temporary ref of each repository, then `then` sets the target ref.
+async function fetchInto<T>(ws: Workspace, commit: string, then: () => Promise<T>): Promise<T> {
+  const src = sourceCtx(ws);
   const id = randomUUID();
   const controlTmp = `refs/canvastty/tmp/${id}`;
   const sourceTmp = `${refPrefix(ws.runId)}tmp-${id}`;
@@ -791,13 +797,116 @@ export async function publishRef(ws: Workspace, name: string, commit: string): P
   try {
     await run(src, ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-recurse-submodules", "--no-prune",
       "--", ws.control, `${controlTmp}:${sourceTmp}`], HEAVY);
-    const result = await createRef(src, ref, commit);
+    const result = await then();
     // a crash before this line leaves the tmp- ref: the objects stay protected, cleanup is explicit
     await run(src, ["update-ref", "--no-deref", "-d", sourceTmp]);
     return result;
   } finally {
     await git(controlCtx(ws), ["update-ref", "--no-deref", "-d", controlTmp]).catch(() => {});
   }
+}
+
+// ---------- the result taken into the project (UX audit 2026-10-05, top-10 #10) ----------
+// Done by the application with its own hardened Git, never by an agent. A branch is created only if its name is free
+// (never moved or overwritten) and touches nothing else: not the user's working tree, index, HEAD or current branch.
+// «Apply» writes the files of the run's patch into the project folder, after a dry run that proves it applies to
+// the files as they are now (the user's uncommitted changes included); the index is not touched.
+const TAKEN = "taken.json";
+export interface TakenRecord {
+  v: 1;
+  branch?: { name: string; commit: string; tree: string; at: string };
+  applied?: { tree: string; at: string };
+}
+
+export async function readTaken(ws: Workspace): Promise<TakenRecord | null> {
+  const text = await readFile(join(ws.dir, TAKEN), "utf8").catch((e) => errCode(e) === "ENOENT" ? null : Promise.reject(e));
+  if (text === null) return null;
+  const rec = JSON.parse(text) as TakenRecord;
+  return rec?.v === 1 ? rec : null;
+}
+export const writeTaken = (ws: Workspace, rec: TakenRecord) => writeJson(ws.dir, TAKEN, rec);
+
+// A branch name as `git switch -c` would take it; null: not a valid one.
+export async function branchNameOk(ws: Workspace, name: string): Promise<boolean> {
+  if (typeof name !== "string" || !/^(?!-)[A-Za-z0-9._/-]{1,200}$/.test(name)) return false;
+  return run(sourceCtx(ws), ["check-ref-format", "--branch", name]).then(() => true, () => false);
+}
+export const branchCommit = (ws: Workspace, name: string) => revParse(sourceCtx(ws), `refs/heads/${name}`);
+
+// copy: a new branch at a commit of `tree` on top of the run's base: HEAD at the start, or the baseline snapshot when
+// the project had uncommitted changes then (they are part of what the run started from). Create-only.
+// worktree: the run's own branch (`from`) gets a commit of `tree` on top (none if it holds it already), then is renamed
+// to `name` if that differs. The run's worktree gets its index reset to the new commit; its files are not touched.
+export async function takeToBranch(ws: Workspace, opts: { name: string; tree: string; message: string; from?: string }): Promise<{ commit: string; renamed: boolean }> {
+  requireOid(opts.tree, "tree");
+  if (ws.mode === "project") fail("invalid_input", "the project folder holds the changes already");
+  const src = sourceCtx(ws);
+  const target = `refs/heads/${opts.name}`;
+  if (ws.mode === "copy") {
+    const base = ws.baseline.parent !== null && await runText(controlCtx(ws), ["rev-parse", `${ws.baseline.parent}^{tree}`]) === ws.baseline.tree
+      ? ws.baseline.parent : ws.baseline.commit;
+    const commit = await commitSnapshot(ws, opts.tree, base, opts.message);
+    await fetchInto(ws, commit, () => createRef(src, target, commit));
+    return { commit, renamed: false };
+  }
+  const from = opts.from ?? ws.branch!;
+  const tip = await revParse(src, `refs/heads/${from}`) ?? fail("ref_conflict", `the run's branch ${from} is gone`, { branch: from });
+  if (opts.name !== from && await revParse(src, target) !== null) fail("ref_conflict", `${target} already exists`, { ref: target });
+  let commit = tip;
+  if (await runText(controlCtx(ws), ["rev-parse", `${tip}^{tree}`]) !== opts.tree) {
+    commit = await commitSnapshot(ws, opts.tree, tip, opts.message);
+    await fetchInto(ws, commit, () => run(src, ["update-ref", "--no-deref", `refs/heads/${from}`, commit, tip]));
+    const wtDir = await worktreeAdminDir(ws);
+    if (wtDir) {
+      const wt: GitContext = { gitPath: ws.gitPath, gitDir: wtDir, workTree: ws.repo, home: homeOf(ws) };
+      await run(wt, ["read-tree", commit], HEAVY);
+      await git(wt, ["update-index", "-q", "--refresh"], HEAVY).catch(() => {});
+    }
+  }
+  if (opts.name !== from) await run(src, ["branch", "-m", "--", from, opts.name]);
+  return { commit, renamed: opts.name !== from };
+}
+
+// The run's worktree's own Git directory (its index), found from the project's side: <git dir>/worktrees/<name> whose
+// gitdir file names this run's folder. The `.git` file in the worktree is the agents' to change, so its path is never
+// followed: one pointing at the project's own .git would make the index reset hit the user's index.
+async function worktreeAdminDir(ws: Workspace): Promise<string | null> {
+  const base = await realpath(join(ws.sourceGitDir, "worktrees")).catch(() => null);
+  if (base === null) return null;
+  const repo = await realpath(ws.repo).catch(() => null);
+  for (const name of await readdir(base).catch(() => [] as string[])) {
+    const dir = join(base, name);
+    const back = (await readFile(join(dir, "gitdir"), "utf8").catch(() => "")).trim();
+    if (repo !== null && back !== "" && await realpath(dirname(back)).catch(() => null) === repo) return dir;
+  }
+  return null;
+}
+
+// The patch fromTree → toTree onto the project folder, only if all of it applies to the files as they are now.
+export async function applyToProject(ws: Workspace, fromTree: string, toTree: string): Promise<{ applied: true } | { applied: false; files: string[]; detail: string }> {
+  requireOid(fromTree, "fromTree");
+  requireOid(toTree, "toTree");
+  if (ws.mode === "project") fail("invalid_input", "the project folder holds the changes already");
+  const patch = await run(controlCtx(ws), ["diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", fromTree, toTree], HEAVY);
+  if (patch.length === 0) return { applied: true };
+  const project: GitContext = { gitPath: ws.gitPath, gitDir: ws.sourceGitDir, workTree: ws.sourcePath, home: homeOf(ws) };
+  const refused = (error: unknown) => {
+    if (!(error instanceof GitError) || error.code !== "git_failed") throw error instanceof GitError ? toWorkspaceError(error) : error;
+    const files = new Set<string>();
+    for (const m of error.stderr.matchAll(/^error: (?:patch failed: (.+):\d+|(.+?): (?:already exists in working directory|No such file or directory|does not exist in index|patch does not apply|wrong type))$/gm)) files.add(m[1] ?? m[2]);
+    return { applied: false as const, files: [...files], detail: error.stderr.trim().slice(0, 2000) };
+  };
+  try {
+    await git(project, ["apply", "--check", "--whitespace=nowarn", "-"], { ...HEAVY, input: patch });
+  } catch (error) {
+    return refused(error);
+  }
+  try {
+    await git(project, ["apply", "--whitespace=nowarn", "-"], { ...HEAVY, input: patch });
+  } catch (error) {
+    return refused(error); // the files changed between the dry run and now: git apply writes nothing when it fails
+  }
+  return { applied: true };
 }
 
 export async function readSourceRef(ws: Workspace, name: string): Promise<string | null> {

@@ -19,7 +19,9 @@ import type {
   OrchestrationPersonDecide,
   OrchestrationPlanChoice,
   OrchestrationPlanDecide,
-  OrchestrationRunView
+  OrchestrationRunView,
+  OrchestrationTake,
+  OrchestrationTakeOutcome
 } from "../../../../shared/orchestration";
 import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
@@ -28,6 +30,9 @@ import {
   activeRole,
   byReviewer,
   costOf,
+  takeOutcomeText,
+  takeSourceText,
+  takenLines,
   limitRows,
   LIMIT_KINDS,
   tokensText,
@@ -988,6 +993,47 @@ type RunPanelProps = {
   onClose(): void; onNewGoal: (() => void) | null; onView(next: { tab?: PanelTab; role?: PanelRole }): void;
 };
 
+// «Забрать результат»: a new branch in the project (the safe one), or the patch applied to the working folder when it fits
+// the files as they are now, or the «Changes» tab. Done by the application; the outcome in words, never git's alone.
+function TakeResult({ locale, runId, take, onTake, onChanges }: {
+  locale: LocaleId; runId: string; take: OrchestrationTake; onTake(next: OrchestrationTake): void; onChanges(): void;
+}): React.JSX.Element {
+  const [name, setName] = useState(take.suggested);
+  const [busy, setBusy] = useState(false);
+  const [said, setSaid] = useState<{ kind: OrchestrationTakeOutcome["result"] | "error"; text: string } | null>(null);
+  const act = async (input: { action: "branch"; name: string } | { action: "apply" }): Promise<void> => {
+    setBusy(true);
+    const r = await api().takeResult(runId, input).catch((e: unknown) => ({ ok: false as const, code: "transport", message: String(e) }));
+    setBusy(false);
+    if (!r.ok) { setSaid({ kind: "error", text: r.code === "transport" ? t(locale, "orchTransportError") : `${tr(locale, `orchError_${r.code}`)} ${r.message}` }); return; }
+    setSaid({ kind: r.value.result, text: takeOutcomeText(locale, r.value, input.action === "branch" ? input.name : name) });
+    if (r.value.result === "branch_exists") setName(r.value.take.suggested);
+    onTake(r.value.take);
+  };
+  const worktree = take.mode === "worktree";
+  return (
+    <div className="orch-take" data-orch-take={take.from}>
+      <h4>{t(locale, "orchTakeOpen")}</h4>
+      <p className="orch-take__from" data-orch-take-from={take.from}>{takeSourceText(locale, take)}</p>
+      {worktree && <p className="orch-hint" data-orch-take-run-branch={take.runBranch ?? ""}>{t(locale, "orchTakeWorktree").replace("{branch}", take.runBranch ?? "?")}</p>}
+      <label className="orch-field orch-take__name">
+        <span>{t(locale, worktree ? "orchTakeNameWorktree" : "orchTakeName")}</span>
+        <input type="text" spellCheck={false} value={name} data-orch-take-name onChange={(e) => setName(e.target.value)} />
+      </label>
+      <div className="orch-take__actions">
+        <button type="button" className="orch-primary" data-orch-primary="take_branch" data-orch-take-branch disabled={busy || !take.allowed || !name.trim() || (!worktree && !!take.branch) || (worktree && take.branch?.name === name.trim())}
+          onClick={() => void act({ action: "branch", name: name.trim() })}>{t(locale, worktree ? "orchTakeBranchWorktree" : "orchTakeBranch")}</button>
+        <button type="button" data-orch-take-apply disabled={busy || !take.allowed || !!take.applied} onClick={() => void act({ action: "apply" })}>{t(locale, "orchTakeApply")}</button>
+        <button type="button" data-orch-take-changes onClick={onChanges}>{t(locale, "orchTakeChanges")}</button>
+      </div>
+      <small className="orch-hint">{t(locale, "orchTakeHint")}</small>
+      {busy && <p className="orch-hint">{t(locale, "orchSending")}</p>}
+      {said && <p className={["unavailable", "error"].includes(said.kind) ? "dialog-error" : ["conflict", "branch_exists", "invalid_name"].includes(said.kind) ? "orch-hint orch-hint--warn" : "orch-take__done"}
+        role={said.kind === "conflict" ? "alert" : "status"} data-orch-take-outcome={said.kind}>{said.text}</p>}
+    </div>
+  );
+}
+
 export function RunPanel(props: RunPanelProps): React.JSX.Element {
   const newer = props.runId ? props.orch.runs[props.runId]?.view.newer : undefined;
   // a newer journal that declared minReaderVersion this build reads: the whole panel, read-only
@@ -1208,6 +1254,18 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const [clarify, setClarify] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
   const [changedFiles, setChangedFiles] = useState<number | null>(null);
+  // «Забрать результат»: a separate copy or worktree, a run that is not working now
+  const takeable = !!view && !view.newer && (view.workMode === "copy" || view.workMode === "worktree") && ["completed", "stopped", "paused"].includes(view.status);
+  const [take, setTake] = useState<OrchestrationTake | null>(null);
+  // the take panel of the run it was opened for; asked again on each revision (the run may have gone on)
+  const [takeOpen, setTakeOpen] = useState<string | null>(null);
+  const revision = view?.revision ?? 0;
+  useEffect(() => {
+    if (!takeable || !runId || revision < 0) { setTake(null); return; }
+    let live = true;
+    void api().take(runId).then((r) => { if (live) setTake(r.ok ? r.value : null); }, () => {});
+    return () => { live = false; };
+  }, [takeable, runId, revision]);
   const summary = useRef<HTMLElement>(null);
   const answerBox = useRef<HTMLTextAreaElement>(null);
   const [flash, setFlash] = useState(false);
@@ -1469,12 +1527,20 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
             {view.workMode && (
               <p className={`orch-summary__where orch-summary__where--${view.workMode}`} data-orch-where={view.workMode} title={view.workDir}>
                 {view.workMode === "worktree"
-                  ? <>{t(locale, "orchWhereWorktree")} <code><Termed locale={locale} text={progress?.branch ?? "?"} /></code> · <code>{view.workDir}</code></>
+                  ? <>{t(locale, "orchWhereWorktree")} <code><Termed locale={locale} text={take?.runBranch ?? progress?.branch ?? "?"} /></code> · <code>{view.workDir}</code></>
                   : <>{t(locale, view.workMode === "project" ? "orchWhereProject" : "orchWhereCopy")} <code>{view.workDir}</code></>}
               </p>
             )}
-            {changesFirst(view, activity.entries) && <button type="button" className="orch-primary" data-orch-view-changes onClick={() => onView({ tab: "changes" })}>{t(locale, "orchViewChanges")}</button>}
-            {!busy && onNewGoal && !view.newer && <button type="button" className={changesFirst(view, activity.entries) ? undefined : "orch-primary"} data-orch-new-goal disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
+            {takenLines(locale, take).map((line) => <p key={line} className="orch-take__taken" data-orch-taken>{line}</p>)}
+            {take?.allowed && runId && (
+              <>
+                {takeOpen !== runId && <button type="button" className={view.status === "completed" ? "orch-primary" : undefined} data-orch-primary={view.status === "completed" ? "take" : undefined}
+                  data-orch-take-open onClick={() => setTakeOpen(runId)}>{t(locale, "orchTakeOpen")}</button>}
+                {takeOpen === runId && <TakeResult locale={locale} runId={runId} take={take} onTake={setTake} onChanges={() => onView({ tab: "changes" })} />}
+              </>
+            )}
+            {changesFirst(view, activity.entries) && !take?.allowed && <button type="button" className="orch-primary" data-orch-view-changes onClick={() => onView({ tab: "changes" })}>{t(locale, "orchViewChanges")}</button>}
+            {!busy && onNewGoal && !view.newer && <button type="button" className={changesFirst(view, activity.entries) || (take?.allowed && view.status === "completed") ? undefined : "orch-primary"} data-orch-new-goal disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
               onClick={onNewGoal}>{t(locale, "orchNewGoal")}</button>}
             {entry.hint && actions.some(off) && <div className="orch-hint" data-orch-platform-hint>{t(locale, entry.hint)}</div>}
             {sending && <div className="orch-hint">{t(locale, "orchSending")}</div>}
@@ -1535,7 +1601,8 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
                       ? <li data-fact="in_place">{t(locale, "orchFactInPlace")} — {t(locale, "orchFactInPlaceHint")}</li>
                       : view.workMode === "worktree"
                         ? <li data-fact="where">{t(locale, "orchResultWhere")}: <code><Termed locale={locale} text={progress?.branch ?? "?"} /></code> · <code>{view.workDir}</code></li>
-                        : view.workMode === "copy" && <li data-fact="transferred">{t(locale, "orchFactTransferred")}: <b>{t(locale, "orchNo")}</b> — {t(locale, "orchFactTransferredHint")}</li>}
+                        : view.workMode === "copy" && !takenLines(locale, take).length && <li data-fact="transferred">{t(locale, "orchFactTransferred")}: <b>{t(locale, "orchNo")}</b> — {t(locale, "orchFactTransferredHint")}</li>}
+                    {takenLines(locale, take).map((line) => <li key={line} data-fact="taken">{line}</li>)}
                     {progress?.checks.map((c) => (
                       <li key={c.id} data-fact="check" data-check-status={c.status}><code>{c.title}</code>: <b>{tr(locale, `orchCheck_${c.status}`)}</b>{c.class ? ` (${tr(locale, `orchClass_${c.class}`)})` : ""}</li>
                     ))}

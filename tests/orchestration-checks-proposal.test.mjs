@@ -111,7 +111,7 @@ const send = async (m, v, command) => {
 };
 const journalOf = (m, runId) => fs.readFileSync(path.join(m.root, "runs", runId, "journal.jsonl"));
 async function start(m, src, goal, profile = {}) {
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["false"], ...profile });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["false"], ...profile });
   const runId = randomUUID();
   const r = await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["a.txt says 2"], checks: [], mode: "autopilot", ...goal } });
   assert.ok(r.ok, JSON.stringify(r));

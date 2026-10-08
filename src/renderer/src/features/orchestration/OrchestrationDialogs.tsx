@@ -11,7 +11,7 @@ import { t, type TranslationKey } from "../../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 import { NO_MODELS, RoleModelsField } from "./RoleModels";
 import { Differences, RunPanel, Termed } from "./RunPanel";
-import { accessProblemText, commandLike } from "./runModel";
+import { accessProblemText, commandLike, dirtyInPlace, failingOnSource } from "./runModel";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import { outcomeText, type Orchestration } from "./useOrchestration";
 
@@ -117,7 +117,8 @@ export function readinessLine(locale: LocaleId, item: OrchestrationReadinessItem
     case "access_claude_once": case "access_codex_once": return tr(locale, "orchAccessOnceInfo").replace("{cli}", f.provider === "codex" ? "Codex" : "Claude");
     case "env": return item.level === "blocker" ? `${base} ${item.detail}` : `${base} ${String(f.shell ?? "")} · PATH: ${String(f.pathEntries ?? "?")}`;
     case "git": return item.level === "info" ? `${base} ${String(f.changed ?? "")}` : base;
-    case "workdir": return f.mode === "worktree" ? `${tr(locale, "orchReady_worktree_info")} ${String(f.path ?? "")}` : `${base} ${String(f.path ?? "")}`;
+    case "workdir": return f.mode === "worktree" ? `${tr(locale, "orchReady_worktree_info")} ${String(f.path ?? "")}`
+      : f.mode === "copy" ? `${tr(locale, "orchReady_workdir_copy")} ${String(f.path ?? "")}` : `${base} ${String(f.path ?? "")}`;
     case "laravel": return f.prepared === true ? tr(locale, "orchReady_laravel_prepared") : base;
     case "prepare": return `${base} ${String(f.steps ?? "").split("\n").join(" · ")}`;
     case "testdb": {
@@ -146,7 +147,7 @@ const rightsText = (locale: LocaleId, access: { claude: string; codex: string })
   `Claude — ${tr(locale, `orchAccess_${access.claude}`)} · Codex — ${tr(locale, `orchAccess_${access.codex}`)}`;
 
 const NO_OVERRIDE: Partial<Record<"claude" | "codex", "terminal">> = {};
-function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy, accessOverride = NO_OVERRIDE, onAccessOverride, onBlocker, onFix, auto = true }: {
+function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy, accessOverride = NO_OVERRIDE, onAccessOverride, onBlocker, onFix, onWorkMode, onFailing, auto = true }: {
   linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: OrchestrationRoleModels; access: { claude: string; codex: string } | null; locale: LocaleId;
   onChange(ok: boolean): void; onSuggest(commands: string[]): void;
   onBusy(facts: unknown): void; // the "busy" item's facts: the run main says holds the folder (none: undefined)
@@ -154,6 +155,8 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
   accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; onAccessOverride?(next: Partial<Record<"claude" | "codex", "terminal">>): void;
   onBlocker?(text: string | null): void; // the first blocker in words: said beside the inactive Start
   onFix?(target: ReadyFix): void; // «Исправить» on a problem item: open where it is fixed
+  onWorkMode?(mode: OrchestrationWorkMode): void; // «Переключить на отдельную копию» (this goal only)
+  onFailing?(commands: string[]): void; // the commands «Проверить сейчас» found failing before any change (of this goal as written)
   // false (the project settings): nothing is asked until «Проверить сейчас»; true (the goal dialog): the light check
   // (no preparation, no commands) is asked by itself on every change
   auto?: boolean;
@@ -201,6 +204,9 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
   const blocker = items.find((i) => i.level === "blocker");
   const blockerText = blocker ? readinessLine(locale, blocker) : null;
   useEffect(() => { onBlocker?.(blockerText); }, [blockerText, onBlocker]);
+  const failing = checked && checked.key === key ? failingOnSource(items).join("\n") : "";
+  useEffect(() => { onFailing?.(failing ? failing.split("\n") : []); }, [failing, onFailing]);
+  const dirty = onWorkMode ? dirtyInPlace(workMode, items) : null;
   return (
     <fieldset className="orch-field orch-ready" data-orch-readiness={state.kind === "ready" ? (state.value.ready ? (ok ? "ready" : "confirm") : "blocked") : state.kind} data-orch-checked={checked && checked.key === key ? "full" : undefined}>
       <legend>{t(locale, "orchReadyTitle")}</legend>
@@ -212,7 +218,7 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
       </div>
       {state.kind === "ready" && (() => {
         const blockers = items.filter((i) => i.level === "blocker").length;
-        const warnings = items.filter((i) => i.level === "warning").length;
+        const warnings = items.filter((i) => i.level === "warning").length + (dirty !== null ? 1 : 0);
         return (
           <p className={`orch-ready__summary${blockers ? " orch-ready__summary--blocked" : ""}`} data-orch-ready-summary={blockers ? "blocked" : warnings ? "warnings" : "ok"}>
             {t(locale, "orchReadySummary").replace("{blockers}", String(blockers)).replace("{warnings}", String(warnings))}{" "}
@@ -220,6 +226,12 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
           </p>
         );
       })()}
+      {dirty !== null && (
+        <p className="orch-hint orch-hint--warn" role="status" data-orch-dirty={dirty}>
+          {t(locale, "orchDirtyInPlace").replace("{n}", String(dirty))}{" "}
+          <button type="button" data-orch-dirty-switch onClick={() => onWorkMode?.("copy")}>{t(locale, "orchDirtySwitch")}</button>
+        </p>
+      )}
       {state.kind === "loading" && <p className="orch-hint">{t(locale, "orchReadyChecking")}</p>}
       {state.kind === "error" && <p className="dialog-error" role="alert">{t(locale, "orchReadyFailed")}: {state.message} <button type="button" onClick={() => setAttempt((n) => n + 1)}>{t(locale, "orchRepeat")}</button></p>}
       {items.length > 0 && (
@@ -302,7 +314,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   // The project's own check commands, one per line; from the project settings until the user edits them.
   const [commandsText, setCommandsText] = useState("");
   const edited = useRef(false);
-  const [workMode, setWorkMode] = useState<OrchestrationWorkMode>("project");
+  const [workMode, setWorkMode] = useState<OrchestrationWorkMode>("copy");
   const [finish, setFinish] = useState<{ commit: boolean; push: boolean; qa: boolean }>({ commit: false, push: false, qa: false });
   const suggest = useCallback((lines: string[]) => { if (!edited.current) setCommandsText((cur) => cur || lines.join("\n")); }, []);
   const [limits, setLimits] = useState<Record<string, string>>({});
@@ -315,6 +327,9 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const [ready, setReady] = useState(false);
   const [blockedBy, setBlockedBy] = useState<string | null>(null);
   const [held, setHeld] = useState<unknown>(undefined);
+  // «Проверить сейчас» found commands failing before any change: at «Старт» the person chooses (this run only)
+  const [failing, setFailing] = useState<string[]>([]);
+  const [choosing, setChoosing] = useState(false);
   // One request id per goal as written: a retry after a transport failure repeats it, an edited goal is a new request.
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
   const info = profile.state.kind === "ready" ? profile.state.info : null;
@@ -338,7 +353,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const chosen = canFinish ? { commit: finish.commit || finish.push || finish.qa, push: finish.push && !!info?.profile.finish.push, qa: finish.qa && !!info?.profile.finish.qa } : null;
   // journal v2 (development flag until A4): the commands may be left empty — the lead proposes them; a role's model
   const optionalChecks = info?.optionalChecks === true;
-  const goal: OrchestrationGoalInput = {
+  const asked: OrchestrationGoalInput = {
     ...(optionalChecks ? { models } : {}),
     text: text.trim(),
     criteria: criteria.split("\n").map((c) => c.trim()).filter(Boolean),
@@ -353,8 +368,11 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       return [[kind, kind === "runMs" ? n * 60_000 : n]];
     }))
   };
-  const complete = goal.text !== "" && goal.criteria.length > 0 && (commands.length > 0 || optionalChecks);
-  const submit = async (): Promise<void> => {
+  const complete = asked.text !== "" && asked.criteria.length > 0 && (commands.length > 0 || optionalChecks);
+  const kept = commands.filter((c) => !failing.includes(c.slice(0, 200)));
+  const submit = async (only?: string[]): Promise<void> => {
+    setChoosing(false);
+    const goal: OrchestrationGoalInput = only ? { ...asked, commands: only } : asked;
     const fingerprint = JSON.stringify([link.linkId, goal]);
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     setBusy(true);
@@ -388,7 +406,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
 
   return (
     <Dialog label={t(locale, "orchNewGoal")} onClose={ui.closeGoal} locale={locale}>
-      <form className="orch-form" onSubmit={(event) => { event.preventDefault(); if (complete && ready) void submit(); }}>
+      <form className="orch-form" onSubmit={(event) => { event.preventDefault(); if (complete && ready) { if (failing.length) setChoosing(true); else void submit(); } }}>
         <div className="orch-field orch-field--static">
           <span>{t(locale, "orchProject")}</span>
           <strong title={lead.project}>{lead.project}</strong>
@@ -463,7 +481,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           <summary>{t(locale, "orchAdvanced")}</summary>
           <fieldset className="orch-field orch-workmode" data-orch-workmode={workMode}>
             <legend>{t(locale, "orchWorkMode")}</legend>
-            {(["project", "worktree", "copy"] as const).map((m) => (
+            {(["copy", "worktree", "project"] as const).map((m) => (
               <label key={m} className="orch-check">
                 <input type="radio" name="orch-workmode" value={m} checked={workMode === m} onChange={() => setWorkMode(m)} />
                 <span><b><Termed locale={locale} text={tr(locale, `orchWorkMode_${m}`)} /></b> — <Termed locale={locale} text={tr(locale, `orchWorkMode_${m}Hint`)} /></span>
@@ -489,7 +507,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           {optionalChecks && <RoleModelsField locale={locale} linkId={link.linkId} value={models} hint={t(locale, "orchModelsGoalHint")} onChange={setModels} />}
         </details>
         <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld}
-          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy}
+          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy} onWorkMode={setWorkMode} onFailing={setFailing}
           onFix={(target) => {
             if (target === "settings") { setSettingsOpen(true); return; }
             const field = document.querySelector<HTMLTextAreaElement>(".orch-dialog [data-orch-commands]");
@@ -507,12 +525,26 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
             </div>
           );
         })()}
+        {choosing && (
+          <div className="orch-failing" role="alertdialog" aria-label={t(locale, "orchFailingTitle")} data-orch-failing-choice>
+            <p><b>{t(locale, "orchFailingTitle")}</b></p>
+            <ul>{failing.map((c) => <li key={c}><code>{c}</code></li>)}</ul>
+            <p className="orch-hint">{t(locale, "orchFailingHint")}</p>
+            {!kept.length && !optionalChecks && <p className="orch-hint orch-hint--warn" data-orch-failing-none>{t(locale, "orchFailingDropNone")}</p>}
+            <div className="orch-failing__actions">
+              <button type="button" className="orch-primary" data-orch-primary="drop_failing" data-orch-failing-drop disabled={busy || (!kept.length && !optionalChecks)}
+                onClick={() => void submit(kept)}>{t(locale, "orchFailingDrop")}</button>
+              <button type="button" data-orch-failing-keep disabled={busy} onClick={() => void submit()}>{t(locale, "orchFailingKeep")}</button>
+              <button type="button" data-orch-failing-cancel onClick={() => setChoosing(false)}>{t(locale, "orchFailingBack")}</button>
+            </div>
+          </div>
+        )}
         <div className="orch-form__actions">
           {/* why Start is off, beside it in the pinned bottom (UX audit PR 2) */}
           {!complete && <span className="orch-hint orch-form__why" data-orch-incomplete>{t(locale, optionalChecks ? "orchGoalIncompleteNoChecks" : "orchGoalIncomplete")}</span>}
           {complete && !ready && <span className="orch-hint orch-form__why" data-orch-not-ready>{blockedBy ? `${t(locale, "orchStartBlockedBy")} ${blockedBy}` : t(locale, "orchReadyNotYet")}</span>}
           <button type="button" onClick={ui.closeGoal}>{t(locale, "orchCancel")}</button>
-          <button type="submit" className="orch-primary" disabled={busy || !complete || !ready}>{busy ? t(locale, "orchSending") : t(locale, "orchStart")}</button>
+          <button type="submit" className="orch-primary" disabled={busy || choosing || !complete || !ready}>{busy ? t(locale, "orchSending") : t(locale, "orchStart")}</button>
         </div>
         {error && <div className="dialog-error" role="alert">{error}</div>}
       </form>

@@ -32,6 +32,9 @@ const wrap = (p) => {
   fs.writeFileSync(f, `#!/bin/sh\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
   return f;
 };
+// the login shell as the checks call it (-ilc, -lc, -c <line>), without the machine's profile files (no path_helper)
+const SHELL = D("login-shell");
+fs.writeFileSync(SHELL, `#!/bin/sh\ncase "$1" in -*) shift ;; esac\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 const PATHS = `${path.dirname(NODE)}:/usr/bin:/bin`;
 const providers = (extra = {}) => {
   const file = D(`providers-${Object.keys(extra).join("-") || "plain"}.json`);
@@ -39,7 +42,7 @@ const providers = (extra = {}) => {
   fs.writeFileSync(file, JSON.stringify({
     codex: { executable: wrap("codex"), version: "codex-cli 0.160.0", path: PATHS, env: env({ MOCK_SCRIPT: codexScript, CODEX_HOME: D("mock-state", ".codex") }) },
     claude: { executable: wrap("claude"), version: "2.1.293 (Claude Code)", path: PATHS, env: env({ MOCK_SCRIPT: claudeScript }) },
-    shell: "/bin/sh", checkEnv: { PATH: PATHS, HOME: D("mock-state") }
+    shell: SHELL, checkEnv: { PATH: PATHS, HOME: D("mock-state") }
   }));
   return file;
 };
@@ -139,6 +142,9 @@ try {
   await app.clickEl(byText(`[data-agent-link-id="${linkOk}"] button`, "Новая цель"));
   await app.waitFor(`${q(".orch-dialog textarea")} && true`, "goal dialog");
   await app.type(q("[data-orch-commands]"), `touch ${marker}`);
+  // a new project's dialog starts in a separate copy (PR 5): the project folder chosen for this goal
+  await app.ev(`${q(".orch-dialog .orch-advanced")}.open = true`);
+  await app.clickEl(q('[data-orch-workmode] input[value="project"]'));
   await app.waitFor(`["ready", "confirm", "blocked"].includes(${q("[data-orch-readiness]")}?.dataset.orchReadiness)`, "light readiness", 30_000);
   await checkNow("project folder");
   it = await by();

@@ -356,7 +356,7 @@ const everythingKept = (root) => fs.readdirSync(root, { recursive: true }).map((
 test("main refuses a run whose tests would follow a URL to a server, before any test command, without the password", OPTS, async () => {
   const src = repo({ "phpunit.xml": SAFE_UNIT, "config/database.php": L11 });
   const m = manager({ DB_URL: PROD });
-  for (const goal of [{ mode: "autopilot" }, { workMode: "project" }]) {
+  for (const goal of [{ mode: "autopilot", workMode: "project" }, { workMode: "project" }]) {
     const r = await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["touch tests-ran"], ...goal } });
     assert.equal(r.code, "test_database_unsafe", JSON.stringify(r));
     noSecret(r);

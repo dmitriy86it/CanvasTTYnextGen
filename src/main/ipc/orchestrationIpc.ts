@@ -7,6 +7,7 @@ import type {
   OrchestrationBounds,
   OrchestrationCreateRequest,
   OrchestrationGoalInput,
+  OrchestrationTakeInput,
   OrchestrationProviderKind,
   OrchestrationResult,
   OrchestrationRoleModels,
@@ -327,6 +328,13 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     if (p.startsWith("/") || p.split("/").includes("..")) bad("path must be relative to the copy");
     return [uuid(runId, "runId"), p] as [string, string];
   }, manager.diff));
+  handleMain(IPC.orchestrationTake, (_e, runId: unknown) => checked(() => [uuid(runId, "runId")] as [string], manager.take));
+  handleMain(IPC.orchestrationTakeResult, (_e, runId: unknown, input: unknown) => checked(() => {
+    const o = obj(input, "request", ["action"], ["name"]);
+    if (o.action === "apply" && o.name === undefined) return [uuid(runId, "runId"), { action: "apply" }] as [string, OrchestrationTakeInput];
+    if (o.action !== "branch") bad("action must be branch or apply");
+    return [uuid(runId, "runId"), { action: "branch", name: str(o.name, "name", 200) }] as [string, OrchestrationTakeInput];
+  }, manager.takeResult));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");

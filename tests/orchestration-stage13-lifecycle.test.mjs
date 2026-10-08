@@ -181,7 +181,7 @@ test("test database: commented phpunit lines, a local working database, the proc
 test("test database: a run is refused in main too, not only by the dialog", OPTS, async () => {
   const src = laravel({ ".env": "DB_CONNECTION=mysql\nDB_HOST=prod.db.example.com\n", "tests/Feature/AppTest.php": "<?php\n" });
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]) });
-  const r = await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot" } });
+  const r = await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot", workMode: "project" } });
   assert.equal(r.code, "test_database_unsafe", JSON.stringify(r));
   const r2 = await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"], workMode: "project" } });
   assert.equal(r2.code, "test_database_unsafe", "a goal without a mode as well");
@@ -263,7 +263,7 @@ test("a mode of rights the installed CLI does not offer is refused at the start 
   // what the CLI offers is probed (its app-server protocol), never read off a list of versions
   const src = project({});
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]), MOCK_CODEX_SCHEMA: "no_workspace" }, undefined, "codex-cli 0.155.2");
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["true"], access: { claude: "terminal", codex: "workspace" } });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], access: { claude: "terminal", codex: "workspace" } });
   const r = await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot" } });
   assert.equal(r.code, "access_unsupported", JSON.stringify(r));
   assert.equal(r.message, "Codex 0.155.2: the rights mode workspace is not available (schema_missing: sandbox workspace-write)", "the CLI, its version, the mode and what is missing");
@@ -309,7 +309,7 @@ async function closedDuringPreparation(stepBody, { late }) {
   const m = manager(env, root);
   const quick = path.join(TMP, `quick-${++n}`), pidFile = path.join(TMP, `pid-${++n}`), latch = path.join(TMP, `latch-${++n}`);
   // the same step is quick after the resume; the second step must not start before it
-  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), checks: ["test -f prepared.txt", "test -f second.txt"],
+  await createProfileStore(root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["test -f prepared.txt", "test -f second.txt"],
     prepare: { steps: [
       { command: `[ -f ${quick} ] || { ${stepBody({ pidFile, latch })}; }; touch prepared.txt`, unless: "prepared.txt" },
       { command: "touch second.txt", unless: "second.txt" }
@@ -433,7 +433,7 @@ test("QA: a deploy that went through with a failing verification is 'deployed, n
   const count = path.join(TMP, `qa-count-${++n}`);
   const gate = path.join(TMP, `qa-gate-${n}`);
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["true"],
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"],
     finish: { commit: true, push: null, qa: { environment: "qa", command: `echo run >> ${count}`, verify: `test -f ${gate}` } } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot", finish: { commit: true, push: false, qa: true } } })).ok);
@@ -455,7 +455,7 @@ test("closed during a QA deploy that outlives shutdown(): its late success start
   const src = project({ "a.txt": "1\n" });
   const pidFile = path.join(TMP, `pid-${++n}`), latch = path.join(TMP, `latch-${n}`), verified = path.join(TMP, `verified-${n}`);
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["true"], finish: { commit: true, push: null, qa: { environment: "qa",
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], finish: { commit: true, push: null, qa: { environment: "qa",
     command: `trap '' INT TERM; echo $$ > ${pidFile}; while [ ! -f ${latch} ]; do sleep 0.1; done; exit 0`, verify: `touch ${verified}` } } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot", finish: { commit: true, push: false, qa: true } } })).ok);
@@ -491,7 +491,7 @@ test("a QA deploy that succeeds while the application closes: its verification d
   const [pidFile, latch, gotInt, verified, deploys] = ["pid", "latch", "int", "verified", "deploys"].map((x) => path.join(TMP, `${x}-${++n}`));
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
   // the deploy notes the stop (SIGINT from shutdown) and ends with success on the latch: inside the shutdown window
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["true"], finish: { commit: true, push: null, qa: { environment: "qa",
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], finish: { commit: true, push: null, qa: { environment: "qa",
     command: `echo d >> ${deploys}; trap 'touch ${gotInt}' INT; trap '' TERM; echo $$ > ${pidFile}; while [ ! -f ${latch} ]; do sleep 0.1; done; exit 0`,
     verify: `echo v >> ${verified}` } } });
   const runId = randomUUID();
@@ -543,7 +543,7 @@ test("files the environment preparation made are left out of the commit (LC-10)"
   const src = project({ "a.txt": "1\n", "package.json": DEPS_PKG });
   const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC({ writes: [{ rel: "a.txt", base64: b64("2\n") }] }), REVIEW, FINAL]) });
   // what `npm install` does without a lock file: node_modules (ignored) and a new package-lock.json (not ignored)
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["grep -qx 2 a.txt"],
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["grep -qx 2 a.txt"],
     prepare: { steps: [{ command: "mkdir -p node_modules && echo '{}' > package-lock.json", unless: "node_modules" }], auto: true } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "a to 2", criteria: ["c"], checks: [], mode: "autopilot", finish: { commit: true, push: false, qa: false } } })).ok);

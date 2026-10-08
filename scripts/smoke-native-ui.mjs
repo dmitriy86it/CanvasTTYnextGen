@@ -104,8 +104,8 @@ try {
   // stage 13: the suggested project settings prepare vendor/ automatically (composer install), so it is not a warning
   expect(vendor?.level === "ok" && vendor.text.includes("composer install"), "readiness: vendor/ is missing and prepared automatically (composer install)", vendor);
   expect(cmd && cmd.level !== "ok", "readiness: php is not on this login PATH, said before any turn", cmd);
-  expect(wd?.level === "info", "readiness: the agents work in the project folder", wd);
-  expect(await app.ev(`${q("[data-orch-workmode]")}.dataset.orchWorkmode`) === "project", "work place default: the project folder", null);
+  expect(wd?.level === "info", "readiness: where the agents work is said as information", wd);
+  expect(await app.ev(`${q("[data-orch-workmode]")}.dataset.orchWorkmode`) === "copy", "work place default of a new project: a separate copy (PR 5)", null);
   expect(await app.ev(`!!${q(".orch-dialog [data-orch-differences]")}`), "the dialog lists the known differences", null);
   await app.ev(`${q(".orch-dialog [data-orch-differences]")}.open = true`);
   await app.ev(`${q("[data-orch-readiness]")}.scrollIntoView({ block: "start" })`);

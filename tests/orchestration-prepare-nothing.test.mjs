@@ -102,7 +102,7 @@ const WITH_DEPS = JSON.stringify({ name: "p", version: "1.0.0", dependencies: { 
 // The step a 1.5.6 profile saved for such a project, kept in the goal of its runs.
 const SAVED_STEP = { command: "npm install", unless: "node_modules" };
 async function start(m, src, steps = [SAVED_STEP]) {
-  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["true"], prepare: { steps, auto: true } });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["true"], prepare: { steps, auto: true } });
   const runId = randomUUID();
   assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot" } })).ok);
   return runId;
