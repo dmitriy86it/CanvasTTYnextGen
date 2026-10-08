@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
-import { CLAUDE_WORKSPACE_SETTINGS, claudeAccessArgs } from "../src/main/services/orchestration/access.ts";
+import { CLAUDE_WORKSPACE_SETTINGS, claudeAccessArgs, claudeSandboxExclusions } from "../src/main/services/orchestration/access.ts";
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
@@ -125,7 +125,8 @@ test("the read-only commands of run 7303d772 are read-only; writes, the network,
     "cat $(echo f)", "cat `echo f`", "echo hi & rm -rf x", "(cd x; ls)", "npm test", "mkdir -p x", `bash -c "$X"`, "cat <<EOF\nx\nEOF", "tee f",
     "awk '{print}' f", "until [ -s f ]; do sleep 1; done",
     "PATH=/tmp/x grep a f", "PATH=/tmp/x; grep a f", "IFS=x; cat f", "BASH_ENV=/tmp/x bash -c 'cat f'", "path=(/tmp/x); grep a f", "path=/tmp/x; grep a f",
-    "for PATH in /tmp/x; do grep a f; done", "LC_ALL=C grep a f", "sort --compress-program=./x f", "sort -T /tmp f", "printf -v PATH x", "ls; python3 -c 'open(\"x\",\"w\")'", "cat 'unterminated"]) {
+    "for PATH in /tmp/x; do grep a f; done", "LC_ALL=C grep a f", "sort --compress-program=./x f", "sort -T /tmp f", "printf -v PATH x",
+    `O='$(touch x)'; cat "\${(e)O}"`, "cat ${(e)O}", `cat "\${X@P}"`, "cat $[1]", "rg --hostname-bin=./x a", "rg -z a", "file -C -m x", "ls; python3 -c 'open(\"x\",\"w\")'", "cat 'unterminated"]) {
     assert.equal(readOnlyCommand(c), false, c);
   }
 });
@@ -159,6 +160,18 @@ test("«Рабочая папка»: the commands of 7303d772 run without a prom
   assert.deepEqual(replies.slice(4).map((d) => d.reply.behavior), ["deny", "deny", "deny", "deny"]);
   assert.equal(fs.existsSync(outside), false);
   await m.shutdown();
+});
+
+test("commands the user's settings run outside the sandbox: the session answers no Bash prompt by itself", () => {
+  const home = fs.mkdtempSync(path.join(TMP, "home-"));
+  const cwd = fs.mkdtempSync(path.join(TMP, "cwd-"));
+  assert.equal(claudeSandboxExclusions(home, cwd), false);
+  fs.mkdirSync(path.join(cwd, ".claude"));
+  fs.writeFileSync(path.join(cwd, ".claude", "settings.json"), "not json");
+  assert.equal(claudeSandboxExclusions(home, cwd), false);
+  fs.mkdirSync(path.join(home, ".claude"));
+  fs.writeFileSync(path.join(home, ".claude", "settings.json"), JSON.stringify({ sandbox: { excludedCommands: ["docker"] } }));
+  assert.equal(claudeSandboxExclusions(home, cwd), true);
 });
 
 test("without the sandbox (the user's own settings) the same prompts reach the person", OPTS, async () => {

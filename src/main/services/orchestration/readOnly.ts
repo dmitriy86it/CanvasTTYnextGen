@@ -40,7 +40,7 @@ function segments(line: string): Segment[] | null {
       let j = i + 1;
       for (; j < line.length && line[j] !== "\""; j++) {
         const d = line[j];
-        if (d === "`" || (d === "$" && line[j + 1] === "(")) return null;
+        if (d === "`" || (d === "$" && "({[".includes(line[j + 1] ?? ""))) return null;
         if (d === "\\") { word().text += line[j + 1] ?? ""; j++; continue; }
         if (d === "$") word().dynamic = true;
         word().text += d;
@@ -51,8 +51,9 @@ function segments(line: string): Segment[] | null {
     }
     // a background job, a subshell, a substitution, input from a file or a here-document (2>&1 is taken with ">" below)
     if (c === "`" || c === "(" || c === ")" || c === "&" || c === "<") return null;
+    // ${…} may run commands (zsh ${(e)x}, bash ${x@P}); $[…] is arithmetic that may too: only a plain $name or $@
     if (c === "$") {
-      if (line[i + 1] === "(") return null;
+      if ("({[".includes(line[i + 1] ?? "")) return null;
       word().dynamic = true;
     }
     if (c === ">") {
@@ -74,7 +75,7 @@ function segments(line: string): Segment[] | null {
   function endWordIfNotFd(): void { if (cur && /^\d+$/.test(cur.text)) cur = null; else endWord(); }
 }
 
-const PLAIN = new Set(["cat", "head", "tail", "wc", "ls", "pwd", "echo", "printf", "true", "file", "stat", "basename", "dirname",
+const PLAIN = new Set(["cat", "head", "tail", "wc", "ls", "pwd", "echo", "printf", "true", "stat", "basename", "dirname",
   "realpath", "nl", "cut", "tr", "cmp", "diff", "du", "which", "type", "cd", "grep", "egrep", "fgrep", "rg", "sed", "find", "sort", "uniq"]);
 // where a $variable may stand in the arguments: none of their options runs or writes anything
 const DYNAMIC_ARGS = new Set(["cat", "head", "tail", "wc", "ls", "echo", "printf", "cd", "grep", "egrep", "fgrep"]);
@@ -107,7 +108,8 @@ function commandReadOnly(seg: Segment, depth: number): boolean {
   const texts = args.map((a) => a.text);
   switch (name) {
     case "find": return !texts.some((a) => FIND_ACTIONS.test(a));
-    case "rg": return !texts.some((a) => a.startsWith("--pre"));
+    // --pre and --hostname-bin run a program, -z/--search-zip runs decompressors
+    case "rg": return !texts.some((a) => a.startsWith("--pre") || a.startsWith("--hostname-bin") || a.startsWith("--search-zip") || /^-[a-zA-Z]*z/.test(a));
     // only the ordering flags: -o writes, --compress-program runs a program
     case "sort": return texts.every((a) => !a.startsWith("-") || /^-([nrufhVbsMgd]+|[kt].*)$/.test(a));
     case "printf": return !texts.includes("-v");

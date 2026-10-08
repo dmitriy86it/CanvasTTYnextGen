@@ -280,7 +280,7 @@ export function claudeHostDriver(input: ClaudeSessionInput): SessionDriver {
     // variable, a quoted brace, `bash -c '…'`: run 7303d772) is answered here. The command still runs in the sandbox —
     // it writes only in the work folder and reaches no outside host; a command that asks to leave the sandbox, a user's
     // ask rule and a safety check still reach the person.
-    if (input.sandboxed && tool === "Bash" && toolInput.dangerouslyDisableSandbox !== true && !alwaysAsk
+    if (input.sandboxed && tool === "Bash" && !toolInput.dangerouslyDisableSandbox && !alwaysAsk
       && (r.decision_reason_type === "other" || r.decision_reason_type === "subcommandResults")) {
       return respond(requestId, { behavior: "allow", updatedInput: toolInput });
     }

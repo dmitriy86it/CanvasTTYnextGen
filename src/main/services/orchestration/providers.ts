@@ -5,11 +5,12 @@
 // "contract_violation" and never allows a next turn.
 // The contract check reads CLI metadata (system/init, thread.started). It is not proof of process isolation.
 // Only these modes exist here; the diagnostic probe plan lives in docs/ and is not imported.
-import { claudeAccessArgs, codexAccessParams } from "./access.ts";
+import { claudeAccessArgs, claudeSandboxExclusions, codexAccessParams } from "./access.ts";
 import type { AgentAccess } from "./access.ts";
 import { ACCESS_MISMATCH, type AccessMismatch } from "./activity.ts";
 import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { AvailableProviderCli } from "../providerCliRegistry.ts";
 import { providerChildProcessLaunch } from "../providerCliRegistry.ts";
@@ -470,7 +471,8 @@ export function buildNativeTurn(input: NativeTurnInput): ProviderTurnBuild {
       "--json-schema", JSON.stringify(schema),
       input.session.kind === "new" ? "--session-id" : "--resume", sessionId
     ];
-    driver = claudeHostDriver({ task: input.task, ask: input.ask, sandboxed: input.access?.claude === "workspace" });
+    driver = claudeHostDriver({ task: input.task, ask: input.ask,
+      sandboxed: input.access?.claude === "workspace" && !claudeSandboxExclusions(input.cli.environment?.HOME ?? homedir(), input.cwd) });
   }
   const launch = providerChildProcessLaunch(input.cli, args);
   return {
