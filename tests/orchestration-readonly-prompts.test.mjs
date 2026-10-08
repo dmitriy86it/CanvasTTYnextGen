@@ -50,6 +50,8 @@ function wrapper(name, mock) {
 }
 const CODEX = wrapper("codex", "mock-codex.mjs");
 const CLAUDE = wrapper("claude", "mock-claude.mjs");
+const SHELL = path.join(TMP, "test-shell");
+fs.writeFileSync(SHELL, `#!/bin/sh\n[ "$1" = "-ilc" ] && shift\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 function script(answers) {
   const dir = path.join(TMP, `script-${++n}`);
   fs.mkdirSync(dir);
@@ -66,7 +68,9 @@ const EXEC = (asks) => ({ answer: { summary: "done", done: true }, asks });
 function manager(state, scriptDir) {
   const file = path.join(TMP, `providers-${++n}.json`);
   const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: state, MOCK_SCRIPT: scriptDir } };
-  fs.writeFileSync(file, JSON.stringify({ codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p } }));
+  // a shell and a `true` that are their own real paths: on Linux CI /bin/sh is a link to dash and /bin to /usr/bin
+  fs.writeFileSync(file, JSON.stringify({ codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p },
+    shell: SHELL, checkEnv: { ...GIT_ENV, PATH: `/usr/bin:/bin:${path.dirname(GIT)}`, HOME: TMP } }));
   const root = path.join(TMP, `root-${++n}`);
   const m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH) });
@@ -98,7 +102,8 @@ async function run(access, asks) {
   const m = manager(state, script([PLAN, EXEC(asks), REVIEW, FINAL]));
   await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: [], access: { claude: access, codex: "workspace" } });
   const runId = randomUUID();
-  assert.ok((await m.create({ requestId: runId, source: src, goal: { text: "look", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot" } })).ok);
+  const created = await m.create({ requestId: runId, source: src, goal: { text: "look", criteria: ["c"], checks: [], commands: ["true"], mode: "autopilot" } });
+  assert.ok(created.ok, JSON.stringify(created));
   return { m, runId, state, src };
 }
 
