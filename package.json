@@ -1,6 +1,6 @@
 {
   "name": "canvastty",
-  "version": "1.5.12",
+  "version": "1.5.13",
   "private": true,
   "description": "A spatial desktop for local AI agents and real terminal sessions.",
   "desktopName": "CanvasTTY",
@@ -40,6 +40,7 @@
     "smoke:workspaces-background": "node scripts/smoke-workspaces-background.mjs",
     "smoke:preflight-ui": "node scripts/smoke-preflight-ui.mjs",
     "smoke:take-result-ui": "node scripts/smoke-take-result-ui.mjs",
+    "smoke:agent-cards-ui": "node scripts/smoke-agent-cards-ui.mjs",
     "preview": "electron-vite preview",
     "audit:secrets": "node scripts/audit-secrets.mjs",
     "build:windows-pipe-host": "node scripts/build-windows-agent-pipe-host.mjs",

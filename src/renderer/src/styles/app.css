@@ -1033,11 +1033,21 @@ button { border: 0; }
 .agent-card__identity small { padding: .2em .5em; border-radius: 99px; background: rgba(255,255,255,.14); font-size: .8em; font-weight: 800; }
 .agent-card__close { width: 2.15em; height: 2.15em; display: grid; place-items: center; border-radius: .54em; color: var(--text-muted-on-dark); background: rgba(255,255,255,.08); cursor: pointer; }
 .agent-card__close:hover, .agent-card__close:focus-visible { color: white; background: var(--danger); }
-.agent-card__body { min-height: 0; flex: 1; padding: .7em .9em; display: flex; flex-direction: column; gap: .5em; }
-.agent-card__project { min-width: 0; display: flex; align-items: center; gap: .55em; }
-.agent-card__project > span { min-width: 0; display: flex; flex-direction: column; }
-.agent-card__project strong, .agent-card__project small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-card__project small { color: var(--text-muted-on-dark); font: .78em/1.3 var(--font-mono); }
+.agent-card__body { min-height: 0; flex: 1; padding: .55em .9em; display: flex; flex-direction: column; gap: .3em; }
+/* 1.5.13: no line is ever cut by height — the lines keep their height, the feed takes what is left */
+.agent-card__body > * { flex-shrink: 0; }
+.agent-card__project { min-width: 0; display: flex; align-items: baseline; gap: .45em; line-height: 1.3; }
+.agent-card__project > svg { flex: 0 0 auto; align-self: center; }
+.agent-card__project strong, .agent-card__project small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-card__project strong { flex: 0 1 auto; max-width: 60%; }
+.agent-card__project small { flex: 1 1 0; color: var(--text-muted-on-dark); font: .78em/1.3 var(--font-mono); }
+.agent-card__header-actions { flex: 0 0 auto; display: flex; gap: .3em; }
+.agent-card__expand { width: 2.15em; height: 2.15em; display: grid; place-items: center; border-radius: .54em; color: var(--text-muted-on-dark); background: rgba(255,255,255,.08); cursor: pointer; }
+.agent-card__expand:hover, .agent-card__expand:focus-visible { color: white; background: rgba(255,255,255,.2); }
+.agent-card__feed { flex: 1 1 0; min-height: 0; overflow-y: auto; margin: .1em -.3em 0; padding: .3em; border-top: 1px solid color-mix(in srgb, var(--text-muted-on-dark) 30%, transparent); font-size: .82em; }
+.agent-card__feed-item { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.4; }
+.agent-card__feed-item time { color: var(--text-muted-on-dark); font-family: var(--font-mono); font-size: .92em; }
+.agent-card__feed-empty { margin: 0; color: var(--text-muted-on-dark); }
 .agent-card__state { align-self: flex-start; padding: .25em .65em; border-radius: 99px; color: var(--text-dark); background: var(--secondary); font-weight: 800; }
 .agent-card__state--working { background: var(--success); animation: agent-pulse 1.4s ease-in-out infinite; }
 .agent-card__state--paused, .agent-card__state--stopping { background: var(--yellow); }
@@ -1063,7 +1073,7 @@ button { border: 0; }
 .orch-finish-group { margin: 8px 0; padding: 8px 10px; border: 2px solid color-mix(in srgb, var(--text) 25%, transparent); border-radius: 10px; }
 .orch-finish-group > legend { padding: 0 6px; font-weight: 800; }
 .orch-field.orch-field--inline { display: inline-flex; flex-direction: row; align-items: center; gap: .4em; }
-.agent-card__port { position: absolute; right: -.8em; top: 50%; width: 1.6em; height: 1.6em; margin-top: -.8em; border: 3px solid var(--surface); border-radius: 50%; background: var(--blue); cursor: crosshair; touch-action: none; }
+.agent-card__port { position: absolute; z-index: 21; right: -.8em; top: 50%; width: 1.6em; height: 1.6em; margin-top: -.8em; border: 3px solid var(--surface); border-radius: 50%; background: var(--blue); cursor: crosshair; touch-action: none; }
 .agent-card__port:hover, .agent-card__port:focus-visible, .agent-card__port[aria-pressed="true"] { background: var(--yellow); box-shadow: 0 0 0 3px var(--yellow); }
 .agent-link { position: absolute; z-index: 0; height: 3px; margin-top: -1.5px; transform-origin: 0 50%; border-radius: 2px; background: var(--surface); pointer-events: none; }
 .agent-link::after { content: ""; position: absolute; right: -2px; top: -6px; border: 7.5px solid transparent; border-left: 11px solid var(--surface); border-right: 0; }
@@ -1281,13 +1291,12 @@ button { border: 0; }
 .activity-recent button.activity-recent__summary { flex: 0 0 auto; color: white; background: var(--primary); }
 
 /* Agent cards: the concrete action under the state; long texts end in an ellipsis and never cover the buttons or the port. */
-.agent-card__status { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .3em; }
-.agent-card__status > span { max-width: 100%; }
-.agent-card__status .agent-card__state { flex: 0 0 auto; }
-.agent-card__doing, .agent-card__line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-card__doing { font-weight: 700; }
+.agent-card__status { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: .5em; }
+.agent-card__status .agent-card__state { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-card__time { flex: 0 100 auto; text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted-on-dark); font: .78em/1.3 var(--font-mono); }
+.agent-card__doing, .agent-card__line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.agent-card__line.agent-card__doing { color: var(--text); font-size: 1em; font-weight: 700; }
 .agent-card__line { color: var(--text-muted-on-dark); font-size: .86em; }
-.agent-card__line--time { font-family: var(--font-mono); font-size: .78em; }
 .agent-card__body { overflow: hidden; }
 .agent-card__actions { flex-wrap: nowrap; }
 .agent-card__actions button { white-space: nowrap; }

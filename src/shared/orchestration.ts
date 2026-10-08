@@ -181,7 +181,9 @@ export interface OrchestrationDecisions {
 // only carries it, never answers it by itself. Texts are sanitized (no secrets, paths relative to the work folder).
 // allow_run / allow_project (stage 13): CanvasTTY remembers the decision for exactly this action (same tool and
 // parameters) for the rest of the run, or for the project; the CLI is told "allow once" each time.
-export type OrchestrationPermissionOption = "allow_once" | "allow_session" | "allow_run" | "allow_project" | "deny";
+// allow_readonly_run (1.5.13): offered after more than 3 prompts of read-only commands in a run (readOnly.ts); every
+// later read-only command of this run is allowed without a dialog. Kept in memory: a restart asks again.
+export type OrchestrationPermissionOption = "allow_once" | "allow_session" | "allow_run" | "allow_project" | "allow_readonly_run" | "deny";
 export interface OrchestrationFormField {
   name: string;
   title: string;
@@ -496,6 +498,7 @@ export interface OrchestrationAgentCard {
   bounds: OrchestrationBounds;
   createdAt: string;
   workspaceId?: string; // absent: the common canvas (cards made before workspaces)
+  expanded?: { width: number; height: number }; // the size "Expand" returns to (1.5.13); absent: the default expanded size
 }
 export interface OrchestrationAgentLink {
   linkId: string;
@@ -555,7 +558,8 @@ export interface OrchestrationApi {
   text(runId: string, sha256: string): Promise<OrchestrationResult<{ text: string }>>;
   canvas(): Promise<OrchestrationResult<OrchestrationCanvas>>;
   createAgent(input: { agentId: string; provider: OrchestrationProviderKind; project: string; bounds: OrchestrationBounds; workspaceId: string }): Promise<OrchestrationResult<OrchestrationAgentCard>>;
-  moveAgent(agentId: string, bounds: OrchestrationBounds): Promise<OrchestrationResult<OrchestrationAgentCard>>;
+  // expanded: the size "Expand" returns to — undefined keeps the saved one
+  moveAgent(agentId: string, bounds: OrchestrationBounds, expanded?: OrchestrationBounds["size"]): Promise<OrchestrationResult<OrchestrationAgentCard>>;
   deleteAgent(agentId: string): Promise<OrchestrationResult<null>>;
   // Moves a whole linked group to another workspace; agentIds must be exactly the group the person saw. Refused while
   // one of its links has a run that is not finished (paused included). The owners of its runs stay.

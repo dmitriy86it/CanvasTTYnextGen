@@ -32,6 +32,7 @@ import { StoreError, conditionTexts, createRun as storeCreateRun, openRun as sto
 import type { RunWriter, StoreIo } from "./store.ts";
 import type { AnswerSchema, SupervisorLaunch } from "./types.ts";
 import { endingDetail, sanitize } from "./activity.ts";
+import { readOnlyCommand } from "./readOnly.ts";
 import type { AskPerson, PermissionAsk, PermissionReply } from "./sessions.ts";
 import { startShellCheck } from "./userCheck.ts";
 import type { ShellCheckResult } from "./userCheck.ts";
@@ -138,7 +139,7 @@ export type RunCommand =
   | OrchestrationPlanDecide
   | { kind: "permission"; requestId: string; decision: PermissionDecision; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string };
 // What the person can answer: the CLI's own options, plus remembering exactly this action for the run or the project.
-export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project";
+export type PermissionDecision = PermissionReply["decision"] | "allow_run" | "allow_project" | "allow_readonly_run";
 
 export type CommandOutcome = CommandResult | { status: "in_progress" };
 
@@ -676,6 +677,13 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   const turnOf = () => Object.keys(state().turns).at(-1) ?? null;
   // Kinds a saved decision may cover: a permission for one action. Questions, plans and forms are always the person's.
   const GRANTABLE = ["command", "file_change", "permissions", "tool"];
+  // 1.5.13: prompts of read-only commands in this run (readOnly.ts) and the person's "read-only until the run ends"
+  const readOnly = { asks: 0, allowed: false };
+  const readOnlyAsk = (ask: PermissionAsk): boolean => {
+    if (ask.alwaysAsk || !(ask.kind === "command" || ask.tool === "Bash")) return false;
+    const command = (ask.input as { command?: unknown } | null)?.command;
+    return readOnlyCommand(typeof command === "string" ? command : ask.summary);
+  };
   async function savedGrant(fingerprint: string): Promise<{ grantId: string; scope: "run" | "project" } | null> {
     const inRun = state().orch.grants[fingerprint];
     if (inRun) return { grantId: inRun.grantId, scope: inRun.scope };
@@ -690,6 +698,12 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
       const fingerprint = GRANTABLE.includes(ask.kind) && !ask.alwaysAsk ? grantFingerprint(provider, ask.kind, ask.tool, ask.input) : null;
       // The same action the person already allowed for this run or project: allowed again without a new dialog, and
       // the use is recorded in the history. The CLI gets "allow once" — its own rules are not changed.
+      const ro = readOnlyAsk(ask);
+      if (ro && readOnly.allowed && !signal.aborted) {
+        observe((a) => a.permission(role, provider, turnOf(), "applied", `${sanitize(ask.tool, ws.repo, 120).text || ask.kind}: ${sanitize(ask.summary, ws.repo, 300).text}`, { scope: "readonly_run", kind: ask.kind }));
+        return { decision: "allow_once" };
+      }
+      if (ro) readOnly.asks++;
       const saved = fingerprint ? await savedGrant(fingerprint) : null;
       if (saved && fingerprint && !signal.aborted) {
         const tool = sanitize(ask.tool, ws.repo, 120).text || ask.kind;
@@ -702,6 +716,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
         const detail = ask.input === undefined ? null : sanitize(typeof ask.input === "string" ? ask.input : JSON.stringify(ask.input, null, 1), ws.repo, 1500).text;
         const options = [...ask.options] as OrchestrationPermissionRequest["options"];
         if (fingerprint && options.includes("allow_once")) options.splice(options.indexOf("deny"), 0, "allow_run", ...(deps.grants ? ["allow_project" as const] : []));
+        if (ro && readOnly.asks > 3 && options.includes("deny")) options.splice(options.indexOf("deny"), 0, "allow_readonly_run");
         const view: OrchestrationPermissionRequest = {
           requestId, role, provider, kind: ask.kind, tool: sanitize(ask.tool, ws.repo, 120).text || ask.kind,
           summary: sanitize(ask.summary, ws.repo, 600).text, detail, options,
@@ -2474,7 +2489,8 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
             }));
           }
         }
-        const decision = cmd.decision === "allow_run" || cmd.decision === "allow_project" ? "allow_once" : cmd.decision;
+        if (cmd.decision === "allow_readonly_run") readOnly.allowed = true;
+        const decision = cmd.decision === "allow_run" || cmd.decision === "allow_project" || cmd.decision === "allow_readonly_run" ? "allow_once" : cmd.decision;
         observe((act) => act.permission(p.turnRole, p.view.provider, turnOf(), "decided", `${p.view.tool}: ${cmd.decision}`, { requestId: cmd.requestId, decision: cmd.decision }));
         p.reply({ decision, ...(answers ? { answers } : {}), ...(content ? { content } : {}), ...(typeof cmd.feedback === "string" ? { feedback: cmd.feedback } : {}) });
         return ok;

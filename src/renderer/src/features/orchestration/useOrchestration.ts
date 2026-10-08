@@ -15,7 +15,7 @@ import type {
   OrchestrationRunView
 } from "../../../../shared/orchestration";
 import { t, type TranslationKey } from "../../lib/i18n";
-import { AGENT_CARD_SIZE } from "./AgentCard";
+import { agentCardSize } from "./agentCardGeometry";
 import { accessProblemText, parseStartProblem, activityGap, createCommandSender, mergeActivity, newerStamp, outcomeOf, parsePlan, type Outcome } from "./runModel";
 import { readJournal, stageTitleMap, type RunJournalState, type StageTitles } from "./runStatus";
 
@@ -33,7 +33,8 @@ const EMPTY_JOURNAL: RunJournalState = { records: [], next: 0, status: "loading"
 // A stored text of a run (goal, plan, report, findings), by its sha256.
 export type TextState = { status: "loading" } | { status: "error" } | { status: "ready"; text: string };
 // A card's size is fixed by the renderer (older cards were stored smaller).
-const withCardSize = (c: OrchestrationCanvas): OrchestrationCanvas => ({ ...c, agents: c.agents.map((a) => ({ ...a, bounds: { ...a.bounds, size: { ...AGENT_CARD_SIZE } } })) });
+// A saved size is kept within the card's limits (1.5.13: agent cards are resizable; before, every card had one size).
+const withCardSize = (c: OrchestrationCanvas): OrchestrationCanvas => ({ ...c, agents: c.agents.map((a) => ({ ...a, bounds: { ...a.bounds, size: agentCardSize(a.bounds.size) } })) });
 
 export function orchText(locale: LocaleId, key: string, fallback: TranslationKey = "orchError_generic"): string {
   return t(locale, key as TranslationKey) ?? t(locale, fallback);
@@ -241,9 +242,9 @@ export function useOrchestration() {
       apply(() => api().createAgent(input), (card) => setCanvas((c) => (c.agents.some((a) => a.agentId === card.agentId) ? c : { ...c, agents: [...c.agents, card] }))),
 
     // Shown at once (geometry is the renderer's to draw), saved in main; a refusal reloads what main holds.
-    moveAgent: (agentId: string, bounds: OrchestrationBounds) => {
-      setCanvas((c) => ({ ...c, agents: c.agents.map((a) => (a.agentId === agentId ? { ...a, bounds } : a)) }));
-      void apply(() => api().moveAgent(agentId, bounds)).then((r) => { if (r.outcome.kind !== "accepted") void reload(); });
+    moveAgent: (agentId: string, bounds: OrchestrationBounds, expanded?: OrchestrationBounds["size"]) => {
+      setCanvas((c) => ({ ...c, agents: c.agents.map((a) => (a.agentId === agentId ? { ...a, bounds, ...(expanded ? { expanded } : {}) } : a)) }));
+      void apply(() => api().moveAgent(agentId, bounds, expanded)).then((r) => { if (r.outcome.kind !== "accepted") void reload(); });
     },
 
     deleteAgent: (agentId: string) => apply(() => api().deleteAgent(agentId), () => setCanvas((c) => ({
