@@ -362,7 +362,8 @@ export async function startGoal(app, linkId, { reviewPlan = false, task = "add a
   await onDialog?.();
   if (reviewPlan) await app.clickEl(`[...document.querySelectorAll(".orch-dialog .orch-check")].find((l) => l.textContent.includes("Показать план")).querySelector("input")`);
   // Readiness is asked from main after the text settles; items to confirm are acknowledged like a user would.
-  await app.waitFor(`["ready", "confirm", "blocked", "error"].includes(${q("[data-orch-readiness]")}?.dataset.orchReadiness)`, "readiness", 15_000);
+  // a packaged build's first readiness (the login shell measured, the CLIs probed) took ~21 s after the switch of place
+  await app.waitFor(`["ready", "confirm", "blocked", "error"].includes(${q("[data-orch-readiness]")}?.dataset.orchReadiness)`, "readiness", 45_000);
   const confirms = await app.ev(`document.querySelectorAll(".orch-ready__item--confirm input[type=checkbox]").length`);
   if (acknowledge) for (let i = 0; i < confirms; i += 1) await app.clickEl(`document.querySelectorAll(".orch-ready__item--confirm input[type=checkbox]")[${i}]`);
   await app.waitFor(`!${q(".orch-dialog button[type=submit]")}.disabled`, "start enabled", 10_000);

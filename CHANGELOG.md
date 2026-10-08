@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+## 1.5.12 — 2026-10-08
+
+Check before the start, run cost, the limit pause, «Take the result», a separate copy by default.
+
+
 - «Take the result» for a run in a separate copy or worktree (UX audit 2026-10-05, top-10 №10) — the main button of such a completed run, also offered for a stopped run and a paused one with changes. The source is the run's last checkpoint; without one, the working copy as it is now, said so. «Create a branch in the project» (the safe one): a branch `raoden/<goal>-<id>` (the name shown and editable) holding the run's changes on top of what the run started from; your working folder, index and current branch are not touched, a taken name is never overwritten (another one is proposed). In a worktree the result is committed on the run's branch and the branch renamed. «Apply to the working folder» only when the changes fit your files as they are now, checked first; on an overlap with your uncommitted edits nothing is written and the files are named. «Show the changes» opens the Changes tab. The summary then says «Result taken: branch …» or «applied to the working folder at …»; doing it again does nothing twice. Done by the application's own git, never by an agent; kept in a file of the run's workspace, not in the journal.
 - «A separate copy» is the default work place of a new project; saved project settings keep theirs. The project settings offer all three places. In «In the project folder» with uncommitted changes the goal dialog says how many and offers «Switch to a separate copy» for this goal only.
 - After «Check now» found commands failing before any change, Start asks: «Leave the failing commands out of this run» (main), «Start as it is — the agents fix them too», or back to the goal. The project settings do not change.
