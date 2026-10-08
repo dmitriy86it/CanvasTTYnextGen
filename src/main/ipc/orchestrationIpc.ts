@@ -16,7 +16,7 @@ import type {
 import type { RunCommand } from "../services/orchestration/orchestrationService.ts";
 import type { RunManager } from "../services/orchestration/manager.ts";
 import { SAFE_MODEL } from "../services/orchestration/providers.ts";
-import type { BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
+import type { BoardPlace, BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
 
 type Handle = (channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) => void;
 
@@ -380,6 +380,13 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
   }, manager.boardArchive));
   handleMain(IPC.orchestrationBoardRemove, (_e, id: unknown) => checked(() => [uuid(id, "id")] as [string], manager.boardRemove));
   handleMain(IPC.orchestrationBoardAccept, (_e, id: unknown) => checked(() => [uuid(id, "id")] as [string], manager.boardAccept));
+  handleMain(IPC.orchestrationBoardPlace, (_e, workspaceId: unknown, bounds: unknown) => checked(() => {
+    if (bounds === null) return [str(workspaceId, "workspaceId", 64), null] as [string, null];
+    const o = obj(bounds, "bounds", ["position", "size"]);
+    const p = obj(o.position, "bounds.position", ["x", "y"]), z = obj(o.size, "bounds.size", ["width", "height"]);
+    const num = (v: unknown, what: string) => (typeof v === "number" && Number.isFinite(v) ? v : bad(`${what} must be a number`));
+    return [str(workspaceId, "workspaceId", 64), { position: { x: num(p.x, "x"), y: num(p.y, "y") }, size: { width: num(z.width, "width"), height: num(z.height, "height") } }] as [string, BoardPlace];
+  }, manager.boardPlace));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");

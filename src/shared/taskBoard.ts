@@ -46,7 +46,11 @@ export interface Board {
   v: typeof BOARD_VERSION;
   tasks: BoardTask[];
   counters: Record<string, number>; // workspaceId → the last n given
+  // B2: where the board card is on each workspace's canvas (absent: not shown there). Here and not in canvas.json:
+  // 1.5.12/1.5.13 write canvas.json back with the keys they know only (stage-b-board.md §6).
+  places?: Record<string, BoardPlace>;
 }
+export interface BoardPlace { position: { x: number; y: number }; size: { width: number; height: number } }
 
 // What the board needs of one run: from its view (the snapshot every screen reads) and its journal, worked out in main.
 export interface RunTaskFacts {

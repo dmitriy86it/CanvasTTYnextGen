@@ -51,7 +51,7 @@ import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
 import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
 import { boardStatuses, runPhase } from "../../../shared/taskBoard.ts";
-import type { BoardTask, BoardView, RunTaskFacts } from "../../../shared/taskBoard.ts";
+import type { BoardPlace, BoardTask, BoardView, RunTaskFacts } from "../../../shared/taskBoard.ts";
 import type { OrchestrationTurnPurpose } from "../../../shared/orchestration.ts";
 import { runOwners } from "../../../shared/workspaceOwnership.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
@@ -797,6 +797,7 @@ export function createRunManager(deps: RunManagerDeps) {
     // a run being created counts: its journal may not be there yet (stage-b-board.md §3.3)
     boardRemove: (id: string) => result(() => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id))),
     boardAccept: (id: string) => result(() => acceptTask(id)),
+    boardPlace: (workspaceId: string, bounds: BoardPlace | null) => result(() => { workspaceOk(workspaceId); return board.place(workspaceId, bounds); }),
 
     catalog: () => result(async (): Promise<OrchestrationCatalog> => ({
       ...CHECK_CATALOG,

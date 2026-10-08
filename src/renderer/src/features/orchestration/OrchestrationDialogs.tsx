@@ -308,8 +308,10 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const lead = link && orch.canvas.agents.find((a) => a.agentId === link.fromAgentId);
   const profile = useProfile(link?.linkId);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [text, setText] = useState("");
-  const [criteria, setCriteria] = useState("");
+  // B2: started from a board task, the goal begins with its text and requirements and names it (goal.task)
+  const task = ui.goalTask;
+  const [text, setText] = useState(task?.text ?? "");
+  const [criteria, setCriteria] = useState(task?.criteria.join("\n") ?? "");
   const [mode, setMode] = useState<OrchestrationRunMode>("autopilot");
   // The project's own check commands, one per line; from the project settings until the user edits them.
   const [commandsText, setCommandsText] = useState("");
@@ -361,6 +363,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     reviewPlan: mode === "steps" || reviewPlan,
     language: locale === "ru" ? "ru" : "en", // the agents write what the person reads in the interface's language
     ...(Object.keys(accessOverride).length ? { accessOverride } : {}),
+    ...(task ? { task: { id: task.id, key: task.key } } : {}),
     ...(chosen && (chosen.commit || chosen.push || chosen.qa) ? { finish: chosen } : {}),
     limits: Object.fromEntries(LIMITS.flatMap((kind) => {
       const n = Number(limits[kind]);
@@ -407,6 +410,12 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   return (
     <Dialog label={t(locale, "orchNewGoal")} onClose={ui.closeGoal} locale={locale}>
       <form className="orch-form" onSubmit={(event) => { event.preventDefault(); if (complete && ready) { if (failing.length) setChoosing(true); else void submit(); } }}>
+        {task && (
+          <div className="orch-field orch-field--static" data-goal-task={task.key}>
+            <span>{t(locale, "boardTask")}</span>
+            <strong title={task.title}>{task.key} · {task.title}</strong>
+          </div>
+        )}
         <div className="orch-field orch-field--static">
           <span>{t(locale, "orchProject")}</span>
           <strong title={lead.project}>{lead.project}</strong>

@@ -4,11 +4,11 @@ import type { OrchestrationActivityEntry, OrchestrationAgentCard } from "../../.
 import { ProviderIcon } from "../../components/ProviderIcon";
 import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
-import { constrainResize, snapMove, snapResize, type ResizeDirection } from "../workspace/snap";
 import { AGENT_CARD_EXPANDED, AGENT_CARD_LIMITS as LIMITS, AGENT_CARD_SIZE, agentCardSize, isCompact, withoutHome } from "./agentCardGeometry";
 import type { AgentState } from "./runModel";
 import { entryLabel, FEED_KINDS, structured } from "./RunPanel";
 import { isServiceEntry, type StatusLine } from "./runStatus";
+import { RESIZE_DIRECTIONS, useCardFrame } from "./useCardFrame";
 import type { CardMessage } from "./useAgentCanvasUi";
 
 
@@ -46,8 +46,6 @@ interface AgentCardProps {
   pause?: string | null; // a paused run's short form ("Waiting for you: …"), the link chip's words (runModel viewPauseLabel)
 }
 
-const RESIZE_DIRECTIONS: ResizeDirection[] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
-
 const STATE_KEY: Record<AgentState, TranslationKey> = {
   idle: "orchAgentIdle", starting: "orchAgentStarting", working: "orchAgentWorking", waiting: "orchAgentWaiting", needs_you: "orchAgentNeedsYou", paused: "orchAgentPaused",
   stopping: "orchAgentStopping", completed: "orchAgentCompleted", completed_no_checks: "orchAgentCompletedNoChecks", stopped: "orchAgentStopped", failed: "orchAgentFailed", read_only: "orchReadOnly"
@@ -60,70 +58,15 @@ const MOVING = ["starting", "working", "checking", "waiting_agent"];
 // click/Enter, then "Link here" on an executor).
 export function AgentCard(props: AgentCardProps): React.JSX.Element {
   const { card, locale, zoom, state, status, message, linking, snapEnabled, snapTargets } = props;
-  const drag = useRef<{ pointerId: number; start: Point; startPos: Point } | null>(null);
-  const resizing = useRef<{ pointerId: number; direction: ResizeDirection; start: Point; startBounds: SessionBounds } | null>(null);
-  const [bounds, setBounds] = useState<SessionBounds>(card.bounds);
   const [confirming, setConfirming] = useState(false);
-  const live = useRef<SessionBounds>(card.bounds);
-  useEffect(() => {
-    live.current = card.bounds;
-    setBounds(card.bounds);
-  }, [card.bounds]);
+  // a larger size is the one "Expand" returns to
+  const save = (next: SessionBounds): void => props.onBoundsChange(card.agentId, next, isCompact(next.size) ? undefined : next.size);
+  const frame = useCardFrame({ bounds: card.bounds, zoom, snapEnabled, snapTargets, limits: LIMITS,
+    onMoved: (next) => props.onBoundsChange(card.agentId, next), onResized: save });
+  const { bounds, live, apply } = frame;
   const { position, size } = bounds;
   const compact = isCompact(size);
   const name = card.project.split("/").filter(Boolean).at(-1) ?? card.project;
-  const apply = (next: SessionBounds): void => { live.current = next; setBounds(next); };
-  // a larger size is the one "Expand" returns to
-  const save = (next: SessionBounds): void => props.onBoundsChange(card.agentId, next, isCompact(next.size) ? undefined : next.size);
-
-  const startDrag = (event: React.PointerEvent<HTMLElement>): void => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest("button")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { pointerId: event.pointerId, start: { x: event.clientX, y: event.clientY }, startPos: live.current.position };
-  };
-  const moveDrag = (event: React.PointerEvent<HTMLElement>): void => {
-    const d = drag.current;
-    if (!d || d.pointerId !== event.pointerId || event.buttons === 0) return;
-    const raw = { x: d.startPos.x + (event.clientX - d.start.x) / zoom, y: d.startPos.y + (event.clientY - d.start.y) / zoom };
-    apply({ position: snapEnabled ? snapMove(raw, live.current.size, snapTargets) : raw, size: live.current.size });
-  };
-  const endDrag = (event: React.PointerEvent<HTMLElement>): void => {
-    if (drag.current?.pointerId !== event.pointerId) return;
-    const moved = live.current.position.x !== drag.current.startPos.x || live.current.position.y !== drag.current.startPos.y;
-    drag.current = null;
-    if (moved) props.onBoundsChange(card.agentId, live.current);
-  };
-  const startResize = (event: React.PointerEvent<HTMLDivElement>, direction: ResizeDirection): void => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    resizing.current = { pointerId: event.pointerId, direction, start: { x: event.clientX, y: event.clientY }, startBounds: live.current };
-  };
-  const resize = (event: React.PointerEvent<HTMLDivElement>): void => {
-    const r = resizing.current;
-    if (!r || r.pointerId !== event.pointerId || event.buttons === 0) return; // a buttonless move is a hover
-    event.preventDefault();
-    event.stopPropagation();
-    const dx = (event.clientX - r.start.x) / zoom;
-    const dy = (event.clientY - r.start.y) / zoom;
-    const b = r.startBounds;
-    const constrained = constrainResize({
-      position: { x: b.position.x + (r.direction.includes("w") ? dx : 0), y: b.position.y + (r.direction.includes("n") ? dy : 0) },
-      size: { width: b.size.width + (r.direction.includes("e") ? dx : 0) - (r.direction.includes("w") ? dx : 0),
-        height: b.size.height + (r.direction.includes("s") ? dy : 0) - (r.direction.includes("n") ? dy : 0) }
-    }, r.direction, LIMITS);
-    apply(snapEnabled ? snapResize(constrained, r.direction, snapTargets, LIMITS) : constrained);
-  };
-  const endResize = (event: React.PointerEvent<HTMLDivElement>): void => {
-    if (resizing.current?.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
-    resizing.current = null;
-    save(live.current);
-  };
   // compact <-> the size it had last time it was larger
   const toggle = (): void => {
     const larger = live.current.size; // kept to come back to, read before the card shrinks
@@ -157,8 +100,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
       aria-label={`${card.provider === "codex" ? "Codex" : "Claude"} — ${t(locale, card.role === "lead" ? "orchRoleLead" : "orchRoleExecutor")}`}
       style={{ zIndex: props.stackIndex, width: size.width, height: size.height, transform: `translate(${position.x}px, ${position.y}px)` }}
     >
-      <header className="agent-card__header" onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag}
-        onPointerCancel={endDrag} onLostPointerCapture={() => { drag.current = null; }} ref={header}>
+      <header className="agent-card__header" {...frame.header} ref={header}>
         <span className="agent-card__identity">
           <ProviderIcon provider={card.provider} size="small" />
           <strong>{card.provider === "codex" ? "Codex" : "Claude"}</strong>
@@ -225,8 +167,7 @@ export function AgentCard(props: AgentCardProps): React.JSX.Element {
       </div>
       {RESIZE_DIRECTIONS.map((direction) => (
         <div key={direction} className={`terminal-card__resize-handle terminal-card__resize-handle--${direction}`} aria-hidden="true" data-agent-resize={direction}
-          onPointerDown={(event) => startResize(event, direction)} onPointerMove={resize} onPointerUp={endResize} onPointerCancel={endResize}
-          onLostPointerCapture={() => { resizing.current = null; }} />
+          {...frame.handle(direction)} />
       ))}
       {card.role === "lead" && (
         <button
