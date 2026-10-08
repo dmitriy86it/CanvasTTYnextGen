@@ -1,0 +1,180 @@
+// The task board (stage B, docs/agent-orchestration/implementation/stage-b-board.md). What the person set is kept in
+// orchestration/board.json; a task's status is never kept: it is worked out here from the task's runs, by the same
+// rules for the board, the agent cards, the activity widget and the summary (the cycle's principle 8).
+import type { OrchestrationRunStatus, OrchestrationRunView, OrchestrationTurnPurpose, OrchestrationWorkMode } from "./orchestration.ts";
+
+export const BOARD_VERSION = 1;
+
+export interface BoardTask {
+  id: string; // UUID, permanent
+  key: string; // "T-<n>": its number in the workspace for people; n is never reused
+  workspaceId: string; // the owner, like a run's; it does not follow the cards
+  project: string; // the project folder (realpath): only a link of this folder runs it
+  title: string; // 1..200
+  text: string; // 1..8000, becomes goal.text
+  criteria: string[]; // 1..32 × 1..500, become goal.criteria
+  dependsOn: string[]; // tasks of the same workspace, no cycles
+  order: number; // its place in the queue
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  // «Accept the result» (owner's decision 2): the person's decision about one run completed without checks. It counts
+  // only while that run is the task's latest and its journal says completed / no_checks (taskStatus checks both), so
+  // editing the file can never make a confirmed «Done», nor «accepted» of another run.
+  accepted: { runId: string; at: string } | null;
+}
+
+export interface BoardTaskInput {
+  workspaceId: string;
+  project: string;
+  title: string;
+  text: string;
+  criteria: string[];
+  dependsOn?: string[];
+}
+export type BoardTaskPatch = Partial<Pick<BoardTaskInput, "title" | "text" | "criteria" | "dependsOn">> & { order?: number };
+
+// What main gives the renderer: the board as stored (readOnly: a newer version's file, or a damaged one that could not
+// be set aside) and the facts of the runs that name a task.
+export interface BoardView {
+  board: Board;
+  readOnly: null | "newer_version" | "damaged_unmoved";
+  facts: RunTaskFacts[];
+}
+
+export interface Board {
+  v: typeof BOARD_VERSION;
+  tasks: BoardTask[];
+  counters: Record<string, number>; // workspaceId → the last n given
+}
+
+// What the board needs of one run: from its view (the snapshot every screen reads) and its journal, worked out in main.
+export interface RunTaskFacts {
+  runId: string;
+  taskId: string | null; // goal.task.id
+  taskKey: string | null; // goal.task.key
+  createdAt: number; // the goal's createdAt: the latest run of a task is its current one
+  status: OrchestrationRunStatus | "unreadable";
+  reason: string | null;
+  newer: boolean; // a newer version's journal: read only
+  completion: "confirmed" | "no_checks" | null;
+  phase: "work" | "review"; // the active turn's, else the last turn's (no column flickers between turns)
+  permission: boolean; // a permission request waits for the person
+  workMode: OrchestrationWorkMode | null;
+  taken: { branch: string | null; applied: boolean } | null; // «Take the result» of its current result (taken.json)
+}
+
+export type TaskColumn = "queue" | "work" | "review" | "done";
+export type TaskReason =
+  | "run_unreadable" | "waits_permission" | "waits_answer" | "waits_decision" | "limit_reached" | "waits_task"
+  | "waits_result" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other" | "cycle";
+
+export interface TaskStatus {
+  column: TaskColumn;
+  done: "confirmed" | "accepted" | null; // «Done» confirmed by checks, or accepted by the person without checks
+  reason: TaskReason | null;
+  waitsFor: string[]; // the keys of the tasks it waits for (waits_task, waits_result)
+  attempts: number;
+  current: string | null; // runId of the latest run
+  completion: "confirmed" | "no_checks" | null;
+}
+
+const REVIEW_PURPOSES: readonly OrchestrationTurnPurpose[] = ["review", "final_review"];
+const DECISIONS = new Set(["plan_review", "awaiting_checks_decision", "awaiting_finish_confirmation", "awaiting_person_decision",
+  "coverage_lost", "check_needs_permissions", "finish_unconfirmed"]);
+
+// The column of a run that works: a check or a review turn is «Review», anything else «Work». Between turns, the last
+// turn's purpose (from the journal) decides.
+export function runPhase(view: Pick<OrchestrationRunView, "active">, lastPurpose: OrchestrationTurnPurpose | null): "work" | "review" {
+  const a = view.active;
+  if (a?.kind === "check") return "review";
+  if (a?.kind === "turn") return REVIEW_PURPOSES.includes(a.purpose) ? "review" : "work";
+  if (a) return "work";
+  return lastPurpose && REVIEW_PURPOSES.includes(lastPurpose) ? "review" : "work";
+}
+
+const isDone = (s: TaskStatus | undefined) => !!s?.done;
+
+// The statuses of all tasks of a board from the facts of all runs. Dependencies are followed without trusting the file:
+// a task in a cycle (a hand-edited board.json) waits, it is never «Done» and never loops.
+export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[]): Map<string, TaskStatus> {
+  const byId = new Map(board.tasks.map((t) => [t.id, t]));
+  const runsOf = new Map<string, RunTaskFacts[]>();
+  for (const f of facts) if (f.taskId && byId.has(f.taskId)) runsOf.set(f.taskId, [...(runsOf.get(f.taskId) ?? []), f]);
+  const out = new Map<string, TaskStatus>();
+  const visiting = new Set<string>();
+  const statusOf = (id: string): TaskStatus => {
+    const known = out.get(id);
+    if (known) return known;
+    const task = byId.get(id)!;
+    if (visiting.has(id)) return { ...own(task, runsOf.get(id) ?? []), reason: "cycle", done: null, column: "queue" };
+    visiting.add(id);
+    const deps = task.dependsOn.filter((d) => byId.has(d) && d !== id);
+    const depStatus = deps.map((d) => [byId.get(d)!, statusOf(d)] as const);
+    visiting.delete(id);
+    const s = withDependencies(own(task, runsOf.get(id) ?? []), depStatus, runsOf);
+    out.set(id, s);
+    return s;
+  };
+  for (const t of board.tasks) statusOf(t.id);
+  return out;
+}
+
+// A task by its own runs only.
+export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFacts[]): TaskStatus {
+  const sorted = [...runs].sort((a, b) => a.createdAt - b.createdAt || a.runId.localeCompare(b.runId));
+  const base = { attempts: sorted.length, waitsFor: [] as string[], done: null };
+  const current = sorted.at(-1);
+  if (!current) return { ...base, column: "queue", reason: null, current: null, completion: null };
+  const readable = [...sorted].reverse().find((r) => r.status !== "unreadable" && !r.newer);
+  const head = { ...base, current: current.runId, completion: current.completion };
+  if (current.newer) return { ...head, column: "queue", reason: "run_newer" };
+  if (current.status === "unreadable") {
+    // the column of the last run that can be read, the reason of this one
+    const prev = readable ? own({ accepted: null }, [readable]) : null;
+    return { ...head, column: prev?.column === "done" ? "review" : prev?.column ?? "queue", reason: "run_unreadable" };
+  }
+  const phase: TaskColumn = current.phase === "review" ? "review" : "work";
+  switch (current.status) {
+    case "completed": {
+      if (current.completion === "confirmed") return { ...head, column: "done", done: "confirmed", reason: null };
+      if (current.completion === "no_checks") {
+        return task.accepted?.runId === current.runId ? { ...head, column: "done", done: "accepted", reason: null } : { ...head, column: "review", reason: "no_checks" };
+      }
+      return { ...head, column: "review", reason: "paused_other" }; // a completed run without its completion kind: not «Done»
+    }
+    case "stopped": return { ...head, column: "queue", reason: "last_stopped" };
+    case "failed": return { ...head, column: "queue", reason: "last_failed" };
+    case "stopping": return { ...head, column: phase, reason: "stopping" };
+    case "paused": {
+      const r = current.reason ?? "";
+      const reason: TaskReason = current.permission ? "waits_permission" : r === "awaiting_answer" ? "waits_answer"
+        : DECISIONS.has(r) ? "waits_decision" : r === "limit_reached" ? "limit_reached" : "paused_other";
+      return { ...head, column: phase, reason };
+    }
+    default: return { ...head, column: phase, reason: current.permission ? "waits_permission" : null }; // preparing, running, pausing
+  }
+}
+
+// Dependencies come into a task that has not started (or whose last run stopped or failed): it waits for the tasks not
+// «Done», then for a result that is not where a dependent task would see it (stage-b-board.md §5.2, the base rule).
+function withDependencies(s: TaskStatus, deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus {
+  if (s.column !== "queue" || s.reason === "run_newer") return s;
+  const notDone = deps.filter(([, d]) => !isDone(d)).map(([t]) => t.key);
+  if (notDone.length) return { ...s, reason: "waits_task", waitsFor: notDone };
+  const notTaken = deps.filter(([t, d]) => {
+    const run = runsOf.get(t.id)?.find((r) => r.runId === d.current);
+    return run && run.workMode !== "project" && !run.taken?.applied;
+  }).map(([t]) => t.key);
+  if (notTaken.length) return { ...s, reason: "waits_result", waitsFor: notTaken };
+  return s;
+}
+
+// Owner's decision 8: in the board's autopilot, a task that became «Done» (confirmed or accepted) gets its result taken
+// as a branch in the project — the safe action that touches no working folder. Nothing to do for a run in the project
+// folder (its changes are there) or one whose result is in a branch already. The call is B4's.
+export function autoTakeOnDone(status: TaskStatus, run: Pick<RunTaskFacts, "runId" | "workMode" | "taken"> | undefined): "branch" | null {
+  if (!status.done || !run || run.runId !== status.current) return null;
+  if (run.workMode !== "copy" && run.workMode !== "worktree") return null;
+  return run.taken?.branch ? null : "branch";
+}

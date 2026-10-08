@@ -39,6 +39,7 @@ export interface Goal {
   access?: AgentAccess;
   models?: Partial<Record<"lead" | "executor" | "reviewer", string>>; // journal v2 only (checkGoal)
   language?: "ru" | "en"; // the interface language at creation: the person-facing texts are asked for in it
+  task?: { id: string; key: string }; // B1, journal v2 only: the board task (journal-v2-format.md §2.10); not used by the cycle
   // A1.1, the service's own (never in the goal text): the decided checks that run in the check profile — the lead's
   // lines the person did not let out of it (journal-v2-format.md §2.6)
   sandboxed?: string[];

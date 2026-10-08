@@ -16,6 +16,7 @@ import type {
 import type { RunCommand } from "../services/orchestration/orchestrationService.ts";
 import type { RunManager } from "../services/orchestration/manager.ts";
 import { SAFE_MODEL } from "../services/orchestration/providers.ts";
+import type { BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
 
 type Handle = (channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) => void;
 
@@ -55,7 +56,7 @@ export function parseCreate(v: unknown): OrchestrationCreateRequest {
 }
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
-  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride"]);
+  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task"]);
   // A goal names its checks either by catalog ids or (stage 12) by its own commands, then `checks` is [].
   // Stage 13: a goal with a mode may leave its commands to the project profile.
   const checks = (g.commands !== undefined || g.mode !== undefined) && Array.isArray(g.checks) && g.checks.length === 0 ? [] : strings(g.checks, "goal.checks", 16, 64);
@@ -84,7 +85,8 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
     ...(g.mode !== undefined ? { mode: g.mode as "autopilot" | "steps" } : {}), ...(finish ? { finish } : {}),
     ...(g.models !== undefined ? { models: roleModels(g.models, "goal.models") } : {}),
     ...(g.language !== undefined ? { language: g.language as "ru" | "en" } : {}),
-    ...(g.accessOverride !== undefined ? { accessOverride: accessOverride(g.accessOverride, "goal.accessOverride") } : {})
+    ...(g.accessOverride !== undefined ? { accessOverride: accessOverride(g.accessOverride, "goal.accessOverride") } : {}),
+    ...(g.task !== undefined ? { task: taskRef(g.task, "goal.task") } : {})
   };
 }
 
@@ -96,6 +98,18 @@ function accessOverride(v: unknown, what: string): Partial<Record<"claude" | "co
 }
 
 // A role's model over the project setting: lead, executor, reviewer — each a model name or null (as in the CLI).
+function uuids(v: unknown, what: string): string[] {
+  if (!Array.isArray(v) || v.length > 200) bad(`${what} must be at most 200 ids`);
+  return (v as unknown[]).map((x, i) => uuid(x, `${what}[${i}]`));
+}
+
+function taskRef(v: unknown, what: string): { id: string; key: string } {
+  const o = obj(v, what, ["id", "key"]);
+  const key = str(o.key, `${what}.key`, 8);
+  if (!/^T-\d{1,6}$/.test(key)) bad(`${what}.key must be T-<n>`);
+  return { id: uuid(o.id, `${what}.id`), key };
+}
+
 function roleModels(v: unknown, what: string): Partial<OrchestrationRoleModels> {
   const o = obj(v, what, [], ["lead", "executor", "reviewer"]);
   for (const [k, m] of Object.entries(o)) if (m !== null && !(typeof m === "string" && SAFE_MODEL.test(m))) bad(`${what}.${k} must be a model name or null`);
@@ -336,6 +350,31 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     if (o.action !== "branch") bad("action must be branch or apply");
     return [uuid(runId, "runId"), { action: "branch", name: str(o.name, "name", 200) }] as [string, OrchestrationTakeInput];
   }, manager.takeResult));
+  // B1: the task board — every argument checked here, every rule of the board in main (boardStore)
+  handleMain(IPC.orchestrationBoard, () => checked(() => [] as [], manager.board));
+  handleMain(IPC.orchestrationBoardCreate, (_e, input: unknown) => checked(() => {
+    const o = obj(input, "task", ["workspaceId", "project", "title", "text", "criteria"], ["dependsOn"]);
+    return [{
+      workspaceId: str(o.workspaceId, "task.workspaceId", 64), project: str(o.project, "task.project", 4096), title: str(o.title, "task.title", 200),
+      text: str(o.text, "task.text", 8000), criteria: strings(o.criteria, "task.criteria", 32, 500),
+      ...(o.dependsOn !== undefined ? { dependsOn: uuids(o.dependsOn, "task.dependsOn") } : {})
+    }] as [BoardTaskInput];
+  }, manager.boardCreate));
+  handleMain(IPC.orchestrationBoardUpdate, (_e, id: unknown, patch: unknown) => checked(() => {
+    const o = obj(patch, "patch", [], ["title", "text", "criteria", "dependsOn", "order"]);
+    if (o.order !== undefined && (typeof o.order !== "number" || !Number.isFinite(o.order))) bad("patch.order must be a number");
+    return [uuid(id, "id"), {
+      ...(o.title !== undefined ? { title: str(o.title, "patch.title", 200) } : {}), ...(o.text !== undefined ? { text: str(o.text, "patch.text", 8000) } : {}),
+      ...(o.criteria !== undefined ? { criteria: strings(o.criteria, "patch.criteria", 32, 500) } : {}),
+      ...(o.dependsOn !== undefined ? { dependsOn: uuids(o.dependsOn, "patch.dependsOn") } : {}), ...(o.order !== undefined ? { order: o.order as number } : {})
+    }] as [string, BoardTaskPatch];
+  }, manager.boardUpdate));
+  handleMain(IPC.orchestrationBoardArchive, (_e, id: unknown, archived: unknown) => checked(() => {
+    if (typeof archived !== "boolean") bad("archived must be a boolean");
+    return [uuid(id, "id"), archived as boolean] as [string, boolean];
+  }, manager.boardArchive));
+  handleMain(IPC.orchestrationBoardRemove, (_e, id: unknown) => checked(() => [uuid(id, "id")] as [string], manager.boardRemove));
+  handleMain(IPC.orchestrationBoardAccept, (_e, id: unknown) => checked(() => [uuid(id, "id")] as [string], manager.boardAccept));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");
