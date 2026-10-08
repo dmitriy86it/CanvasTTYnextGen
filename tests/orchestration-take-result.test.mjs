@@ -187,6 +187,20 @@ test("worktree: the run's branch is shown; «Create a branch» commits the resul
   await m.shutdown();
 });
 
+test("worktree: a .git file the agents pointed elsewhere is not followed — the user's index stays", OPTS, async () => {
+  const src = project({ "a.txt": "1\n" });
+  const m = manager({ "a.txt": "2\n" });
+  const runId = await completed(m, src, "worktree");
+  const repo = (await m.get(runId)).value.view.workDir;
+  fs.writeFileSync(path.join(repo, ".git"), `gitdir: ${path.join(src, ".git")}\n`); // as an agent could
+  const index = fs.readFileSync(path.join(src, ".git", "index"));
+  const r = ok(await m.takeResult(runId, { action: "branch", name: "feature/kept" }));
+  assert.equal(r.result, "renamed", JSON.stringify(r));
+  assert.equal(g(src, "show", "feature/kept:a.txt"), "2\n");
+  assert.deepEqual(fs.readFileSync(path.join(src, ".git", "index")), index, "the user's index is not reset");
+  await m.shutdown();
+});
+
 test("the project folder: nothing to take, the changes are there already", OPTS, async () => {
   const src = project({ "a.txt": "1\n" });
   const m = manager({ "a.txt": "2\n" });

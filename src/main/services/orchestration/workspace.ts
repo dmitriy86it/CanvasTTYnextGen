@@ -856,8 +856,7 @@ export async function takeToBranch(ws: Workspace, opts: { name: string; tree: st
   if (await runText(controlCtx(ws), ["rev-parse", `${tip}^{tree}`]) !== opts.tree) {
     commit = await commitSnapshot(ws, opts.tree, tip, opts.message);
     await fetchInto(ws, commit, () => run(src, ["update-ref", "--no-deref", `refs/heads/${from}`, commit, tip]));
-    const dotGit = await readFile(join(ws.repo, ".git"), "utf8").catch(() => "");
-    const wtDir = /^gitdir: (.+)$/m.exec(dotGit)?.[1]?.trim();
+    const wtDir = await worktreeAdminDir(ws);
     if (wtDir) {
       const wt: GitContext = { gitPath: ws.gitPath, gitDir: wtDir, workTree: ws.repo, home: homeOf(ws) };
       await run(wt, ["read-tree", commit], HEAVY);
@@ -866,6 +865,21 @@ export async function takeToBranch(ws: Workspace, opts: { name: string; tree: st
   }
   if (opts.name !== from) await run(src, ["branch", "-m", "--", from, opts.name]);
   return { commit, renamed: opts.name !== from };
+}
+
+// The run's worktree's own Git directory (its index), found from the project's side: <git dir>/worktrees/<name> whose
+// gitdir file names this run's folder. The `.git` file in the worktree is the agents' to change, so its path is never
+// followed: one pointing at the project's own .git would make the index reset hit the user's index.
+async function worktreeAdminDir(ws: Workspace): Promise<string | null> {
+  const base = await realpath(join(ws.sourceGitDir, "worktrees")).catch(() => null);
+  if (base === null) return null;
+  const repo = await realpath(ws.repo).catch(() => null);
+  for (const name of await readdir(base).catch(() => [] as string[])) {
+    const dir = join(base, name);
+    const back = (await readFile(join(dir, "gitdir"), "utf8").catch(() => "")).trim();
+    if (repo !== null && back !== "" && await realpath(dirname(back)).catch(() => null) === repo) return dir;
+  }
+  return null;
 }
 
 // The patch fromTree → toTree onto the project folder, only if all of it applies to the files as they are now.
