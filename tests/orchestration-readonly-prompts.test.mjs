@@ -126,7 +126,7 @@ test("the read-only commands of run 7303d772 are read-only; writes, the network,
     assert.equal(readOnlyCommand(c), true, c);
   }
   for (const c of [R4, `G='grep -rn'; $G x apps`, "echo hi > out.txt", "cat a >> b", "sed -i s/a/b/ f", "sed -n 'w /tmp/x' f", "find . -delete",
-    "find . -exec rm {} \\;", "find $X", "rg --pre ./x foo", "sort -o out f", "uniq a b", "git status", "git diff", "curl https://example.com",
+    "find . -exec rm {} \\;", "find $X", "rg --pre ./x foo", "sort -o out f", "uniq a b", "uniq - out", "uniq -- a out", "uniq -c - out", "git status", "git diff", "curl https://example.com",
     "cat $(echo f)", "cat `echo f`", "echo hi & rm -rf x", "(cd x; ls)", "npm test", "mkdir -p x", `bash -c "$X"`, "cat <<EOF\nx\nEOF", "tee f",
     "awk '{print}' f", "until [ -s f ]; do sleep 1; done",
     "PATH=/tmp/x grep a f", "PATH=/tmp/x; grep a f", "IFS=x; cat f", "BASH_ENV=/tmp/x bash -c 'cat f'", "path=(/tmp/x); grep a f", "path=/tmp/x; grep a f",

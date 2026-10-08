@@ -123,7 +123,8 @@ function commandReadOnly(seg: Segment, depth: number): boolean {
     // only the ordering flags: -o writes, --compress-program runs a program
     case "sort": return texts.every((a) => !a.startsWith("-") || /^-([nrufhVbsMgd]+|[kt].*)$/.test(a));
     case "printf": return !texts.includes("-v");
-    case "uniq": return texts.filter((a) => !a.startsWith("-")).length <= 1;
+    // a second operand is an output file: "-" (stdin) counts, and after "--" anything is an operand
+    case "uniq": return !texts.includes("--") && texts.filter((a) => a === "-" || !a.startsWith("-")).length <= 1;
     case "sed": {
       const opts = texts.filter((a) => a.startsWith("-"));
       const rest = texts.filter((a) => !a.startsWith("-"));
