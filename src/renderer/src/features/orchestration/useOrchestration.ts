@@ -16,7 +16,7 @@ import type {
 } from "../../../../shared/orchestration";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { AGENT_CARD_SIZE } from "./AgentCard";
-import { activityGap, createCommandSender, mergeActivity, newerStamp, outcomeOf, parsePlan, type Outcome } from "./runModel";
+import { accessProblemText, parseStartProblem, activityGap, createCommandSender, mergeActivity, newerStamp, outcomeOf, parsePlan, type Outcome } from "./runModel";
 import { readJournal, stageTitleMap, type RunJournalState, type StageTitles } from "./runStatus";
 
 export interface RunState { seq: number; tick: number; view: OrchestrationRunView; open: boolean }
@@ -47,6 +47,9 @@ export function outcomeText(locale: LocaleId, outcome: Outcome): string | null {
     case "transport": return t(locale, "orchTransportError");
     case "rejected":
     case "refused": {
+      // the rights or the model a CLI does not offer: the CLI, its version and what is missing, as the readiness says it
+      const problem = outcome.kind === "refused" && (outcome.code === "access_unsupported" || outcome.code === "model_unsupported") ? parseStartProblem(outcome.message ?? "") : null;
+      if (problem) return accessProblemText(locale, problem);
       const text = t(locale, `orchError_${outcome.code}` as TranslationKey);
       // a settings or finish refusal names the field in main's own words (technical, not translated)
       const why = outcome.kind === "refused" && outcome.message && ["invalid_profile", "finish_not_configured"].includes(outcome.code) ? `: ${outcome.message}` : "";

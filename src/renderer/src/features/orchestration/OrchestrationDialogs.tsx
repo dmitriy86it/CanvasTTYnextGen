@@ -11,7 +11,7 @@ import { t, type TranslationKey } from "../../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 import { NO_MODELS, RoleModelsField } from "./RoleModels";
 import { Differences, RunPanel, Termed } from "./RunPanel";
-import { commandLike } from "./runModel";
+import { accessProblemText, commandLike } from "./runModel";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import { outcomeText, type Orchestration } from "./useOrchestration";
 
@@ -91,7 +91,10 @@ export function readinessLine(locale: LocaleId, item: OrchestrationReadinessItem
   const id = item.id.startsWith("command_") ? "command" : item.id;
   const base = tr(locale, `orchReady_${id}_${item.level}`);
   switch (id) {
-    case "clis": return item.level === "blocker" ? `${base} ${item.detail}` : `${base} Codex: ${String(f.codex ?? "")} · Claude: ${String(f.claude ?? "")}`;
+    case "clis": return item.level === "blocker" ? `${base} ${item.detail}`
+      : `${base} Codex: ${String(f.codex ?? "")} · Claude: ${String(f.claude ?? "")}${item.level === "warning" && f.changes ? ` — ${String(f.changes).split("\n").join("; ")}` : ""}`;
+    case "access_claude": case "access_codex": case "model_codex_pass": case "model_claude_pass": return accessProblemText(locale, f);
+    case "access_claude_once": case "access_codex_once": return tr(locale, "orchAccessOnceInfo").replace("{cli}", f.provider === "codex" ? "Codex" : "Claude");
     case "env": return item.level === "blocker" ? `${base} ${item.detail}` : `${base} ${String(f.shell ?? "")} · PATH: ${String(f.pathEntries ?? "?")}`;
     case "git": return item.level === "info" ? `${base} ${String(f.changed ?? "")}` : base;
     case "workdir": return f.mode === "worktree" ? `${tr(locale, "orchReady_worktree_info")} ${String(f.path ?? "")}` : `${base} ${String(f.path ?? "")}`;
@@ -122,20 +125,26 @@ export function readinessLine(locale: LocaleId, item: OrchestrationReadinessItem
 const rightsText = (locale: LocaleId, access: { claude: string; codex: string }) =>
   `Claude — ${tr(locale, `orchAccess_${access.claude}`)} · Codex — ${tr(locale, `orchAccess_${access.codex}`)}`;
 
-function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy }: {
+const NO_OVERRIDE: Partial<Record<"claude" | "codex", "terminal">> = {};
+function Readiness({ linkId, commands, workMode, models, access, locale, onChange, onSuggest, onBusy, accessOverride = NO_OVERRIDE, onAccessOverride, onBlocker }: {
   linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: OrchestrationRoleModels; access: { claude: string; codex: string } | null; locale: LocaleId;
   onChange(ok: boolean): void; onSuggest(commands: string[]): void;
   onBusy(facts: unknown): void; // the "busy" item's facts: the run main says holds the folder (none: undefined)
+  // «Как в моём терминале» for one CLI of this run only: offered on its access blocker, confirmed first
+  accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; onAccessOverride?(next: Partial<Record<"claude" | "codex", "terminal">>): void;
+  onBlocker?(text: string | null): void; // the first blocker in words: said beside the inactive Start
 }): React.JSX.Element {
+  const [confirming, setConfirming] = useState<"claude" | "codex" | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; value: OrchestrationReadiness }>({ kind: "loading" });
   const [acks, setAcks] = useState<Record<string, boolean>>({});
   const [attempt, setAttempt] = useState(0);
-  const key = JSON.stringify([linkId, commands, workMode, models]);
+  const key = JSON.stringify([linkId, commands, workMode, models, accessOverride]);
   useEffect(() => {
     let live = true;
     setState({ kind: "loading" });
     const id = window.setTimeout(async () => {
-      const r = await window.canvasTTY.orchestration.readiness({ linkId, commands, workMode, ...(models ? { models } : {}) }).catch((e: unknown) => ({ ok: false as const, code: "transport", message: String(e) }));
+      const r = await window.canvasTTY.orchestration.readiness({ linkId, commands, workMode, ...(models ? { models } : {}), ...(Object.keys(accessOverride).length ? { accessOverride } : {}) }).catch((e: unknown) => ({ ok: false as const, code: "transport", message: String(e) }));
       if (!live) return;
       if (r.ok) {
         setState({ kind: "ready", value: r.value });
@@ -146,11 +155,14 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
     }, 350);
     return () => { live = false; window.clearTimeout(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, attempt, models]);
+  }, [key, attempt, models, accessOverride]);
   const items = state.kind === "ready" ? state.value.items : [];
   const confirms = items.filter((i) => i.level === "confirm");
   const ok = state.kind === "ready" && state.value.ready && confirms.every((i) => acks[i.id]);
   useEffect(() => { onChange(ok); }, [ok, onChange]);
+  const blocker = items.find((i) => i.level === "blocker");
+  const blockerText = blocker ? readinessLine(locale, blocker) : null;
+  useEffect(() => { onBlocker?.(blockerText); }, [blockerText, onBlocker]);
   return (
     <fieldset className="orch-field orch-ready" data-orch-readiness={state.kind === "ready" ? (state.value.ready ? (ok ? "ready" : "confirm") : "blocked") : state.kind}>
       <legend>{t(locale, "orchReadyTitle")}</legend>
@@ -167,6 +179,23 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
                 <span>
                   {item.id === "permissions" && access ? `${t(locale, "orchReady_permissions_access")} ${rightsText(locale, access)}.` : readinessLine(locale, item)}
                   {fix && <small className="orch-ready__fix">{fix}</small>}
+                  {item.level === "blocker" && /^access_(claude|codex)$/.test(item.id) && onAccessOverride && (() => {
+                    const p = item.id === "access_codex" ? "codex" : "claude";
+                    const cli = p === "codex" ? "Codex" : "Claude";
+                    return confirming !== p
+                      ? <button type="button" data-orch-access-once={p} onClick={() => { setConfirming(p); setConfirmed(false); }}>{tr(locale, "orchAccessOnce").replace("{cli}", cli)}</button>
+                      : (
+                        <span className="orch-access-once" data-orch-access-once-confirm={p}>
+                          <small className="orch-hint orch-hint--warn">{tr(locale, "orchAccessOnceWarn").replace("{cli}", cli)}</small>
+                          <label className="orch-check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /><span>{tr(locale, "orchAccessOnceAck")}</span></label>
+                          <button type="button" disabled={!confirmed} data-orch-access-once-apply={p} onClick={() => { onAccessOverride({ ...accessOverride, [p]: "terminal" }); setConfirming(null); }}>{tr(locale, "orchAccessOnceApply")}</button>
+                          <button type="button" onClick={() => setConfirming(null)}>{t(locale, "orchCancel")}</button>
+                        </span>
+                      );
+                  })()}
+                  {/^access_(claude|codex)_once$/.test(item.id) && onAccessOverride && (
+                    <button type="button" data-orch-access-once-undo onClick={() => { const { [item.id.startsWith("access_codex") ? "codex" : "claude"]: _, ...rest } = accessOverride; onAccessOverride(rest); }}>{tr(locale, "orchAccessOnceUndo")}</button>
+                  )}
                   {item.level === "confirm" && (
                     <label className="orch-check">
                       <input type="checkbox" checked={acks[item.id] ?? false} onChange={(e) => setAcks((a) => ({ ...a, [item.id]: e.target.checked }))} />
@@ -221,9 +250,12 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const [limits, setLimits] = useState<Record<string, string>>({});
   const [reviewPlan, setReviewPlan] = useState(false);
   const [models, setModels] = useState<OrchestrationRoleModels>(NO_MODELS);
+  // a CLI without the project's rights mode, run «as in my terminal» for this run only (confirmed in the readiness)
+  const [accessOverride, setAccessOverride] = useState<Partial<Record<"claude" | "codex", "terminal">>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [blockedBy, setBlockedBy] = useState<string | null>(null);
   const [held, setHeld] = useState<unknown>(undefined);
   // One request id per goal as written: a retry after a transport failure repeats it, an edited goal is a new request.
   const request = useRef<{ fingerprint: string; id: string } | null>(null);
@@ -255,6 +287,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     checks: [], commands, workMode, mode,
     reviewPlan: mode === "steps" || reviewPlan,
     language: locale === "ru" ? "ru" : "en", // the agents write what the person reads in the interface's language
+    ...(Object.keys(accessOverride).length ? { accessOverride } : {}),
     ...(chosen && (chosen.commit || chosen.push || chosen.qa) ? { finish: chosen } : {}),
     limits: Object.fromEntries(LIMITS.flatMap((kind) => {
       const n = Number(limits[kind]);
@@ -395,7 +428,8 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           )}
           {optionalChecks && <RoleModelsField locale={locale} linkId={link.linkId} value={models} hint={t(locale, "orchModelsGoalHint")} onChange={setModels} />}
         </details>
-        <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld} />
+        <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld}
+          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy} />
         {(() => {
           const other = folderBusy?.(held);
           return other && (
@@ -408,7 +442,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
         <div className="orch-form__actions">
           {/* why Start is off, beside it in the pinned bottom (UX audit PR 2) */}
           {!complete && <span className="orch-hint orch-form__why" data-orch-incomplete>{t(locale, optionalChecks ? "orchGoalIncompleteNoChecks" : "orchGoalIncomplete")}</span>}
-          {complete && !ready && <span className="orch-hint orch-form__why" data-orch-not-ready>{t(locale, "orchReadyNotYet")}</span>}
+          {complete && !ready && <span className="orch-hint orch-form__why" data-orch-not-ready>{blockedBy ? `${t(locale, "orchStartBlockedBy")} ${blockedBy}` : t(locale, "orchReadyNotYet")}</span>}
           <button type="button" onClick={ui.closeGoal}>{t(locale, "orchCancel")}</button>
           <button type="submit" className="orch-primary" disabled={busy || !complete || !ready}>{busy ? t(locale, "orchSending") : t(locale, "orchStart")}</button>
         </div>

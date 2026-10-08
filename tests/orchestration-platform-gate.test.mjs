@@ -77,7 +77,7 @@ test("availability by platform: macOS only", () => {
 test("readiness: one blocker for Linux and Windows, none on macOS", async () => {
   const project = gitProject(`ready-${++n}`);
   const base = { project, commands: ["true"], workMode: "project", gitPath: GIT, busy: false,
-    runtime: { ok: false, code: "provider_unavailable", detail: "not measured" }, checkedVersions: { codex: [], claude: [] } };
+    runtime: { ok: false, code: "provider_unavailable", detail: "not measured" } };
   for (const platform of ["linux", "win32"]) {
     const r = await assessReadiness({ ...base, platform });
     const item = r.items.find((i) => i.id === "platform");

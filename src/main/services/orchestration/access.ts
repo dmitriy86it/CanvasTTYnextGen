@@ -66,9 +66,5 @@ export function claudeModesFromHelp(help: string): ClaudeAccess[] {
   return out;
 }
 
-export function codexModesFor(versionChecked: boolean): CodexAccess[] {
-  return versionChecked ? [...CODEX_ACCESS] : ["terminal"];
-}
-
 export function isClaudeAccess(v: unknown): v is ClaudeAccess { return typeof v === "string" && (CLAUDE_ACCESS as readonly string[]).includes(v); }
 export function isCodexAccess(v: unknown): v is CodexAccess { return typeof v === "string" && (CODEX_ACCESS as readonly string[]).includes(v); }

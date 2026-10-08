@@ -46,11 +46,25 @@ for (let i = 0; i < args.length; i++) {
 const resumeId = flags["--resume"] ?? flags["-r"] ?? null;
 // Stage 13: `--help` lists the permission modes (as 2.1.281 prints them); a host session without --json-schema is the
 // environment probe (initialize / mcp_status only, no user message).
-const HELP = `Usage: claude [options] [command] [prompt]
-  --dangerously-skip-permissions  Bypass all permission checks.
-  --permission-mode <mode>  Permission mode to use for the session (choices: "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")
-  --settings <file-or-json>  Path to a settings JSON file or a JSON string to load additional settings from
-`;
+// MOCK_CLAUDE_HELP: no_settings — without --settings (an older CLI: «Рабочая папка» is not offered); no_choices —
+// --permission-mode without its choices; no_json_schema — a run's switch is gone (the protocol changed)
+const HELP_VARIANT = process.env.MOCK_CLAUDE_HELP ?? "";
+const HELP = [
+  "Usage: claude [options] [command] [prompt]",
+  "  --dangerously-skip-permissions  Bypass all permission checks.",
+  "  --input-format <format>  Input format (only works with --print)",
+  ...(HELP_VARIANT === "no_json_schema" ? [] : ["  --json-schema <schema>  JSON Schema for structured output validation."]),
+  "  --model <model>  Model for the current session.",
+  "  --output-format <format>  Output format (only works with --print)",
+  HELP_VARIANT === "no_choices" ? "  --permission-mode <mode>  Permission mode to use for the session"
+    : `  --permission-mode <mode>  Permission mode to use for the session (choices: "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan")`,
+  "  --permission-prompt-tool <tool>  MCP tool to handle permission prompts",
+  "  -p, --print  Print response and exit (useful for pipes).",
+  "  -r, --resume [value]  Resume a conversation by session ID",
+  "  --session-id <uuid>  Use a specific session ID for the conversation",
+  ...(HELP_VARIANT === "no_settings" ? [] : ["  --settings <file-or-json>  Path to a settings JSON file or a JSON string to load additional settings from"]),
+  "  --verbose  Override verbose mode setting from config", ""
+].join("\n");
 if (flags["--help"]) {
   process.stdout.write(HELP);
 } else if (flags["--input-format"] === "stream-json" && !flags["--json-schema"]) {
@@ -335,6 +349,12 @@ function projectDefaultMode() {
 // ---- stage 13: the environment probe (control requests without a user message) ----
 async function probe() {
   if (process.env.MOCK_STATE) fs.appendFileSync(path.join(process.env.MOCK_STATE, "claude-probe.jsonl"), JSON.stringify(args) + "\n");
+  // MOCK_CLAUDE_SANDBOX=refused: a session with the sandbox settings does not start (as a CLI that rejects them would)
+  if (process.env.MOCK_CLAUDE_SANDBOX === "refused" && /"sandbox"/.test(String(flags["--settings"] ?? ""))) {
+    process.stderr.write("Error: Invalid settings: sandbox is not supported\n");
+    process.exitCode = 1;
+    return;
+  }
   const input = lineReader(process.stdin);
   for (;;) {
     const m = await input.next((x) => x.type === "control_request" || x.type === "user");

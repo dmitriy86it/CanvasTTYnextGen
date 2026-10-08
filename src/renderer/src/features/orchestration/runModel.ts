@@ -874,6 +874,26 @@ export function board(view: OrchestrationRunView): Board {
   };
 }
 
+// ---------- the CLIs' capabilities (capabilities.ts) ----------
+
+// A rights mode or a model a CLI does not offer, in the person's words: the CLI, its version, what is missing and what
+// that makes unavailable («Claude 2.1.293: не принимает настройки песочницы — режим „Рабочая папка" недоступен»).
+// facts: the readiness item's (provider, version, mode, why, missing).
+export function accessProblemText(locale: LocaleId, f: Record<string, unknown>): string {
+  const cli = f.provider === "codex" ? "Codex" : "Claude";
+  const mode = t(locale, `orchAccess_${String(f.mode ?? "")}` as TranslationKey) ?? String(f.mode ?? "");
+  const why = t(locale, `orchCapWhy_${String(f.why ?? "")}` as TranslationKey) ?? String(f.why ?? "");
+  return `${cli} ${String(f.version ?? "")}: ${why.replaceAll("{mode}", mode).replaceAll("{detail}", String(f.missing ?? ""))}`;
+}
+// main's refusal of the start says the same as the readiness blocker (startProblems): "<CLI> <version>: the rights mode
+// <mode> is not available (<why>: <missing>)" or "<CLI> <version>: a model cannot be passed"
+export function parseStartProblem(message: string): Record<string, string> | null {
+  const a = /^(Codex|Claude) (\S+): the rights mode (\w+) is not available \((\w+): (.*)\)$/.exec(message);
+  if (a) return { provider: a[1].toLowerCase(), version: a[2], mode: a[3], why: a[4], missing: a[5] };
+  const m = /^(Codex|Claude) (\S+): a model cannot be passed$/.exec(message);
+  return m ? { provider: m[1].toLowerCase(), version: m[2], why: "no_model", missing: "" } : null;
+}
+
 // ---------- stage 13: the environment probe ----------
 
 // probe.ts values and notes are English patterns ("found 5, enabled 3: a, b", "2 could not be loaded", "the list is

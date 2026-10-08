@@ -9,7 +9,6 @@ import { promisify } from "node:util";
 import { orchestrationAvailable } from "../../../shared/orchestration.ts";
 import type { OrchestrationCodexModels, OrchestrationReadiness, OrchestrationReadinessItem, OrchestrationRoleModels } from "../../../shared/orchestration.ts";
 import { laravelTestDb, neededSteps, worktreeSteps } from "./prepare.ts";
-import { parseCliVersion } from "./providers.ts";
 import type { LaravelTestDb, PrepareStep } from "./prepare.ts";
 
 const run = promisify(execFile);
@@ -116,7 +115,8 @@ export interface ReadinessInput {
   gitPath: string | null;
   // The measured runtime, or why it could not be measured (the CLIs, the login shell).
   runtime: { ok: true; versions: Record<"codex" | "claude", string>; env: Readonly<Record<string, string>>; shell: string; direnv?: string; executables?: Record<"codex" | "claude", string>; codexEnv?: Readonly<Record<string, string>> } | { ok: false; code: string; detail: string };
-  checkedVersions: Readonly<Record<"codex" | "claude", readonly string[]>>; // protocol shapes compared with these
+  // the CLIs' item from their capability probe (capabilities.ts clisItem); without it: the versions only
+  clis?: OrchestrationReadinessItem;
   busy: boolean; // another run of this application works in this folder now
 }
 
@@ -138,11 +138,7 @@ export async function assessReadiness(input: ReadinessInput): Promise<Orchestrat
   if (!rt.ok) add({ id: rt.code === "environment_error" ? "env" : "clis", level: "blocker", detail: rt.detail.slice(0, 300), facts: { code: rt.code } });
   else {
     const versions = Object.fromEntries((["codex", "claude"] as const).map((p) => [p, rt.versions[p].slice(0, 60)]));
-    // the exact version: "0.155.10" is not "0.155.1"
-    const unchecked = (["codex", "claude"] as const).filter((p) => !input.checkedVersions[p].includes(parseCliVersion(p, rt.versions[p]) ?? rt.versions[p].trim()));
-    add(unchecked.length
-      ? { id: "clis", level: "warning", detail: `protocol not compared with this version of ${unchecked.join(", ")}`, facts: { ...versions, unchecked: unchecked.join(", ") } }
-      : { id: "clis", level: "ok", detail: "installed CLIs", facts: versions });
+    add(input.clis ?? { id: "clis", level: "ok", detail: "installed CLIs", facts: versions });
     add({ id: "env", level: "ok", detail: "login shell environment", facts: { shell: rt.shell, variables: Object.keys(rt.env).length, pathEntries: (rt.env.PATH ?? "").split(delimiter).filter(Boolean).length, ...(rt.direnv ? { direnv: rt.direnv } : {}) } });
     if (rt.direnv === "not_allowed") add({ id: "direnv", level: "warning", detail: ".envrc is not allowed: run `direnv allow` in a terminal if it is yours; CanvasTTY never allows it" });
   }
