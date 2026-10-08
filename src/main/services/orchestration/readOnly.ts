@@ -5,7 +5,9 @@
 // git is never read-only here: its configuration (core.fsmonitor, diff drivers, pagers) can run any program, and the
 // agent may have written that configuration in the work folder.
 
-interface Word { text: string; dynamic: boolean } // dynamic: has a $variable, its value is not known before it runs
+// dynamic: has a $variable, its value is not known before it runs; expands: an unquoted *, ?, [ or { — the shell turns
+// it into file names (or several words), and the agent names the files in the work folder: "-i" or "--pre=./x"
+interface Word { text: string; dynamic: boolean; expands?: boolean }
 type Segment = Word[];
 
 const SEPARATORS = ["&&", "||", ";", "|", "\n"];
@@ -75,6 +77,7 @@ function segments(line: string): Segment[] | null {
       cur = null;
       continue;
     }
+    if ("*?[{".includes(c)) word().expands = true;
     word().text += c;
   }
   endSegment();
@@ -85,8 +88,9 @@ function segments(line: string): Segment[] | null {
 
 const PLAIN = new Set(["cat", "head", "tail", "wc", "ls", "pwd", "echo", "printf", "true", "stat", "basename", "dirname",
   "realpath", "nl", "cut", "tr", "cmp", "diff", "du", "which", "type", "cd", "grep", "egrep", "fgrep", "rg", "sed", "find", "sort", "uniq"]);
-// where a $variable may stand in the arguments: none of their options runs or writes anything
-const DYNAMIC_ARGS = new Set(["cat", "head", "tail", "wc", "ls", "echo", "printf", "cd", "grep", "egrep", "fgrep"]);
+// where a $variable or a pattern may stand in the arguments: none of their options runs, writes or sets anything
+const DYNAMIC_ARGS = new Set(["cat", "head", "tail", "wc", "ls", "echo", "cd", "grep", "egrep", "fgrep", "stat", "basename", "dirname", "realpath",
+  "nl", "cut", "tr", "cmp", "diff", "du", "which", "type", "pwd", "true"]);
 const FIND_ACTIONS = /^-(exec|execdir|ok|okdir|delete|fprint|fprint0|fprintf|fls)$/;
 const SHELLS = new Set(["bash", "sh", "zsh"]);
 // A shell variable of the line itself (O="--include=*.py", for f in …): lowercase or one capital letter. Never one the
@@ -112,7 +116,7 @@ function commandReadOnly(seg: Segment, depth: number): boolean {
       ? readOnlyLine(args[1].text, depth + 1) : false;
   }
   if (!PLAIN.has(name)) return false;
-  if (!DYNAMIC_ARGS.has(name) && args.some((a) => a.dynamic)) return false;
+  if (!DYNAMIC_ARGS.has(name) && args.some((a) => a.dynamic || a.expands)) return false;
   const texts = args.map((a) => a.text);
   switch (name) {
     case "find": return !texts.some((a) => FIND_ACTIONS.test(a));

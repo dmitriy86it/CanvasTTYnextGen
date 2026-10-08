@@ -127,7 +127,7 @@ test("the read-only commands of run 7303d772 are read-only; writes, the network,
     "PATH=/tmp/x grep a f", "PATH=/tmp/x; grep a f", "IFS=x; cat f", "BASH_ENV=/tmp/x bash -c 'cat f'", "path=(/tmp/x); grep a f", "path=/tmp/x; grep a f",
     "for PATH in /tmp/x; do grep a f; done", "LC_ALL=C grep a f", "sort --compress-program=./x f", "sort -T /tmp f", "printf -v PATH x",
     `O='$(touch x)'; cat "\${(e)O}"`, "cat ${(e)O}", `cat "\${X@P}"`, "cat $[1]", "rg --hostname-bin=./x a", "rg -z a", "file -C -m x",
-    "echo $'\\'' ; rm -rf x ; echo '", "cat a # '\nrm -rf x\n'", `cat $"x"`, "ls; python3 -c 'open(\"x\",\"w\")'", "cat 'unterminated"]) {
+    "echo $'\\'' ; rm -rf x ; echo '", "sed -n 1p *", "find *", "rg x *", "sort *", "uniq *", "printf *", "sed -n 1p {-i,f}", "rg x ./-[-]pre=x", "cat a # '\nrm -rf x\n'", `cat $"x"`, "ls; python3 -c 'open(\"x\",\"w\")'", "cat 'unterminated"]) {
     assert.equal(readOnlyCommand(c), false, c);
   }
 });
