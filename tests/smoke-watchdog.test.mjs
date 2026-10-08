@@ -2,6 +2,7 @@
 // under it, kills that tree and exits with 124.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
@@ -93,4 +94,20 @@ test("checkProcesses judges only the app's descendants, and never a reused pid b
   const seen = new Set();
   assert.deepEqual(checkProcesses(10, roots, seen, probe("Tue Oct  7 14:05:44 2026")).map((f) => f.pid), [13]);
   assert.equal(seen.has("12 node --test"), false);
+});
+
+// orchestration-ui flake: node-pty's spawn-helper starts a terminal card's shell and becomes it within a moment; a
+// sample in that moment named it. The helper itself is allowed — not its folder.
+test("checkProcesses allows node-pty's spawn-helper, the file only", async () => {
+  const { checkProcesses, descendants } = await import(HELPER);
+  const root = fs.realpathSync(path.join(path.dirname(fileURLToPath(import.meta.url)), ".."));
+  // macOS only: node-pty has no spawn-helper on Linux; the watchdog keeps the path as written then
+  const file = path.join(root, "node_modules/node-pty/build/Release/spawn-helper");
+  const helper = fs.existsSync(file) ? fs.realpathSync(file) : file;
+  const START = "Tue Oct  7 14:03:01 2026";
+  const rows = [{ pid: 10, ppid: 1, start: START, command: "/app/Electron" }, { pid: 11, ppid: 10, start: START, command: `${helper} /home /bin/sh -l` },
+    { pid: 12, ppid: 10, start: START, command: "other" }];
+  const probe = { tree: (r) => descendants(rows, r), executables: () => new Map([[11, helper], [12, path.join(path.dirname(helper), "pty.node")]]),
+    startTimes: () => new Map([[11, START], [12, START]]) };
+  assert.deepEqual(checkProcesses(10, undefined, new Set(), probe).map((f) => f.pid), [12]);
 });

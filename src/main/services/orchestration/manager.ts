@@ -48,6 +48,12 @@ import type { SupervisorLaunch } from "./types.ts";
 import { applyToProject, branchCommit, branchNameOk, diffTreeNames, diffTreePath, openWorkspace, readTaken, readWorkspacePlace, snapshotCopyTree, takeToBranch, writeTaken } from "./workspace.ts";
 import type { CloneDir } from "./workspace.ts";
 import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
+import { createBoardStore } from "./boardStore.ts";
+import type { TaskInput } from "./boardStore.ts";
+import { boardStatuses, runPhase } from "../../../shared/taskBoard.ts";
+import type { BoardTask, BoardView, RunTaskFacts } from "../../../shared/taskBoard.ts";
+import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
+import { runOwners } from "../../../shared/workspaceOwnership.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
 import { orchestrationAvailable } from "../../../shared/orchestration.ts";
 import type {
@@ -172,10 +178,17 @@ export function createRunManager(deps: RunManagerDeps) {
   const stopping = new Map<string, Promise<void>>(); // a stop of a run not held, until it is accepted or its handle closed
   // An unfinished creation and the identity of the request that started it (§1.1).
   const creating = new Map<string, { key: string; p: Promise<{ runId: string; created: boolean }> }>();
+  // B1: the tasks a create is under way for, from its first line: a removal asked meanwhile is refused (§3.3)
+  const startingTasks = new Map<string, number>();
   const watchers = new Map<string, Set<(e: OrchestrationRunEvent) => void>>();
   let closing = false;
   const known = (id: string) => deps.workspaceKnown?.(id) ?? true;
   const canvas = createCanvasStore(canvasFile(deps.root), known); // reads nothing until asked
+  // B1: the task board (stage-b-board.md §3); a task's number is above every T-<n> its workspace's runs name
+  const board = createBoardStore(join(deps.root, "board.json"), async (workspaceId) => {
+    const facts = await taskFacts();
+    return Math.max(0, ...facts.filter((f) => f.taskKey && f.workspaceId === workspaceId).map((f) => Number(f.taskKey!.slice(2))));
+  });
   const activityLog = createActivityLog(deps.root); // reads nothing until asked
   const profiles = createProfileStore(deps.root); // reads nothing until asked
   const direnvOf = async (project: string) => ({ direnv: (await profiles.get(project))?.env.direnv ?? true });
@@ -483,7 +496,8 @@ export function createRunManager(deps: RunManagerDeps) {
       source, goal: {
         text: g.text, criteria: g.criteria, checks: g.checks, reviewPlan: g.reviewPlan ?? false, limits: { ...DEFAULT_LIMITS, ...(g.limits ?? {}) },
         ...(g.commands ? { commands: g.commands } : {}), ...(g.workMode ? { workMode: g.workMode } : {}),
-        ...(g.mode ? { mode: g.mode } : {}), ...(g.finish ? { finish: g.finish } : {}), ...(g.models ? { models: g.models } : {})
+        ...(g.mode ? { mode: g.mode } : {}), ...(g.finish ? { finish: g.finish } : {}), ...(g.models ? { models: g.models } : {}),
+        ...(g.task ? { task: g.task } : {}) // only when there: the keys of runs created before B1 stay as they were
       }
     })).digest("hex");
     return { key, source };
@@ -492,6 +506,15 @@ export function createRunManager(deps: RunManagerDeps) {
 
   // The explicit command that starts a run: created, then driven automatically. requestId is the runId.
   async function createRun(req: OrchestrationCreateRequest): Promise<{ runId: string; created: boolean }> {
+    const taskId = typeof req?.goal?.task?.id === "string" ? req.goal.task.id : null;
+    if (!taskId) return createRunFor(req);
+    startingTasks.set(taskId, (startingTasks.get(taskId) ?? 0) + 1);
+    try { return await createRunFor(req); } finally {
+      const left = startingTasks.get(taskId)! - 1;
+      if (left) startingTasks.set(taskId, left); else startingTasks.delete(taskId);
+    }
+  }
+  async function createRunFor(req: OrchestrationCreateRequest): Promise<{ runId: string; created: boolean }> {
     notOpen();
     platformOk();
     const runId = runIdOk(req.requestId);
@@ -509,6 +532,7 @@ export function createRunManager(deps: RunManagerDeps) {
         const stored = JSON.parse((await readText(deps.root, runId, existing.state.goal)).toString("utf8")) as Record<string, unknown>;
         return stored.requestKey === key ? { runId, created: false } : conflict();
       }
+      await taskOk(source, req.goal.task); // a repeat of a created run is answered above, whatever became of the task
       // The catalog is checked before anything is resolved (no agent, no CLI version probe).
       const native = Array.isArray(req.goal.commands) || req.goal.mode !== undefined;
       if (!native) for (const id of req.goal.checks) if (!CHECK_CATALOG.checks.some((c) => c.id === id)) refuse("unknown_check", `no check with id ${id}`);
@@ -665,7 +689,119 @@ export function createRunManager(deps: RunManagerDeps) {
     return refuse("invalid_argument", "action must be branch or apply");
   }
 
+  // B1: what the board needs of each run (stage-b-board.md §2.3). The task and the time come from the goal of the
+  // journal's first record (run.created), so a run of a newer version, an unreadable or a damaged one keeps its task.
+  // The facts of a run not held here are kept while its journal and taken.json are the same (size, mtime); a held run
+  // has state the journal does not (the active turn, a permission request), so it is read each time.
+  const goalMeta = new Map<string, { taskId: string | null; taskKey: string | null; createdAt: number; goalWorkMode: OrchestrationWorkMode | null }>();
+  const factsCache = new Map<string, { stamp: string; facts: RunTaskFacts }>();
+  async function metaOf(runId: string) {
+    const known = goalMeta.get(runId);
+    if (known) return known;
+    const fh = await open(join(deps.root, "runs", runId, "journal.jsonl"), "r").catch(() => null);
+    let first: { type?: unknown; data?: { goal?: unknown } } | null = null;
+    if (fh) {
+      try {
+        const buf = Buffer.alloc(MAX_LINE_BYTES + 1);
+        const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
+        const line = buf.subarray(0, bytesRead).toString("utf8").split("\n")[0];
+        first = JSON.parse(line);
+      } catch { first = null; } finally { await fh.close().catch(() => {}); }
+    }
+    const ref = first?.type === "run.created" && isTextRef(first.data?.goal) ? first.data.goal : null;
+    const g = ref ? await readText(deps.root, runId, ref).then((b) => JSON.parse(b.toString("utf8")) as { task?: { id?: unknown; key?: unknown }; createdAt?: unknown; workMode?: unknown }, () => null) : null;
+    const meta = {
+      taskId: typeof g?.task?.id === "string" && isUuid(g.task.id) ? g.task.id : null,
+      taskKey: typeof g?.task?.key === "string" && /^T-\d{1,6}$/.test(g.task.key) ? g.task.key : null,
+      createdAt: typeof g?.createdAt === "number" ? g.createdAt : 0,
+      // the goal's work mode: the run's own when its work folder's marker cannot be read
+      goalWorkMode: g?.workMode === "project" || g?.workMode === "copy" || g?.workMode === "worktree" ? g.workMode as OrchestrationWorkMode : null
+    };
+    if (g) goalMeta.set(runId, meta); // a goal text not readable yet (a run being created) is asked again next time
+    return meta;
+  }
+  async function runTaskFacts(runId: string, owner: (runId: string) => string): Promise<RunTaskFacts> {
+    const dir = join(deps.root, "runs", runId);
+    const stamp = await Promise.all([stat(join(dir, "journal.jsonl")), stat(join(dir, "workspace", "taken.json"))].map((p) => p.then((s) => `${s.size}:${s.mtimeMs}`, () => "-"))).then((a) => a.join("|"));
+    const workspaceId = owner(runId);
+    const cached = factsCache.get(runId);
+    if (cached && cached.stamp === stamp && !handles.has(runId)) return { ...cached.facts, workspaceId };
+    const { goalWorkMode, ...meta } = await metaOf(runId);
+    const snap = await result(() => snapshot(runId));
+    const unreadable: RunTaskFacts = { runId, ...meta, workspaceId, status: "unreadable", reason: null, newer: false, halted: false, limit: null,
+      completion: null, phase: "work", permission: false, workMode: null, taken: null };
+    let facts = unreadable;
+    if (snap.ok && snap.value.integrity !== "corrupt") {
+      const view = snap.value.view;
+      const st = view.newer ? null : (await readRun(deps.root, runId).catch(() => null))?.state ?? null;
+      if (st || view.newer) {
+        const last = st ? Object.values(st.orch.turns).sort((a, b) => b.seq - a.seq)[0] : undefined;
+        const workMode = view.workMode ?? goalWorkMode;
+        let taken: RunTaskFacts["taken"] = null;
+        if (workMode === "copy" || workMode === "worktree") {
+          // ponytail: taken.json as written, not matched to the current tree (a finished run's tree does not move)
+          const raw = await readFile(join(dir, "workspace", "taken.json"), "utf8").catch(() => null);
+          try {
+            const t = raw ? JSON.parse(raw) as { v?: number; branch?: { name?: unknown }; applied?: unknown } : null;
+            taken = t?.v === 1 ? { branch: typeof t.branch?.name === "string" ? t.branch.name : null, applied: !!t.applied } : null;
+          } catch { taken = null; }
+        }
+        facts = {
+          runId, ...meta, workspaceId, status: view.status, reason: view.reason, newer: !!view.newer, halted: !!view.halted,
+          limit: view.progress?.budget?.reached ?? null, completion: view.progress?.completion ?? null,
+          phase: runPhase(view, (last?.purpose as OrchestrationTurnPurpose | undefined) ?? null),
+          permission: !!view.permission, workMode, taken
+        };
+      }
+    }
+    // a held run's facts include what only this process knows (the active turn, a permission): never kept. ponytail: a
+    // text of a run not held that is damaged after its facts were kept shows as before until the journal changes
+    if (!handles.has(runId)) factsCache.set(runId, { stamp, facts });
+    return facts;
+  }
+  async function taskFacts(): Promise<RunTaskFacts[]> {
+    const names = await readdir(join(deps.root, "runs")).catch(() => [] as string[]);
+    const out: RunTaskFacts[] = [];
+    const owner = runOwners(await canvas.read(exists), known);
+    for (const id of names.filter(isUuid).sort()) out.push(await runTaskFacts(id, owner));
+    return out;
+  }
+  async function boardView(): Promise<BoardView> {
+    const r = await board.read();
+    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey) };
+  }
+  // «Accept the result» (owner's decision 2): only of the task's latest run, completed without checks by its journal
+  async function acceptTask(taskId: string): Promise<BoardTask> {
+    const { board: b } = await board.read();
+    if (!b.tasks.some((t) => t.id === taskId)) refuse("task_not_found", `no task ${taskId}`);
+    const facts = await taskFacts();
+    const st = boardStatuses(b, facts).get(taskId)!;
+    const run = facts.find((f) => f.runId === st.current);
+    if (run?.status !== "completed" || run.completion !== "no_checks") refuse("accept_unavailable", "only a result completed without checks is accepted");
+    return board.accept(taskId, run!.runId);
+  }
+  // A goal naming a task: the task is on the board, of this project, not archived
+  async function taskOk(source: string, task: { id: string; key: string } | undefined): Promise<void> {
+    if (!task) return;
+    const t = (await board.read()).board.tasks.find((x) => x.id === task.id);
+    if (!t || t.key !== task.key) refuse("task_not_found", `no task ${task.key} on the board`);
+    if (await realpath(t!.project).catch(() => t!.project) !== source) refuse("task_project", "the task belongs to another project folder");
+    if (t!.archivedAt) refuse("task_archived", "the task is archived");
+  }
+
   return {
+    // B1: the board and the facts of the runs of its tasks; the renderer works the statuses out (taskStatus)
+    board: () => result(boardView),
+    boardCreate: (input: TaskInput) => result(async () => {
+      workspaceOk(input?.workspaceId);
+      return board.create({ ...input, project: await realpath(input.project).catch(() => refuse("invalid_task", "the project folder does not exist")) });
+    }),
+    boardUpdate: (id: string, patch: Parameters<typeof board.update>[1]) => result(() => board.update(id, patch)),
+    boardArchive: (id: string, archived: boolean) => result(() => board.archive(id, archived, () => startingTasks.has(id))),
+    // a run being created counts: its journal may not be there yet (stage-b-board.md §3.3)
+    boardRemove: (id: string) => result(() => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id))),
+    boardAccept: (id: string) => result(() => acceptTask(id)),
+
     catalog: () => result(async (): Promise<OrchestrationCatalog> => ({
       ...CHECK_CATALOG,
       providers: {

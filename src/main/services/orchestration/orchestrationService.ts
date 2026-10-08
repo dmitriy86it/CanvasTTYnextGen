@@ -77,6 +77,8 @@ export interface GoalInput {
   // the interface language when the goal was created: the texts the person reads (plan, findings, notes, questions)
   // are asked for in it. Absent (an older goal): no language is asked for.
   language?: "ru" | "en";
+  // B1, journal v2 only: the board task this run works on (journal-v2-format.md §2.10)
+  task?: { id: string; key: string };
 }
 
 // Stage 12: the checks of a goal with commands are those command lines, run by the user's login shell.
@@ -461,6 +463,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
   if (input.access !== undefined && (!isClaudeAccess(input.access?.claude) || !isCodexAccess(input.access?.codex))) bad("access: unknown mode");
   const models = input.models === undefined ? undefined : checkModels(input.models, v2, bad);
   if (input.language !== undefined && input.language !== "ru" && input.language !== "en") bad("language must be ru or en");
+  const task = input.task === undefined ? undefined : checkTask(input.task, v2, bad);
   const registry = registryOf(commands);
   if (typeof input?.text !== "string" || input.text.trim() === "" || input.text.length > 8000) bad("text must be 1..8000 characters");
   if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 32
@@ -481,8 +484,19 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
     ...(commands ? { commands } : {}), ...(input.workMode ? { workMode: input.workMode } : {}),
     ...(input.mode ? { mode: input.mode } : {}), ...(prepare ? { prepare } : {}), ...(finish ? { finish } : {}),
     ...(input.access ? { access: { claude: input.access.claude, codex: input.access.codex } } : {}),
-    ...(models ? { models } : {}), ...(input.language ? { language: input.language } : {})
+    ...(models ? { models } : {}), ...(input.language ? { language: input.language } : {}), ...(task ? { task } : {})
   };
+}
+
+// B1: a board task in the goal — journal v2 only, like models (a v1 goal is read by 1.5.7 without a schema)
+const TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+function checkTask(t: unknown, v2: boolean, bad: (m: string) => never): { id: string; key: string } {
+  const o = t as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || Array.isArray(o) || Object.keys(o).some((k) => k !== "id" && k !== "key")) bad("task must be { id, key }");
+  if (typeof o!.id !== "string" || !TASK_ID.test(o!.id)) bad("task.id must be a UUID");
+  if (typeof o!.key !== "string" || !/^T-\d{1,6}$/.test(o!.key)) bad("task.key must be T-<n>");
+  if (!v2) bad("task: a board task is recorded only in a journal v2 goal");
+  return { id: o!.id as string, key: o!.key as string };
 }
 
 function checkModels(m: GoalInput["models"], v2: boolean, bad: (m: string) => never): Partial<Record<AgentRole, string>> | undefined {

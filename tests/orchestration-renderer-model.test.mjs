@@ -144,7 +144,7 @@ test("agent cards are canvas layers of their own kind", () => {
 test("every status, reason and refusal main can send has a string in every locale", () => {
   const src = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf8");
   const codes = new Set();
-  for (const file of ["main/services/orchestration/manager.ts", "main/services/orchestration/canvasStore.ts", "main/ipc/orchestrationIpc.ts"]) {
+  for (const file of ["main/services/orchestration/manager.ts", "main/services/orchestration/canvasStore.ts", "main/services/orchestration/boardStore.ts", "main/ipc/orchestrationIpc.ts"]) {
     for (const m of src(file).matchAll(/refuse\("([a-z_]+)"/g)) codes.add(m[1]);
   }
   for (const m of src("main/services/orchestration/orchestrationService.ts").matchAll(/reject\("([a-z_]+)"|code: "([a-z_]+)"/g)) codes.add(m[1] ?? m[2]);

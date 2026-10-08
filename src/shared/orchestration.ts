@@ -115,7 +115,15 @@ export interface OrchestrationGoalInput {
   // A CLI that does not offer the project's rights mode, run «as in my terminal» for this run only (confirmed by the
   // person in the dialog); the project settings stay as they are, the goal records the rights it ran with
   accessOverride?: Partial<Record<"claude" | "codex", "terminal">>;
+  // B1 (journal v2 only, journal-v2-format.md §2.10): the board task this run works on. Older builds ignore it; it
+  // changes nothing in the run, it only links the run to its task.
+  task?: OrchestrationTaskRef;
 }
+
+import type { BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
+
+// A task of the board, as a run's goal names it: its id in orchestration/board.json and its number for people.
+export interface OrchestrationTaskRef { id: string; key: string }
 
 export interface OrchestrationCreateRequest {
   requestId: string; // UUID chosen by the renderer; it becomes the runId, so a repeat never creates a second run
@@ -586,6 +594,14 @@ export interface OrchestrationApi {
   diff(runId: string, path: string): Promise<OrchestrationResult<OrchestrationDiff>>;
   take(runId: string): Promise<OrchestrationResult<OrchestrationTake>>;
   takeResult(runId: string, input: OrchestrationTakeInput): Promise<OrchestrationResult<OrchestrationTakeOutcome>>;
+  // B1: the task board (stage-b-board.md). board(): the board as stored and the facts of its tasks' runs; the statuses
+  // are worked out by boardStatuses (shared/taskBoard.ts). boardAccept: «Accept the result» of a run completed without checks.
+  board(): Promise<OrchestrationResult<BoardView>>;
+  boardCreate(input: BoardTaskInput): Promise<OrchestrationResult<BoardTask>>;
+  boardUpdate(id: string, patch: BoardTaskPatch): Promise<OrchestrationResult<BoardTask>>;
+  boardArchive(id: string, archived: boolean): Promise<OrchestrationResult<BoardTask>>;
+  boardRemove(id: string): Promise<OrchestrationResult<null>>;
+  boardAccept(id: string): Promise<OrchestrationResult<BoardTask>>;
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;
