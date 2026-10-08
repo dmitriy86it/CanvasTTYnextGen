@@ -25,13 +25,9 @@ function segments(line: string): Segment[] | null {
     const sep = SEPARATORS.find((s) => line.startsWith(s, i));
     if (sep) { endSegment(); i += sep.length - 1; continue; }
     if (c === " " || c === "\t") { endWord(); continue; }
-    // a comment runs to the end of the line, quotes in it included — as the shell reads it
-    if (c === "#" && cur === null) {
-      const end = line.indexOf("\n", i);
-      if (end < 0) break;
-      i = end - 1;
-      continue;
-    }
+    // read differently by an interactive shell and a script: # starts a comment only with interactive_comments (zsh),
+    // ! and ^ expand the history. None of them is taken outside single quotes.
+    if ((c === "#" && cur === null) || c === "!" || c === "^") return null;
     // outside quotes a backslash only joins lines; anything else it escapes is refused (one rule less to read alike)
     if (c === "\\") {
       if (line[i + 1] === "\n") { i++; continue; }
@@ -50,7 +46,7 @@ function segments(line: string): Segment[] | null {
       let j = i + 1;
       for (; j < line.length && line[j] !== "\""; j++) {
         const d = line[j];
-        if (d === "`" || (d === "$" && "({[".includes(line[j + 1] ?? ""))) return null;
+        if (d === "`" || d === "!" || (d === "$" && "({[".includes(line[j + 1] ?? ""))) return null;
         if (d === "\\") { word().text += line[j + 1] ?? ""; j++; continue; }
         if (d === "$") word().dynamic = true;
         word().text += d;
