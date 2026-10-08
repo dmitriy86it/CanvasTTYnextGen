@@ -1924,7 +1924,18 @@ const ru = {
   boardFormIncomplete: "Чтобы сохранить, заполните название, что сделать и хотя бы одно требование.",
   boardAcceptNext: "Дальше пойдут: {keys}.",
   boardAnswer: "Ответить на запрос",
-  boardNoOtherTasks: "Других задач пока нет — связь можно задать позже, в «Изменить»."
+  boardNoOtherTasks: "Других задач пока нет — связь можно задать позже, в «Изменить».",
+  orchError_task_not_found: "Задачи нет на доске (её удалили или изменили)",
+  orchError_task_project: "Задача относится к другой папке проекта",
+  orchError_task_archived: "Задача в архиве — верните её, чтобы запустить",
+  orchError_accept_unavailable: "Принять можно только результат, завершённый без проверок, последнего запуска задачи",
+  orchError_invalid_task: "Задача заполнена не полностью или неверно",
+  orchError_task_has_runs: "У задачи есть запуски — её можно убрать в архив, но не удалить",
+  orchError_task_starting: "Запуск этой задачи как раз создаётся — подождите",
+  orchError_task_cycle: "Такие связи замкнут задачи в круг",
+  orchError_too_many_tasks: "На доске больше нет места для задач",
+  orchError_board_newer_version: "Доску записала более новая версия — только просмотр",
+  orchError_board_unavailable: "Повреждённый файл доски не удалось отложить — только просмотр"
 } as const;
 
 const en: Record<keyof typeof ru, string> = {
@@ -3850,7 +3861,18 @@ const en: Record<keyof typeof ru, string> = {
   boardFormIncomplete: "To save, fill in the title, what to do and at least one requirement.",
   boardAcceptNext: "Next to go: {keys}.",
   boardAnswer: "Answer the request",
-  boardNoOtherTasks: "No other tasks yet — a link can be set later, in “Edit”."
+  boardNoOtherTasks: "No other tasks yet — a link can be set later, in “Edit”.",
+  orchError_task_not_found: "The task is not on the board (deleted or changed)",
+  orchError_task_project: "The task belongs to another project folder",
+  orchError_task_archived: "The task is archived — bring it back to start it",
+  orchError_accept_unavailable: "Only a result of the task's latest run completed without checks can be accepted",
+  orchError_invalid_task: "The task is incomplete or invalid",
+  orchError_task_has_runs: "The task has runs — archive it instead of deleting it",
+  orchError_task_starting: "A run of this task is being created — wait a moment",
+  orchError_task_cycle: "These links would put the tasks in a circle",
+  orchError_too_many_tasks: "The board has no room for more tasks",
+  orchError_board_newer_version: "The board was written by a newer version — view only",
+  orchError_board_unavailable: "The damaged board file could not be set aside — view only"
 };
 
 export type TranslationKey = keyof typeof ru;
