@@ -10,7 +10,7 @@
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-native-ui.mjs [--shots <dir>]
 import fs from "node:fs";
 import path from "node:path";
-import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, startGoal, visibleNow, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
+import { FIXTURES, NODE, byText, canvasState, card, createAgent, launch as launchApp, openTab, q, runs, sleep, startGoal, visibleNow, waitForValue, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
 
 const { TMP, D, git, project, script } = workspace("cto-native-");
 const shotsArg = process.argv.indexOf("--shots");
@@ -32,6 +32,10 @@ for (const args of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q"
 
 const node = project("node-app");
 fs.writeFileSync(path.join(node, "README.md"), "the user's uncommitted work\n");
+// the check `node --test` says which node ran it: the run's own (PATHS), never one a login shell put in front
+const CHECK_NODE = D("check-node.txt");
+fs.mkdirSync(path.join(node, "test"));
+fs.writeFileSync(path.join(node, "test", "which-node.test.mjs"), `import fs from "node:fs";\nfs.appendFileSync(${JSON.stringify(CHECK_NODE)}, process.execPath + "\\n");\n`);
 
 // ---------- fake CLIs ----------
 const verdict = (v) => ({ report: { verdict: v, findings: [], question: null } });
@@ -59,12 +63,17 @@ const wrap = (p) => {
   return f;
 };
 const PATHS = `${path.dirname(NODE)}:/usr/bin:/bin`;
+// The checks' shell, as in the other smokes: the command line without a login. A login /bin/sh on macOS runs path_helper,
+// which puts /etc/paths.d (Homebrew) in front of PATHS: the check `node --test` ran Homebrew's node, and the hermetic
+// watchdog caught it whenever the check lived longer than one 500 ms sample (a loaded machine).
+const SHELL = D("login-shell");
+fs.writeFileSync(SHELL, `#!/bin/sh\n[ "$1" = "-ilc" ] && shift\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 const env = (extra) => ({ HOME: D("mock-state"), MOCK_STATE: D("mock-state"), MOCK_LEDGER: ledger, ...extra });
 const providers = D("providers.json");
 fs.writeFileSync(providers, JSON.stringify({
   codex: { executable: wrap("codex"), version: "codex-cli 0.155.1", path: PATHS, env: env({ MOCK_SCRIPT: codexScript, CODEX_HOME: D("mock-state", ".codex") }) },
   claude: { executable: wrap("claude"), version: "2.1.281 (Claude Code)", path: PATHS, env: env({ MOCK_SCRIPT: claudeScript }) },
-  shell: "/bin/sh", checkEnv: { PATH: PATHS, HOME: D("mock-state") }
+  shell: SHELL, checkEnv: { PATH: PATHS, HOME: D("mock-state") }
 }));
 const ledgerCount = () => (fs.existsSync(ledger) ? fs.readFileSync(ledger, "utf8").split("\n").filter(Boolean).length : 0);
 const decisions = () => { const f = D("mock-state", "decisions.jsonl"); return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim().split("\n").map((l) => JSON.parse(l)) : []; };
@@ -78,7 +87,18 @@ async function pair(projectDir) {
   const c = await canvasState(app);
   const [lead, exec] = [c.agents.find((a) => a.provider === "codex" && a.project === projectDir), c.agents.find((a) => a.provider === "claude" && a.project === projectDir)];
   expect(c.agents.length === before + 2 && lead && exec, `two cards on ${path.basename(projectDir)}`, c.agents);
-  await app.drag(await app.center(card(lead.agentId, ".agent-card__port")), await app.center(card(exec.agentId, ".agent-card__body")), 20);
+  // under load the second card may still be laid out when the drag starts: the press then misses the port. The drag
+  // starts once the port and the target are where they are measured, twice in a row.
+  const ends = () => Promise.all([app.center(card(lead.agentId, ".agent-card__port")), app.center(card(exec.agentId, ".agent-card__body"))]);
+  const hit = (pt, agentId, cls) => app.ev(`(() => { const e = document.elementFromPoint(${pt.x}, ${pt.y}); return !!e?.closest(".${cls}") && e.closest("[data-agent-id]")?.dataset.agentId === ${JSON.stringify(agentId)}; })()`);
+  let prev = null;
+  const [from, to] = await waitForValue(async () => {
+    const [f, t] = await ends();
+    const still = prev && f.x === prev[0].x && f.y === prev[0].y && t.x === prev[1].x && t.y === prev[1].y;
+    prev = [f, t];
+    return still && await hit(f, lead.agentId, "agent-card__port") && await hit(t, exec.agentId, "agent-card__body") ? [f, t] : null;
+  }, "the cards laid out");
+  await app.drag(from, to, 20);
   await app.waitFor(`window.canvasTTY.orchestration.canvas().then((r) => r.value.links.some((l) => l.fromAgentId === ${JSON.stringify(lead.agentId)}))`, "link");
   const link = (await canvasState(app)).links.find((l) => l.fromAgentId === lead.agentId);
   return { lead, exec, link };
@@ -125,6 +145,7 @@ try {
   const N = await pair(node);
   await startGoal(app, N.link.linkId, { task: "Добавить src/note.mjs", criteria: "src/note.mjs есть\nnode --test проходит", commands: ["node --test"],
     onDialog: async () => { await app.waitFor(`${q("[data-orch-readiness]")} && true`, "readiness"); await app.shot("03-goal-dialog"); } });
+  await app.waitFor(`${q("[data-orch-where]")} && true`, "the panel's work folder"); // under load the panel renders after the start
   const where = await app.ev(`(() => { const el = ${q("[data-orch-where]")}; return el && { mode: el.dataset.orchWhere, text: el.textContent }; })()`);
   expect(where?.mode === "project" && where.text.includes(node), "the panel says: in the project folder, with its path", where);
   await app.waitFor(`${q("[data-orch-permission]")} && true`, "permission prompt", 60_000);
@@ -142,6 +163,8 @@ try {
   await app.waitFor(`window.canvasTTY.orchestration.list().then((r) => r.value.some((s) => ["completed", "paused", "failed"].includes(s.view.status)))`, "end", 90_000);
   const list = await runs(app);
   expect(list.some((r) => r.status === "completed"), "the run completed", list);
+  const checkNodes = fs.existsSync(CHECK_NODE) ? [...new Set(fs.readFileSync(CHECK_NODE, "utf8").trim().split("\n").map((p) => fs.realpathSync(p)))] : [];
+  expect(checkNodes.length > 0 && checkNodes.every((p) => p === NODE), "the check ran the run's node, not one a login shell put first", { checkNodes, NODE });
   const d = decisions();
   expect(d.length === 2 && d[0].reply?.behavior === "allow" && JSON.stringify(d[1].reply).includes("memo"), "the CLI got the allow and the chosen answer", d);
   expect(fs.readFileSync(path.join(node, "src", "note.mjs"), "utf8").includes("note"), "the executor wrote into the project folder", null);
