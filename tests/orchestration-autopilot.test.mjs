@@ -164,7 +164,7 @@ test("readiness: missing dependencies are prepared, not sent to the terminal; a 
   const dir = project({ "composer.json": DEPS_COMPOSER, artisan: "", ".env": "DB_CONNECTION=mysql\nDB_HOST=10.1.2.3\n" }, { ignore: "vendor/\n" });
   const base = { project: dir, commands: ["vendor/bin/phpunit"], workMode: "project", platform: "darwin", gitPath: GIT, busy: false,
     runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: "2.1.281" }, env: { PATH: "/usr/bin" }, shell: "/bin/sh", direnv: "not_allowed" },
-    checkedVersions: { codex: ["0.155.1"], claude: ["2.1.281"] }, dbProbe: async () => true };
+    dbProbe: async () => true };
   const r = await assessReadiness({ ...base, prepare: { steps: await suggestPrepare(dir), auto: true } });
   const by = Object.fromEntries(r.items.map((i) => [i.id, i]));
   assert.equal(by.prepare.level, "info");

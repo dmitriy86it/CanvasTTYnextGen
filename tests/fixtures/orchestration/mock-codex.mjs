@@ -31,7 +31,7 @@ async function main() {
   ledger(process.pid, "mock-codex");
   ledger(process.ppid, "parent"); // under startTurn: the supervisor
   const args = process.argv.slice(2);
-  const valueFlags = new Set(["-o", "--output-last-message", "-c", "-C", "--cd", "-s", "--sandbox", "-m", "--model", "-p", "--profile", "--output-schema"]);
+  const valueFlags = new Set(["--out", "-o", "--output-last-message", "-c", "-C", "--cd", "-s", "--sandbox", "-m", "--model", "-p", "--profile", "--output-schema"]);
   const flags = {};
   const pos = [];
   for (let i = 0; i < args.length; i++) {
@@ -39,6 +39,7 @@ async function main() {
     else if (args[i].startsWith("-") && args[i] !== "-") flags[args[i]] = true;
     else pos.push(args[i]);
   }
+  if (pos[0] === "app-server" && pos[1] === "generate-json-schema") return writeSchema(flags["--out"] ?? args[args.indexOf("--out") + 1]);
   if (pos[0] === "app-server") return appServer(args);
   const reportFile = flags["-o"] ?? flags["--output-last-message"];
   if (pos[0] !== "exec" || !flags["--json"] || !reportFile || pos.at(-1) !== "-") {
@@ -82,6 +83,29 @@ async function main() {
   await emit({ type: "turn.completed", usage: { input_tokens: task.length, cached_input_tokens: 0, output_tokens: text.length } });
   if (MODE === "exit_after_success") process.exitCode = 3;
   if (MODE === "result_then_hang") { ledger(process.pid, "result_sent"); hold(); }
+}
+
+// `codex app-server generate-json-schema --out <dir>` (0.160.0 writes this bundle; only what the capability probe reads).
+// MOCK_CODEX_SCHEMA: unavailable — the subcommand is unknown (an older CLI); no_workspace — no workspace-write sandbox;
+// no_rights — thread/start without sandbox and approvalPolicy; no_model — thread/start without model
+function writeSchema(dir) {
+  if (process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/codex-schema.jsonl`, JSON.stringify(dir) + "\n");
+  const v = process.env.MOCK_CODEX_SCHEMA ?? "";
+  if (v === "unavailable") { process.stderr.write("error: unrecognized subcommand 'generate-json-schema'\n"); process.exitCode = 2; return; }
+  const methods = (names) => JSON.stringify({ oneOf: names.map((n) => ({ properties: { method: { enum: [n], type: "string" } } })) });
+  fs.mkdirSync(path.join(dir, "v2"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "ClientRequest.json"), methods(["initialize", "thread/start", "thread/resume", "turn/start", "turn/interrupt", "model/list", "config/read", "mcpServerStatus/list"]));
+  fs.writeFileSync(path.join(dir, "ServerNotification.json"), methods(["thread/started", "turn/started", "turn/completed", "item/started", "item/completed", "thread/tokenUsage/updated"]));
+  fs.writeFileSync(path.join(dir, "ServerRequest.json"), methods(["item/commandExecution/requestApproval", "item/fileChange/requestApproval", "mcpServer/elicitation/request"]));
+  const thread = ["cwd", "config", "ephemeral", ...(v === "no_rights" ? [] : ["sandbox", "approvalPolicy"]), ...(v === "no_model" ? [] : ["model"])];
+  const defs = {
+    SandboxMode: { enum: v === "no_workspace" ? ["read-only", "danger-full-access"] : ["read-only", "workspace-write", "danger-full-access"], type: "string" },
+    AskForApproval: { oneOf: [{ enum: ["untrusted", "on-request", "never"], type: "string" }] }
+  };
+  const schema = (props) => JSON.stringify({ type: "object", properties: Object.fromEntries(props.map((k) => [k, {}])), definitions: defs });
+  fs.writeFileSync(path.join(dir, "v2", "ThreadStartParams.json"), schema(thread));
+  fs.writeFileSync(path.join(dir, "v2", "ThreadResumeParams.json"), schema(["threadId", ...thread]));
+  fs.writeFileSync(path.join(dir, "v2", "TurnStartParams.json"), schema(["threadId", "input", "outputSchema", "model"]));
 }
 
 // ---- stage 12: `codex app-server` (JSON-RPC lines, no "jsonrpc" field) ----

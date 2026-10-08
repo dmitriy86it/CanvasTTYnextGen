@@ -112,6 +112,9 @@ export interface OrchestrationGoalInput {
   // journal v2: the model of a role for this goal, over the project setting; null — as in the CLI (nothing is passed)
   models?: Partial<OrchestrationRoleModels>;
   language?: "ru" | "en"; // the interface language: agents write the texts the person reads in it
+  // A CLI that does not offer the project's rights mode, run «as in my terminal» for this run only (confirmed by the
+  // person in the dialog); the project settings stay as they are, the goal records the rights it ran with
+  accessOverride?: Partial<Record<"claude" | "codex", "terminal">>;
 }
 
 export interface OrchestrationCreateRequest {
@@ -541,7 +544,7 @@ export interface OrchestrationApi {
   changes(runId: string): Promise<OrchestrationResult<OrchestrationChanges>>;
   diff(runId: string, path: string): Promise<OrchestrationResult<OrchestrationDiff>>;
   // The same checks the start makes, without starting anything (no model, no run).
-  readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels> }): Promise<OrchestrationResult<OrchestrationReadiness>>;
+  readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">> }): Promise<OrchestrationResult<OrchestrationReadiness>>;
   // The models Codex offers (model/list and config/read, no model turn), kept for the application's session; refresh:
   // ask Codex again (the «Обновить» button).
   codexModels(linkId: string, refresh?: boolean): Promise<OrchestrationResult<OrchestrationCodexModels>>;

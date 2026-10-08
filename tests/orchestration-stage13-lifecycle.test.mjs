@@ -125,7 +125,7 @@ const asking = (m, runId, what = "a prompt") => until(async () => { const v = aw
 const resume = (m, v) => m.command(v.runId, { commandId: randomUUID(), expectedRevision: v.revision, command: { kind: "resume" } });
 const READY = { commands: ["php artisan test"], workMode: "project", platform: "darwin", gitPath: GIT, busy: false,
   runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: "2.1.281 (Claude Code)" }, env: { PATH: "/usr/bin" }, shell: "/bin/sh" },
-  checkedVersions: { codex: ["0.155.1"], claude: ["2.1.281"] }, dbProbe: async () => true };
+  dbProbe: async () => true };
 const laravel = (files) => project({ artisan: "", "composer.json": DEPS_COMPOSER, ...files });
 
 // ---------------- the test database (LC-1, LC-2, LC-3) ----------------
@@ -259,20 +259,14 @@ test("the separate copy is prepared as a fresh worktree; an npm lock without dep
   await m.shutdown();
 });
 
-test("readiness: protocol versions are compared exactly (RT-7)", async () => {
-  const dir = project({});
-  const r = await assessReadiness({ ...READY, project: dir, commands: ["true"], runtime: { ...READY.runtime, versions: { codex: "codex-cli 0.155.10", claude: "2.1.281 (Claude Code)" } } });
-  const clis = r.items.find((i) => i.id === "clis");
-  assert.deepEqual([clis.level, clis.facts.unchecked], ["warning", "codex"]);
-});
-
 test("a mode of rights the installed CLI does not offer is refused at the start (RT-9)", OPTS, async () => {
+  // what the CLI offers is probed (its app-server protocol), never read off a list of versions
   const src = project({});
-  const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]) }, undefined, "codex-cli 0.155.2");
+  const m = manager({ MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN]), MOCK_CODEX_SCHEMA: "no_workspace" }, undefined, "codex-cli 0.155.2");
   await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), checks: ["true"], access: { claude: "terminal", codex: "workspace" } });
   const r = await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], mode: "autopilot" } });
   assert.equal(r.code, "access_unsupported", JSON.stringify(r));
-  assert.match(r.message, /Codex workspace: the protocol of Codex 0\.155\.2/, "the provider, the mode and the version");
+  assert.equal(r.message, "Codex 0.155.2: the rights mode workspace is not available (schema_missing: sandbox workspace-write)", "the CLI, its version, the mode and what is missing");
   await m.shutdown();
 });
 

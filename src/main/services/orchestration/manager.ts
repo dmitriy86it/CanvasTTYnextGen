@@ -23,13 +23,15 @@ import { createActivityLog, createRunActivity } from "./activity.ts";
 import { createNativeAgents, createProviderAgents } from "./agents.ts";
 import { applyDirenv, captureLoginEnv } from "./loginEnv.ts";
 import { assessReadiness, modelItem, platformItem, suggestCommands, testDbItem } from "./readiness.ts";
-import { accessMapping, claudeModesFromHelp, codexModesFor } from "./access.ts";
+import { accessMapping } from "./access.ts";
+import { claudeInit, clisItem, codexSchema, createCapabilityCache, probeClaude as probeClaudeCaps, probeCodex as probeCodexCaps, startProblems } from "./capabilities.ts";
+import type { Capabilities } from "./capabilities.ts";
 import type { AgentAccess } from "./access.ts";
 import { commitMessage } from "./finish.ts";
 import { laravelTestDb, neededSteps, worktreeSteps } from "./prepare.ts";
 import { codexModels, probeClaude, probeCodex } from "./probe.ts";
 import { createProfileStore, currentBranch, gitRemotes, suggestProfile, validateProfile } from "./profile.ts";
-import { NATIVE_PROTOCOL_CHECKED, parseCliVersion } from "./providers.ts";
+import { parseCliVersion } from "./providers.ts";
 import type { AgentAdapter } from "./agents.ts";
 import { checkPreparedDeps, createRegistry } from "./checks.ts";
 import type { CheckRegistry, PreparedDeps } from "./checks.ts";
@@ -57,7 +59,8 @@ import type {
   OrchestrationRoleModels,
   OrchestrationProfileInfo,
   OrchestrationProjectProfile,
-  OrchestrationProviderKind
+  OrchestrationProviderKind,
+  OrchestrationReadinessItem
 } from "../../../shared/orchestration.ts";
 
 const run = promisify(execFile);
@@ -107,6 +110,7 @@ export interface NativeRuntime {
   direnv?: string; // DirenvState
   claudeHelp?(): Promise<string>; // `claude --help`: the permission modes this version offers
   codexEnv?: Record<string, string>; // Codex's environment where it is not `env` (the fake CLIs of a test runtime)
+  claudeEnv?: Record<string, string>; // the same for Claude
 }
 
 type R<T> = OrchestrationResult<T>;
@@ -161,7 +165,24 @@ export function createRunManager(deps: RunManagerDeps) {
   const activityLog = createActivityLog(deps.root); // reads nothing until asked
   const profiles = createProfileStore(deps.root); // reads nothing until asked
   const direnvOf = async (project: string) => ({ direnv: (await profiles.get(project))?.env.direnv ?? true });
-  const runtimes = new Map<string, { at: number; value: Parameters<typeof assessReadiness>[0]["runtime"] }>();
+  const runtimes = new Map<string, { at: number; value: Parameters<typeof assessReadiness>[0]["runtime"] & { claudeHelp?: () => Promise<string> } }>();
+  // What the installed CLIs can do, probed once per program, version and modification time (capabilities.ts): the
+  // same answer for the readiness and the start, never a list of versions.
+  const capabilityCache = createCapabilityCache(join(deps.root, "cli-capabilities.json"));
+  const capabilitiesOf = async (rt: { executables?: Record<"codex" | "claude", string>; versions: Record<"codex" | "claude", string>; env: Readonly<Record<string, string>>; codexEnv?: Readonly<Record<string, string>>; claudeEnv?: Readonly<Record<string, string>>; claudeHelp?: () => Promise<string> }): Promise<Capabilities | null> => {
+    if (!rt.executables) return null; // a runtime without the programs (stages 4–11): nothing to probe
+    const ex = rt.executables;
+    const [codex, claude] = await Promise.all([
+      capabilityCache.get({ provider: "codex", executable: ex.codex, version: rt.versions.codex },
+        () => probeCodexCaps({ version: rt.versions.codex, schema: codexSchema(ex.codex, rt.codexEnv ?? rt.env) })),
+      capabilityCache.get({ provider: "claude", executable: ex.claude, version: rt.versions.claude },
+        async () => probeClaudeCaps({ version: rt.versions.claude, help: rt.claudeHelp ? await rt.claudeHelp().catch(() => "") : "", init: claudeInit(ex.claude, rt.claudeEnv ?? rt.env) }))
+    ]);
+    return { codex, claude };
+  };
+  // The rights a goal runs with: the project's, with this goal's one-run choice of «Как в моём терминале» over them
+  // (the project settings stay as they are).
+  const accessFor = (profileAccess: AgentAccess, over?: Partial<Record<"claude" | "codex", "terminal">>): AgentAccess => ({ ...profileAccess, ...(over ?? {}) });
   // What Codex offers (model/list, config/read; no model turn), per Codex program and folder, for the application's
   // session: asked again only by «Обновить» (refresh). A failed answer is not kept.
   const codexModelLists = new Map<string, Promise<OrchestrationCodexModels>>();
@@ -489,7 +510,7 @@ export function createRunManager(deps: RunManagerDeps) {
     if (item.level === "blocker") refuse("test_database_unsafe", item.detail);
   }
   async function resolveGoal(source: string, runId: string, g: OrchestrationGoalInput, rt: NativeRuntime | null): Promise<GoalInput & { prepareAuto?: boolean }> {
-    const { mode, finish, models: over, ...given } = g;
+    const { mode, finish, models: over, accessOverride: _override, ...given } = g;
     const chosen = roleModels(await profiles.get(source), over);
     const models = Object.fromEntries(Object.entries(chosen).filter(([, m]) => m !== null)) as Partial<Record<keyof OrchestrationRoleModels, string>>;
     // a role's model is recorded only in a journal v2 goal: never dropped on the quiet in a v1 one
@@ -513,21 +534,12 @@ export function createRunManager(deps: RunManagerDeps) {
     if (finish?.qa && !finish.commit) refuse("invalid_goal", "QA needs the commit action");
     const any = finish && (finish.commit || finish.push || finish.qa);
     const workMode = rest.workMode ?? profile.workMode;
-    // The rights the installed CLIs offer now: a mode saved for another version is refused, never passed on a guess.
-    const access = profile.access as AgentAccess;
-    // Never narrowed on the quiet: another mode would give the agents other rights than the person chose.
-    if (rt && access.claude !== "terminal") {
-      const help = rt.claudeHelp ? await rt.claudeHelp().catch(() => "") : "";
-      const version = parseCliVersion("claude", rt.versions.claude) ?? rt.versions.claude.slice(0, 60);
-      if (!help.trim()) refuse("access_unsupported", `Claude ${access.claude}: could not read --help of Claude ${version} to confirm the mode`);
-      if (!claudeModesFromHelp(help).includes(access.claude)) refuse("access_unsupported", `Claude ${access.claude}: Claude ${version} does not offer this mode`);
-    }
-    if (rt && access.codex !== "terminal") {
-      const version = parseCliVersion("codex", rt.versions.codex);
-      if (!codexModesFor(NATIVE_PROTOCOL_CHECKED.codex.includes(version ?? "")).includes(access.codex)) {
-        refuse("access_unsupported", `Codex ${access.codex}: the protocol of Codex ${version ?? rt.versions.codex.slice(0, 60)} was not compared`);
-      }
-    }
+    // The rights the installed CLIs offer now, by the same rule as the readiness (startProblems): a mode the CLI does not
+    // offer is refused, never passed on a guess and never narrowed on the quiet.
+    const access = accessFor(profile.access as AgentAccess, g.accessOverride);
+    const caps = rt ? await capabilitiesOf(rt) : null;
+    const problem = caps ? startProblems(caps, access, chosen, codexRoles())[0] : undefined;
+    if (problem) refuse(problem.id.startsWith("access_") ? "access_unsupported" : "model_unsupported", problem.detail);
     // A separate copy and a worktree start without the project's ignored files: the dependency folders are cloned from
     // the project when their lock files match (cloneDependencies), the rest is prepared in them.
     const steps = !profile.prepare.auto ? []
@@ -694,7 +706,7 @@ export function createRunManager(deps: RunManagerDeps) {
 
     // The checks the start would make, and more, without starting anything (no model call, no run, no file written).
     // The runtime (CLI versions, the login shell's environment) is measured at most every 30 s per project.
-    readiness: (input: { linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels> }) => result(async () => {
+    readiness: (input: { linkId: string; commands: string[]; workMode: "project" | "copy" | "worktree"; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">> }) => result(async () => {
       const c = await canvas.read(exists);
       const link = c.links.find((l) => l.linkId === input.linkId) ?? refuse("link_not_found", "no such link");
       const lead = c.agents.find((a) => a.agentId === link.fromAgentId) ?? refuse("link_not_found", "the link has no lead");
@@ -706,16 +718,27 @@ export function createRunManager(deps: RunManagerDeps) {
       const cached = runtimes.get(key);
       const measured = cached && Date.now() - cached.at < 30_000 ? cached.value
         : await (deps.native ? deps.native(lead.project, { direnv: profile.env.direnv, worktreePending: input.workMode === "worktree" }) : Promise.reject(new Refusal("provider_unavailable", "no native agent runtime"))).then(
-          (rt) => ({ ok: true as const, versions: rt.versions, env: rt.env, shell: rt.shell, direnv: rt.direnv, ...(rt.executables ? { executables: rt.executables } : {}), ...(rt.codexEnv ? { codexEnv: rt.codexEnv } : {}) }),
+          (rt) => ({ ok: true as const, versions: rt.versions, env: rt.env, shell: rt.shell, direnv: rt.direnv, ...(rt.executables ? { executables: rt.executables } : {}), ...(rt.codexEnv ? { codexEnv: rt.codexEnv } : {}), ...(rt.claudeEnv ? { claudeEnv: rt.claudeEnv } : {}), ...(rt.claudeHelp ? { claudeHelp: rt.claudeHelp } : {}) }),
           (e) => ({ ok: false as const, code: typeof e?.code === "string" ? e.code : "provider_unavailable", detail: String(e?.message ?? e) }));
       runtimes.set(key, { at: Date.now(), value: measured });
       let gitPath: string | null = null;
       try { gitPath = deps.gitPath(); } catch { gitPath = null; }
+      // the CLIs' capabilities (probed once per version): the CLIs' item, and what would refuse the start as blockers
+      const caps = measured.ok ? await capabilitiesOf(measured) : null;
       const r = await assessReadiness({
         project: lead.project, commands: input.commands, workMode: input.workMode, platform, gitPath, optionalChecks: deps.journalV2 === true,
         prepare: profile.prepare,
-        runtime: measured, checkedVersions: NATIVE_PROTOCOL_CHECKED, busy: holder !== null
+        runtime: measured, busy: holder !== null, ...(caps ? { clis: clisItem(caps) } : {})
       });
+      if (caps) {
+        const access = accessFor(profile.access as AgentAccess, input.accessOverride);
+        const blockers = startProblems(caps, access, roleModels(profile, input.models), codexRoles());
+        // the one-run choice of the person, said as such (wider rights for this run only)
+        const chosenHere = (["claude", "codex"] as const).filter((p) => input.accessOverride?.[p] === "terminal" && profile.access[p] !== "terminal")
+          .map((p): OrchestrationReadinessItem => ({ id: `access_${p}_once`, level: "info", detail: `${p}: as in the terminal, for this run only`, facts: { provider: p, version: caps[p].version, mode: profile.access[p] } }));
+        r.items.splice(Math.max(0, r.items.length - 1), 0, ...blockers, ...chosenHere);
+        r.ready = r.ready && blockers.length === 0;
+      }
       // the roles' models: the same check the start makes (no model turn); "permissions" stays the last item
       if (measured.ok && measured.executables) {
         const item = modelItem(await codexModelsAt(measured.executables.codex, lead.project, measured.codexEnv ?? measured.env), roleModels(profile, input.models), codexRoles());
@@ -734,16 +757,15 @@ export function createRunManager(deps: RunManagerDeps) {
       const saved = await profiles.get(project);
       const profile = saved ?? await suggestProfile(project);
       const rt = capabilities && orchestrationAvailable(platform) ? await nativeOf(project) : null;
-      const help = rt?.claudeHelp ? await rt.claudeHelp().catch(() => "") : "";
-      const codexChecked = !!rt && NATIVE_PROTOCOL_CHECKED.codex.includes(parseCliVersion("codex", rt.versions.codex) ?? "");
+      const caps = rt ? await capabilitiesOf(rt) : null;
       let gitPath: string | null = null;
       try { gitPath = deps.gitPath(); } catch { gitPath = null; }
       const s = await suggestCommands(project);
       return {
         profile, saved: saved !== null, ...(deps.journalV2 ? { optionalChecks: true } : {}),
         capabilities: {
-          claude: claudeModesFromHelp(help).map((mode) => ({ mode, mapping: accessMapping("claude", mode) })),
-          codex: codexModesFor(codexChecked).map((mode) => ({ mode, mapping: accessMapping("codex", mode) }))
+          claude: (caps?.claude.modes ?? ["terminal"]).map((mode) => ({ mode, mapping: accessMapping("claude", mode) })),
+          codex: (caps?.codex.modes ?? ["terminal"]).map((mode) => ({ mode, mapping: accessMapping("codex", mode) }))
         },
         facts: {
           stack: s.stack, laravel: s.laravel,
@@ -999,7 +1021,7 @@ export function testNativeRuntime(file: string, launch: () => SupervisorLaunch, 
       clis: { codex: { cli: cli("codex"), cliVersion: cfg.codex.version }, claude: { cli: cli("claude"), cliVersion: cfg.claude.version } },
       roles: { lead: "codex", executor: "claude" }, env: { codex: envOf("codex"), claude: envOf("claude") }, launch: launch(), clientVersion: "test"
     }),
-    executables: { codex: cfg.codex.executable, claude: cfg.claude.executable }, direnv: "off", codexEnv: envOf("codex"),
+    executables: { codex: cfg.codex.executable, claude: cfg.claude.executable }, direnv: "off", codexEnv: envOf("codex"), claudeEnv: envOf("claude"),
     claudeHelp: () => run(cfg.claude.executable, ["--help"], { timeout: 20_000, env: envOf("claude") }).then((r) => r.stdout),
     shell: cfg.shell ?? shell ?? "/bin/sh",
     env: cfg.checkEnv ?? { PATH: cfg.codex.path, HOME: cfg.codex.env.HOME ?? "/nonexistent" },

@@ -409,13 +409,7 @@ function refuse(reason: ProviderRefusal, detail: string): { ok: false; reason: P
 // ---------------- stage 12: native sessions ----------------
 // The CLI as the user runs it in a terminal of the project: no flag that removes configuration, tools, MCP, hooks or
 // permission prompts; the user's own login-shell environment; prompts go to the person through the driver
-// (sessions.ts). The protocol shapes were compared with these versions; another version runs, and readiness says that
-// its protocol was not compared (never a silent claim of compatibility).
-export const NATIVE_PROTOCOL_CHECKED: Readonly<Record<OrchestrationProvider, readonly string[]>> = Object.freeze({
-  codex: Object.freeze(["0.155.1"]),
-  // 2.1.282 and 2.1.283: two real turns each, new and resumed, through this path (evidence/claude-<version>/probe.json)
-  claude: Object.freeze(["2.1.280", "2.1.281", "2.1.282", "2.1.283"])
-});
+// (sessions.ts). What the installed version offers is probed, not looked up in a list of versions (capabilities.ts).
 
 export interface NativeTurnInput {
   cli: AvailableProviderCli;

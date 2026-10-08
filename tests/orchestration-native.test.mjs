@@ -11,7 +11,7 @@ import { after, test } from "node:test";
 import { findGit } from "../src/main/services/orchestration/git.ts";
 import { captureLoginEnv } from "../src/main/services/orchestration/loginEnv.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
-import { NATIVE_PROTOCOL_CHECKED, buildNativeTurn } from "../src/main/services/orchestration/providers.ts";
+import { buildNativeTurn } from "../src/main/services/orchestration/providers.ts";
 import { assessReadiness, suggestCommands } from "../src/main/services/orchestration/readiness.ts";
 import { claudeHostDriver, codexAppServerDriver } from "../src/main/services/orchestration/sessions.ts";
 import { checkTurnSpec, sessionEnv } from "../src/main/services/orchestration/turn.ts";
@@ -315,8 +315,7 @@ test("readiness: a Laravel project is recognised before any model call; its comm
   assert.deepEqual(await suggestCommands(dir), { stack: "laravel", commands: ["php artisan test"], laravel: true });
   const r = await assessReadiness({
     project: dir, commands: ["php artisan test"], workMode: "project", platform: "darwin", gitPath: GIT, busy: false,
-    runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: "2.1.281 (Claude Code)" }, env: { PATH: "/nonexistent" }, shell: "/bin/zsh" },
-    checkedVersions: { codex: ["0.155.1"], claude: ["2.1.281"] }
+    runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: "2.1.281 (Claude Code)" }, env: { PATH: "/nonexistent" }, shell: "/bin/zsh" }
   });
   const by = Object.fromEntries(r.items.map((i) => [i.id, i]));
   assert.equal(by.laravel.level, "warning");
@@ -325,24 +324,9 @@ test("readiness: a Laravel project is recognised before any model call; its comm
   assert.equal(by.workdir.level, "info");
   assert.ok(r.ready, "warnings do not block");
   const none = await assessReadiness({ project: dir, commands: [], workMode: "project", platform: "darwin", gitPath: GIT, busy: true,
-    runtime: { ok: false, code: "environment_error", detail: "zsh exited" }, checkedVersions: { codex: [], claude: [] } });
+    runtime: { ok: false, code: "environment_error", detail: "zsh exited" } });
   assert.equal(none.ready, false);
   assert.deepEqual(none.items.filter((i) => i.level === "blocker").map((i) => i.id).sort(), ["busy", "commands", "env"]);
-});
-
-test("readiness: the Claude protocol is compared with exactly 2.1.280, 2.1.281, 2.1.282 and 2.1.283; a neighbour version is said", async () => {
-  const dir = project({ dirty: false });
-  const clis = async (claude) => (await assessReadiness({
-    project: dir, commands: ["true"], workMode: "project", platform: "darwin", gitPath: GIT, busy: false,
-    runtime: { ok: true, versions: { codex: "codex-cli 0.155.1", claude: `${claude} (Claude Code)` }, env: { PATH: "/nonexistent" }, shell: "/bin/zsh" },
-    checkedVersions: NATIVE_PROTOCOL_CHECKED
-  })).items.find((i) => i.id === "clis");
-  for (const v of ["2.1.281", "2.1.282", "2.1.283"]) assert.equal((await clis(v)).level, "ok", v);
-  for (const v of ["2.1.279", "2.1.284", "2.1.283.1"]) {
-    const item = await clis(v);
-    assert.equal(item.level, "warning", v);
-    assert.equal(item.facts.unchecked, "claude", v);
-  }
 });
 
 test("IPC: goal commands and work mode, the permission command and its answers are validated", () => {
