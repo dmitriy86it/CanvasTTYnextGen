@@ -184,12 +184,13 @@ export function roleStatus(locale: LocaleId, role: Role, input: StatusInput): St
   // Someone else works: say what this one did last and whom it waits for.
   const p = participantState(role, view, entries, input.open);
   const finishedTurn = p.outcome === "completed" && p.turnId !== null;
-  const doing = !finishedTurn ? tr(locale, "orchNow_waitsFor", { who: who(role) })
-    // the review is the lead's (v1) or, in journal v2, the reviewer's
-    : role === "executor" && (act?.actor === "lead" || act?.actor === "reviewer") && view.active?.kind === "turn" && view.active.purpose === "review"
-      ? tr(locale, "orchNow_doneAwaitReview", { who: who(role) })
-      : tr(locale, "orchNow_doneTurn", { who: who(role) });
-  return { ...base, state: "waiting_agent", doing, now: null, wait: act ? act.doing : t(locale, "orchNow_between"), quiet: null };
+  // the review is the lead's (v1) or, in journal v2, the reviewer's
+  const awaitsReview = finishedTurn && role === "executor" && (act?.actor === "lead" || act?.actor === "reviewer") && view.active?.kind === "turn" && view.active.purpose === "review";
+  // 1.5.13: never the other one's line word for word — "Waiting: <who works and what it does>", one line
+  const waiting = act ? tr(locale, "orchNow_waitingOn", { doing: act.doing }) : null;
+  if (!finishedTurn) return { ...base, state: "waiting_agent", doing: waiting ?? tr(locale, "orchNow_waitsFor", { who: who(role) }), now: null, wait: waiting ? null : t(locale, "orchNow_between"), quiet: null };
+  const doing = tr(locale, awaitsReview ? "orchNow_doneAwaitReview" : "orchNow_doneTurn", { who: who(role) });
+  return { ...base, state: "waiting_agent", doing, now: null, wait: awaitsReview ? null : waiting ?? t(locale, "orchNow_between"), quiet: null };
 }
 
 // Journal v2, A3 (journal-v2-format.md §2.8): "open blocking: N" — the one line the result, the cards and the activity

@@ -699,7 +699,7 @@ export function createRunManager(deps: RunManagerDeps) {
       }),
     moveAgentGroup: (agentIds: string[], workspaceId: string) =>
       result(async () => { workspaceOk(workspaceId); await canvas.moveGroup(agentIds, workspaceId, busy); return canvas.read(exists); }),
-    moveAgent: (agentId: string, bounds: OrchestrationBounds) => result(() => canvas.moveAgent(agentId, bounds)),
+    moveAgent: (agentId: string, bounds: OrchestrationBounds, expanded?: OrchestrationBounds["size"]) => result(() => canvas.moveAgent(agentId, bounds, expanded)),
     deleteAgent: (agentId: string) => result(() => canvas.deleteAgent(agentId, busy)),
     createLink: (input: { linkId: string; fromAgentId: string; toAgentId: string }) => result(() => { platformOk(); return canvas.createLink(input); }),
     deleteLink: (linkId: string) => result(() => canvas.deleteLink(linkId, busy)),

@@ -8,7 +8,7 @@ export const MAX_TERMINAL_SIZE: Size = { width: 1_600, height: 1_100 };
 
 export type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
 
-interface ResizeSizeLimits {
+export interface ResizeSizeLimits {
   min: Size;
   max: Size;
 }
@@ -81,12 +81,13 @@ export function snapResize(
 
 export function constrainResize(
   bounds: SessionBounds,
-  direction: ResizeDirection
+  direction: ResizeDirection,
+  limits: ResizeSizeLimits = { min: MIN_TERMINAL_SIZE, max: MAX_TERMINAL_SIZE }
 ): SessionBounds {
   const right = bounds.position.x + bounds.size.width;
   const bottom = bounds.position.y + bounds.size.height;
-  const width = clamp(bounds.size.width, MIN_TERMINAL_SIZE.width, MAX_TERMINAL_SIZE.width);
-  const height = clamp(bounds.size.height, MIN_TERMINAL_SIZE.height, MAX_TERMINAL_SIZE.height);
+  const width = clamp(bounds.size.width, limits.min.width, limits.max.width);
+  const height = clamp(bounds.size.height, limits.min.height, limits.max.height);
   return {
     position: {
       x: direction.includes("w") ? right - width : bounds.position.x,
