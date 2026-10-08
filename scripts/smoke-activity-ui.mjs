@@ -64,7 +64,7 @@ const HOLD = { codex: D("hold-codex"), claude: D("hold-claude") };
 // A held CLI waits before the fake starts: its process exists, its turn stays active as long as the test wants.
 const wrap = (p) => {
   const f = D(`${p}-mock`);
-  fs.writeFileSync(f, `#!/bin/sh\ncase "$1" in --help|--version) ;; *) while [ -e "${HOLD[p]}" ]; do sleep 0.1; done ;; esac\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
+  fs.writeFileSync(f, `#!/bin/sh\n${p === "claude" ? `case "$*" in *--json-schema*) while [ -e "${HOLD[p]}" ]; do sleep 0.1; done ;; esac` : `case "$*" in --help*|--version*|*generate-json-schema*) ;; *) while [ -e "${HOLD[p]}" ]; do sleep 0.1; done ;; esac`}\nexec "${NODE}" "${path.join(FIXTURES, `mock-${p}.mjs`)}" "$@"\n`, { mode: 0o755 });
   return f;
 };
 const SHELL = D("login-shell");

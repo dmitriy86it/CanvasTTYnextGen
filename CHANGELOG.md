@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+## 1.5.11 — 2026-10-08
+
+Updated CLIs no longer block the start: capability probes instead of version lists.
+
+
 - Updated CLIs no longer block the start. What the installed Codex and Claude offer is now probed, without a model call, instead of looked up in a list of versions: Claude's `--help` and a session started with the «Work folder» switches; Codex's app-server protocol schema (no thread is started, so `~/.codex/config.toml` is not touched). The answer is kept per program, version and modification time, and a new version is probed again by itself. Codex 0.160.0 and Claude 2.1.293 run in every rights mode, and readiness no longer warns «protocol not compared». It warns only when something a run relies on has changed, and names what.
 - Readiness and the start decide by one rule: a rights mode or a model a CLI does not offer is a readiness blocker that names the CLI, its version and what is missing, e.g. «Claude 2.1.293: does not take the sandbox settings (--settings) — the «Work folder» mode is unavailable». Start is off with that reason beside it; the start never refuses for a reason readiness did not show.
 - On such a blocker, «Run <CLI> «As in my terminal» for this run only» runs that CLI with your own settings after a confirmation that explains the wider rights. The project settings stay as they are; rights are never lowered or widened on the quiet.
