@@ -30,7 +30,7 @@ let n = 0;
 
 // ---------------- the status of a task, from its runs ----------------
 
-const run = (over = {}) => ({ runId: randomUUID(), taskId: null, taskKey: null, createdAt: ++n, status: "running", reason: null, newer: false,
+const run = (over = {}) => ({ runId: randomUUID(), taskId: null, taskKey: null, createdAt: ++n, workspaceId: "common", status: "running", reason: null, newer: false, halted: false, limit: null,
   completion: null, phase: "work", permission: false, workMode: "copy", taken: null, ...over });
 const task = (over = {}) => ({ id: randomUUID(), key: `T-${++n}`, workspaceId: "common", project: "/p", title: "t", text: "x", criteria: ["c"],
   dependsOn: [], order: n, createdAt: "2026-10-08T00:00:00Z", updatedAt: "2026-10-08T00:00:00Z", archivedAt: null, accepted: null, ...over });
@@ -46,6 +46,8 @@ test("a task's column and reason come from its latest run; «Done» only from a 
   assert.deepEqual(col(run({ status: "paused", reason: "limit_reached", phase: "review" })), ["review", "limit_reached", null], "a limit pause stays where it was");
   assert.deepEqual(col(run({ status: "paused", reason: "app_closed" })), ["work", "paused_other", null]);
   assert.deepEqual(col(run({ status: "stopping" })), ["work", "stopping", null]);
+  assert.deepEqual(col(run({ status: "pausing" })), ["work", "stopping", null]);
+  assert.deepEqual(col(run({ halted: true })), ["work", "paused_other", null], "halted by a condition in main");
   assert.deepEqual(col(run({ status: "stopped" })), ["queue", "last_stopped", null]);
   assert.deepEqual(col(run({ status: "failed" })), ["queue", "last_failed", null]);
   assert.deepEqual(col(run({ status: "completed", completion: "confirmed" })), ["done", null, "confirmed"]);
@@ -102,13 +104,24 @@ test("dependencies: waits for tasks not «Done» (accepted counts), then for a r
   assert.deepEqual([st.get(a.id).column, st.get(b.id).reason], ["review", "waits_task"]);
   st = boardStatuses({ tasks: [{ ...a, accepted: { runId: noChecks.runId, at: "x" } }, b, c] }, [noChecks]);
   assert.deepEqual([st.get(a.id).done, st.get(b.id).reason], ["accepted", null]);
-  // a cycle (a hand-edited file): every task of it waits, none is «Done», nothing loops
-  const x = task(), y = task();
+  // a cycle (a hand-edited file): a task of it not started waits, marked as a cycle, in whatever order the file lists
+  // them; one that ran keeps its own status; nothing loops, and a task after the cycle waits for it
+  const x = task(), y = task(), z = task();
   x.dependsOn = [y.id];
   y.dependsOn = [x.id];
-  st = boardStatuses({ tasks: [x, y] }, [run({ taskId: x.id, status: "completed", completion: "confirmed" })]);
-  assert.equal(st.get(y.id).column, "queue");
-  assert.ok(["waits_task", "cycle"].includes(st.get(y.id).reason));
+  z.dependsOn = [y.id];
+  const facts2 = [run({ taskId: x.id, status: "completed", completion: "confirmed" })];
+  for (const tasks of [[x, y, z], [z, y, x]]) {
+    st = boardStatuses({ tasks }, facts2);
+    assert.deepEqual([st.get(y.id).column, st.get(y.id).reason, st.get(y.id).cycle, st.get(y.id).waitsFor], ["queue", "waits_task", true, [x.key]]);
+    assert.equal(st.get(x.id).done, "confirmed");
+    assert.deepEqual([st.get(z.id).reason, st.get(z.id).cycle, st.get(z.id).waitsFor], ["waits_task", false, [y.key]]);
+  }
+  // a run of another workspace with the same task id does not count
+  assert.equal(boardStatuses({ tasks: [a] }, [run({ taskId: a.id, workspaceId: "ws2", status: "completed", completion: "confirmed" })]).get(a.id).column, "queue");
+  // a done dependency without a work folder of its own (no marker): nothing to take, nobody waits
+  st = boardStatuses({ tasks: [a, b, c] }, [{ ...doneCopy, workMode: null }]);
+  assert.equal(st.get(b.id).reason, null);
   // a run of a task not on the board does not reach any task
   assert.equal(boardStatuses({ tasks: [a] }, [run({ taskId: randomUUID(), status: "completed", completion: "confirmed" })]).get(a.id).column, "queue");
 });
@@ -159,9 +172,39 @@ test("board.json: numbers per workspace above the file and above the runs' keys;
   assert.deepEqual(read.board.tasks.map((t) => t.key), ["T-1", "T-2", "T-1", "T-8"]);
   assert.equal(read.readOnly, null);
   assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp")), []);
+  // the number ends at T-999999 (the format of a key); a hand-edited counter above refuses, the board stays readable
+  const capped = path.join(fs.mkdtempSync(path.join(TMP, "b-")), "board.json");
+  fs.writeFileSync(capped, JSON.stringify({ v: 1, tasks: [], counters: { common: 999_999 } }));
+  await assert.rejects(createBoardStore(capped).create(input()), /T-999999/);
+  assert.equal((await createBoardStore(capped).read()).readOnly, null);
+  // a task without accepted / archivedAt (written by hand) reads as one without them, not as a damaged board
+  const loose = path.join(fs.mkdtempSync(path.join(TMP, "b-")), "board.json");
+  const { accepted: _a, archivedAt: _b, ...bare } = task();
+  fs.writeFileSync(loose, JSON.stringify({ v: 1, tasks: [bare], counters: {} }));
+  assert.deepEqual((await createBoardStore(loose).read()).board.tasks.map((t) => [t.id, t.accepted, t.archivedAt]), [[bare.id, null, null]]);
+  // the first read and a create at once: the create is never lost to the read's older board
+  for (let i = 0; i < 20; i++) {
+    const f = path.join(fs.mkdtempSync(path.join(TMP, "b-")), "board.json");
+    fs.writeFileSync(f, JSON.stringify({ v: 1, tasks: [], counters: {} }));
+    const s2 = createBoardStore(f);
+    const [, made] = await Promise.all([s2.read(), s2.create(input())]);
+    assert.deepEqual((await s2.read()).board.tasks.map((t) => t.id), [made.id]);
+    assert.equal((await s2.create(input())).key, "T-2");
+    assert.equal(JSON.parse(fs.readFileSync(f, "utf8")).tasks.length, 2);
+  }
+  // a damaged file read and written at once at the start: set aside once, the board writable (not «damaged, unmoved»)
+  for (let i = 0; i < 20; i++) {
+    const dir = fs.mkdtempSync(path.join(TMP, "b-"));
+    fs.writeFileSync(path.join(dir, "board.json"), "{ damaged");
+    const s3 = createBoardStore(path.join(dir, "board.json"));
+    const [r3, made] = await Promise.all([s3.read(), s3.create(input())]);
+    assert.equal(made.key, "T-1");
+    assert.equal(r3.readOnly, null);
+    assert.equal(fs.readdirSync(dir).filter((f) => f.includes(".damaged-")).length, 1);
+  }
   // a task with runs is archived, not deleted; a task without runs goes and its dependents lose it openly
-  await assert.rejects(again.remove(a.id, true), /archived/);
-  await again.remove(a.id, false);
+  await assert.rejects(again.remove(a.id, async () => true), /archived/);
+  await again.remove(a.id, async () => false);
   assert.deepEqual((await again.read()).board.tasks.find((t) => t.id === b.id).dependsOn, []);
 });
 
@@ -229,12 +272,11 @@ const PLAN = { answer: { stages: [{ title: "fix", task: "make a.txt say 2", cond
 const REVIEW = { answer: { conditions: [{ id: "C1", status: "met", paths: ["a.txt"], note: "a.txt says 2" }], findings: [], request: "none", question: null } };
 const FINAL = { answer: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "a.txt says 2" }] } };
 const EXEC = { answer: { summary: "done", done: true }, writes: [{ rel: "a.txt", base64: Buffer.from("2\n").toString("base64") }] };
-function manager(v2 = true) {
+function manager(v2 = true, root = path.join(TMP, `root-${++n}`)) {
   const file = path.join(TMP, `providers-${++n}.json`);
   const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script([PLAN, EXEC, REVIEW, FINAL, PLAN]), MOCK_CHECKS: "none" } };
   fs.writeFileSync(file, JSON.stringify({ codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p },
     shell: SHELL, checkEnv: { ...GIT_ENV, PATH: `/usr/bin:/bin:${path.dirname(GIT)}`, HOME: TMP } }));
-  const root = path.join(TMP, `root-${++n}`);
   const m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
     agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH), leadSandbox: false, ...(v2 ? { journalV2: true } : {}) });
   m.root = root;
@@ -284,20 +326,45 @@ test("goal.task: written in the run's goal, part of the request's identity, jour
   assert.equal((await m.boardAccept(t.id)).value.accepted.runId, runId);
   v = (await m.board()).value;
   assert.equal(boardStatuses(v.board, v.facts).get(t.id).done, "accepted");
-  // a task with a run is archived, not deleted
+  // a restart (another manager over the same folder): the same board and the same statuses
+  const again = manager(true, m.root);
+  const va = (await again.board()).value;
+  assert.deepEqual([...boardStatuses(va.board, va.facts)], [...boardStatuses(v.board, v.facts)]);
+  await again.shutdown();
+  // a task with a run is archived, not deleted; a repeat of the created request is answered whatever became of the task
   assert.equal((await m.boardRemove(t.id)).code, "task_has_runs");
+  assert.ok((await m.boardArchive(t.id, true)).ok);
+  assert.deepEqual((await m.create({ requestId: runId, source: src, goal })).value, { runId, created: false });
+  assert.equal((await m.create({ requestId: randomUUID(), source: src, goal })).code, "task_archived");
+  assert.ok((await m.boardArchive(t.id, false)).ok);
+  // a run being created counts before its journal is there
+  const tFly = (await m.boardCreate(input({ project: src }))).value;
+  const flyId = randomUUID();
+  const flying = m.create({ requestId: flyId, source: src, goal: { ...goal, reviewPlan: true, task: { id: tFly.id, key: tFly.key } } });
+  assert.equal((await m.boardRemove(tFly.id)).code, "task_has_runs");
+  assert.ok((await flying).ok);
   // a run that is not completed without checks (here: paused for the plan) is not accepted
-  const t3 = (await m.boardCreate(input({ project: src }))).value;
-  const paused = randomUUID();
-  assert.ok((await m.create({ requestId: paused, source: src, goal: { ...goal, reviewPlan: true, task: { id: t3.id, key: t3.key } } })).ok);
-  await until(async () => (await m.get(paused)).value.view.reason === "plan_review", "the plan review");
-  assert.equal((await m.boardAccept(t3.id)).code, "accept_unavailable");
+  await until(async () => (await m.get(flyId)).value.view.reason === "plan_review", "the plan review");
+  assert.equal((await m.boardAccept(tFly.id)).code, "accept_unavailable");
+  // a run whose journal cannot be read keeps its task: «journal not readable», never the older run's «Done»; the same
+  // after a restart (the task is read from the journal's first record)
+  const j = path.join(m.root, "runs", runId, "journal.jsonl");
+  const lines = fs.readFileSync(j, "utf8").split("\n");
+  lines[3] = lines[3].replace(/"seq":\d+/, '"seq":9999');
+  fs.writeFileSync(j, lines.join("\n"));
+  for (const mm of [m, manager(true, m.root)]) {
+    const vv = (await mm.board()).value;
+    const f = vv.facts.find((x) => x.runId === runId);
+    assert.deepEqual([f.taskId, f.status], [t.id, "unreadable"]);
+    assert.equal(boardStatuses(vv.board, vv.facts).get(t.id).reason, "run_unreadable");
+    if (mm !== m) await mm.shutdown();
+  }
   // numbering after the board was lost: above the T-n the runs name
   fs.rmSync(path.join(m.root, "board.json"));
   const m2 = manager();
   fs.mkdirSync(m2.root, { recursive: true });
   fs.cpSync(path.join(m.root, "runs"), path.join(m2.root, "runs"), { recursive: true });
-  assert.equal((await m2.boardCreate(input({ project: src }))).value.key, "T-4");
+  assert.equal((await m2.boardCreate(input({ project: src }))).value.key, "T-4"); // T-3 is the largest a run names
   await m.shutdown();
   await m2.shutdown();
 });

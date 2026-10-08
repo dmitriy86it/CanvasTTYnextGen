@@ -43,10 +43,14 @@ export interface BoardRead { board: Board; readOnly: null | "newer_version" | "d
 // above it as well as above the file's counter, so a number is not given twice even after the file was lost.
 export function createBoardStore(file: string, usedKeys: (workspaceId: string) => Promise<number> = async () => 0) {
   let cache: BoardRead | null = null;
+  let first: Promise<BoardRead> | null = null; // the first read, shared: two loads at once would race the cache
   let queue: Promise<unknown> = Promise.resolve();
 
   async function load(): Promise<BoardRead> {
-    if (!cache) cache = await readBoard();
+    if (cache) return cache;
+    first ??= readBoard();
+    const r = await first;
+    cache ??= r; // a save after the first read has set it already
     return cache;
   }
 
@@ -68,8 +72,10 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     const counters = v?.counters && typeof v.counters === "object" && !Array.isArray(v.counters)
       ? Object.fromEntries(Object.entries(v.counters as Record<string, unknown>).filter(([k, n]) => WORKSPACE_ID.test(k) && Number.isSafeInteger(n) && (n as number) >= 0)) as Record<string, number>
       : null;
-    if (v?.v === BOARD_VERSION && Array.isArray(v.tasks) && v.tasks.every(isTask) && counters) {
-      return { board: { v: BOARD_VERSION, tasks: v.tasks as BoardTask[], counters }, readOnly: null };
+    // a task written by hand without accepted or archivedAt has neither (never half a board: one bad task sets it aside)
+    const tasks = Array.isArray(v?.tasks) ? v.tasks.map((t) => (t && typeof t === "object" ? { accepted: null, archivedAt: null, ...t } : t)) : null;
+    if (v?.v === BOARD_VERSION && tasks?.every(isTask) && counters) {
+      return { board: { v: BOARD_VERSION, tasks: tasks as BoardTask[], counters }, readOnly: null };
     }
     // damaged: set aside whole (nothing is dropped from it), the board starts empty
     const aside = `${file}.damaged-${randomUUID()}`;
@@ -129,6 +135,7 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
       const ok = checkInput(b, input, null);
       const inFile = Math.max(b.counters[ok.workspaceId] ?? 0, ...b.tasks.filter((t) => t.workspaceId === ok.workspaceId).map((t) => Number(KEY.exec(t.key)![1])));
       const n = Math.max(inFile, await usedKeys(ok.workspaceId)) + 1;
+      if (n > 999_999) refuse("too_many_tasks", "task numbers end at T-999999 in this workspace");
       const at = new Date().toISOString();
       const order = Math.max(0, ...b.tasks.filter((t) => t.workspaceId === ok.workspaceId).map((t) => t.order)) + 1;
       const task: BoardTask = { id: randomUUID(), key: `T-${n}`, ...ok, order, createdAt: at, updatedAt: at, archivedAt: null, accepted: null };
@@ -151,9 +158,10 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     }),
 
     // Only a task without runs is deleted (one with runs is archived); its dependents lose it openly — the caller showed them.
-    remove: (id: string, hasRuns: boolean) => change(async (b) => {
+    // hasRuns is asked inside the queue: a run created after the question finds the task gone (manager taskOk)
+    remove: (id: string, hasRuns: () => Promise<boolean>) => change(async (b) => {
       if (!b.tasks.some((x) => x.id === id)) refuse("task_not_found", `no task ${id}`);
-      if (hasRuns) refuse("task_has_runs", "a task with runs is archived, not deleted");
+      if (await hasRuns()) refuse("task_has_runs", "a task with runs is archived, not deleted");
       const tasks = b.tasks.filter((x) => x.id !== id).map((x) => (x.dependsOn.includes(id) ? { ...x, dependsOn: x.dependsOn.filter((d) => d !== id) } : x));
       return { next: { ...b, tasks }, value: null };
     }),

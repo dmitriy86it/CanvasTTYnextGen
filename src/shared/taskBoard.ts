@@ -53,10 +53,15 @@ export interface RunTaskFacts {
   runId: string;
   taskId: string | null; // goal.task.id
   taskKey: string | null; // goal.task.key
-  createdAt: number; // the goal's createdAt: the latest run of a task is its current one
+  // the goal's createdAt: the latest run of a task is its current one. ponytail: the wall clock of the start; a clock
+  // set back between two runs of one task would order them wrong (a journal sequence across runs does not exist)
+  createdAt: number;
+  workspaceId: string; // the run's owner (canvas.json owners): only its workspace's tasks count it
   status: OrchestrationRunStatus | "unreadable";
   reason: string | null;
   newer: boolean; // a newer version's journal: read only
+  halted: boolean; // running, but stopped by a condition in main (the view's halted)
+  limit: string | null; // the limit a limit_reached pause stopped at (view.progress.budget.reached)
   completion: "confirmed" | "no_checks" | null;
   phase: "work" | "review"; // the active turn's, else the last turn's (no column flickers between turns)
   permission: boolean; // a permission request waits for the person
@@ -67,13 +72,14 @@ export interface RunTaskFacts {
 export type TaskColumn = "queue" | "work" | "review" | "done";
 export type TaskReason =
   | "run_unreadable" | "waits_permission" | "waits_answer" | "waits_decision" | "limit_reached" | "waits_task"
-  | "waits_result" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other" | "cycle";
+  | "waits_result" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other";
 
 export interface TaskStatus {
   column: TaskColumn;
   done: "confirmed" | "accepted" | null; // «Done» confirmed by checks, or accepted by the person without checks
   reason: TaskReason | null;
   waitsFor: string[]; // the keys of the tasks it waits for (waits_task, waits_result)
+  cycle: boolean; // waits_task because its dependencies make a cycle (a hand-edited board.json)
   attempts: number;
   current: string | null; // runId of the latest run
   completion: "confirmed" | "no_checks" | null;
@@ -96,23 +102,43 @@ export function runPhase(view: Pick<OrchestrationRunView, "active">, lastPurpose
 const isDone = (s: TaskStatus | undefined) => !!s?.done;
 
 // The statuses of all tasks of a board from the facts of all runs. Dependencies are followed without trusting the file:
-// a task in a cycle (a hand-edited board.json) waits, it is never «Done» and never loops.
+// the tasks on a cycle (a hand-edited board.json) are found first; one not started waits («waits_task», cycle), and
+// nothing loops. A run counts for a task of its own workspace only.
 export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[]): Map<string, TaskStatus> {
   const byId = new Map(board.tasks.map((t) => [t.id, t]));
+  const depsOf = (t: BoardTask) => t.dependsOn.filter((d) => byId.has(d));
   const runsOf = new Map<string, RunTaskFacts[]>();
-  for (const f of facts) if (f.taskId && byId.has(f.taskId)) runsOf.set(f.taskId, [...(runsOf.get(f.taskId) ?? []), f]);
+  for (const f of facts) {
+    const t = f.taskId ? byId.get(f.taskId) : undefined;
+    if (t && f.workspaceId === t.workspaceId) runsOf.set(t.id, [...(runsOf.get(t.id) ?? []), f]);
+  }
+  // ponytail: a search from each task, O(n·(n+e)); the board holds at most 2000 tasks of a few dependencies each
+  const onCycle = new Set<string>();
+  for (const t of board.tasks) {
+    const seen = new Set<string>();
+    const stack = depsOf(t);
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (id === t.id) { onCycle.add(t.id); break; }
+      if (seen.has(id)) continue;
+      seen.add(id);
+      stack.push(...depsOf(byId.get(id)!));
+    }
+  }
   const out = new Map<string, TaskStatus>();
-  const visiting = new Set<string>();
   const statusOf = (id: string): TaskStatus => {
     const known = out.get(id);
     if (known) return known;
     const task = byId.get(id)!;
-    if (visiting.has(id)) return { ...own(task, runsOf.get(id) ?? []), reason: "cycle", done: null, column: "queue" };
-    visiting.add(id);
-    const deps = task.dependsOn.filter((d) => byId.has(d) && d !== id);
-    const depStatus = deps.map((d) => [byId.get(d)!, statusOf(d)] as const);
-    visiting.delete(id);
-    const s = withDependencies(own(task, runsOf.get(id) ?? []), depStatus, runsOf);
+    const mine = own(task, runsOf.get(id) ?? []);
+    let s: TaskStatus;
+    if (onCycle.has(id)) {
+      s = mine.column !== "queue" || mine.reason === "run_newer" ? mine
+        : { ...mine, reason: "waits_task", cycle: true, waitsFor: depsOf(task).filter((d) => onCycle.has(d)).map((d) => byId.get(d)!.key) };
+    } else {
+      // a task off every cycle depends only on tasks off cycles or on them (never recursed into): this ends
+      s = withDependencies(mine, depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf);
+    }
     out.set(id, s);
     return s;
   };
@@ -123,7 +149,7 @@ export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTa
 // A task by its own runs only.
 export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFacts[]): TaskStatus {
   const sorted = [...runs].sort((a, b) => a.createdAt - b.createdAt || a.runId.localeCompare(b.runId));
-  const base = { attempts: sorted.length, waitsFor: [] as string[], done: null };
+  const base = { attempts: sorted.length, waitsFor: [] as string[], cycle: false, done: null };
   const current = sorted.at(-1);
   if (!current) return { ...base, column: "queue", reason: null, current: null, completion: null };
   const readable = [...sorted].reverse().find((r) => r.status !== "unreadable" && !r.newer);
@@ -145,14 +171,14 @@ export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFac
     }
     case "stopped": return { ...head, column: "queue", reason: "last_stopped" };
     case "failed": return { ...head, column: "queue", reason: "last_failed" };
-    case "stopping": return { ...head, column: phase, reason: "stopping" };
+    case "stopping": case "pausing": return { ...head, column: phase, reason: "stopping" };
     case "paused": {
       const r = current.reason ?? "";
       const reason: TaskReason = current.permission ? "waits_permission" : r === "awaiting_answer" ? "waits_answer"
         : DECISIONS.has(r) ? "waits_decision" : r === "limit_reached" ? "limit_reached" : "paused_other";
       return { ...head, column: phase, reason };
     }
-    default: return { ...head, column: phase, reason: current.permission ? "waits_permission" : null }; // preparing, running, pausing
+    default: return { ...head, column: phase, reason: current.permission ? "waits_permission" : current.halted ? "paused_other" : null }; // preparing, running
   }
 }
 
@@ -164,7 +190,8 @@ function withDependencies(s: TaskStatus, deps: readonly (readonly [BoardTask, Ta
   if (notDone.length) return { ...s, reason: "waits_task", waitsFor: notDone };
   const notTaken = deps.filter(([t, d]) => {
     const run = runsOf.get(t.id)?.find((r) => r.runId === d.current);
-    return run && run.workMode !== "project" && !run.taken?.applied;
+    // a copy or worktree result not applied; a run without a work folder of its own has nothing to take
+    return run && (run.workMode === "copy" || run.workMode === "worktree") && !run.taken?.applied;
   }).map(([t]) => t.key);
   if (notTaken.length) return { ...s, reason: "waits_result", waitsFor: notTaken };
   return s;

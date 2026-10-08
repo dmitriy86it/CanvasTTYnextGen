@@ -98,6 +98,11 @@ function accessOverride(v: unknown, what: string): Partial<Record<"claude" | "co
 }
 
 // A role's model over the project setting: lead, executor, reviewer — each a model name or null (as in the CLI).
+function absolute(v: unknown, what: string): string {
+  const p = str(v, what, 4096);
+  return p.startsWith("/") ? p : bad(`${what} must be an absolute path`);
+}
+
 function uuids(v: unknown, what: string): string[] {
   if (!Array.isArray(v) || v.length > 200) bad(`${what} must be at most 200 ids`);
   return (v as unknown[]).map((x, i) => uuid(x, `${what}[${i}]`));
@@ -355,7 +360,7 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
   handleMain(IPC.orchestrationBoardCreate, (_e, input: unknown) => checked(() => {
     const o = obj(input, "task", ["workspaceId", "project", "title", "text", "criteria"], ["dependsOn"]);
     return [{
-      workspaceId: str(o.workspaceId, "task.workspaceId", 64), project: str(o.project, "task.project", 4096), title: str(o.title, "task.title", 200),
+      workspaceId: str(o.workspaceId, "task.workspaceId", 64), project: absolute(o.project, "task.project"), title: str(o.title, "task.title", 200),
       text: str(o.text, "task.text", 8000), criteria: strings(o.criteria, "task.criteria", 32, 500),
       ...(o.dependsOn !== undefined ? { dependsOn: uuids(o.dependsOn, "task.dependsOn") } : {})
     }] as [BoardTaskInput];
