@@ -158,6 +158,13 @@ try {
   await besideOf(lead.agentId, exec.agentId);
   notes.zoom = await zoomOf();
   await app.reveal(card(exec.agentId));
+  // the link port stays above the resize handles: a point inside both the port and the east handle (2 px in from the
+  // card's right edge, at the port's height) hits the port, at any zoom (1.5.13 build: the handle covered the port's
+  // centre and the link could not be drawn at the zoom of a new canvas)
+  notes.portHit = await app.ev(`(() => { const c = ${card(lead.agentId)}.getBoundingClientRect(), p = ${card(lead.agentId, ".agent-card__port")}.getBoundingClientRect();
+    return document.elementFromPoint(c.right - 2, p.y + p.height / 2)?.className ?? null; })()`);
+  expect(/agent-card__port/.test(notes.portHit ?? ""), "the link port is above the card's resize handles", notes.portHit);
+  await app.reveal(card(exec.agentId));
   await app.drag(await app.center(card(lead.agentId, ".agent-card__port")), await app.center(card(exec.agentId, ".agent-card__body")), 20);
   await app.waitFor(`window.canvasTTY.orchestration.canvas().then((r) => r.value.links.length === 1)`, "link");
   const link = (await canvasState(app)).links[0];
