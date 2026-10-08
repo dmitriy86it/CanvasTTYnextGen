@@ -48,7 +48,7 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
 
   async function load(): Promise<BoardRead> {
     if (cache) return cache;
-    first ??= readBoard();
+    first ??= readBoard().catch((e) => { first = null; throw e; }); // a read that failed is asked again next time
     const r = await first;
     cache ??= r; // a save after the first read has set it already
     return cache;
@@ -151,8 +151,10 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
       return { next: { ...b, tasks: b.tasks.map((x) => (x.id === id ? next : x)) }, value: next };
     }),
 
-    archive: (id: string, archived: boolean) => change(async (b) => {
+    // starting(id): a run of the task is being created — it is not archived under that run (§3.3)
+    archive: (id: string, archived: boolean, starting: () => boolean = () => false) => change(async (b) => {
       const t = b.tasks.find((x) => x.id === id) ?? refuse("task_not_found", `no task ${id}`);
+      if (archived && starting()) refuse("task_starting", "a run of the task is being started");
       const next = { ...t, archivedAt: archived ? new Date().toISOString() : null, updatedAt: new Date().toISOString() };
       return { next: { ...b, tasks: b.tasks.map((x) => (x.id === id ? next : x)) }, value: next };
     }),

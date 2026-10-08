@@ -192,6 +192,13 @@ test("board.json: numbers per workspace above the file and above the runs' keys;
     assert.equal((await s2.create(input())).key, "T-2");
     assert.equal(JSON.parse(fs.readFileSync(f, "utf8")).tasks.length, 2);
   }
+  // a first read that fails (here: a folder where the file goes) is asked again once the cause is gone
+  const dir5 = fs.mkdtempSync(path.join(TMP, "b-"));
+  fs.mkdirSync(path.join(dir5, "board.json"));
+  const s5 = createBoardStore(path.join(dir5, "board.json"));
+  await assert.rejects(s5.read());
+  fs.rmdirSync(path.join(dir5, "board.json"));
+  assert.equal((await s5.create(input())).key, "T-1");
   // a damaged file read and written at once at the start: set aside once, the board writable (not «damaged, unmoved»)
   for (let i = 0; i < 20; i++) {
     const dir = fs.mkdtempSync(path.join(TMP, "b-"));
@@ -342,10 +349,17 @@ test("goal.task: written in the run's goal, part of the request's identity, jour
   const flyId = randomUUID();
   const flying = m.create({ requestId: flyId, source: src, goal: { ...goal, reviewPlan: true, task: { id: tFly.id, key: tFly.key } } });
   assert.equal((await m.boardRemove(tFly.id)).code, "task_has_runs");
+  assert.equal((await m.boardArchive(tFly.id, true)).code, "task_starting");
   assert.ok((await flying).ok);
   // a run that is not completed without checks (here: paused for the plan) is not accepted
   await until(async () => (await m.get(flyId)).value.view.reason === "plan_review", "the plan review");
   assert.equal((await m.boardAccept(tFly.id)).code, "accept_unavailable");
+  // a work folder marker that cannot be read: the work mode is the goal's (a copy's result is never taken for granted)
+  const marker = path.join(m.root, "runs", runId, "workspace", "workspace.json");
+  const kept = fs.readFileSync(marker);
+  fs.writeFileSync(marker, "{");
+  assert.equal((await manager(true, m.root).board()).value.facts.find((x) => x.runId === runId).workMode, "project");
+  fs.writeFileSync(marker, kept);
   // a run whose journal cannot be read keeps its task: «journal not readable», never the older run's «Done»; the same
   // after a restart (the task is read from the journal's first record)
   const j = path.join(m.root, "runs", runId, "journal.jsonl");

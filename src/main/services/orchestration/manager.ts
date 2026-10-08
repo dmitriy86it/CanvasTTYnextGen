@@ -52,7 +52,7 @@ import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
 import { boardStatuses, runPhase } from "../../../shared/taskBoard.ts";
 import type { BoardTask, BoardView, RunTaskFacts } from "../../../shared/taskBoard.ts";
-import type { OrchestrationTurnPurpose } from "../../../shared/orchestration.ts";
+import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
 import { runOwners } from "../../../shared/workspaceOwnership.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
 import { orchestrationAvailable } from "../../../shared/orchestration.ts";
@@ -693,7 +693,7 @@ export function createRunManager(deps: RunManagerDeps) {
   // journal's first record (run.created), so a run of a newer version, an unreadable or a damaged one keeps its task.
   // The facts of a run not held here are kept while its journal and taken.json are the same (size, mtime); a held run
   // has state the journal does not (the active turn, a permission request), so it is read each time.
-  const goalMeta = new Map<string, { taskId: string | null; taskKey: string | null; createdAt: number }>();
+  const goalMeta = new Map<string, { taskId: string | null; taskKey: string | null; createdAt: number; goalWorkMode: OrchestrationWorkMode | null }>();
   const factsCache = new Map<string, { stamp: string; facts: RunTaskFacts }>();
   async function metaOf(runId: string) {
     const known = goalMeta.get(runId);
@@ -709,11 +709,13 @@ export function createRunManager(deps: RunManagerDeps) {
       } catch { first = null; } finally { await fh.close().catch(() => {}); }
     }
     const ref = first?.type === "run.created" && isTextRef(first.data?.goal) ? first.data.goal : null;
-    const g = ref ? await readText(deps.root, runId, ref).then((b) => JSON.parse(b.toString("utf8")) as { task?: { id?: unknown; key?: unknown }; createdAt?: unknown }, () => null) : null;
+    const g = ref ? await readText(deps.root, runId, ref).then((b) => JSON.parse(b.toString("utf8")) as { task?: { id?: unknown; key?: unknown }; createdAt?: unknown; workMode?: unknown }, () => null) : null;
     const meta = {
       taskId: typeof g?.task?.id === "string" && isUuid(g.task.id) ? g.task.id : null,
       taskKey: typeof g?.task?.key === "string" && /^T-\d{1,6}$/.test(g.task.key) ? g.task.key : null,
-      createdAt: typeof g?.createdAt === "number" ? g.createdAt : 0
+      createdAt: typeof g?.createdAt === "number" ? g.createdAt : 0,
+      // the goal's work mode: the run's own when its work folder's marker cannot be read
+      goalWorkMode: g?.workMode === "project" || g?.workMode === "copy" || g?.workMode === "worktree" ? g.workMode as OrchestrationWorkMode : null
     };
     if (g) goalMeta.set(runId, meta); // a goal text not readable yet (a run being created) is asked again next time
     return meta;
@@ -724,7 +726,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const workspaceId = owner(runId);
     const cached = factsCache.get(runId);
     if (cached && cached.stamp === stamp && !handles.has(runId)) return { ...cached.facts, workspaceId };
-    const meta = await metaOf(runId);
+    const { goalWorkMode, ...meta } = await metaOf(runId);
     const snap = await result(() => snapshot(runId));
     const unreadable: RunTaskFacts = { runId, ...meta, workspaceId, status: "unreadable", reason: null, newer: false, halted: false, limit: null,
       completion: null, phase: "work", permission: false, workMode: null, taken: null };
@@ -734,7 +736,7 @@ export function createRunManager(deps: RunManagerDeps) {
       const st = view.newer ? null : (await readRun(deps.root, runId).catch(() => null))?.state ?? null;
       if (st || view.newer) {
         const last = st ? Object.values(st.orch.turns).sort((a, b) => b.seq - a.seq)[0] : undefined;
-        const workMode = view.workMode ?? null;
+        const workMode = view.workMode ?? goalWorkMode;
         let taken: RunTaskFacts["taken"] = null;
         if (workMode === "copy" || workMode === "worktree") {
           // ponytail: taken.json as written, not matched to the current tree (a finished run's tree does not move)
@@ -752,7 +754,9 @@ export function createRunManager(deps: RunManagerDeps) {
         };
       }
     }
-    factsCache.set(runId, { stamp, facts });
+    // a held run's facts include what only this process knows (the active turn, a permission): never kept. ponytail: a
+    // text of a run not held that is damaged after its facts were kept shows as before until the journal changes
+    if (!handles.has(runId)) factsCache.set(runId, { stamp, facts });
     return facts;
   }
   async function taskFacts(): Promise<RunTaskFacts[]> {
@@ -793,7 +797,7 @@ export function createRunManager(deps: RunManagerDeps) {
       return board.create({ ...input, project: await realpath(input.project).catch(() => refuse("invalid_task", "the project folder does not exist")) });
     }),
     boardUpdate: (id: string, patch: Parameters<typeof board.update>[1]) => result(() => board.update(id, patch)),
-    boardArchive: (id: string, archived: boolean) => result(() => board.archive(id, archived)),
+    boardArchive: (id: string, archived: boolean) => result(() => board.archive(id, archived, () => startingTasks.has(id))),
     // a run being created counts: its journal may not be there yet (stage-b-board.md §3.3)
     boardRemove: (id: string) => result(() => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id))),
     boardAccept: (id: string) => result(() => acceptTask(id)),
