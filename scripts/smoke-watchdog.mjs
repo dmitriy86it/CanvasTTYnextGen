@@ -79,6 +79,9 @@ const ALLOWED = [
   "/bin/", "/usr/bin/", "/usr/sbin/", "/sbin/", "/usr/libexec/", "/usr/lib/", "/lib/", "/System/",
   "/Library/Developer/CommandLineTools/", "/Applications/Xcode.app/", // git behind the /usr/bin/git shim
   ...["node_modules/electron/", "src/", "out/", "tests/fixtures/", "scripts/"].map((d) => `${real(ROOT)}/${d}`),
+  // node-pty's own helper: it starts a terminal card's shell and becomes it (exec) within a moment; a sample in that
+  // moment saw it. The file itself, not its folder.
+  real(path.join(ROOT, "node_modules/node-pty/build/Release/spawn-helper")),
   NODE, real("/usr/bin/git"),
   `${real(os.tmpdir())}/`, "/private/tmp/", "/tmp/", "/private/var/folders/"
 ];
