@@ -4,6 +4,19 @@
 
 ## Unreleased
 
+## 1.5.14 — 2026-10-09
+
+A task board on the canvas: tasks, their status from the runs, «Accept the result».
+
+- A task board is a card on the canvas (the «Board» button in the workspace bar), with columns Queue / Work / Review / Done. It moves and resizes like an agent card. One board per workspace; its place is kept.
+- A task has a title, what to do, how to tell it is done (one requirement per line), a project folder and the tasks it runs after. «New task», «Edit», «Archive»; a task without runs can be deleted.
+- A task's status is never stored: it is worked out from its runs' journals, in one place for the board, the agent cards and the run summary. The card says it in one line — «Done — confirmed by checks», the reason it waits («Waits for T-2», «Waits for a permission: …», «Completed without checks…»), or what its run does now — with the executor and its cost.
+- «Start» opens the goal dialog with the task's text and requirements and «Task from the board: T-n»; the run is linked to the task. «Open run», or «Answer the request» while a permission waits.
+- «Accept the result» for a run completed without checks: it explains first and names the tasks that go on. Such a task is «Done (accepted by you, without checks)», with its own mark — never the confirmed green tick.
+- An agent card at work and the run summary show the run's task.
+- The board is kept in its own file, `orchestration/board.json` (own version, atomic writes, a damaged file set aside and the board read only). 1.5.13 neither reads nor writes it: going back to 1.5.13 and then forward again keeps the board.
+- Smokes: `board-ui` is new; `native-ui` and `orchestration-ui` no longer fail under load on their process watchdog.
+
 ## 1.5.13 — 2026-10-08
 
 No redundant permission prompts in «Work folder», resizable agent cards, a live feed in a larger card.
