@@ -109,6 +109,9 @@ test("the latest run decides: waits for the person (a question, a permission, a 
   assert.equal(autopilotStep(board, [], AT, null, { runs: 5, ms: 0 }, AUTOPILOT_BUDGET).code, "budget_runs");
   assert.equal(autopilotStep(board, [], AT, null, { runs: 1, ms: 240 * 60_000 }, AUTOPILOT_BUDGET).code, "budget_minutes");
   assert.equal(autopilotStep(board, [], AT, null, { runs: 1, ms: 0 }, { runs: 1, minutes: 9 }).code, "budget_runs");
+  // the budget used up by the run that finished the board: «all done», not «budget»
+  const last = { ...done(a), workMode: "project" }, lastB = { ...done(b), workMode: "project" };
+  assert.equal(autopilotStep(board, [last, lastB], AT, lastB.runId, { runs: 2, ms: 0 }, { runs: 2, minutes: 9 }).code, "all_done");
 });
 
 test("another run of the place goes on (the person's, another link's): the autopilot waits, never turns off for it", () => {

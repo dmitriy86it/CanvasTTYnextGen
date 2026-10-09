@@ -366,8 +366,6 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
     if (s.current === run.runId && !s.done) return { kind: "off", code: "run_paused", detail: run.reason, key };
     if (autoTakeOnDone(s, run) === "branch") return { kind: "take", runId: run.runId, key };
   }
-  if (used.runs >= budget.runs) return { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };
-  if (used.ms >= budget.minutes * 60_000) return { kind: "off", code: "budget_minutes", detail: String(budget.minutes), key: null };
   const next = nextTask(board, statuses, at);
   // another run of this place goes on (the person's, another link's): what it leaves may free the next task
   const busyHere = facts.some((f) => f.status !== "unreadable" && ACTIVE_OR_PAUSED.has(f.status)
@@ -379,6 +377,9 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
     const detail = idle.waiting.map((w) => (w.waitsFor.length ? `${w.key} (${w.reason}: ${w.waitsFor.join(", ")})` : `${w.key} (${w.reason ?? "-"})`)).join("; ");
     return { kind: "off", code: "others_wait", detail, key: null, waiting: idle.waiting };
   }
+  // the budget is asked before a start only: a last run that ends the board ends it «all done»
+  if (used.runs >= budget.runs) return { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };
+  if (used.ms >= budget.minutes * 60_000) return { kind: "off", code: "budget_minutes", detail: String(budget.minutes), key: null };
   const base = baseOf(next, board, statuses, facts);
   // a worktree starts from HEAD: from a ref is stage C (§5.2); a copy takes the branch (owner's decision 11)
   if (base && at.workMode !== "copy") return { kind: "off", code: "worktree_base", detail: base.key, key: next.key };
