@@ -10,6 +10,7 @@ import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 import { NO_MODELS, RoleModelsField } from "./RoleModels";
+import { profileGoal } from "../../../../shared/taskBoard";
 import { Differences, RunPanel, Termed } from "./RunPanel";
 import { accessProblemText, commandLike, dirtyInPlace, failingOnSource } from "./runModel";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
@@ -342,10 +343,12 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     const key = JSON.stringify(info.profile);
     if (applied.current === key) return;
     applied.current = key;
-    if (!edited.current) setCommandsText(info.profile.checks.join("\n"));
-    setWorkMode(info.profile.workMode);
-    setFinish({ commit: info.profile.finish.commit, push: false, qa: false });
-    setModels(info.profile.models ?? NO_MODELS);
+    // the same defaults as the board's autopilot takes (profileGoal): the person may change them here
+    const d = profileGoal(info.profile);
+    if (!edited.current) setCommandsText(d.commands.join("\n"));
+    setWorkMode(d.workMode);
+    setFinish(d.finish);
+    setModels(d.models);
   }, [info]);
   if (!link || !lead) return null;
 

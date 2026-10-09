@@ -1,7 +1,7 @@
 // The task board (stage B, docs/agent-orchestration/implementation/stage-b-board.md). What the person set is kept in
 // orchestration/board.json; a task's status is never kept: it is worked out here from the task's runs, by the same
 // rules for the board, the agent cards, the activity widget and the summary (the cycle's principle 8).
-import type { OrchestrationRunStatus, OrchestrationRunView, OrchestrationTurnPurpose, OrchestrationWorkMode } from "./orchestration.ts";
+import type { OrchestrationBaseRef, OrchestrationGoalInput, OrchestrationProjectProfile, OrchestrationRunStatus, OrchestrationRunView, OrchestrationTurnPurpose, OrchestrationWorkMode } from "./orchestration.ts";
 
 export const BOARD_VERSION = 1;
 
@@ -264,4 +264,30 @@ export function autoTakeOnDone(status: TaskStatus, run: Pick<RunTaskFacts, "runI
   if (!status.done || !run || run.runId !== status.current) return null;
   if (run.workMode !== "copy" && run.workMode !== "worktree") return null;
   return run.taken?.branch ? null : "branch";
+}
+
+// B4 (§5.1): what a start takes from the project settings — the same for the goal dialog (its defaults, which the
+// person may change) and for the board's autopilot (as they are). Main fills the rest in (resolveGoal: rights,
+// preparation). The actions after success: the commit only, as the dialog offers it, never in a separate copy.
+export function profileGoal(profile: Pick<OrchestrationProjectProfile, "checks" | "workMode" | "finish" | "models">) {
+  return {
+    commands: [...profile.checks],
+    workMode: profile.workMode,
+    finish: { commit: profile.finish.commit, push: false, qa: false },
+    models: profile.models ?? { lead: null, executor: null, reviewer: null }
+  };
+}
+
+// The goal of a task's start by the autopilot: the task's text and requirements, the settings as they are, in the
+// autopilot mode, from the base its dependency left (owner's decision 11).
+export function goalFor(task: Pick<BoardTask, "id" | "key" | "text" | "criteria">, profile: Pick<OrchestrationProjectProfile, "checks" | "workMode" | "finish" | "models">,
+  opts: { optionalChecks: boolean; language: "ru" | "en"; base: OrchestrationBaseRef | null }): OrchestrationGoalInput {
+  const p = profileGoal(profile);
+  const finish = p.workMode !== "copy" && p.finish.commit ? { finish: p.finish } : {};
+  return {
+    ...(opts.optionalChecks ? { models: p.models } : {}),
+    text: task.text, criteria: [...task.criteria], checks: [], commands: p.commands, workMode: p.workMode, mode: "autopilot", reviewPlan: false,
+    language: opts.language, task: { id: task.id, key: task.key }, ...finish, limits: {},
+    ...(opts.base && p.workMode === "copy" ? { base: opts.base } : {})
+  };
 }
