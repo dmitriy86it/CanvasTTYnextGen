@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
-import { BOARD_VERSION, type Board, type BoardPlace, type BoardTask, type BoardTaskInput, type BoardTaskPatch } from "../../../shared/taskBoard.ts";
+import { BOARD_VERSION, type AutopilotBudget, type Board, type BoardPlace, type BoardTask, type BoardTaskInput, type BoardTaskPatch } from "../../../shared/taskBoard.ts";
 
 class Refusal extends Error {
   readonly code: string;
@@ -40,6 +40,11 @@ function isTask(t: unknown): t is BoardTask {
     && (acc === null || (typeof acc === "object" && typeof acc.runId === "string" && UUID.test(acc.runId) && time(acc.at)));
 }
 
+const isBudget = (p: unknown): p is AutopilotBudget => {
+  const b = p as AutopilotBudget | null;
+  return !!b && typeof b === "object" && Number.isInteger(b.runs) && b.runs >= 1 && b.runs <= 100 && Number.isInteger(b.minutes) && b.minutes >= 1 && b.minutes <= 1440;
+};
+
 export type TaskInput = BoardTaskInput;
 
 export interface BoardRead { board: Board; readOnly: null | "newer_version" | "damaged_unmoved"; }
@@ -67,7 +72,7 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     }
     const raw = await readFile(file, "utf8").catch((e: NodeJS.ErrnoException) => (e.code === "ENOENT" ? null : Promise.reject(e)));
     if (raw === null) return { board: empty(), readOnly: null };
-    let v: { v?: unknown; tasks?: unknown; counters?: unknown; places?: unknown } | null = null;
+    let v: { v?: unknown; tasks?: unknown; counters?: unknown; places?: unknown; autopilot?: unknown } | null = null;
     try { v = JSON.parse(raw); } catch { v = null; }
     if (v && typeof v.v === "number" && v.v > BOARD_VERSION) {
       // a newer version's board: shown as far as its tasks read, never written
@@ -84,7 +89,11 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
       const places = v.places && typeof v.places === "object" && !Array.isArray(v.places)
         ? Object.fromEntries(Object.entries(v.places as Record<string, unknown>).filter(([k, p]) => WORKSPACE_ID.test(k) && isPlace(p))) as Record<string, BoardPlace>
         : {};
-      return { board: { v: BOARD_VERSION, tasks: tasks as BoardTask[], counters, ...(Object.keys(places).length ? { places } : {}) }, readOnly: null };
+      // a budget that does not read is dropped (the default holds)
+      const autopilot = v.autopilot && typeof v.autopilot === "object" && !Array.isArray(v.autopilot)
+        ? Object.fromEntries(Object.entries(v.autopilot as Record<string, unknown>).filter(([k, p]) => UUID.test(k) && isBudget(p))) as Record<string, AutopilotBudget>
+        : {};
+      return { board: { v: BOARD_VERSION, tasks: tasks as BoardTask[], counters, ...(Object.keys(places).length ? { places } : {}), ...(Object.keys(autopilot).length ? { autopilot } : {}) }, readOnly: null };
     }
     // damaged: set aside whole (nothing is dropped from it), the board starts empty
     const aside = `${file}.damaged-${randomUUID()}`;
@@ -195,6 +204,15 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
       const { [workspaceId]: _, ...rest } = b.places ?? {};
       const places = bounds ? { ...rest, [workspaceId]: { position: { ...bounds.position }, size: { ...bounds.size } } } : rest;
       return { next: { ...b, places }, value: null };
+    }),
+
+    // B4: the budget of a link's autopilot (null: back to the default)
+    budget: (linkId: string, budget: AutopilotBudget | null) => change(async (b) => {
+      if (!UUID.test(linkId)) refuse("invalid_task", "linkId");
+      if (budget !== null && !isBudget(budget)) refuse("invalid_task", "budget: runs 1..100, minutes 1..1440");
+      const { [linkId]: _, ...rest } = b.autopilot ?? {};
+      const autopilot = budget ? { ...rest, [linkId]: { runs: budget.runs, minutes: budget.minutes } } : rest;
+      return { next: { ...b, autopilot }, value: null };
     }),
 
     // «Accept the result»: the caller has checked that runId is the task's latest run, completed without checks.

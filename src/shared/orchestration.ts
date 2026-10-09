@@ -124,7 +124,7 @@ export interface OrchestrationGoalInput {
 }
 export interface OrchestrationBaseRef { branch: string; commit: string; key: string }
 
-import type { BoardPlace, BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
+import type { AutopilotBudget, AutopilotState, BoardPlace, BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
 
 // A task of the board, as a run's goal names it: its id in orchestration/board.json and its number for people.
 export interface OrchestrationTaskRef { id: string; key: string }
@@ -614,6 +614,9 @@ export interface OrchestrationApi {
   boardRemove(id: string, dependents?: string[]): Promise<OrchestrationResult<null>>;
   boardAccept(id: string): Promise<OrchestrationResult<BoardTask>>;
   boardPlace(workspaceId: string, bounds: BoardPlace | null): Promise<OrchestrationResult<null>>; // B2: the card's place, null: hidden
+  // B4: the board's autopilot of a link on or off (never stored); its budget in board.json (null: the default)
+  boardAutopilot(linkId: string, on: boolean, language: "ru" | "en"): Promise<OrchestrationResult<AutopilotState | null>>;
+  boardBudget(linkId: string, budget: AutopilotBudget | null): Promise<OrchestrationResult<null>>;
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;

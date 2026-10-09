@@ -40,6 +40,22 @@ export interface BoardView {
   board: Board;
   readOnly: null | "newer_version" | "damaged_unmoved";
   facts: RunTaskFacts[];
+  autopilot: Record<string, AutopilotState>; // linkId → the board's autopilot of that link, as main holds it now
+}
+
+// B4 (§5.1): the board's autopilot of a link. on — never stored (a restart turns it off); the budget is board.json's;
+// used — the runs it started since it was turned on and their working minutes; stop — why it turned itself off last.
+export interface AutopilotBudget { runs: number; minutes: number }
+export const AUTOPILOT_BUDGET: AutopilotBudget = { runs: 5, minutes: 240 };
+export type AutopilotStopCode = "all_done" | "others_wait" | "budget_runs" | "budget_minutes" | "run_stopped" | "run_failed" | "limit_reached"
+  | "run_paused" | "run_unreadable" | "settings_changed" | "grant_added" | "not_ready" | "take_failed" | "start_failed" | "worktree_base" | "link_gone";
+export interface AutopilotStop { code: AutopilotStopCode; detail: string | null; key: string | null; at: string }
+export interface AutopilotState {
+  on: boolean;
+  budget: AutopilotBudget;
+  used: { runs: number; minutes: number };
+  waits: string | null; // on, and waiting: for what (a run, the person)
+  stop: AutopilotStop | null;
 }
 
 export interface Board {
@@ -49,6 +65,8 @@ export interface Board {
   // B2: where the board card is on each workspace's canvas (absent: not shown there). Here and not in canvas.json:
   // 1.5.12/1.5.13 write canvas.json back with the keys they know only (stage-b-board.md §6).
   places?: Record<string, BoardPlace>;
+  // B4: the budget of the board's autopilot of each link (only the budget: whether it is on is never stored)
+  autopilot?: Record<string, AutopilotBudget>;
 }
 export interface BoardPlace { position: { x: number; y: number }; size: { width: number; height: number } }
 
@@ -293,4 +311,69 @@ export function goalFor(task: Pick<BoardTask, "id" | "key" | "text" | "criteria"
     language: opts.language, task: { id: task.id, key: task.key }, ...finish, limits: {},
     ...(opts.base && p.workMode === "copy" ? { base: opts.base } : {})
   };
+}
+
+// B4 (§5.2): the pauses of a run the autopilot waits through — the person answers, the run goes on
+const WAIT_PAUSES = new Set(["awaiting_answer", "plan_review", "awaiting_checks_decision", "awaiting_finish_confirmation", "awaiting_person_decision",
+  "finish_unconfirmed", "stage_done", "step_done"]);
+const ACTIVE = new Set(["created", "preparing", "running", "pausing", "stopping"]);
+
+// The working time of a run by its journal: from its first record, without the pauses that wait for the person, to its
+// end or now. A permission request is not journaled: it counts as work (§5.2 — the budget ends sooner, never later).
+export function activeMs(records: readonly { ts: string; type: string; data: Record<string, unknown> }[], now: number): number {
+  let total = 0;
+  let from: number | null = records.length ? Date.parse(records[0]!.ts) : null;
+  for (const r of records) {
+    if (r.type !== "run.status") continue;
+    const at = Date.parse(r.ts);
+    const status = String(r.data.status ?? "");
+    const working = status !== "paused" ? ACTIVE.has(status) : !WAIT_PAUSES.has(String(r.data.reason ?? ""));
+    if (from !== null && !working) { total += Math.max(0, at - from); from = null; } else if (from === null && working) from = at;
+  }
+  return total + (from !== null ? Math.max(0, now - from) : 0);
+}
+
+export type AutopilotStep =
+  | { kind: "wait"; why: string }
+  | { kind: "take"; runId: string; key: string }
+  | { kind: "start"; task: BoardTask; base: OrchestrationBaseRef | null }
+  | { kind: "off"; code: AutopilotStopCode; detail: string | null; key: string | null };
+
+// B4 (§5.2): what the board's autopilot of a link does next, from the board and the facts of the runs alone (the
+// settings, the readiness and the start itself are main's). last: the run it started last (null: none yet).
+export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[], at: { workspaceId: string; project: string; workMode: OrchestrationWorkMode },
+  last: string | null, used: { runs: number; ms: number }, budget: AutopilotBudget): AutopilotStep {
+  const statuses = boardStatuses(board, facts);
+  const run = last ? facts.find((f) => f.runId === last) : undefined;
+  const task = run?.taskId ? board.tasks.find((t) => t.id === run.taskId) : undefined;
+  if (last && (!run || !task)) return { kind: "wait", why: "run" }; // its journal is not there yet
+  if (run && task) {
+    const key = task.key;
+    if (run.newer || run.status === "unreadable") return { kind: "off", code: "run_unreadable", detail: null, key };
+    if (run.permission) return { kind: "wait", why: "permission" };
+    if (run.status === "stopped") return { kind: "off", code: "run_stopped", detail: run.reason, key };
+    if (run.status === "failed") return { kind: "off", code: "run_failed", detail: run.reason, key };
+    if (run.status === "paused") {
+      if (WAIT_PAUSES.has(run.reason ?? "")) return { kind: "wait", why: "person" };
+      return run.reason === "limit_reached" ? { kind: "off", code: "limit_reached", detail: run.limit, key } : { kind: "off", code: "run_paused", detail: run.reason, key };
+    }
+    if (run.status !== "completed") return run.halted ? { kind: "off", code: "run_paused", detail: run.reason, key } : { kind: "wait", why: "run" };
+    const s = statuses.get(task.id)!;
+    if (s.current === run.runId && s.reason === "no_checks") return { kind: "wait", why: "accept" };
+    if (s.current === run.runId && !s.done) return { kind: "off", code: "run_paused", detail: run.reason, key };
+    if (autoTakeOnDone(s, run) === "branch") return { kind: "take", runId: run.runId, key };
+  }
+  if (used.runs >= budget.runs) return { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };
+  if (used.ms >= budget.minutes * 60_000) return { kind: "off", code: "budget_minutes", detail: String(budget.minutes), key: null };
+  const next = nextTask(board, statuses, at);
+  if (!next) {
+    const idle = idleOf(board, statuses, at);
+    if (idle.allDone) return { kind: "off", code: "all_done", detail: null, key: null };
+    const detail = idle.waiting.map((w) => (w.waitsFor.length ? `${w.key} (${w.reason}: ${w.waitsFor.join(", ")})` : `${w.key} (${w.reason ?? "-"})`)).join("; ");
+    return { kind: "off", code: "others_wait", detail, key: null };
+  }
+  const base = baseOf(next, board, statuses, facts);
+  // a worktree starts from HEAD: from a ref is stage C (§5.2); a copy takes the branch (owner's decision 11)
+  if (base && at.workMode !== "copy") return { kind: "off", code: "worktree_base", detail: base.key, key: next.key };
+  return { kind: "start", task: next, base };
 }

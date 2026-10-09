@@ -16,7 +16,7 @@ import type {
 import type { RunCommand } from "../services/orchestration/orchestrationService.ts";
 import type { RunManager } from "../services/orchestration/manager.ts";
 import { SAFE_MODEL } from "../services/orchestration/providers.ts";
-import type { BoardPlace, BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
+import type { AutopilotBudget, BoardPlace, BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
 
 type Handle = (channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) => void;
 
@@ -400,6 +400,17 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     const num = (v: unknown, what: string) => (typeof v === "number" && Number.isFinite(v) ? v : bad(`${what} must be a number`));
     return [str(workspaceId, "workspaceId", 64), { position: { x: num(p.x, "x"), y: num(p.y, "y") }, size: { width: num(z.width, "width"), height: num(z.height, "height") } }] as [string, BoardPlace];
   }, manager.boardPlace));
+  handleMain(IPC.orchestrationBoardAutopilot, (_e, linkId: unknown, on: unknown, language: unknown) => checked(() => {
+    if (typeof on !== "boolean") bad("on must be a boolean");
+    if (language !== "ru" && language !== "en") bad("language must be ru or en");
+    return [uuid(linkId, "linkId"), on as boolean, language as "ru" | "en"] as [string, boolean, "ru" | "en"];
+  }, manager.boardAutopilot));
+  handleMain(IPC.orchestrationBoardBudget, (_e, linkId: unknown, budget: unknown) => checked(() => {
+    if (budget === null) return [uuid(linkId, "linkId"), null] as [string, null];
+    const o = obj(budget, "budget", ["runs", "minutes"]);
+    const int = (v: unknown, what: string, max: number) => (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= max ? v as number : bad(`${what} must be 1..${max}`));
+    return [uuid(linkId, "linkId"), { runs: int(o.runs, "budget.runs", 100), minutes: int(o.minutes, "budget.minutes", 1440) }] as [string, AutopilotBudget];
+  }, manager.boardBudget));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");

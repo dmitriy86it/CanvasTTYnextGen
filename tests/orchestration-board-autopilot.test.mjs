@@ -1,0 +1,410 @@
+// B4, the board's autopilot (docs/agent-orchestration/implementation/stage-b-board.md §5): what it does next from the
+// board and the runs' facts (autopilotStep), the controller over stand-in calls (readiness before each start, the
+// settings' snapshot, waits it never answers), and a chain A → B → C through the manager on fake CLIs.
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { after, test } from "node:test";
+import { findGit } from "../src/main/services/orchestration/git.ts";
+import { createBoardAutopilot } from "../src/main/services/orchestration/boardAutopilot.ts";
+import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
+import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
+import { AUTOPILOT_BUDGET, activeMs, autopilotStep, boardStatuses, goalFor } from "../src/shared/taskBoard.ts";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const GIT = findGit(process.env);
+const NODE = fs.realpathSync(process.execPath);
+const LAUNCH = { command: NODE, args: [path.join(HERE, "..", "src", "orchestration", "supervisor.mjs")], env: {} };
+const OPTS = { skip: process.platform === "win32" && "orchestration runs on macOS and Linux", timeout: 240_000 };
+const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "canvastty-board-ap-")));
+after(() => fs.rmSync(TMP, { recursive: true, force: true }));
+fs.writeFileSync(path.join(TMP, "gitconfig"), "");
+const GIT_ENV = { PATH: process.env.PATH, HOME: TMP, GIT_CONFIG_GLOBAL: path.join(TMP, "gitconfig"), GIT_CONFIG_NOSYSTEM: "1",
+  GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
+const g = (cwd, ...args) => execFileSync(GIT, args, { cwd, encoding: "utf8", env: GIT_ENV });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let n = 0;
+
+const WS = "common";
+const run = (over = {}) => ({ runId: randomUUID(), taskId: null, taskKey: null, createdAt: ++n, workspaceId: WS, status: "running", reason: null, newer: false, halted: false, limit: null,
+  completion: null, phase: "work", permission: false, workMode: "copy", taken: null, ...over });
+const task = (over = {}) => ({ id: randomUUID(), key: `T-${++n}`, workspaceId: WS, project: "/p", title: "t", text: "x", criteria: ["c"],
+  dependsOn: [], order: n, createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z", archivedAt: null, accepted: null, ...over });
+const AT = { workspaceId: WS, project: "/p", workMode: "copy" };
+const NONE = { runs: 0, ms: 0 };
+const C = (hex) => hex.repeat(40).slice(0, 40);
+const done = (t, over = {}) => run({ taskId: t.id, taskKey: t.key, status: "completed", completion: "confirmed", ...over });
+
+// ---------------- what it does next ----------------
+
+test("the next step: a task by order whose dependencies are «Done»; a copy from the dependency's branch; none — why", () => {
+  const a = task(), b = task({ dependsOn: [a.id] }), c = task({ dependsOn: [b.id] });
+  const board = { tasks: [c, b, a] };
+  let s = autopilotStep(board, [], AT, null, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.task?.key, s.base], ["start", a.key, null]);
+  // A done in a copy, not taken: the autopilot takes it as a branch first
+  const ra = done(a);
+  s = autopilotStep(board, [ra], AT, ra.runId, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.runId], ["take", ra.runId]);
+  // taken: B starts from A's branch
+  const ta = { ...ra, taken: { branch: "raoden/a", commit: C("a"), applied: false } };
+  s = autopilotStep(board, [ta], AT, ra.runId, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.task.key, s.base], ["start", b.key, { branch: "raoden/a", commit: C("a"), key: a.key }]);
+  // a worktree does not start from a branch (stage C): off, said why
+  s = autopilotStep(board, [ta], { ...AT, workMode: "worktree" }, ra.runId, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.code, s.detail], ["off", "worktree_base", a.key]);
+  // every task «Done»
+  const all = [ta, { ...done(b), taken: { branch: "raoden/b", commit: C("b"), applied: false } }, { ...done(c), taken: { branch: "raoden/c", commit: C("c"), applied: false } }];
+  s = autopilotStep(board, all, AT, all[2].runId, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.code], ["off", "all_done"]);
+  // a task tried before (stopped) is never retried by the autopilot: the others wait for it
+  s = autopilotStep(board, [ta, run({ taskId: b.id, status: "stopped" })], AT, null, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.code], ["off", "others_wait"]);
+  assert.match(s.detail, new RegExp(`${b.key} \\(last_stopped\\)`));
+  assert.match(s.detail, new RegExp(`${c.key} \\(waits_task: ${b.key}\\)`));
+});
+
+test("two dependencies whose results are in two branches: a merge is the person's (stage C) — never started, said why", () => {
+  const a = task(), b = task(), c = task({ dependsOn: [a.id, b.id] });
+  const facts = [{ ...done(a), taken: { branch: "raoden/a", commit: C("a"), applied: false } }, { ...done(b), taken: { branch: "raoden/b", commit: C("b"), applied: false } }];
+  const st = boardStatuses({ tasks: [a, b, c] }, facts);
+  assert.deepEqual([st.get(c.id).reason, st.get(c.id).waitsFor], ["waits_merge", [a.key, b.key]]);
+  const s = autopilotStep({ tasks: [a, b, c] }, facts, AT, facts[1].runId, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.code], ["off", "others_wait"]);
+  assert.match(s.detail, /waits_merge/);
+  // one of them in the working folder (applied) and one in a branch: still two results to join
+  const mixed = [{ ...facts[0], taken: { branch: "raoden/a", commit: C("a"), applied: true } }, facts[1]];
+  assert.equal(boardStatuses({ tasks: [a, b, c] }, mixed).get(c.id).reason, "waits_merge");
+});
+
+test("the latest run decides: waits for the person (a question, a permission, a decision, «Accept the result»), off when it did not end «Done»", () => {
+  const a = task(), b = task({ dependsOn: [a.id] });
+  const board = { tasks: [a, b] };
+  const at = (over) => { const r = run({ taskId: a.id, taskKey: a.key, ...over }); return autopilotStep(board, [r], AT, r.runId, NONE, AUTOPILOT_BUDGET); };
+  assert.deepEqual(at({}), { kind: "wait", why: "run" });
+  assert.deepEqual(at({ permission: true }), { kind: "wait", why: "permission" }, "a permission request waits: the autopilot never answers it");
+  assert.deepEqual(at({ status: "paused", reason: "awaiting_answer" }), { kind: "wait", why: "person" });
+  assert.deepEqual(at({ status: "paused", reason: "plan_review" }), { kind: "wait", why: "person" });
+  assert.deepEqual(at({ status: "paused", reason: "step_done" }), { kind: "wait", why: "person" });
+  assert.deepEqual(at({ status: "completed", completion: "no_checks" }), { kind: "wait", why: "accept" });
+  assert.deepEqual([at({ status: "paused", reason: "limit_reached", limit: "turns" }).code, at({ status: "paused", reason: "limit_reached", limit: "turns" }).detail], ["limit_reached", "turns"]);
+  for (const [over, code] of [[{ status: "stopped" }, "run_stopped"], [{ status: "failed" }, "run_failed"], [{ status: "paused", reason: "environment_error" }, "run_paused"],
+    [{ status: "paused", reason: "coverage_lost" }, "run_paused"], [{ halted: true }, "run_paused"], [{ status: "unreadable" }, "run_unreadable"]]) {
+    const s = at(over);
+    assert.deepEqual([s.kind, s.code, s.key], ["off", code, a.key], JSON.stringify(over));
+  }
+  // its journal not there yet: waits
+  assert.deepEqual(autopilotStep(board, [], AT, randomUUID(), NONE, AUTOPILOT_BUDGET), { kind: "wait", why: "run" });
+  // the budget: runs, then minutes
+  assert.equal(autopilotStep(board, [], AT, null, { runs: 5, ms: 0 }, AUTOPILOT_BUDGET).code, "budget_runs");
+  assert.equal(autopilotStep(board, [], AT, null, { runs: 1, ms: 240 * 60_000 }, AUTOPILOT_BUDGET).code, "budget_minutes");
+  assert.equal(autopilotStep(board, [], AT, null, { runs: 1, ms: 0 }, { runs: 1, minutes: 9 }).code, "budget_runs");
+});
+
+test("a dependency «Done» on a shaky base (changed after, started anyway) is the person's: not taken next", () => {
+  const a = task(), b = task({ dependsOn: [a.id] }), c = task({ dependsOn: [b.id] });
+  // B done while A never was (started anyway): C waits for the person
+  const facts = [{ ...done(b), workMode: "project" }];
+  const s = autopilotStep({ tasks: [a, b, c] }, facts, AT, null, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([s.kind, s.task?.key], ["start", a.key], "A itself goes");
+  const after = autopilotStep({ tasks: [{ ...a, archivedAt: "x" }, b, c] }, facts, AT, null, NONE, AUTOPILOT_BUDGET);
+  assert.deepEqual([after.kind, after.code], ["off", "others_wait"]);
+});
+
+test("working minutes by the journal: without the pauses that wait for the person; a permission request counts", () => {
+  const t0 = Date.parse("2026-10-09T10:00:00Z");
+  const at = (min) => new Date(t0 + min * 60_000).toISOString();
+  const rec = (min, status, reason = null) => ({ ts: at(min), type: "run.status", data: { status, reason } });
+  const records = [{ ts: at(0), type: "run.created", data: {} }, rec(0, "running"), rec(10, "paused", "plan_review"), rec(40, "running"), rec(45, "paused", "environment_error"), rec(50, "running"), rec(60, "completed")];
+  assert.equal(activeMs(records, t0 + 999 * 60_000) / 60_000, 10 + 5 + 5 + 10);
+  // still running: up to now
+  assert.equal(activeMs(records.slice(0, 4), t0 + 41 * 60_000) / 60_000, 11);
+});
+
+test("the goal of a task: the profile as it is, autopilot mode, the dependency's branch only for a copy", () => {
+  const profile = { checks: ["npm test"], workMode: "copy", finish: { commit: true, push: true, qa: true }, models: { lead: "m1", executor: null, reviewer: null } };
+  const t = task({ text: "do", criteria: ["a", "b"] });
+  const base = { branch: "raoden/x", commit: C("1"), key: "T-1" };
+  const goal = goalFor(t, profile, { optionalChecks: true, language: "ru", base });
+  assert.deepEqual(goal, { models: profile.models, text: "do", criteria: ["a", "b"], checks: [], commands: ["npm test"], workMode: "copy", mode: "autopilot", reviewPlan: false,
+    language: "ru", task: { id: t.id, key: t.key }, limits: {}, base });
+  assert.equal("finish" in goal, false, "a separate copy has no actions after success");
+  const project = goalFor(t, { ...profile, workMode: "project" }, { optionalChecks: false, language: "en", base });
+  assert.deepEqual([project.finish, "base" in project, "models" in project], [{ commit: true, push: false, qa: false }, false, false], "never push or QA; no base outside a copy");
+});
+
+// ---------------- the controller over stand-in calls ----------------
+
+function standIn({ tasks, profile = { access: { claude: "workspace", codex: "workspace" }, workMode: "copy", checks: ["true"], finish: { commit: false, push: false, qa: false }, grants: [] } }) {
+  const facts = [];
+  const calls = { readiness: 0, start: [], take: [] };
+  const state = { tasks, profile, ready: { ready: true, items: [] } };
+  const deps = {
+    view: async () => ({ board: { v: 1, tasks: state.tasks, counters: {} }, facts: [...facts] }),
+    link: async () => ({ workspaceId: WS, project: "/p" }),
+    profile: async () => state.profile,
+    optionalChecks: true,
+    journal: async () => [],
+    readiness: async () => { calls.readiness++; return { ok: true, value: state.ready }; },
+    start: async ({ requestId, goal }) => {
+      calls.start.push(goal);
+      facts.push(run({ runId: requestId, taskId: goal.task.id, taskKey: goal.task.key }));
+      return { ok: true, value: { runId: requestId, created: true } };
+    },
+    take: async (runId) => {
+      calls.take.push(runId);
+      const f = facts.find((x) => x.runId === runId);
+      f.taken = { branch: `raoden/${f.taskKey}`, commit: C(String(calls.take.length)), applied: false };
+      return { ok: true, value: { result: "created" } };
+    },
+    newId: () => randomUUID(),
+    now: () => Date.now()
+  };
+  const finish = (key, over = { status: "completed", completion: "confirmed" }) => Object.assign(facts.find((f) => f.taskKey === key && f.status === "running"), over);
+  return { deps, facts, calls, state, finish };
+}
+const LINK = randomUUID();
+
+test("controller: readiness before each start; a chain goes on from each branch; all «Done» — off with the reason", async () => {
+  const a = task(), b = task({ dependsOn: [a.id] }), c = task({ dependsOn: [b.id] });
+  const s = standIn({ tasks: [a, b, c] });
+  const ap = createBoardAutopilot(s.deps, async () => AUTOPILOT_BUDGET, 3_600_000);
+  await ap.set(LINK, true, "ru");
+  await ap.tick(LINK);
+  assert.deepEqual([s.calls.readiness, s.calls.start.map((g) => g.task.key)], [1, [a.key]]);
+  await ap.tick(LINK);
+  assert.equal(s.calls.start.length, 1, "A is still running: nothing else starts");
+  s.finish(a.key);
+  await ap.tick(LINK); // take
+  await ap.tick(LINK); // start B
+  assert.deepEqual([s.calls.readiness, s.calls.start.map((g) => [g.task.key, g.base?.key, g.base?.branch])], [2, [[a.key, undefined, undefined], [b.key, a.key, `raoden/${a.key}`]]]);
+  s.finish(b.key);
+  await ap.tick(LINK);
+  await ap.tick(LINK);
+  assert.deepEqual([s.calls.readiness, s.calls.start.at(-1).base], [3, { branch: `raoden/${b.key}`, commit: C("2"), key: b.key }]);
+  s.finish(c.key);
+  await ap.tick(LINK);
+  await ap.tick(LINK);
+  const st = (await ap.state())[LINK];
+  assert.deepEqual([st.on, st.stop.code, st.used.runs, s.calls.take.length], [false, "all_done", 0, 3]);
+  ap.shutdown();
+});
+
+test("controller: a readiness blocker or a «confirm» item turns it off before the start; a run that waits for the person is never answered", async () => {
+  const a = task(), b = task();
+  const s = standIn({ tasks: [a, b] });
+  const ap = createBoardAutopilot(s.deps, async () => AUTOPILOT_BUDGET, 3_600_000);
+  s.state.ready = { ready: true, items: [{ id: "tests", level: "confirm", detail: "no test file found" }] };
+  await ap.set(LINK, true);
+  await ap.tick(LINK);
+  let st = (await ap.state())[LINK];
+  assert.deepEqual([st.on, st.stop.code, st.stop.detail, s.calls.start.length], [false, "not_ready", "tests: no test file found", 0]);
+  s.state.ready = { ready: true, items: [] };
+  await ap.set(LINK, true);
+  await ap.tick(LINK);
+  // a permission request: it waits, starts nothing, takes nothing, and has no way to answer
+  Object.assign(s.facts[0], { permission: true });
+  for (let i = 0; i < 3; i++) await ap.tick(LINK);
+  st = (await ap.state())[LINK];
+  assert.deepEqual([st.on, st.waits, s.calls.start.length, s.calls.take.length], [true, "permission", 1, 0]);
+  // stopped: off, with the task
+  Object.assign(s.facts[0], { permission: false, status: "stopped", reason: "user_request" });
+  await ap.tick(LINK);
+  st = (await ap.state())[LINK];
+  assert.deepEqual([st.on, st.stop.code, st.stop.key, s.calls.start.length], [false, "run_stopped", a.key, 1]);
+  ap.shutdown();
+});
+
+test("controller: «Done» without checks waits for «Accept the result», then goes on", async () => {
+  const a = task(), b = task({ dependsOn: [a.id] });
+  const s = standIn({ tasks: [a, b] });
+  const ap = createBoardAutopilot(s.deps, async () => AUTOPILOT_BUDGET, 3_600_000);
+  await ap.set(LINK, true);
+  await ap.tick(LINK);
+  s.finish(a.key, { status: "completed", completion: "no_checks" });
+  for (let i = 0; i < 3; i++) await ap.tick(LINK);
+  assert.deepEqual([(await ap.state())[LINK].waits, s.calls.start.length, s.calls.take.length], ["accept", 1, 0]);
+  s.state.tasks = [{ ...a, accepted: { runId: s.facts[0].runId, at: "x" } }, b];
+  await ap.tick(LINK);
+  await ap.tick(LINK);
+  assert.deepEqual([s.calls.take.length, s.calls.start.map((g) => g.task.key)], [1, [a.key, b.key]]);
+  ap.shutdown();
+});
+
+test("controller: the project's settings changed since it was turned on — off; a permission saved for the project is named", async () => {
+  const a = task(), b = task();
+  const s = standIn({ tasks: [a, b] });
+  const ap = createBoardAutopilot(s.deps, async () => AUTOPILOT_BUDGET, 3_600_000);
+  await ap.set(LINK, true);
+  await ap.tick(LINK);
+  s.state.profile = { ...s.state.profile, grants: [{ id: "g1", provider: "claude", kind: "command", tool: "Bash", summary: "npm test", fingerprint: "f", grantedAt: "x" }] };
+  s.finish(a.key, { status: "completed", completion: "confirmed", workMode: "project" });
+  await ap.tick(LINK);
+  let st = (await ap.state())[LINK];
+  assert.deepEqual([st.on, st.stop.code, st.stop.detail, s.calls.start.length], [false, "grant_added", "claude: npm test", 1]);
+  // turned on again: the new settings are the snapshot; then the work mode changes
+  await ap.set(LINK, true);
+  s.state.profile = { ...s.state.profile, workMode: "project" };
+  await ap.tick(LINK);
+  st = (await ap.state())[LINK];
+  assert.deepEqual([st.stop.code, s.calls.start.length], ["settings_changed", 1]);
+  // turned off by the person: no reason kept, nothing starts
+  await ap.set(LINK, true);
+  await ap.set(LINK, false);
+  await ap.tick(LINK);
+  assert.deepEqual([(await ap.state())[LINK], s.calls.start.length], [undefined, 1]);
+  ap.shutdown();
+});
+
+// ---------------- through the manager, fake CLIs ----------------
+
+function wrapper(name, mock) {
+  const file = path.join(TMP, name);
+  fs.writeFileSync(file, `#!/bin/sh\nexec "${NODE}" "${path.join(HERE, "fixtures", "orchestration", mock)}" "$@"\n`, { mode: 0o755 });
+  return file;
+}
+const CODEX = wrapper("codex", "mock-codex.mjs");
+const CLAUDE = wrapper("claude", "mock-claude.mjs");
+const SHELL = path.join(TMP, "test-shell");
+fs.writeFileSync(SHELL, `#!/bin/sh\ncase "$1" in -ilc|-c) shift ;; esac\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
+function script(answers) {
+  const dir = path.join(TMP, `script-${++n}`);
+  fs.mkdirSync(dir);
+  answers.forEach((a, i) => {
+    fs.writeFileSync(path.join(dir, `${i + 1}.json`), JSON.stringify(a.answer));
+    if (a.writes) fs.writeFileSync(path.join(dir, `${i + 1}.writes.json`), JSON.stringify(a.writes));
+  });
+  return dir;
+}
+// one task's four turns: the plan, the executor writes <file>, the review, the final review
+const turns = (file) => {
+  const c1 = { keep: null, text: `${file} says done`, covers: ["R1"], evidence: { kind: "change", check: null } };
+  return [
+    { answer: { stages: [{ title: "fix", task: `write ${file}`, conditions: [c1] }], dropped: [], dropRequirements: [], question: null } },
+    { answer: { summary: "done", done: true }, writes: [{ rel: file, base64: Buffer.from("done\n").toString("base64") }] },
+    { answer: { conditions: [{ id: "C1", status: "met", paths: [file], note: "written" }], findings: [], request: "none", question: null } },
+    { answer: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "written" }] } }
+  ];
+};
+function manager(answers, env = {}) {
+  const root = path.join(TMP, `root-${++n}`);
+  const file = path.join(TMP, `providers-${++n}.json`);
+  const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script(answers), ...env } };
+  fs.writeFileSync(file, JSON.stringify({ codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p },
+    shell: SHELL, checkEnv: { ...GIT_ENV, PATH: `/usr/bin:/bin:${path.dirname(GIT)}`, HOME: TMP } }));
+  const m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
+    agents: async () => { throw new Error("not used"); }, native: testNativeRuntime(file, () => LAUNCH), leadSandbox: false, journalV2: true,
+    workspaceOpen: () => true, workspaceKnown: (id) => id === "common" || id === "ws-other" });
+  m.root = root;
+  return m;
+}
+function project() {
+  const dir = path.join(TMP, `project-${++n}`);
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, "a.txt"), "1\n");
+  for (const a of [["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "init"]]) g(dir, ...a);
+  return dir;
+}
+const until = async (fn, what, ms = 120_000) => {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = await fn();
+    if (v) return v;
+    if (Date.now() > end) throw new Error(`timed out: ${what}`);
+    await sleep(100);
+  }
+};
+const input = (over = {}) => ({ workspaceId: WS, title: "t", text: "write a file", criteria: ["the file says done"], ...over });
+const bounds = { position: { x: 0, y: 0 }, size: { width: 280, height: 160 } };
+async function linkOn(m, src, workspaceId) {
+  const lead = (await m.createAgent({ agentId: randomUUID(), provider: "codex", project: src, bounds, ...(workspaceId ? { workspaceId } : {}) })).value.agentId;
+  const exec = (await m.createAgent({ agentId: randomUUID(), provider: "claude", project: src, bounds, ...(workspaceId ? { workspaceId } : {}) })).value.agentId;
+  return (await m.createLink({ linkId: randomUUID(), fromAgentId: lead, toAgentId: exec })).value.linkId;
+}
+const goalOf = (m, runId) => {
+  const created = JSON.parse(fs.readFileSync(path.join(m.root, "runs", runId, "journal.jsonl"), "utf8").split("\n")[0]);
+  return JSON.parse(fs.readFileSync(path.join(m.root, "runs", runId, "texts", created.data.goal.sha256)));
+};
+
+test("a chain A → B → C on the board's autopilot: each «Done», each result a branch, each next copy from the branch before; the working folder untouched", OPTS, async () => {
+  const src = project();
+  const m = manager([...turns("a2.txt"), ...turns("b2.txt"), ...turns("c2.txt")]);
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: ["true"] });
+  const a = (await m.boardCreate(input({ project: src, title: "A" }))).value;
+  const b = (await m.boardCreate(input({ project: src, title: "B", dependsOn: [a.id] }))).value;
+  const c = (await m.boardCreate(input({ project: src, title: "C", dependsOn: [b.id] }))).value;
+  const head = g(src, "rev-parse", "HEAD").trim();
+  const linkId = await linkOn(m, src);
+  const on = await m.boardAutopilot(linkId, true, "en");
+  assert.ok(on.ok && on.value.on, JSON.stringify(on));
+  const end = await until(async () => { const s = (await m.board()).value.autopilot[linkId]; return s && !s.on ? s : null; }, "the autopilot to end");
+  assert.equal(end.stop.code, "all_done", JSON.stringify(end));
+  const v = (await m.board()).value;
+  const st = boardStatuses(v.board, v.facts);
+  assert.deepEqual([a, b, c].map((t) => st.get(t.id).done), ["confirmed", "confirmed", "confirmed"]);
+  const runOf = (t) => v.facts.find((f) => f.runId === st.get(t.id).current);
+  const [ra, rb, rc] = [a, b, c].map(runOf);
+  for (const r of [ra, rb, rc]) assert.ok(r.taken?.branch?.startsWith("raoden/") && /^[0-9a-f]{40}$/.test(r.taken.commit), JSON.stringify(r.taken));
+  // the bases: B from A's branch, C from B's; A from the working folder
+  assert.equal(goalOf(m, ra.runId).base, undefined);
+  assert.deepEqual(goalOf(m, rb.runId).base, { branch: ra.taken.branch, commit: ra.taken.commit, key: a.key });
+  assert.deepEqual(goalOf(m, rc.runId).base, { branch: rb.taken.branch, commit: rb.taken.commit, key: b.key });
+  // C's branch holds all three changes; the commits chain; the working folder, HEAD and main as they were
+  assert.deepEqual(g(src, "ls-tree", "--name-only", rc.taken.branch).trim().split("\n").sort(), ["a.txt", "a2.txt", "b2.txt", "c2.txt"]);
+  g(src, "merge-base", "--is-ancestor", ra.taken.commit, rb.taken.commit);
+  g(src, "merge-base", "--is-ancestor", rb.taken.commit, rc.taken.commit);
+  assert.deepEqual([g(src, "rev-parse", "HEAD").trim(), g(src, "status", "--porcelain").trim(), fs.readdirSync(src).sort()], [head, "", [".git", "a.txt"]]);
+  assert.equal(end.used.runs, 0, "off: nothing counted any more");
+  await m.shutdown();
+});
+
+test("main checks a task's start: one run of a task at a time (two links at once), the workspace that owns it, a base only from its dependency's branch", OPTS, async () => {
+  const src = project();
+  const m = manager([...turns("a2.txt"), ...turns("b2.txt")]);
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: ["true"] });
+  const a = (await m.boardCreate(input({ project: src }))).value;
+  const goal = { text: "x", criteria: ["c"], checks: [], commands: ["true"], workMode: "copy", mode: "autopilot", reviewPlan: true, task: { id: a.id, key: a.key } };
+  // another workspace's link: the task is not its
+  const foreign = await linkOn(m, src, "ws-other");
+  assert.equal((await m.startOnLink({ linkId: foreign, requestId: randomUUID(), goal })).code, "task_workspace");
+  // a base the task's dependencies never made
+  const bad = await m.startOnLink({ linkId: await linkOn(m, src), requestId: randomUUID(), goal: { ...goal, base: { branch: "main", commit: g(src, "rev-parse", "HEAD").trim(), key: "T-9" } } });
+  assert.equal(bad.code, "invalid_base");
+  // two starts of one task at once, on two links of its workspace: one run
+  const [l1, l2] = [await linkOn(m, src), await linkOn(m, src)];
+  const both = await Promise.all([m.startOnLink({ linkId: l1, requestId: randomUUID(), goal }), m.startOnLink({ linkId: l2, requestId: randomUUID(), goal })]);
+  assert.equal(both.filter((r) => r.ok).length, 1, JSON.stringify(both));
+  assert.ok(["task_active_run", "folder_busy"].includes(both.find((r) => !r.ok).code), JSON.stringify(both));
+  await m.shutdown();
+});
+
+test("«Completed without checks» holds the chain until «Accept the result»; then the result is taken and the next task starts from it", OPTS, async () => {
+  const src = project();
+  // no check command: the lead proposes none (journal v2), the runs complete without checks
+  const m = manager([...turns("a2.txt"), ...turns("b2.txt")], { MOCK_CHECKS: "none" });
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: [] });
+  const a = (await m.boardCreate(input({ project: src, title: "A" }))).value;
+  const b = (await m.boardCreate(input({ project: src, title: "B", dependsOn: [a.id] }))).value;
+  const linkId = await linkOn(m, src);
+  assert.ok((await m.boardAutopilot(linkId, true, "ru")).ok);
+  const waiting = await until(async () => { const s = (await m.board()).value.autopilot[linkId]; return s?.waits === "accept" ? s : null; }, "the wait for «Accept»");
+  assert.equal(waiting.on, true);
+  await sleep(2000); // a few beats: nothing taken, nothing started
+  let v = (await m.board()).value;
+  assert.deepEqual(v.facts.map((f) => [f.taskKey, f.completion, f.taken?.branch ?? null]), [[a.key, "no_checks", null]]);
+  assert.ok((await m.boardAccept(a.id)).ok);
+  await until(async () => (await m.board()).value.facts.some((f) => f.taskKey === b.key), "B to start");
+  v = (await m.board()).value;
+  const ra = v.facts.find((f) => f.taskKey === a.key);
+  const rb = v.facts.find((f) => f.taskKey === b.key);
+  assert.ok(ra.taken?.branch, "A's result taken as a branch once accepted");
+  assert.deepEqual(goalOf(m, rb.runId).base, { branch: ra.taken.branch, commit: ra.taken.commit, key: a.key });
+  await until(async () => (await m.board()).value.autopilot[linkId]?.waits === "accept", "B's wait for «Accept»");
+  assert.ok((await m.boardAutopilot(linkId, false, "ru")).ok);
+  assert.equal((await m.board()).value.autopilot[linkId], undefined, "turned off by the person: no reason kept");
+  await m.shutdown();
+});

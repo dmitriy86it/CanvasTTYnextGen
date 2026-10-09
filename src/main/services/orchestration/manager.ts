@@ -2,7 +2,7 @@
 // process only, so a run has one owner and one writer. Nothing is opened or started on construction: a run is opened
 // on an explicit command, created on an explicit create, and after a restart it stays as the journal left it.
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { accessSync, constants as fsConstants, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, open, readdir, readFile, realpath, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -52,9 +52,10 @@ import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
 import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
 import { boardStatuses, runPhase } from "../../../shared/taskBoard.ts";
-import type { BoardPlace, BoardTask, BoardView, RunTaskFacts } from "../../../shared/taskBoard.ts";
+import { AUTOPILOT_BUDGET, type AutopilotBudget, type BoardPlace, type BoardTask, type BoardView, type RunTaskFacts } from "../../../shared/taskBoard.ts";
 import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
-import { runOwners } from "../../../shared/workspaceOwnership.ts";
+import { runOwners, workspaceOf } from "../../../shared/workspaceOwnership.ts";
+import { createBoardAutopilot } from "./boardAutopilot.ts";
 import { COMMON_WORKSPACE_ID } from "../../../shared/contracts.ts";
 import { orchestrationAvailable } from "../../../shared/orchestration.ts";
 import type {
@@ -535,7 +536,7 @@ export function createRunManager(deps: RunManagerDeps) {
         const stored = JSON.parse((await readText(deps.root, runId, existing.state.goal)).toString("utf8")) as Record<string, unknown>;
         return stored.requestKey === key ? { runId, created: false } : conflict();
       }
-      await taskOk(source, req.goal.task, req.anyway === true, inQueue); // a repeat of a created run is answered above, whatever became of the task
+      await taskOk(source, runId, req.goal, req.anyway === true, inQueue); // a repeat of a created run is answered above, whatever became of the task
       // The catalog is checked before anything is resolved (no agent, no CLI version probe).
       const native = Array.isArray(req.goal.commands) || req.goal.mode !== undefined;
       if (!native) for (const id of req.goal.checks) if (!CHECK_CATALOG.checks.some((c) => c.id === id)) refuse("unknown_check", `no check with id ${id}`);
@@ -774,7 +775,7 @@ export function createRunManager(deps: RunManagerDeps) {
   }
   async function boardView(): Promise<BoardView> {
     const r = await board.read();
-    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey) };
+    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey), autopilot: await autopilot.state() };
   }
   // «Accept the result» (owner's decision 2): only of the task's latest run, completed without checks by its journal
   async function acceptTask(taskId: string): Promise<BoardTask> {
@@ -802,8 +803,11 @@ export function createRunManager(deps: RunManagerDeps) {
   // (§4.2). The board as last saved (peek): a start on a link runs inside the canvas queue, and a change of the board
   // may wait for the canvas (a new number, a deletion) — waiting for the board's queue here would wait both ways.
   // ponytail: checked before the run is created, not under a lock with it; a dependency added in between is not seen
-  async function taskOk(source: string, task: { id: string; key: string } | undefined, anyway: boolean, inQueue?: OrchestrationCanvas): Promise<void> {
-    if (!task) return;
+  // B4: also one run of a task at a time, of the workspace that owns the task (the link's lead's, or the common one for
+  // a start not on a link), and a base (decision 11) only from the branch a dependency's result was taken into.
+  async function taskOk(source: string, runId: string, goal: OrchestrationGoalInput, anyway: boolean, inQueue?: OrchestrationCanvas): Promise<void> {
+    const task = goal.task;
+    if (!task) { if (goal.base) refuse("invalid_base", "a base is given only for a task of the board"); return; }
     if (leavingTasks.has(task.id)) refuse("task_changing", "the task is being deleted or archived");
     // inside the canvas queue the board as last saved; elsewhere after the board's queue (a change in it is seen)
     const b = (inQueue ? await board.peek() : await board.read()).board;
@@ -811,14 +815,36 @@ export function createRunManager(deps: RunManagerDeps) {
     if (!t || t.key !== task.key) refuse("task_not_found", `no task ${task.key} on the board`);
     if (await realpath(t!.project).catch(() => t!.project) !== source) refuse("task_project", "the task belongs to another project folder");
     if (t!.archivedAt) refuse("task_archived", "the task is archived");
+    const c = inQueue ?? await canvas.read(exists);
+    if (runOwners(c, known)(runId) !== t!.workspaceId) refuse("task_workspace", `${t!.key} belongs to another workspace`);
+    const facts = await taskFacts(c);
+    if (facts.some((f) => f.taskId === t!.id && f.runId !== runId && f.status !== "unreadable" && !TERMINAL_STATUSES.includes(f.status))) {
+      refuse("task_active_run", `${t!.key} has an active run`);
+    }
+    if (goal.base) {
+      const from = b.tasks.filter((d) => t!.dependsOn.includes(d.id) && d.key === goal.base!.key);
+      const statuses = boardStatuses(b, facts);
+      const ok = from.some((d) => {
+        const run = facts.find((f) => f.runId === statuses.get(d.id)?.current);
+        return run?.taken?.branch === goal.base!.branch && run.taken.commit === goal.base!.commit;
+      });
+      if (!ok) refuse("invalid_base", `the base is not the branch of a result of what ${t!.key} depends on`);
+    }
     if (anyway) return;
-    const wait = boardStatuses(b, await taskFacts(inQueue)).get(t!.id)?.depsWait;
+    const wait = boardStatuses(b, facts).get(t!.id)?.depsWait;
     if (wait) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
   }
 
-  return {
+  const api = {
     // B1: the board and the facts of the runs of its tasks; the renderer works the statuses out (taskStatus)
     board: () => result(boardView),
+    // B4: the board's autopilot of a link (§5): on or off, and its budget in board.json
+    boardAutopilot: (linkId: string, on: boolean, language: "ru" | "en") => result(async () => {
+      if (on) { platformOk(); notOpen(); }
+      await autopilot.set(linkId, on, language);
+      return (await autopilot.state())[linkId] ?? null;
+    }),
+    boardBudget: (linkId: string, budget: AutopilotBudget | null) => result(() => board.budget(linkId, budget)),
     boardCreate: (input: TaskInput) => result(async () => {
       workspaceOk(input?.workspaceId);
       return board.create({ ...input, project: await realpath(input.project).catch(() => refuse("invalid_task", "the project folder does not exist")) });
@@ -1124,6 +1150,7 @@ export function createRunManager(deps: RunManagerDeps) {
     // writer closed. Terminal sessions and anything else of the application are not touched here.
     async shutdown(): Promise<void> {
       closing = true;
+      autopilot.shutdown();
       await Promise.allSettled([...[...creating.values()].map((c) => c.p), ...opening.values(), ...stopping.values()]);
       await Promise.allSettled([...handles.values()].map((h) => h.shutdown()));
       handles.clear();
@@ -1131,6 +1158,27 @@ export function createRunManager(deps: RunManagerDeps) {
       watchers.clear();
     }
   };
+  const autopilot = createBoardAutopilot({
+    view: async () => { const r = await board.read(); return { board: r.board, facts: await taskFacts() }; },
+    link: async (linkId) => {
+      const c = await canvas.read(exists);
+      const link = c.links.find((l) => l.linkId === linkId);
+      const lead = link && c.agents.find((a) => a.agentId === link.fromAgentId);
+      return lead ? { workspaceId: workspaceOf(lead, known), project: lead.project } : null;
+    },
+    profile: async (project) => (await profiles.get(project)) ?? await suggestProfile(project),
+    optionalChecks: deps.journalV2 === true,
+    journal: async (runId) => (await journal(runId)).map((r) => ({ ts: r.ts, type: r.type, data: r.data })),
+    readiness: (input) => api.readiness(input),
+    start: (input) => api.startOnLink(input),
+    take: async (runId) => {
+      const info = await api.take(runId);
+      return info.ok ? api.takeResult(runId, { action: "branch", name: info.value.suggested }) : info;
+    },
+    newId: () => randomUUID(),
+    now: () => Date.now()
+  }, async (linkId) => (await board.read()).board.autopilot?.[linkId] ?? AUTOPILOT_BUDGET);
+  return api;
 }
 
 export type RunManager = ReturnType<typeof createRunManager>;

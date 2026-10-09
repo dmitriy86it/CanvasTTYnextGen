@@ -1178,6 +1178,8 @@ export const IPC = {
   orchestrationBoardRemove: "orchestration:board-remove",
   orchestrationBoardAccept: "orchestration:board-accept",
   orchestrationBoardPlace: "orchestration:board-place",
+  orchestrationBoardAutopilot: "orchestration:board-autopilot",
+  orchestrationBoardBudget: "orchestration:board-budget",
   orchestrationReadiness: "orchestration:readiness",
   orchestrationProfileGet: "orchestration:profile-get",
   orchestrationProfileSave: "orchestration:profile-save",
