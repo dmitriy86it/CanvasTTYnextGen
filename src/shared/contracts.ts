@@ -216,7 +216,7 @@ export interface WorkspacesApi {
 }
 
 // Notifications of orchestration runs (UX audit PR 3): which events tell the person, and the Dock.
-export interface NotificationSettings { waiting: boolean; completed: boolean; failed: boolean; dockBadge: boolean; bounce: boolean }
+export interface NotificationSettings { waiting: boolean; completed: boolean; failed: boolean; dockBadge: boolean; bounce: boolean; board: boolean }
 
 export interface AppSettings {
   locale: LocaleId;
@@ -1178,6 +1178,8 @@ export const IPC = {
   orchestrationBoardRemove: "orchestration:board-remove",
   orchestrationBoardAccept: "orchestration:board-accept",
   orchestrationBoardPlace: "orchestration:board-place",
+  orchestrationBoardAutopilot: "orchestration:board-autopilot",
+  orchestrationBoardBudget: "orchestration:board-budget",
   orchestrationReadiness: "orchestration:readiness",
   orchestrationProfileGet: "orchestration:profile-get",
   orchestrationProfileSave: "orchestration:profile-save",

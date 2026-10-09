@@ -16,7 +16,7 @@ import type {
 import type { RunCommand } from "../services/orchestration/orchestrationService.ts";
 import type { RunManager } from "../services/orchestration/manager.ts";
 import { SAFE_MODEL } from "../services/orchestration/providers.ts";
-import type { BoardPlace, BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
+import type { AutopilotBudget, BoardPlace, BoardTaskInput, BoardTaskPatch } from "../../shared/taskBoard.ts";
 
 type Handle = (channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) => void;
 
@@ -49,16 +49,17 @@ const strings = (v: unknown, what: string, maxItems: number, maxLen: number): st
   Array.isArray(v) && v.length >= 1 && v.length <= maxItems ? v.map((x, i) => str(x, `${what}[${i}]`, maxLen)) : bad(`${what} must be 1..${maxItems} strings`);
 
 export function parseCreate(v: unknown): OrchestrationCreateRequest {
-  const o = obj(v, "request", ["requestId", "source", "goal"], ["anyway"]);
+  const o = obj(v, "request", ["requestId", "source", "goal"], ["anyway", "withoutBase"]);
   const source = str(o.source, "source", 4096);
   if (!source.startsWith("/")) bad("source must be an absolute path");
-  return { requestId: uuid(o.requestId, "requestId"), source, goal: parseGoal(o.goal), ...anyway(o.anyway) };
+  return { requestId: uuid(o.requestId, "requestId"), source, goal: parseGoal(o.goal), ...anyway(o.anyway), ...withoutBase(o.withoutBase) };
 }
 
 const anyway = (v: unknown): { anyway?: true } => (v === undefined || v === false ? {} : v === true ? { anyway: true } : bad("anyway must be a boolean"));
+const withoutBase = (v: unknown): { withoutBase?: true } => (v === undefined || v === false ? {} : v === true ? { withoutBase: true } : bad("withoutBase must be a boolean"));
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
-  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task"]);
+  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task", "base"]);
   // A goal names its checks either by catalog ids or (stage 12) by its own commands, then `checks` is [].
   // Stage 13: a goal with a mode may leave its commands to the project profile.
   const checks = (g.commands !== undefined || g.mode !== undefined) && Array.isArray(g.checks) && g.checks.length === 0 ? [] : strings(g.checks, "goal.checks", 16, 64);
@@ -88,7 +89,8 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
     ...(g.models !== undefined ? { models: roleModels(g.models, "goal.models") } : {}),
     ...(g.language !== undefined ? { language: g.language as "ru" | "en" } : {}),
     ...(g.accessOverride !== undefined ? { accessOverride: accessOverride(g.accessOverride, "goal.accessOverride") } : {}),
-    ...(g.task !== undefined ? { task: taskRef(g.task, "goal.task") } : {})
+    ...(g.task !== undefined ? { task: taskRef(g.task, "goal.task") } : {}),
+    ...(g.base !== undefined ? { base: baseRef(g.base, "goal.base") } : {})
   };
 }
 
@@ -108,6 +110,15 @@ function absolute(v: unknown, what: string): string {
 function uuids(v: unknown, what: string): string[] {
   if (!Array.isArray(v) || v.length > 200) bad(`${what} must be at most 200 ids`);
   return (v as unknown[]).map((x, i) => uuid(x, `${what}[${i}]`));
+}
+
+function baseRef(v: unknown, what: string): { branch: string; commit: string; key: string } {
+  const o = obj(v, what, ["branch", "commit", "key"]);
+  const key = str(o.key, `${what}.key`, 8);
+  if (!/^T-\d{1,6}$/.test(key)) bad(`${what}.key must be T-<n>`);
+  const commit = str(o.commit, `${what}.commit`, 64);
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) bad(`${what}.commit must be a full commit id`);
+  return { branch: str(o.branch, `${what}.branch`, 200), commit, key };
 }
 
 function taskRef(v: unknown, what: string): { id: string; key: string } {
@@ -338,9 +349,9 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
       { commandId: string; linkId: string; runId: string }];
   }, manager.releaseNewerLink));
   handleMain(IPC.orchestrationLinkStart, (_e, input: unknown) => checked(() => {
-    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway"]);
-    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway) }] as [
-      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }];
+    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway", "withoutBase"]);
+    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway), ...withoutBase(o.withoutBase) }] as [
+      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }];
   }, manager.startOnLink));
   handleMain(IPC.orchestrationActivity, (_e, runId: unknown, afterId: unknown, limit: unknown) => checked(
     () => [uuid(runId, "runId"), int(afterId, "afterId", 0), int(limit, "limit", 1, 500)] as [string, number, number], manager.activity));
@@ -390,6 +401,17 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     const num = (v: unknown, what: string) => (typeof v === "number" && Number.isFinite(v) ? v : bad(`${what} must be a number`));
     return [str(workspaceId, "workspaceId", 64), { position: { x: num(p.x, "x"), y: num(p.y, "y") }, size: { width: num(z.width, "width"), height: num(z.height, "height") } }] as [string, BoardPlace];
   }, manager.boardPlace));
+  handleMain(IPC.orchestrationBoardAutopilot, (_e, linkId: unknown, on: unknown, language: unknown) => checked(() => {
+    if (typeof on !== "boolean") bad("on must be a boolean");
+    if (language !== "ru" && language !== "en") bad("language must be ru or en");
+    return [uuid(linkId, "linkId"), on as boolean, language as "ru" | "en"] as [string, boolean, "ru" | "en"];
+  }, manager.boardAutopilot));
+  handleMain(IPC.orchestrationBoardBudget, (_e, linkId: unknown, budget: unknown) => checked(() => {
+    if (budget === null) return [uuid(linkId, "linkId"), null] as [string, null];
+    const o = obj(budget, "budget", ["runs", "minutes"]);
+    const int = (v: unknown, what: string, max: number) => (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= max ? v as number : bad(`${what} must be 1..${max}`));
+    return [uuid(linkId, "linkId"), { runs: int(o.runs, "budget.runs", 100), minutes: int(o.minutes, "budget.minutes", 1440) }] as [string, AutopilotBudget];
+  }, manager.boardBudget));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");

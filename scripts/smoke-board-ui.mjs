@@ -5,8 +5,12 @@
 //      project's check) ends «Done — confirmed by checks»; its agent cards and its summary name T-1;
 //   3. T-2 run without checks: «Review», «Completed without checks …»; «Accept the result» explains first, then
 //      «Done (accepted by you, without checks)» — its own mark, not the confirmed one; T-3 no longer waits;
-//   4. the window reloads: the same columns, reasons and marks; no CLI starts again.
+//   4. the window reloads: the same columns, reasons and marks; no CLI starts again;
+//   5. B4, «Run the board» in a separate copy: T-3, then T-4 (after T-3) from T-3's result branch; T-4's executor asks
+//      for a permission — the autopilot waits and answers nothing; answered in the panel, it ends «every task is done»;
+//      the project folder untouched, the results in two raoden/ branches.
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-board-ui.mjs [--shots <dir>]
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { FIXTURES, NODE, canvasState, card, createAgent, launch as launchApp, q, sleep, waitForValue, workspace, JOURNAL_V2 } from "./orchestration-app-kit.mjs";
@@ -30,15 +34,20 @@ const plan = (file, check) => ({ report: { stages: [{ title: "Заметка", t
   ...(check ? [{ keep: null, text: "node --test passes", covers: ["R2"], evidence: { kind: "check", check: "cmd-1" } }] : [])] }], dropped: [], dropRequirements: [], question: null } });
 const review = (file) => ({ report: { conditions: [{ id: "C1", status: "met", paths: [file], note: "done" }], findings: [], request: "none", question: null } });
 const final = (ids) => ({ report: { conditions: [], findings: [], request: "none", question: null, requirements: ids.map((id) => ({ id, status: "met", note: "done" })) } });
-const codexScript = script("codex", [plan("src/one.mjs", true), review("src/one.mjs"), final(["R1", "R2"]), plan("src/two.mjs", false), review("src/two.mjs"), final(["R1"])]);
+const codexScript = script("codex", [plan("src/one.mjs", true), review("src/one.mjs"), final(["R1", "R2"]), plan("src/two.mjs", false), review("src/two.mjs"), final(["R1"]),
+  plan("src/three.mjs", false), review("src/three.mjs"), final(["R1"]), plan("src/four.mjs", true), review("src/four.mjs"), final(["R1", "R2"])]);
 const claudeScript = script("claude", [
   { report: { summary: "one added", done: true }, writes: [["src/one.mjs", "export const one = 1;\n"]] },
-  { report: { summary: "two added", done: true }, writes: [["src/two.mjs", "export const two = 2;\n"]] }
+  { report: { summary: "two added", done: true }, writes: [["src/two.mjs", "export const two = 2;\n"]] },
+  { report: { summary: "three added", done: true }, writes: [["src/three.mjs", "export const three = 3;\n"]] },
+  { report: { summary: "four added", done: true }, writes: [["src/four.mjs", "export const four = 4;\n"]] }
 ]);
 // run 2's executor asks to run a command first: the run waits for the person, the board and the card say so
 // B3: with the CLI's own reason (decision_reason), which the board's line and the feed show as it was said
 const CLI_WHY = "Permission rule Bash(ls:*) requires approval";
 fs.writeFileSync(path.join(claudeScript, "2.asks.json"), JSON.stringify([{ tool: "Bash", command: "ls src", request: { decision_reason_type: "rule", decision_reason: CLI_WHY } }]));
+// B4: T-4's executor (the autopilot's second run) asks too: the autopilot waits for the person
+fs.writeFileSync(path.join(claudeScript, "4.asks.json"), JSON.stringify([{ tool: "Bash", command: "ls src", request: { decision_reason_type: "rule", decision_reason: CLI_WHY } }]));
 fs.mkdirSync(D("mock-state", ".codex"), { recursive: true });
 fs.writeFileSync(D("mock-state", ".codex", "config.toml"), "");
 const ledger = D("ledger.jsonl");
@@ -231,6 +240,66 @@ try {
   await sleep(1000);
   expect(ledgerCount() === before, "a reload starts no CLI", [before, ledgerCount()]);
   await app.shot("board-08-after-reload");
+
+  // ---------- 5. B4: «Run the board» in a separate copy ----------
+  await newTask({ title: "Модуль four", text: "Добавить src/four.mjs с константой four", criteria: "src/four.mjs есть\nnode --test проходит", after: ["T-3"] });
+  const linkId = (await canvasState(app)).links[0].linkId;
+  const saved = await app.ev(`window.canvasTTY.orchestration.profile(${JSON.stringify(linkId)}).then((r) => window.canvasTTY.orchestration.saveProfile(${JSON.stringify(linkId)},
+    { ...r.value.profile, workMode: "copy", checks: ["node --test"] })).then((r) => r.ok)`);
+  expect(saved === true, "the project's settings: a separate copy, node --test", saved);
+  const git = (...a) => execFileSync("git", a, { cwd: node, encoding: "utf8" }).trim();
+  const headBefore = git("rev-parse", "HEAD");
+  const statusBefore = git("status", "--porcelain"); // T-1 and T-2 worked in the project folder: their files are there
+  await app.clickEl(q("[data-board-autopilot-start]"));
+  await app.waitFor(`${q("[data-board-autopilot-confirm]")} && true`, "the autopilot's explanation");
+  const apWhy = await app.ev(`${q("[data-board-autopilot-confirm]")}.textContent`);
+  expect(apWhy.includes("На вопросы не отвечает и права не расширяет") && apWhy.includes("После перезапуска приложения выключен"), "«Run the board» says what it does first", apWhy);
+  await boardShot("board-09-autopilot-explained-board");
+  await app.clickEl(q("[data-board-autopilot-yes]"));
+  await app.waitFor(`${q('[data-board-autopilot="on"]')} && true`, "the autopilot on");
+  // T-3 runs and ends «Done»; then T-4 starts from its branch and its executor asks: the autopilot waits
+  const t3Done = await until("T-3", (s) => s.done === "confirmed", "T-3 done by the autopilot", 120_000);
+  expect(t3Done.column === "done", "the autopilot ran T-3 to «Done»", t3Done);
+  await until("T-4", (s) => s.reason === "waits_permission", "T-4 waits for a permission", 120_000);
+  await sleep(3000); // a few beats of the autopilot: nothing else starts, nothing is answered
+  const apWait = await app.ev(`({ waits: ${q("[data-board-autopilot-waits]")}?.textContent ?? null, used: ${q("[data-board-autopilot-used]")}?.textContent ?? null,
+  })`);
+  expect(apWait.waits === "ждёт ответа на запрос прав" && apWait.used?.startsWith("запусков 2 из 5"), "the autopilot waits for the answer, 2 runs of 5 used", apWait);
+  const t4Wait = await shown("T-4");
+  expect(t4Wait.reason === "waits_permission", "T-4 still waits (the autopilot never answers)", t4Wait);
+  // the run started in main reaches the window: the line names the request, the agent card the task, the badge counts it
+  expect(t4Wait.line.startsWith("Ждёт разрешения: ls src"), "T-4's line names the request of the autopilot's run", t4Wait.line);
+  const cardT4 = await app.ev(`${q(`[data-agent-id="${exec.agentId}"] [data-agent-task]`)}?.textContent ?? null`);
+  expect(cardT4 === "T-4 · Модуль four", "the agent card shows the autopilot's task", cardT4);
+  expect(lastBadge() >= 1, "the Dock badge counts the autopilot's run waiting for you", lastBadge());
+  await app.shot("board-10-autopilot-waits-permission");
+  await boardShot("board-10-autopilot-waits-permission-board");
+  await app.clickEl(`${q(task("T-4"))}.querySelector("[data-board-open]")`);
+  await app.waitFor(`${q("[data-orch-permission]")} && true`, "T-4's permission prompt in the panel", 30_000);
+  await app.clickEl(q(`[data-orch-permission] [data-decision="allow_once"]`));
+  await closePanel();
+  await app.waitFor(`${q('[data-board-autopilot-stop="all_done"]')} && true`, "the autopilot done", 120_000);
+  const apStop = await app.ev(`${q("[data-board-autopilot-stop]")}.textContent`);
+  expect(apStop === "Остановился: все задачи готовы", "the autopilot stops: every task is done", apStop);
+  const t4Done = await shown("T-4");
+  expect(t4Done.done === "confirmed", "T-4 «Done»", t4Done);
+  // the runs and their bases, as main wrote them; the project folder as it was
+  const facts = await app.ev("window.canvasTTY.orchestration.board().then((r) => r.value.facts.map((f) => ({ runId: f.runId, key: f.taskKey, mode: f.workMode, taken: f.taken })))");
+  const f3 = facts.find((f) => f.key === "T-3"), f4 = facts.find((f) => f.key === "T-4");
+  const goalOf = (runId) => {
+    const dir = D("user-data", "orchestration", "runs", runId);
+    const first = JSON.parse(fs.readFileSync(path.join(dir, "journal.jsonl"), "utf8").split("\n")[0]);
+    return JSON.parse(fs.readFileSync(path.join(dir, "texts", first.data.goal.sha256), "utf8"));
+  };
+  const b4 = goalOf(f4.runId).base;
+  expect(f3?.mode === "copy" && f3.taken?.branch?.startsWith("raoden/") && f4?.taken?.branch?.startsWith("raoden/"), "both results taken as raoden/ branches", { f3, f4 });
+  expect(b4?.key === "T-3" && b4.branch === f3.taken.branch && b4.commit === f3.taken.commit && goalOf(f3.runId).base === undefined,
+    "T-4's copy started from T-3's branch; T-3 from the working folder", b4);
+  const files4 = git("ls-tree", "-r", "--name-only", f4.taken.branch).split("\n");
+  expect(files4.includes("src/three.mjs") && files4.includes("src/four.mjs"), "T-4's branch holds T-3's change and its own", files4.filter((f) => f.startsWith("src/")));
+  expect(git("rev-parse", "HEAD") === headBefore && git("status", "--porcelain") === statusBefore && !fs.existsSync(path.join(node, "src", "three.mjs")),
+    "the project folder, its HEAD and status as they were", [statusBefore, git("status", "--porcelain")]);
+  await boardShot("board-11-autopilot-all-done-board");
 } catch (error) {
   failures.push(`error: ${String(error?.stack ?? error).slice(0, 1500)}`);
   try { await app?.shot("failure"); } catch {}

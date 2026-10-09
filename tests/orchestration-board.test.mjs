@@ -425,8 +425,9 @@ test("«Start anyway»: a run of a task whose dependency is not «Done» is refu
   assert.equal("anyway" in parseCreate({ ...base, anyway: false }), false);
   assert.throws(() => parseCreate({ ...base, anyway: "yes" }), /anyway/);
   await until(async () => (await m.get(runId)).value.view.reason === "plan_review", "the plan review");
-  // not by its own column: T-2 is at work now, and a start of it is still refused while T-1 is not «Done»
-  assert.equal((await m.create({ requestId: randomUUID(), source: src, goal })).code, "task_not_ready");
+  // B4: T-2 is at work now — one run of a task at a time, even «anyway»
+  assert.equal((await m.create({ requestId: randomUUID(), source: src, goal })).code, "task_active_run");
+  assert.equal((await m.create({ requestId: randomUUID(), source: src, goal, anyway: true })).code, "task_active_run");
   // a start on a link (inside the canvas queue) with a change of the board at once (which reads the canvas): neither
   // waits for the other (review of B3: they did, for ever)
   const src2 = project(); // another folder: the first one is busy with T-2's run

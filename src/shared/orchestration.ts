@@ -118,9 +118,13 @@ export interface OrchestrationGoalInput {
   // B1 (journal v2 only, journal-v2-format.md §2.10): the board task this run works on. Older builds ignore it; it
   // changes nothing in the run, it only links the run to its task.
   task?: OrchestrationTaskRef;
+  // B4 (owner's decision 11; journal v2, a separate copy only): start the copy from the result branch of the task `key`
+  // this task depends on, at `commit` — instead of the project's working folder. The folder is not touched.
+  base?: OrchestrationBaseRef;
 }
+export interface OrchestrationBaseRef { branch: string; commit: string; key: string }
 
-import type { BoardPlace, BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
+import type { AutopilotBudget, AutopilotState, BoardPlace, BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
 
 // A task of the board, as a run's goal names it: its id in orchestration/board.json and its number for people.
 export interface OrchestrationTaskRef { id: string; key: string }
@@ -133,6 +137,8 @@ export interface OrchestrationCreateRequest {
   // person confirmed «Start anyway». Without it such a start is refused (task_not_ready); the board's autopilot never
   // sets it. Not part of the request's identity.
   anyway?: boolean;
+  // B4: the person chose to start without the branch a dependency's result is in (the working folder, another mode)
+  withoutBase?: boolean;
 }
 
 export type OrchestrationRunCommand =
@@ -584,7 +590,7 @@ export interface OrchestrationApi {
   // link is removed and its folder freed, the run's files stay as they are. A repeat of commandId answers the same.
   releaseNewerLink(input: { commandId: string; linkId: string; runId: string }): Promise<OrchestrationResult<OrchestrationReleasedNewerRun>>;
   // Creates a run on the link: the source is the lead card's project, chosen in main.
-  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
+  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
   // The listener gets the run's current state first (the snapshot, as an event), then only newer states in order;
   // `snapshot` is the same result. One main subscription per run and page, however many listeners. unwatch() stops it.
   // Activity batches of the run travel on the same subscription (onActivity listeners get them while it is held).
@@ -610,6 +616,9 @@ export interface OrchestrationApi {
   boardRemove(id: string, dependents?: string[]): Promise<OrchestrationResult<null>>;
   boardAccept(id: string): Promise<OrchestrationResult<BoardTask>>;
   boardPlace(workspaceId: string, bounds: BoardPlace | null): Promise<OrchestrationResult<null>>; // B2: the card's place, null: hidden
+  // B4: the board's autopilot of a link on or off (never stored); its budget in board.json (null: the default)
+  boardAutopilot(linkId: string, on: boolean, language: "ru" | "en"): Promise<OrchestrationResult<AutopilotState | null>>;
+  boardBudget(linkId: string, budget: AutopilotBudget | null): Promise<OrchestrationResult<null>>;
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;

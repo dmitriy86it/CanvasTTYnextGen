@@ -496,11 +496,11 @@ export function normalizeSettings(
 }
 
 // Each switch on its own: a missing or broken one keeps its default, the others stay as saved.
-const DEFAULT_NOTIFICATIONS: NotificationSettings = { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false };
+const DEFAULT_NOTIFICATIONS: NotificationSettings = { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false, board: true };
 function normalizeNotifications(value: unknown, fallback: NotificationSettings = DEFAULT_NOTIFICATIONS): NotificationSettings {
   const o = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const pick = (k: keyof NotificationSettings): boolean => (typeof o[k] === "boolean" ? o[k] as boolean : fallback[k]);
-  return { waiting: pick("waiting"), completed: pick("completed"), failed: pick("failed"), dockBadge: pick("dockBadge"), bounce: pick("bounce") };
+  return { waiting: pick("waiting"), completed: pick("completed"), failed: pick("failed"), dockBadge: pick("dockBadge"), bounce: pick("bounce"), board: pick("board") };
 }
 
 export function normalizeCanvasLauncherItems(

@@ -10,6 +10,7 @@ import { UiIcon } from "../../components/UiIcon";
 import { t, type TranslationKey } from "../../lib/i18n";
 import { ProjectSettings } from "./ProjectSettings";
 import { NO_MODELS, RoleModelsField } from "./RoleModels";
+import { profileGoal } from "../../../../shared/taskBoard";
 import { Differences, RunPanel, Termed } from "./RunPanel";
 import { accessProblemText, commandLike, dirtyInPlace, failingOnSource } from "./runModel";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
@@ -317,6 +318,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const [commandsText, setCommandsText] = useState("");
   const edited = useRef(false);
   const [workMode, setWorkMode] = useState<OrchestrationWorkMode>("copy");
+  const [fromBranch, setFromBranch] = useState(true); // B4: a task's copy from its dependency's branch, or the working folder
   const [finish, setFinish] = useState<{ commit: boolean; push: boolean; qa: boolean }>({ commit: false, push: false, qa: false });
   const suggest = useCallback((lines: string[]) => { if (!edited.current) setCommandsText((cur) => cur || lines.join("\n")); }, []);
   const [limits, setLimits] = useState<Record<string, string>>({});
@@ -342,10 +344,12 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     const key = JSON.stringify(info.profile);
     if (applied.current === key) return;
     applied.current = key;
-    if (!edited.current) setCommandsText(info.profile.checks.join("\n"));
-    setWorkMode(info.profile.workMode);
-    setFinish({ commit: info.profile.finish.commit, push: false, qa: false });
-    setModels(info.profile.models ?? NO_MODELS);
+    // the same defaults as the board's autopilot takes (profileGoal): the person may change them here
+    const d = profileGoal(info.profile);
+    if (!edited.current) setCommandsText(d.commands.join("\n"));
+    setWorkMode(d.workMode);
+    setFinish(d.finish);
+    setModels(d.models);
   }, [info]);
   if (!link || !lead) return null;
 
@@ -364,6 +368,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     language: locale === "ru" ? "ru" : "en", // the agents write what the person reads in the interface's language
     ...(Object.keys(accessOverride).length ? { accessOverride } : {}),
     ...(task ? { task: { id: task.id, key: task.key } } : {}),
+    ...(task?.base && fromBranch && workMode === "copy" && optionalChecks ? { base: task.base } : {}),
     ...(chosen && (chosen.commit || chosen.push || chosen.qa) ? { finish: chosen } : {}),
     limits: Object.fromEntries(LIMITS.flatMap((kind) => {
       const n = Number(limits[kind]);
@@ -371,6 +376,8 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       return [[kind, kind === "runMs" ? n * 60_000 : n]];
     }))
   };
+  // the dependency's result is in a branch only and this start does not take it: the person's choice, said and sent as such
+  const withoutBase = !!task?.base && !asked.base;
   const complete = asked.text !== "" && asked.criteria.length > 0 && (commands.length > 0 || optionalChecks);
   const kept = commands.filter((c) => !failing.includes(c.slice(0, 200)));
   const submit = async (only?: string[]): Promise<void> => {
@@ -380,7 +387,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     setBusy(true);
     setError(null);
-    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway ? { anyway: true } : {}) });
+    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway ? { anyway: true } : {}), ...(withoutBase ? { withoutBase: true } : {}) });
     setBusy(false);
     // taken after the readiness check: the hint below names the run and its workspace instead of the bare refusal
     if (outcome.kind === "refused" && outcome.code === "folder_busy" && folderBusy?.(refused)) {
@@ -416,6 +423,16 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
             <strong title={task.title}>{task.key} · {task.title}</strong>
             {task.anyway && <small className="orch-hint orch-hint--warn" data-goal-task-anyway>{t(locale, "boardStartAnywayNote")}</small>}
           </div>
+        )}
+        {/* owner's decision 11: outside the autopilot the person chooses what the copy starts from */}
+        {withoutBase && <small className="orch-hint orch-hint--warn" data-goal-base-without>{t(locale, "goalBaseWithout").replace("{key}", task!.base!.key)}</small>}
+        {task?.base && workMode === "copy" && optionalChecks && (
+          <fieldset className="orch-field" data-goal-base>
+            <legend>{t(locale, "goalBase")}</legend>
+            <label><input type="radio" name="goal-base" checked={fromBranch} onChange={() => setFromBranch(true)} data-goal-base-branch />
+              {t(locale, "goalBaseBranch").replace("{key}", task.base.key).replace("{branch}", task.base.branch)}</label>
+            <label><input type="radio" name="goal-base" checked={!fromBranch} onChange={() => setFromBranch(false)} data-goal-base-folder /> {t(locale, "goalBaseFolder")}</label>
+          </fieldset>
         )}
         <div className="orch-field orch-field--static">
           <span>{t(locale, "orchProject")}</span>

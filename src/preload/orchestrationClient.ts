@@ -62,6 +62,8 @@ export function createOrchestrationClient(ipc: OrchestrationIpc, platform: strin
     boardRemove: (id, dependents) => ipc.invoke(IPC.orchestrationBoardRemove, id, dependents),
     boardAccept: (id) => ipc.invoke(IPC.orchestrationBoardAccept, id),
     boardPlace: (workspaceId, bounds) => ipc.invoke(IPC.orchestrationBoardPlace, workspaceId, bounds),
+    boardAutopilot: (linkId, on, language) => ipc.invoke(IPC.orchestrationBoardAutopilot, linkId, on, language),
+    boardBudget: (linkId, budget) => ipc.invoke(IPC.orchestrationBoardBudget, linkId, budget),
     readiness: (input) => ipc.invoke(IPC.orchestrationReadiness, input),
     profile: (linkId, capabilities) => ipc.invoke(IPC.orchestrationProfileGet, linkId, capabilities === true),
     saveProfile: (linkId, profile) => ipc.invoke(IPC.orchestrationProfileSave, linkId, profile),

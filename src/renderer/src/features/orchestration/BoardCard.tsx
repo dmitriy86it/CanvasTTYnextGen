@@ -4,11 +4,11 @@
 import { useState } from "react";
 import type { LocaleId, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink } from "../../../../shared/orchestration";
-import type { BoardTask, TaskColumn } from "../../../../shared/taskBoard";
+import { AUTOPILOT_BUDGET, baseOf, type AutopilotState, type BoardTask, type TaskColumn } from "../../../../shared/taskBoard";
 import { t } from "../../lib/i18n";
 import { Dialog } from "./OrchestrationDialogs";
 import { ACTIVE_STATUSES } from "./runModel";
-import { ASKS_HINT_OVER, askCount, permissionLine, taskLine, tr } from "./boardModel";
+import { ASKS_HINT_OVER, askCount, permissionLine, stopText, taskLine, tr } from "./boardModel";
 import { conditionsLine, costLine, findingsLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import type { Board } from "./useBoard";
@@ -67,7 +67,8 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
     const links = orch.canvas.links.filter((l) => leadOf(l)?.project === task.project);
     const link = links.find((l) => !busy(l));
     if (!link) { say(task.id, tr(locale, "boardNoLink", { project: task.project })); return; }
-    ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria, ...(startAnyway ? { anyway: true } : {}) });
+    const base = view ? baseOf(task, view.board, board.statuses, view.facts) : null;
+    ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria, ...(startAnyway ? { anyway: true } : {}), ...(base ? { base } : {}) });
   };
   const projects = [...new Set([...orch.canvas.agents.map((a) => a.project), ...(props.defaultProject ? [props.defaultProject] : [])])];
 
@@ -85,6 +86,11 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
           <button type="button" className="board-card__hide" data-board-hide title={t(locale, "boardHide")} aria-label={t(locale, "boardHide")} onClick={props.onHide}>×</button>
         </span>
       </header>
+      {view && !readOnly && orch.canvas.links.map((l) => (
+        <AutopilotRow key={l.linkId} locale={locale} state={view.autopilot?.[l.linkId] ?? null} project={leadOf(l)?.project ?? ""} many={orch.canvas.links.length > 1}
+          onSet={async (on) => { const r = await board.autopilot(l.linkId, on, locale === "ru" ? "ru" : "en"); const f = failure(r); if (f) say(null, f); }}
+          onBudget={async (b) => { const r = await board.budget(l.linkId, b); const f = failure(r); if (f) say(null, f); }} />
+      ))}
       {board.failed && !view && <p className="board-card__message" role="alert">{t(locale, "boardLoadFailed")} ({board.failed})</p>}
       {message && !message.taskId && <p className="board-card__message" role="alert">{message.text}</p>}
       {view && tasks.length === 0 && <p className="board-card__empty" data-board-empty>{t(locale, "boardEmpty")}</p>}
@@ -268,5 +274,45 @@ function TaskForm({ locale, task, tasks, projects, dependents, onClose, onSave, 
         </div>
       </form>
     </Dialog>
+  );
+}
+
+// B4: «Run the board» on a link (stage-b-board.md §5): on — what it waits for and how much of the budget is used; off —
+// why it stopped last. Turning it on says what it does; the budget is the link's, kept in board.json.
+function AutopilotRow({ locale, state, project, many, onSet, onBudget }: {
+  locale: LocaleId; state: AutopilotState | null; project: string; many: boolean; onSet(on: boolean): Promise<void>; onBudget(b: { runs: number; minutes: number }): Promise<void>;
+}): React.JSX.Element {
+  const budget = state?.budget ?? AUTOPILOT_BUDGET;
+  const [asking, setAsking] = useState(false);
+  const [runs, setRuns] = useState(String(budget.runs));
+  const [minutes, setMinutes] = useState(String(budget.minutes));
+  const name = project.split("/").filter(Boolean).at(-1) ?? project;
+  const valid = /^\d+$/.test(runs) && +runs >= 1 && +runs <= 100 && /^\d+$/.test(minutes) && +minutes >= 1 && +minutes <= 1440;
+  const changed = valid && (+runs !== budget.runs || +minutes !== budget.minutes);
+  return (
+    <div className="board-card__autopilot" data-board-autopilot={state?.on ? "on" : "off"}>
+      {many && <span className="board-card__autopilot-link">{tr(locale, "boardApLink", { project: name })}</span>}
+      {state?.on ? (
+        <>
+          <strong data-board-autopilot-on>{t(locale, "boardApOn")}</strong>
+          {state.waits && <span data-board-autopilot-waits={state.waits}>{tr(locale, `boardApWaits_${state.waits}`)}</span>}
+          <span data-board-autopilot-used>{tr(locale, "boardApUsed", { runs: state.used.runs, maxRuns: budget.runs, minutes: state.used.minutes, maxMinutes: budget.minutes })}</span>
+          <button type="button" data-board-autopilot-off onClick={() => void onSet(false)}>{t(locale, "boardApOff")}</button>
+        </>
+      ) : asking ? (
+        <span className="board-card__autopilot-ask" data-board-autopilot-confirm>
+          <span>{t(locale, "boardApToggleWhy")}</span>
+          <label>{t(locale, "boardApBudget")}: <input type="number" min={1} max={100} value={runs} onChange={(e) => setRuns(e.target.value)} data-board-budget-runs /> {t(locale, "boardApBudgetRuns")}</label>
+          <label><input type="number" min={1} max={1440} value={minutes} onChange={(e) => setMinutes(e.target.value)} data-board-budget-minutes /> {t(locale, "boardApBudgetMinutes")}</label>
+          <button type="button" data-board-autopilot-yes disabled={!valid} onClick={async () => { if (changed) await onBudget({ runs: +runs, minutes: +minutes }); setAsking(false); await onSet(true); }}>{t(locale, "boardApToggle")}</button>
+          <button type="button" onClick={() => setAsking(false)}>{t(locale, "cancel")}</button>
+        </span>
+      ) : (
+        <>
+          <button type="button" data-board-autopilot-start onClick={() => { setRuns(String(budget.runs)); setMinutes(String(budget.minutes)); setAsking(true); }}>{t(locale, "boardApToggle")}</button>
+          {state?.stop && <span className="board-card__autopilot-stop" role="status" data-board-autopilot-stop={state.stop.code}>{tr(locale, "boardApLast", { reason: stopText(locale, state.stop) })}</span>}
+        </>
+      )}
+    </div>
   );
 }
