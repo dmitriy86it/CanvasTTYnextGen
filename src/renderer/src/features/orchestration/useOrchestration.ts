@@ -266,7 +266,7 @@ export function useOrchestration() {
       apply(() => api().releaseNewerLink(input), () => { setCanvas((c) => ({ ...c, links: c.links.filter((l) => l.linkId !== input.linkId) })); void reload(); }),
 
     // refused: main's answer as it came, so a folder_busy refusal can name the run holding the folder
-    startOnLink: async (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }) => {
+    startOnLink: async (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }) => {
       let refused: unknown = null;
       const res = await apply(async () => {
         const r = await api().startOnLink(input);

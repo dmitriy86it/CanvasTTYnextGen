@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import type {
   OrchestrationActivityEvent,
   OrchestrationCatalog,
+  OrchestrationCanvas,
   OrchestrationChanges,
   OrchestrationDiff,
   OrchestrationCreateRequest,
@@ -505,16 +506,17 @@ export function createRunManager(deps: RunManagerDeps) {
   const conflict = () => refuse("request_conflict", "this requestId belongs to another create request");
 
   // The explicit command that starts a run: created, then driven automatically. requestId is the runId.
-  async function createRun(req: OrchestrationCreateRequest): Promise<{ runId: string; created: boolean }> {
+  // inQueue: the canvas of a start on a link, inside the canvas queue (canvas.read would wait for that very queue)
+  async function createRun(req: OrchestrationCreateRequest, inQueue?: OrchestrationCanvas): Promise<{ runId: string; created: boolean }> {
     const taskId = typeof req?.goal?.task?.id === "string" ? req.goal.task.id : null;
     if (!taskId) return createRunFor(req);
     startingTasks.set(taskId, (startingTasks.get(taskId) ?? 0) + 1);
-    try { return await createRunFor(req); } finally {
+    try { return await createRunFor(req, inQueue); } finally {
       const left = startingTasks.get(taskId)! - 1;
       if (left) startingTasks.set(taskId, left); else startingTasks.delete(taskId);
     }
   }
-  async function createRunFor(req: OrchestrationCreateRequest): Promise<{ runId: string; created: boolean }> {
+  async function createRunFor(req: OrchestrationCreateRequest, inQueue?: OrchestrationCanvas): Promise<{ runId: string; created: boolean }> {
     notOpen();
     platformOk();
     const runId = runIdOk(req.requestId);
@@ -532,7 +534,7 @@ export function createRunManager(deps: RunManagerDeps) {
         const stored = JSON.parse((await readText(deps.root, runId, existing.state.goal)).toString("utf8")) as Record<string, unknown>;
         return stored.requestKey === key ? { runId, created: false } : conflict();
       }
-      await taskOk(source, req.goal.task); // a repeat of a created run is answered above, whatever became of the task
+      await taskOk(source, req.goal.task, req.anyway === true, inQueue); // a repeat of a created run is answered above, whatever became of the task
       // The catalog is checked before anything is resolved (no agent, no CLI version probe).
       const native = Array.isArray(req.goal.commands) || req.goal.mode !== undefined;
       if (!native) for (const id of req.goal.checks) if (!CHECK_CATALOG.checks.some((c) => c.id === id)) refuse("unknown_check", `no check with id ${id}`);
@@ -759,10 +761,10 @@ export function createRunManager(deps: RunManagerDeps) {
     if (!handles.has(runId)) factsCache.set(runId, { stamp, facts });
     return facts;
   }
-  async function taskFacts(): Promise<RunTaskFacts[]> {
+  async function taskFacts(inQueue?: OrchestrationCanvas): Promise<RunTaskFacts[]> {
     const names = await readdir(join(deps.root, "runs")).catch(() => [] as string[]);
     const out: RunTaskFacts[] = [];
-    const owner = runOwners(await canvas.read(exists), known);
+    const owner = runOwners(inQueue ?? await canvas.read(exists), known);
     for (const id of names.filter(isUuid).sort()) out.push(await runTaskFacts(id, owner));
     return out;
   }
@@ -780,13 +782,34 @@ export function createRunManager(deps: RunManagerDeps) {
     if (run?.status !== "completed" || run.completion !== "no_checks") refuse("accept_unavailable", "only a result completed without checks is accepted");
     return board.accept(taskId, run!.runId);
   }
-  // A goal naming a task: the task is on the board, of this project, not archived
-  async function taskOk(source: string, task: { id: string; key: string } | undefined): Promise<void> {
+  // A task being deleted or archived: marked before its change waits in the board's queue, so a start that reads the
+  // board as last saved (peek) does not pass in between and leave a run of a task that is gone (review of B3)
+  const leavingTasks = new Map<string, number>();
+  async function leaving<T>(id: string, on: boolean, change: () => Promise<T>): Promise<T> {
+    if (!on) return change();
+    leavingTasks.set(id, (leavingTasks.get(id) ?? 0) + 1);
+    try { return await change(); } finally {
+      const left = leavingTasks.get(id)! - 1;
+      if (left) leavingTasks.set(id, left); else leavingTasks.delete(id);
+    }
+  }
+  // A goal naming a task: the task is on the board, of this project, not archived; and ready (every dependency «Done»,
+  // its result where this run would see it), whatever the task's own column, unless the person confirmed «Start anyway»
+  // (§4.2). The board as last saved (peek): a start on a link runs inside the canvas queue, and a change of the board
+  // may wait for the canvas (a new number, a deletion) — waiting for the board's queue here would wait both ways.
+  // ponytail: checked before the run is created, not under a lock with it; a dependency added in between is not seen
+  async function taskOk(source: string, task: { id: string; key: string } | undefined, anyway: boolean, inQueue?: OrchestrationCanvas): Promise<void> {
     if (!task) return;
-    const t = (await board.read()).board.tasks.find((x) => x.id === task.id);
+    if (leavingTasks.has(task.id)) refuse("task_changing", "the task is being deleted or archived");
+    // inside the canvas queue the board as last saved; elsewhere after the board's queue (a change in it is seen)
+    const b = (inQueue ? await board.peek() : await board.read()).board;
+    const t = b.tasks.find((x) => x.id === task.id);
     if (!t || t.key !== task.key) refuse("task_not_found", `no task ${task.key} on the board`);
     if (await realpath(t!.project).catch(() => t!.project) !== source) refuse("task_project", "the task belongs to another project folder");
     if (t!.archivedAt) refuse("task_archived", "the task is archived");
+    if (anyway) return;
+    const wait = boardStatuses(b, await taskFacts(inQueue)).get(t!.id)?.depsWait;
+    if (wait) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
   }
 
   return {
@@ -797,9 +820,10 @@ export function createRunManager(deps: RunManagerDeps) {
       return board.create({ ...input, project: await realpath(input.project).catch(() => refuse("invalid_task", "the project folder does not exist")) });
     }),
     boardUpdate: (id: string, patch: Parameters<typeof board.update>[1]) => result(() => board.update(id, patch)),
-    boardArchive: (id: string, archived: boolean) => result(() => board.archive(id, archived, () => startingTasks.has(id))),
+    boardArchive: (id: string, archived: boolean) => result(() => leaving(id, archived, () => board.archive(id, archived, () => startingTasks.has(id)))),
     // a run being created counts: its journal may not be there yet (stage-b-board.md §3.3)
-    boardRemove: (id: string) => result(() => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id))),
+    boardRemove: (id: string, dependents: string[] = []) => result(() => leaving(id, true,
+      () => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id), dependents))),
     boardAccept: (id: string) => result(() => acceptTask(id)),
     boardPlace: (workspaceId: string, bounds: BoardPlace | null) => result(() => { workspaceOk(workspaceId); return board.place(workspaceId, bounds); }),
 
@@ -843,10 +867,11 @@ export function createRunManager(deps: RunManagerDeps) {
     // Only a link that holds a newer version's run (busy says "newer" for that run), and only its own run.
     releaseNewerLink: (input: { commandId: string; linkId: string; runId: string }) =>
       result(() => canvas.releaseNewer({ ...input, appVersion: deps.appVersion?.() ?? "unknown" }, busy)),
-    startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }) => result(() => {
+    startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }) => result(() => {
       notOpen();
       platformOk();
-      return canvas.startOnLink(input.linkId, input.requestId, busy, exists, (source) => createRun({ requestId: input.requestId, source, goal: input.goal }));
+      return canvas.startOnLink(input.linkId, input.requestId, busy, exists,
+        (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}) }, current));
     }),
 
     command: (runId: string, input: { commandId: string; expectedRevision: number; command: RunCommand }) => result(async (): Promise<CommandOutcome> => {

@@ -59,7 +59,7 @@ export function createOrchestrationClient(ipc: OrchestrationIpc, platform: strin
     boardCreate: (input) => ipc.invoke(IPC.orchestrationBoardCreate, input),
     boardUpdate: (id, patch) => ipc.invoke(IPC.orchestrationBoardUpdate, id, patch),
     boardArchive: (id, archived) => ipc.invoke(IPC.orchestrationBoardArchive, id, archived),
-    boardRemove: (id) => ipc.invoke(IPC.orchestrationBoardRemove, id),
+    boardRemove: (id, dependents) => ipc.invoke(IPC.orchestrationBoardRemove, id, dependents),
     boardAccept: (id) => ipc.invoke(IPC.orchestrationBoardAccept, id),
     boardPlace: (workspaceId, bounds) => ipc.invoke(IPC.orchestrationBoardPlace, workspaceId, bounds),
     readiness: (input) => ipc.invoke(IPC.orchestrationReadiness, input),

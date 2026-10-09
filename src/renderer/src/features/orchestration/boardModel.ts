@@ -1,5 +1,6 @@
 // B2: the words of the board (stage-b-board.md §4.3, §6), apart from the card so they are tested without a window.
 import type { LocaleId } from "../../../../shared/contracts.ts";
+import type { OrchestrationActivityEntry, OrchestrationPermissionRequest } from "../../../../shared/orchestration.ts";
 import type { TaskStatus } from "../../../../shared/taskBoard.ts";
 import { t, type TranslationKey } from "../../lib/i18n.ts";
 import { runStatus } from "./runStatus.ts";
@@ -19,3 +20,18 @@ export function taskLine(locale: LocaleId, status: TaskStatus, run: RunInput | n
   return t(locale, "boardNotStarted");
 }
 
+
+// «Waits for a permission: <what>» with the CLI's own reason (§5.3 п. 4), as it said it — never retold
+export function permissionLine(locale: LocaleId, base: string, permission: Pick<OrchestrationPermissionRequest, "summary" | "why"> | null | undefined): string {
+  if (!permission) return base;
+  const why = permission.why?.text || permission.why?.type;
+  return `${base}: ${permission.summary}${why ? ` (${t(locale, "orchCliWhy")}: ${why})` : ""}`;
+}
+
+// The person's permission prompts in a run (§5.3 п. 3): shown, never a ground for a decision. Questions, plans and
+// forms are not about rights; the host's own answers (permission_applied) are not prompts.
+export const ASKS_HINT_OVER = 3; // the read-only button's threshold (readOnly.asks > 3)
+const RIGHTS = new Set(["command", "file_change", "permissions", "tool"]);
+export function askCount(entries: readonly OrchestrationActivityEntry[]): number {
+  return entries.filter((e) => e.kind === "permission_requested" && RIGHTS.has(String(e.detail?.kind))).length;
+}

@@ -285,7 +285,8 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
     // The request's own run is left out of the busy check; any other active run of the link refuses the start.
     startOnLink: (linkId: string, requestId: string, busy: Busy,
       exists: (runId: string) => Promise<boolean>,
-      create: (source: string) => Promise<{ runId: string; created: boolean }>) => change<{ runId: string; created: boolean }>(async (c) => {
+      // current: the canvas as this queue holds it — create must not read it again (canvas.read waits for this queue)
+      create: (source: string, current: OrchestrationCanvas) => Promise<{ runId: string; created: boolean }>) => change<{ runId: string; created: boolean }>(async (c) => {
       const link = linkOf(c, linkId);
       const lead = agentOf(c, link.fromAgentId);
       refuseBusy(await busy({ ...link, runIds: link.runIds.filter((id) => id !== requestId) }), "link_busy", "this link already has an active run");
@@ -304,7 +305,7 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
         await save(current);
       }
       try {
-        return { next: null, value: await create(lead.project) };
+        return { next: null, value: await create(lead.project, current) };
       } catch (error) {
         // run_newer_version: the id names a newer version's run, never this request's
         const conflict = error instanceof Error && ["request_conflict", "run_newer_version"].includes((error as { code?: string }).code ?? "");

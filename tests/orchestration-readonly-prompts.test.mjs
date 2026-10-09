@@ -215,3 +215,21 @@ test("«read-only until the run ends»: offered after 3 read-only prompts, answe
   assert.equal(again.seen[0].permission.options.includes("allow_readonly_run"), false);
   await second.m.shutdown();
 });
+
+// B3 (stage-b-board.md §5.3 п. 4–5): why the CLI asked reaches the request and the feed as it said it; the host's own
+// answers (the sandbox rule above) are in the feed too, apart from the person's prompts.
+test("the CLI's reason reaches the request and the feed; the host's own answers are recorded apart", OPTS, async () => {
+  const { m, runId } = await run("workspace", [
+    bash(R2, VARIABLE), bash(R1, SUBCOMMANDS),
+    bash(`u=https://example.com; curl -sS $u`, VARIABLE, { dangerouslyDisableSandbox: true })
+  ]);
+  const { seen } = await drive(m, runId, () => "deny");
+  assert.deepEqual(seen.map((v) => v.permission.why), [{ type: "other", text: VARIABLE.decision_reason }]);
+  const feed = (await m.activity(runId, 0, 500)).value.entries.filter((e) => e.kind.startsWith("permission_"));
+  const host = feed.filter((e) => e.kind === "permission_applied" && e.detail.scope === "sandbox_static");
+  assert.deepEqual(host.map((e) => [e.detail.reasonType, e.detail.reason]), [["other", VARIABLE.decision_reason], ["subcommandResults", null]]);
+  assert.match(host[0].text, /^Bash: cd "apps\/api\/src\/career_os"/);
+  const asked = feed.filter((e) => e.kind === "permission_requested");
+  assert.deepEqual(asked.map((e) => [e.detail.reasonType, e.detail.reason]), [["other", VARIABLE.decision_reason]]);
+  await m.shutdown();
+});

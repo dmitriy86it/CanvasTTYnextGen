@@ -116,6 +116,7 @@ test("codex driver: no config override, a prompt waits for the person and gets o
   d.frame(frame({ id: 77, method: "item/commandExecution/requestApproval", params: { command: "php artisan migrate", threadId: "th1", turnId: "t1", itemId: "i" } }, true));
   assert.equal(asked.kind, "command");
   assert.equal(asked.summary, "php artisan migrate");
+  assert.equal(asked.why, undefined, "no reason given: none made up");
   assert.equal(f.held(), 1, "the turn's deadline is held while the person decides");
   assert.equal(f.sent.filter((m) => m.id === 77).length, 0, "nothing is answered before the person");
   resolveAsk({ decision: "allow_session" });
@@ -127,6 +128,15 @@ test("codex driver: no config override, a prompt waits for the person and gets o
   assert.equal(d.terminal(frame({ method: "turn/completed", params: { turn: { status: "completed" } } }, true)), "ok");
   assert.deepEqual(d.answer(), { ok: true });
   assert.ok(f.ended(), "stdin ends after the terminal event");
+});
+
+// B3 (stage-b-board.md §5.3 п. 4): Codex's own reason for a command prompt reaches the person as it said it
+test("codex driver: a command prompt carries the CLI's reason", () => {
+  let asked = null;
+  const d = codexAppServerDriver({ cwd: "/p", task: "x", schema: {}, threadId: "th", clientVersion: "t", ask: (q) => { asked = q; return new Promise(() => {}); } });
+  d.start(fakeIo().io);
+  d.frame(frame({ id: 9, method: "item/commandExecution/requestApproval", params: { command: "curl x", reason: "network access is needed", threadId: "th", turnId: "t", itemId: "i" } }, true));
+  assert.deepEqual(asked.why, { type: null, text: "network access is needed" });
 });
 
 test("codex driver: a request the CLI withdraws is not answered; unknown client requests get an error", async () => {

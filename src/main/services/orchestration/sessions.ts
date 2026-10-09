@@ -27,11 +27,19 @@ export interface PermissionAsk {
   // The CLI says this prompt must reach a person (a user's ask rule, a safety check, a tool whose card is the answer),
   // or CanvasTTY cannot tell what exactly is allowed: a saved decision never answers it.
   alwaysAsk?: boolean;
+  // B3 (§5.3 п. 4): why the CLI asks, as it said it — Claude's decision_reason_type and decision_reason, Codex's reason.
+  why?: { type: string | null; text: string | null };
 }
+const whyOf = (type: unknown, text: unknown): { why?: PermissionAsk["why"] } => {
+  const t = typeof type === "string" && type ? type : null;
+  const x = typeof text === "string" && text ? text : null;
+  return t || x ? { why: { type: t, text: x } } : {};
+};
 // content: the validated values of a form (elicitation, allow_once = accept); feedback: why a plan goes back (deny).
 export interface PermissionReply { decision: PermissionOption; answers?: Record<string, string[]>; content?: Record<string, unknown>; feedback?: string }
 // signal: aborted when the CLI withdraws the request (or the turn ends); the reply is then not sent.
-export type AskPerson = (ask: PermissionAsk, signal: AbortSignal) => Promise<PermissionReply>;
+// noted (B3, §5.3 п. 5): a prompt the host answered itself (1.5.13's sandbox rule), told only so the feed shows it.
+export type AskPerson = ((ask: PermissionAsk, signal: AbortSignal) => Promise<PermissionReply>) & { noted?: (ask: PermissionAsk) => void };
 
 const str = (v: unknown): string => (typeof v === "string" ? v : v === undefined || v === null ? "" : JSON.stringify(v));
 const rec = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {});
@@ -120,7 +128,7 @@ export function codexAppServerDriver(input: CodexSessionInput): SessionDriver {
     const key = `rpc:${str(id)}`;
     const respond = (result: unknown) => io?.send({ id, result });
     const approval = (kind: PermissionKind, tool: string, summary: string, legacy: boolean) =>
-      people.request(key, { kind, tool, summary, input: p, options: ["allow_once", "allow_session", "deny"] }, (r) => respond({
+      people.request(key, { kind, tool, summary, input: p, options: ["allow_once", "allow_session", "deny"], ...whyOf(null, p.reason) }, (r) => respond({
         decision: legacy
           ? (r.decision === "allow_once" ? "approved" : r.decision === "allow_session" ? "approved_for_session" : { denied: { rejection: "declined by the user in CanvasTTY" } })
           : (r.decision === "allow_once" ? "accept" : r.decision === "allow_session" ? "acceptForSession" : "decline")
@@ -280,14 +288,16 @@ export function claudeHostDriver(input: ClaudeSessionInput): SessionDriver {
     // variable, a quoted brace, `bash -c '…'`: run 7303d772) is answered here. The command still runs in the sandbox —
     // it writes only in the work folder and reaches no outside host; a command that asks to leave the sandbox, a user's
     // ask rule and a safety check still reach the person.
+    const why = whyOf(r.decision_reason_type, r.decision_reason);
     if (input.sandboxed && tool === "Bash" && !toolInput.dangerouslyDisableSandbox && !alwaysAsk
       && (r.decision_reason_type === "other" || r.decision_reason_type === "subcommandResults")) {
+      input.ask.noted?.({ kind: "tool", tool, summary, input: toolInput, options: [], ...why });
       return respond(requestId, { behavior: "allow", updatedInput: toolInput });
     }
     people.request(requestId, {
       kind: "tool", tool, summary, input: toolInput,
       options: suggestions.length ? ["allow_once", "allow_session", "deny"] : ["allow_once", "deny"],
-      ...(alwaysAsk ? { alwaysAsk: true } : {})
+      ...(alwaysAsk ? { alwaysAsk: true } : {}), ...why
     }, (reply) => respond(requestId, reply.decision === "deny"
       ? { behavior: "deny", message: "The user denied this action in CanvasTTY." }
       // "For the session": the CLI's own suggested rules, kept for this session only. The CLI suggests some of them for

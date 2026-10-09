@@ -295,6 +295,14 @@ export const FEED_KINDS = new Set(["task_sent", "process_started", "process_exit
   "file_changed", "subagent", "refusal", "error", "turn_finished", "check_started", "check_finished", "status", "truncated",
   "permission_requested", "permission_decided", "permission_applied", "prepare_started", "prepare_finished", "external_action", "report_note"]);
 
+// «— CLI: <its reason> (<its type>)», as the CLI put it; nothing when it gave none
+export function cliWhy(locale: LocaleId, d: Readonly<Record<string, unknown>>): string {
+  const text = typeof d.reason === "string" && d.reason ? d.reason : null;
+  const type = typeof d.reasonType === "string" && d.reasonType ? d.reasonType : null;
+  if (!text && !type) return "";
+  return ` — ${t(locale, "orchCliWhy")}: ${text ?? type}${text && type ? ` (${type})` : ""}`;
+}
+
 export function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entries: readonly OrchestrationActivityEntry[]): string {
   const d = e.detail ?? {};
   switch (e.kind) {
@@ -333,6 +341,11 @@ export function entryLabel(locale: LocaleId, e: OrchestrationActivityEntry, entr
         ? t(locale, `orchAct_markIgnored_${d.by === "person" || d.by === "dropped" || d.by === "unchanged" || d.by === "unconfirmed" ? d.by : "check"}`).replace("{role}", t(locale, e.role === "lead" ? "orchRoleLead" : "orchRoleReviewer").toLowerCase())
           .replace("{id}", d.ignoredMark).replace("{paths}", String(d.paths ?? ""))
         : e.text;
+    // B3 (§5.3 п. 4–5): why the CLI asked, as it said it; the host's own answer apart from the person's
+    case "permission_requested": return `${tr(locale, "orchAct_permission_requested")}: ${e.text}${cliWhy(locale, d)}`;
+    case "permission_applied": return d.scope === "sandbox_static"
+      ? `${tr(locale, "orchAct_permission_host")}: ${e.text}${cliWhy(locale, d)}`
+      : `${tr(locale, "orchAct_permission_applied")}: ${e.text}`;
     case "usage": return `${tr(locale, "orchAct_usage")}${typeof d.costUsd === "number" ? ` · $${d.costUsd.toFixed(4)}` : ""}${typeof d.outputTokens === "number" ? ` · ${d.inputTokens ?? "?"}/${d.outputTokens} tok` : ""}`;
     default: {
       // a CLI reported another rights mode than the one chosen: a warning about rights, not a failed turn
