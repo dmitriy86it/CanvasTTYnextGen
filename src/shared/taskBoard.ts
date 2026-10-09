@@ -88,9 +88,14 @@ export interface TaskStatus {
   attempts: number;
   current: string | null; // runId of the latest run
   completion: "confirmed" | "no_checks" | null;
-  // B3 (§4.2): «Done», while a task it depends on is not «Done» any more (a new run of it stopped). Not rolled back:
-  // only said («the dependency changed after it was done»); recomputing the result is stage D.
-  depsChanged: boolean;
+  // B3 (§4.2): what its dependencies are now, whatever its own column: «waits_task» (one not «Done», or a cycle),
+  // «waits_result» (a result where this task would not see it), or null — ready. main refuses a start without «Start
+  // anyway» unless it is null; the board offers «Start» or «Start anyway» by it.
+  depsWait: { reason: "waits_task" | "waits_result" | "waits_merge"; waitsFor: string[]; cycle: boolean } | null;
+  // B3 (§4.2): a «Done» task on a dependency that is not «Done» now — never rolled back, only said: «changed» (it was
+  // «Done» when this task's run started, then lost it), «not_ready» (it was not: this task was started anyway). It goes
+  // on to the tasks after it. Recomputing a result is stage D.
+  depsNote: null | "changed" | "not_ready";
 }
 
 const REVIEW_PURPOSES: readonly OrchestrationTurnPurpose[] = ["review", "final_review"];
@@ -139,14 +144,14 @@ export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTa
     if (known) return known;
     const task = byId.get(id)!;
     const mine = own(task, runsOf.get(id) ?? []);
-    let s: TaskStatus;
-    if (onCycle.has(id)) {
-      s = mine.column !== "queue" || mine.reason === "run_newer" ? mine
-        : { ...mine, reason: "waits_task", cycle: true, waitsFor: depsOf(task).filter((d) => onCycle.has(d)).map((d) => byId.get(d)!.key) };
-    } else {
-      // a task off every cycle depends only on tasks off cycles or on them (never recursed into): this ends
-      s = withDependencies(mine, depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf);
-    }
+    // a task off every cycle depends only on tasks off cycles or on them (never recursed into): this ends
+    const depsWait: TaskStatus["depsWait"] = onCycle.has(id)
+      ? { reason: "waits_task", cycle: true, waitsFor: depsOf(task).filter((d) => onCycle.has(d)).map((d) => byId.get(d)!.key) }
+      : dependencies(depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf);
+    let s: TaskStatus = { ...mine, depsWait };
+    if (s.done && !onCycle.has(id)) s = { ...s, depsNote: noteOf(task, s, depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf) };
+    // the queue shows what it waits for; a task at work or in review keeps its run's reason
+    else if (depsWait && s.column === "queue" && s.reason !== "run_newer") s = { ...s, reason: depsWait.reason, waitsFor: depsWait.waitsFor, cycle: depsWait.cycle };
     out.set(id, s);
     return s;
   };
@@ -157,7 +162,7 @@ export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTa
 // A task by its own runs only.
 export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFacts[]): TaskStatus {
   const sorted = [...runs].sort((a, b) => a.createdAt - b.createdAt || a.runId.localeCompare(b.runId));
-  const base = { attempts: sorted.length, waitsFor: [] as string[], cycle: false, done: null, depsChanged: false };
+  const base = { attempts: sorted.length, waitsFor: [] as string[], cycle: false, done: null, depsWait: null, depsNote: null };
   const current = sorted.at(-1);
   if (!current) return { ...base, column: "queue", reason: null, current: null, completion: null };
   const readable = [...sorted].reverse().find((r) => r.status !== "unreadable" && !r.newer);
@@ -190,20 +195,28 @@ export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFac
   }
 }
 
-// Dependencies come into a task that has not started (or whose last run stopped or failed): it waits for the tasks not
-// «Done», then for a result that is not where a dependent task would see it (stage-b-board.md §5.2, the base rule).
-function withDependencies(s: TaskStatus, deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus {
-  if (s.done) return deps.some(([, d]) => !isDone(d)) ? { ...s, depsChanged: true } : s;
-  if (s.column !== "queue" || s.reason === "run_newer") return s;
+// What a task's dependencies make it wait for: the tasks not «Done», then a result that is not where a dependent task
+// would see it (stage-b-board.md §5.2, the base rule); null — ready.
+function dependencies(deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus["depsWait"] {
   const notDone = deps.filter(([, d]) => !isDone(d)).map(([t]) => t.key);
-  if (notDone.length) return { ...s, reason: "waits_task", waitsFor: notDone };
+  if (notDone.length) return { reason: "waits_task", waitsFor: notDone, cycle: false };
   const where = deps.map(([t, d]) => [t, resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current))] as const);
   const notTaken = where.filter(([, w]) => w === "none").map(([t]) => t.key);
-  if (notTaken.length) return { ...s, reason: "waits_result", waitsFor: notTaken };
+  if (notTaken.length) return { reason: "waits_result", waitsFor: notTaken, cycle: false };
   // owner's decision 11: a result in a branch is the base of a separate copy — one of them, and nothing else to join
   // with it; a second result (another branch, or one in the folder) would need a merge: stage C, the person's
-  if (where.some(([, w]) => w === "branch") && where.length > 1) return { ...s, reason: "waits_merge", waitsFor: where.map(([t]) => t.key) };
-  return s;
+  if (where.some(([, w]) => w === "branch") && where.length > 1) return { reason: "waits_merge", waitsFor: where.map(([t]) => t.key), cycle: false };
+  return null;
+}
+
+// A «Done» task's dependencies now: one not «Done» was «Done» by a run before this task's run started (it changed after),
+// or it never was (this task was started anyway); a dependency's own note goes on to the tasks after it.
+function noteOf(task: BoardTask, s: TaskStatus, deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus["depsNote"] {
+  const since = runsOf.get(task.id)?.find((r) => r.runId === s.current)?.createdAt ?? Infinity;
+  const wasDone = (t: BoardTask) => (runsOf.get(t.id) ?? []).some((r) => r.createdAt < since && r.status === "completed"
+    && (r.completion === "confirmed" || (r.completion === "no_checks" && t.accepted?.runId === r.runId)));
+  const notes = deps.map(([t, d]) => (!isDone(d) ? (wasDone(t) ? "changed" : "not_ready") : d.depsNote));
+  return notes.includes("not_ready") ? "not_ready" : notes.includes("changed") ? "changed" : null;
 }
 
 // Where a dependency's result is for a task after it: in the project folder (it worked there, or its result was applied),
@@ -230,7 +243,9 @@ export function baseOf(task: Pick<BoardTask, "dependsOn">, board: Pick<Board, "t
 export function nextTask(board: Pick<Board, "tasks">, statuses: ReadonlyMap<string, TaskStatus>, at: { workspaceId: string; project: string }): BoardTask | null {
   return board.tasks.filter((t) => {
     const s = statuses.get(t.id);
-    return t.workspaceId === at.workspaceId && t.project === at.project && !t.archivedAt && s?.column === "queue" && s.reason === null && s.attempts === 0;
+    // a dependency «Done» on a shaky base (its own dependency changed, or it was started anyway) is the person's call
+    return t.workspaceId === at.workspaceId && t.project === at.project && !t.archivedAt && s?.column === "queue" && s.reason === null && s.attempts === 0
+      && !t.dependsOn.some((d) => statuses.get(d)?.depsNote);
   }).sort((a, b) => a.order - b.order)[0] ?? null;
 }
 

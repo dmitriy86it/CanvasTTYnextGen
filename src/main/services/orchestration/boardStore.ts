@@ -138,6 +138,9 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
 
   return {
     read: async (): Promise<BoardRead> => { await queue; return load(); },
+    // The board as last saved, without waiting for the queue: for a check made inside another store's queue (a start
+    // on a link holds the canvas queue; a change here may wait for the canvas — waiting both ways would never end).
+    peek: (): Promise<BoardRead> => load(),
 
     create: (input: TaskInput) => change(async (b) => {
       if (b.tasks.length >= MAX_TASKS) refuse("too_many_tasks", `at most ${MAX_TASKS} tasks`);
@@ -154,7 +157,8 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     // A task's text and requirements may change after runs (decision 4): the runs keep their own goal.
     update: (id: string, patch: BoardTaskPatch) => change(async (b) => {
       const t = b.tasks.find((x) => x.id === id) ?? refuse("task_not_found", `no task ${id}`);
-      const ok = checkInput(b, { ...t, ...patch }, id);
+      // a cycle is checked when the dependencies change: a task on a hand-made cycle can still be renamed
+      const ok = checkInput(b, { ...t, ...patch }, patch.dependsOn !== undefined ? id : null);
       if (patch.order !== undefined && !Number.isFinite(patch.order)) refuse("invalid_task", "order");
       const next: BoardTask = { ...t, ...ok, ...(patch.order !== undefined ? { order: patch.order } : {}), updatedAt: new Date().toISOString() };
       return { next: { ...b, tasks: b.tasks.map((x) => (x.id === id ? next : x)) }, value: next };
@@ -174,7 +178,9 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     remove: (id: string, hasRuns: () => Promise<boolean>, dependents: readonly string[] = []) => change(async (b) => {
       if (!b.tasks.some((x) => x.id === id)) refuse("task_not_found", `no task ${id}`);
       if (await hasRuns()) refuse("task_has_runs", "a task with runs is archived, not deleted");
-      const unseen = b.tasks.filter((x) => x.dependsOn.includes(id) && !dependents.includes(x.id));
+      // only the dependents of its workspace (the board shows those; another workspace's can only be a hand edit)
+      const self = b.tasks.find((x) => x.id === id)!;
+      const unseen = b.tasks.filter((x) => x.dependsOn.includes(id) && x.workspaceId === self.workspaceId && !dependents.includes(x.id));
       if (unseen.length) refuse("task_has_dependents", `${unseen.map((x) => x.key).join(", ")} depend on it: confirm to remove the link`);
       const tasks = b.tasks.filter((x) => x.id !== id).map((x) => (x.dependsOn.includes(id) ? { ...x, dependsOn: x.dependsOn.filter((d) => d !== id) } : x));
       return { next: { ...b, tasks }, value: null };

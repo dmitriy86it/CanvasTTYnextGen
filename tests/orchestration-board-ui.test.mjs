@@ -12,7 +12,7 @@ import { boardLayerId, parseCanvasLayerId } from "../src/renderer/src/features/w
 const TMP = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "canvastty-board-ui-")));
 after(() => fs.rmSync(TMP, { recursive: true, force: true }));
 const status = (over = {}) => ({ column: "queue", done: null, reason: null, waitsFor: [], cycle: false, attempts: 0, current: null, completion: null, ...over });
-const REASONS = ["run_unreadable", "waits_permission", "waits_answer", "waits_decision", "limit_reached", "waits_task", "waits_result",
+const REASONS = ["run_unreadable", "waits_permission", "waits_answer", "waits_decision", "limit_reached", "waits_task", "waits_result", "waits_merge",
   "last_stopped", "last_failed", "no_checks", "stopping", "run_newer", "paused_other"];
 
 test("every reason has its words in both languages; the keys and the attempt are filled in", () => {

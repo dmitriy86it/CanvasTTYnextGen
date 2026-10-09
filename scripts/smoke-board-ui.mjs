@@ -142,7 +142,7 @@ try {
   await app.clickEl(`${q(task("T-3"))}.querySelector("[data-board-start-anyway]")`);
   await app.waitFor(`${q("[data-board-anyway-confirm]")} && true`, "start anyway confirmation");
   const anywayWhy = await app.ev(`${q("[data-board-anyway-confirm]")}.textContent`);
-  expect(anywayWhy.includes("T-2 ещё не готова") && anywayWhy.includes("Запустить всё равно?"), "«Start anyway» says T-2 is not done and asks", anywayWhy);
+  expect(anywayWhy.includes("Ещё не готово: T-2") && anywayWhy.includes("Запустить всё равно?"), "«Start anyway» says T-2 is not done and asks", anywayWhy);
   await app.shot("board-03b-start-anyway");
   await boardShot("board-03b-start-anyway-board");
   await app.clickEl(`${q("[data-board-anyway-confirm]")}.querySelectorAll("button")[1]`);
