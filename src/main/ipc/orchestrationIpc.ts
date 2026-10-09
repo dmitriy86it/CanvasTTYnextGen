@@ -49,11 +49,13 @@ const strings = (v: unknown, what: string, maxItems: number, maxLen: number): st
   Array.isArray(v) && v.length >= 1 && v.length <= maxItems ? v.map((x, i) => str(x, `${what}[${i}]`, maxLen)) : bad(`${what} must be 1..${maxItems} strings`);
 
 export function parseCreate(v: unknown): OrchestrationCreateRequest {
-  const o = obj(v, "request", ["requestId", "source", "goal"]);
+  const o = obj(v, "request", ["requestId", "source", "goal"], ["anyway"]);
   const source = str(o.source, "source", 4096);
   if (!source.startsWith("/")) bad("source must be an absolute path");
-  return { requestId: uuid(o.requestId, "requestId"), source, goal: parseGoal(o.goal) };
+  return { requestId: uuid(o.requestId, "requestId"), source, goal: parseGoal(o.goal), ...anyway(o.anyway) };
 }
+
+const anyway = (v: unknown): { anyway?: true } => (v === undefined || v === false ? {} : v === true ? { anyway: true } : bad("anyway must be a boolean"));
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
   const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task"]);
@@ -336,9 +338,9 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
       { commandId: string; linkId: string; runId: string }];
   }, manager.releaseNewerLink));
   handleMain(IPC.orchestrationLinkStart, (_e, input: unknown) => checked(() => {
-    const o = obj(input, "request", ["linkId", "requestId", "goal"]);
-    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal) }] as [
-      { linkId: string; requestId: string; goal: OrchestrationGoalInput }];
+    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway"]);
+    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway) }] as [
+      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }];
   }, manager.startOnLink));
   handleMain(IPC.orchestrationActivity, (_e, runId: unknown, afterId: unknown, limit: unknown) => checked(
     () => [uuid(runId, "runId"), int(afterId, "afterId", 0), int(limit, "limit", 1, 500)] as [string, number, number], manager.activity));
@@ -378,7 +380,8 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     if (typeof archived !== "boolean") bad("archived must be a boolean");
     return [uuid(id, "id"), archived as boolean] as [string, boolean];
   }, manager.boardArchive));
-  handleMain(IPC.orchestrationBoardRemove, (_e, id: unknown) => checked(() => [uuid(id, "id")] as [string], manager.boardRemove));
+  handleMain(IPC.orchestrationBoardRemove, (_e, id: unknown, dependents: unknown) => checked(
+    () => [uuid(id, "id"), dependents === undefined ? [] : uuids(dependents, "dependents")] as [string, string[]], manager.boardRemove));
   handleMain(IPC.orchestrationBoardAccept, (_e, id: unknown) => checked(() => [uuid(id, "id")] as [string], manager.boardAccept));
   handleMain(IPC.orchestrationBoardPlace, (_e, workspaceId: unknown, bounds: unknown) => checked(() => {
     if (bounds === null) return [str(workspaceId, "workspaceId", 64), null] as [string, null];

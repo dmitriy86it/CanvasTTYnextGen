@@ -116,4 +116,5 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
 }
 
 export type AgentCanvasUi = ReturnType<typeof useAgentCanvasUi>;
-export interface GoalTask { id: string; key: string; title: string; text: string; criteria: string[] }
+// anyway: the person confirmed «Start anyway» for a task that waits for others (§4.2)
+export interface GoalTask { id: string; key: string; title: string; text: string; criteria: string[]; anyway?: boolean }

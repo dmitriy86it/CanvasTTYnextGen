@@ -27,7 +27,8 @@ export interface NotifyStep { notes: Note[]; badge: number; bounce: boolean; not
 
 // notified: the last state told per run ("" — none; absent — a run not seen before this record existed).
 // A run seen for the first time without a record (older runs after an update) is only recorded, never told.
-export function notifyStep(locale: LocaleId, runs: readonly NotifyRun[], notified: Readonly<Record<string, string>>, prefs: NotifyPrefs, focused: boolean, onMac = true): NotifyStep {
+// accepting (B3, owner's decision 10): the board's tasks waiting for «Accept the result» — the person's too, on the badge.
+export function notifyStep(locale: LocaleId, runs: readonly NotifyRun[], notified: Readonly<Record<string, string>>, prefs: NotifyPrefs, focused: boolean, onMac = true, accepting = 0): NotifyStep {
   const next: Record<string, string> = { ...notified };
   const notes: Note[] = [];
   let badge = 0;
@@ -42,7 +43,7 @@ export function notifyStep(locale: LocaleId, runs: readonly NotifyRun[], notifie
     if (focused || !prefs[s.signal === "completed_no_checks" ? "completed" : s.signal]) continue;
     notes.push({ runId: r.runId, signal: s.signal, title: r.place, body: noteBody(locale, s.signal, r) });
   }
-  return { notes, badge: prefs.dockBadge ? badge : 0, bounce, notified: next };
+  return { notes, badge: prefs.dockBadge ? badge + accepting : 0, bounce, notified: next };
 }
 
 // The short reason only: never a path, a command or a file's text.

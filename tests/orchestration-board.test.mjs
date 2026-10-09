@@ -396,3 +396,47 @@ test("goal.task: a v1 goal refuses it; the IPC takes { id, key } only", OPTS, as
   assert.throws(() => parseCreate({ ...base, goal: { ...base.goal, task: { id: t.id, key: "T-1", status: "done" } } }));
   await m.shutdown();
 });
+
+// B3 (§4.2): a task waiting for others starts only when the person confirmed «Start anyway»; the autopilot never sets it
+test("«Start anyway»: a run of a task whose dependency is not «Done» is refused unless the request says anyway", OPTS, async () => {
+  const src = project();
+  const m = manager();
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "project", checks: ["false"] });
+  const t1 = (await m.boardCreate(input({ project: src }))).value;
+  const t2 = (await m.boardCreate(input({ project: src, dependsOn: [t1.id] }))).value;
+  const goal = { text: "a to 2", criteria: ["a.txt says 2"], checks: [], commands: [], mode: "autopilot", reviewPlan: true, task: { id: t2.id, key: t2.key } };
+  const refused = await m.create({ requestId: randomUUID(), source: src, goal });
+  assert.equal(refused.code, "task_not_ready");
+  assert.match(refused.message, new RegExp(t1.key));
+  // the same through a link: the check runs inside the canvas queue and must not wait for it (it did: a start hung)
+  const bounds = { position: { x: 0, y: 0 }, size: { width: 280, height: 160 } };
+  const lead = (await m.createAgent({ agentId: randomUUID(), provider: "codex", project: src, bounds })).value.agentId;
+  const exec = (await m.createAgent({ agentId: randomUUID(), provider: "claude", project: src, bounds })).value.agentId;
+  const linkId = (await m.createLink({ linkId: randomUUID(), fromAgentId: lead, toAgentId: exec })).value.linkId;
+  const viaLink = await Promise.race([m.startOnLink({ linkId, requestId: randomUUID(), goal }), new Promise((r) => setTimeout(() => r({ code: "hung" }), 10_000))]);
+  assert.equal(viaLink.code, "task_not_ready");
+  const runId = randomUUID();
+  assert.ok((await m.startOnLink({ linkId, requestId: runId, goal, anyway: true })).ok);
+  // a repeat of the created request is answered whatever it says about anyway
+  assert.deepEqual((await m.create({ requestId: runId, source: src, goal })).value, { runId, created: false });
+  // the IPC takes a boolean only
+  const base = { requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"] } };
+  assert.equal(parseCreate({ ...base, anyway: true }).anyway, true);
+  assert.equal("anyway" in parseCreate({ ...base, anyway: false }), false);
+  assert.throws(() => parseCreate({ ...base, anyway: "yes" }), /anyway/);
+  await until(async () => (await m.get(runId)).value.view.reason === "plan_review", "the plan review");
+  await m.shutdown();
+});
+
+// B3 (§4.2): a task others depend on is deleted only with the dependents the person was shown; they lose it openly
+test("deleting a task others depend on needs its dependents confirmed", async () => {
+  const store = createBoardStore(path.join(TMP, `deps-${++n}.json`), async () => 0);
+  const a = await store.create(input({ project: "/p" }));
+  const b = await store.create(input({ project: "/p", dependsOn: [a.id] }));
+  const c = await store.create(input({ project: "/p", dependsOn: [a.id] }));
+  await assert.rejects(store.remove(a.id, async () => false), (e) => e.code === "task_has_dependents" && /T-2, T-3/.test(e.message));
+  await assert.rejects(store.remove(a.id, async () => false, [b.id]), (e) => e.code === "task_has_dependents" && !/T-2/.test(e.message), "one not shown still refuses");
+  await store.remove(a.id, async () => false, [b.id, c.id]);
+  const left = (await store.read()).board.tasks;
+  assert.deepEqual(left.map((x) => [x.key, x.dependsOn]), [["T-2", []], ["T-3", []]]);
+});

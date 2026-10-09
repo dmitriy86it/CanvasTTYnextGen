@@ -168,11 +168,14 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
       return { next: { ...b, tasks: b.tasks.map((x) => (x.id === id ? next : x)) }, value: next };
     }),
 
-    // Only a task without runs is deleted (one with runs is archived); its dependents lose it openly — the caller showed them.
+    // Only a task without runs is deleted (one with runs is archived); its dependents lose it openly (§4.2): dependents
+    // are the ids the person saw in the confirmation, and a dependent they did not see refuses the deletion.
     // hasRuns is asked inside the queue: a run created after the question finds the task gone (manager taskOk)
-    remove: (id: string, hasRuns: () => Promise<boolean>) => change(async (b) => {
+    remove: (id: string, hasRuns: () => Promise<boolean>, dependents: readonly string[] = []) => change(async (b) => {
       if (!b.tasks.some((x) => x.id === id)) refuse("task_not_found", `no task ${id}`);
       if (await hasRuns()) refuse("task_has_runs", "a task with runs is archived, not deleted");
+      const unseen = b.tasks.filter((x) => x.dependsOn.includes(id) && !dependents.includes(x.id));
+      if (unseen.length) refuse("task_has_dependents", `${unseen.map((x) => x.key).join(", ")} depend on it: confirm to remove the link`);
       const tasks = b.tasks.filter((x) => x.id !== id).map((x) => (x.dependsOn.includes(id) ? { ...x, dependsOn: x.dependsOn.filter((d) => d !== id) } : x));
       return { next: { ...b, tasks }, value: null };
     }),

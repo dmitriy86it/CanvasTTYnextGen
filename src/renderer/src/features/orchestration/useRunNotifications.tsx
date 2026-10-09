@@ -15,9 +15,10 @@ const store = {
   setUnavailable(): void { try { localStorage.setItem(NOTIFY_UNAVAILABLE_KEY, "1"); } catch { /* the banner still shows */ } }
 };
 
-export function useRunNotifications({ locale, prefs, runs, activity, title, open }: {
+export function useRunNotifications({ locale, prefs, runs, activity, title, open, accepting = 0 }: {
   locale: LocaleId; prefs: NotificationSettings; runs: Record<string, RunState>; activity: Record<string, RunActivityState>;
   title(runId: string): string; open(runId: string): void;
+  accepting?: number; // the board's tasks waiting for «Accept the result» (counted on the badge)
 }): { banner: Note[]; openNote(runId: string): void; dismiss(runId: string): void } {
   const notified = useRef<Record<string, string> | null>(null);
   const badge = useRef<number | null>(null);
@@ -30,7 +31,7 @@ export function useRunNotifications({ locale, prefs, runs, activity, title, open
   useEffect(() => {
     notified.current ??= store.read();
     const list = Object.entries(runs).map(([runId, r]) => ({ runId, view: r.view, place: title(runId), entries: activity[runId]?.entries ?? [] }));
-    const step = notifyStep(locale, list, notified.current, prefs, document.hasFocus() && !document.hidden);
+    const step = notifyStep(locale, list, notified.current, prefs, document.hasFocus() && !document.hidden, true, accepting);
     notified.current = step.notified;
     store.write(step.notified);
     if (badge.current !== step.badge) { badge.current = step.badge; window.canvasTTY.notify.setBadge(step.badge); }
@@ -40,7 +41,7 @@ export function useRunNotifications({ locale, prefs, runs, activity, title, open
       shown.current.set(n.runId, n);
       void window.canvasTTY.notify.show(n).then((r) => { if (!r.shown) { store.setUnavailable(); toBanner(n); } }, () => toBanner(n));
     }
-  }, [activity, locale, prefs, runs, title, toBanner]);
+  }, [accepting, activity, locale, prefs, runs, title, toBanner]);
 
   useEffect(() => {
     const offClick = window.canvasTTY.notify.onClick((runId) => openRef.current(runId));

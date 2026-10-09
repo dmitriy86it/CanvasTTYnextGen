@@ -44,7 +44,7 @@ export function useBoard(orch: Orchestration) {
     create: (input: BoardTaskInput) => act(() => api.boardCreate(input)),
     update: (id: string, patch: BoardTaskPatch) => act(() => api.boardUpdate(id, patch)),
     archive: (id: string, archived: boolean) => act(() => api.boardArchive(id, archived)),
-    remove: (id: string) => act(() => api.boardRemove(id)),
+    remove: (id: string, dependents: string[] = []) => act(() => api.boardRemove(id, dependents)),
     accept: (id: string) => act(() => api.boardAccept(id)),
     place: (workspaceId: string, bounds: SessionBounds | null) => act(() => api.boardPlace(workspaceId, bounds))
   };

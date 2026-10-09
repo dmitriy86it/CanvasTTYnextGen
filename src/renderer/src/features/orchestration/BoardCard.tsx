@@ -8,7 +8,7 @@ import type { BoardTask, TaskColumn } from "../../../../shared/taskBoard";
 import { t } from "../../lib/i18n";
 import { Dialog } from "./OrchestrationDialogs";
 import { ACTIVE_STATUSES } from "./runModel";
-import { taskLine, tr } from "./boardModel";
+import { ASKS_HINT_OVER, askCount, permissionLine, taskLine, tr } from "./boardModel";
 import { conditionsLine, costLine, findingsLine } from "./runStatus";
 import type { AgentCanvasUi } from "./useAgentCanvasUi";
 import type { Board } from "./useBoard";
@@ -44,6 +44,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
   const [showArchive, setShowArchive] = useState(false);
   const [form, setForm] = useState<{ task: BoardTask | null } | null>(null);
   const [accepting, setAccepting] = useState<string | null>(null);
+  const [anyway, setAnyway] = useState<string | null>(null); // «Start anyway» asked for this task
   const [message, setMessage] = useState<{ taskId: string | null; text: string } | null>(null);
   const view = board.view;
   const readOnly = !!view?.readOnly;
@@ -62,11 +63,11 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
   };
   const failure = (r: { ok: boolean; code?: string; message?: string }) => (r.ok ? null : tr(locale, `orchError_${r.code}`) || r.message || String(r.code));
   // «Start»: the goal dialog of a free link of the task's folder, with the task's text, requirements and goal.task
-  const start = (task: BoardTask) => {
+  const start = (task: BoardTask, startAnyway = false) => {
     const links = orch.canvas.links.filter((l) => leadOf(l)?.project === task.project);
     const link = links.find((l) => !busy(l));
     if (!link) { say(task.id, tr(locale, "boardNoLink", { project: task.project })); return; }
-    ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria });
+    ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria, ...(startAnyway ? { anyway: true } : {}) });
   };
   const projects = [...new Set([...orch.canvas.agents.map((a) => a.project), ...(props.defaultProject ? [props.defaultProject] : [])])];
 
@@ -103,13 +104,13 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                   const entries = runId ? orch.activity[runId]?.entries ?? [] : [];
                   const fact = runId ? view?.facts.find((f) => f.runId === runId) : undefined;
                   const base = taskLine(locale, st, run ? { view: run.view, entries, open: run.open } : null, fact?.limit ?? null);
-                  // what is asked, in the request's own words (answered in the run panel: one home for answers)
-                  const asked = st.reason === "waits_permission" ? run?.view.permission?.summary : null;
-                  const line = asked ? `${base}: ${asked}` : base;
+                  // what is asked, in the request's own words and the CLI's reason (answered in the run panel: one home for answers)
+                  const line = st.reason === "waits_permission" ? permissionLine(locale, base, run?.view.permission) : base;
                   // without checks, the conditions are met by the agents' word only
                   const met = run ? conditionsLine(locale, run.view) : null;
+                  const asks = askCount(entries);
                   const facts = [met && (st.completion === "no_checks" ? `${met} (${t(locale, "boardByAgents")})` : met), run && findingsLine(locale, run.view),
-                    st.attempts > 0 && tr(locale, "boardAttempt", { n: st.attempts })].filter(Boolean).join(" · ");
+                    st.attempts > 0 && tr(locale, "boardAttempt", { n: st.attempts }), asks > 0 && tr(locale, "boardAsks", { n: asks })].filter(Boolean).join(" · ");
                   // the tasks that go on once this one is accepted
                   const next = tasks.filter((x) => !x.archivedAt && x.dependsOn.includes(task.id)).map((x) => x.key);
                   const cost = run ? costLine(locale, "executor", run.view, entries) : null;
@@ -128,7 +129,9 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                         {st.done && <span className={`board-task__badge board-task__badge--${st.done}`} aria-hidden="true">{st.done === "confirmed" ? "✓" : "✋"}</span>}
                         <span data-board-line-text>{line}</span>
                       </div>
-                      {facts && <div className="board-task__line board-task__facts" title={facts}>{facts}</div>}
+                      {facts && <div className="board-task__line board-task__facts" data-board-facts title={facts}>{facts}</div>}
+                      {asks > ASKS_HINT_OVER && <div className="board-task__line board-task__hint" data-board-asks-hint>{t(locale, "boardAsksHint")}</div>}
+                      {st.depsChanged && <div className="board-task__line board-task__hint" data-board-deps-changed>{t(locale, "boardDepsChanged")}</div>}
                       {after && <div className="board-task__line" data-board-after title={after}>{after}</div>}
                       {run && <div className="board-task__line" data-board-executor title={cost ?? undefined}>{tr(locale, "boardExecutor", { who: "Claude" })}{cost ? ` · ${cost}` : ""}</div>}
                       {message?.taskId === task.id && <div className="board-task__message" role="alert">{message.text}</div>}
@@ -144,7 +147,14 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                           <button type="button" onClick={() => setAccepting(null)}>{t(locale, "orchCancel")}</button>
                         </div>
                       )}
-                      {!readOnly && accepting !== task.id && (
+                      {anyway === task.id && (
+                        <div className="board-task__confirm" role="alertdialog" aria-label={t(locale, "boardStartAnyway")} data-board-anyway-confirm>
+                          <p>{tr(locale, "boardStartAnywayWhy", { keys: st.waitsFor.join(", ") })}</p>
+                          <button type="button" className="orch-primary" data-board-anyway-yes onClick={() => { setAnyway(null); start(task, true); }}>{t(locale, "boardStartAnyway")}</button>
+                          <button type="button" onClick={() => setAnyway(null)}>{t(locale, "orchCancel")}</button>
+                        </div>
+                      )}
+                      {!readOnly && accepting !== task.id && anyway !== task.id && (
                         <div className="board-task__actions">
                           {archived ? (
                             <button type="button" data-board-unarchive onClick={() => void board.archive(task.id, false)}>{t(locale, "boardUnarchive")}</button>
@@ -152,6 +162,10 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                             <>
                               {(st.column === "queue" || st.reason === "no_checks") && !st.reason?.startsWith("waits_") && st.reason !== "run_newer" && (
                                 <button type="button" data-board-start onClick={() => start(task)}>{t(locale, st.attempts ? "boardStartAgain" : "boardStart")}</button>
+                              )}
+                              {/* §4.2: a task that waits for others starts only after the person confirmed it */}
+                              {(st.reason === "waits_task" || st.reason === "waits_result") && !st.cycle && (
+                                <button type="button" data-board-start-anyway onClick={() => setAnyway(task.id)}>{t(locale, "boardStartAnyway")}</button>
                               )}
                               {runId && st.reason === "waits_permission"
                                 ? <button type="button" className="orch-primary" data-board-open data-board-answer onClick={() => ui.openRunById(runId)}>{t(locale, "boardAnswer")}</button>
@@ -177,6 +191,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
       ))}
       {form && (
         <TaskForm locale={locale} task={form.task} tasks={tasks.filter((x) => !x.archivedAt)} projects={projects}
+          dependents={form.task ? tasks.filter((x) => x.dependsOn.includes(form.task!.id)) : []}
           onClose={() => setForm(null)}
           onSave={async (input) => {
             const r = form.task ? await board.update(form.task.id, { title: input.title, text: input.text, criteria: input.criteria, dependsOn: input.dependsOn })
@@ -185,8 +200,8 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
             if (!f) setForm(null);
             return f;
           }}
-          onDelete={form.task && !(board.statuses.get(form.task.id)?.attempts) ? async () => {
-            const f = failure(await board.remove(form.task!.id));
+          onDelete={form.task && !(board.statuses.get(form.task.id)?.attempts) ? async (dependents) => {
+            const f = failure(await board.remove(form.task!.id, dependents));
             if (!f) setForm(null);
             return f;
           } : undefined} />
@@ -196,11 +211,13 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
 }
 
 // «New task» / «Edit task»: the goal's fields without a start (§6). main checks the rest (lengths, cycles, the folder).
-function TaskForm({ locale, task, tasks, projects, onClose, onSave, onDelete }: {
-  locale: LocaleId; task: BoardTask | null; tasks: BoardTask[]; projects: string[]; onClose(): void;
+function TaskForm({ locale, task, tasks, projects, dependents, onClose, onSave, onDelete }: {
+  locale: LocaleId; task: BoardTask | null; tasks: BoardTask[]; projects: string[]; dependents: BoardTask[]; onClose(): void;
   onSave(input: { project: string; title: string; text: string; criteria: string[]; dependsOn: string[] }): Promise<string | null>;
-  onDelete?: () => Promise<string | null>;
+  // dependents: the tasks shown as losing this dependency (§4.2: removed openly, never on the quiet)
+  onDelete?: (dependents: string[]) => Promise<string | null>;
 }): React.JSX.Element {
+  const [deleting, setDeleting] = useState(false);
   const [title, setTitle] = useState(task?.title ?? "");
   const [text, setText] = useState(task?.text ?? "");
   const [criteria, setCriteria] = useState(task?.criteria.join("\n") ?? "");
@@ -240,9 +257,13 @@ function TaskForm({ locale, task, tasks, projects, onClose, onSave, onDelete }: 
           </fieldset>
         )}
         {error && <p className="orch-error" role="alert">{error}</p>}
+        {deleting && <p className="orch-hint orch-hint--warn" role="alert" data-board-delete-dependents>
+          {tr(locale, "boardDeleteDependents", { keys: dependents.map((x) => x.key).join(", ") })}</p>}
         {!complete && <p className="orch-hint" data-board-form-incomplete>{t(locale, "boardFormIncomplete")}</p>}
         <div className="orch-actions">
-          {onDelete && <button type="button" className="orch-danger" data-board-delete onClick={async () => setError(await onDelete())}>{t(locale, "boardDelete")}</button>}
+          {onDelete && <button type="button" className="orch-danger" data-board-delete
+            onClick={async () => (dependents.length && !deleting ? setDeleting(true) : setError(await onDelete(dependents.map((x) => x.id))))}>
+            {t(locale, deleting ? "boardDeleteConfirm" : "boardDelete")}</button>}
           <button type="button" onClick={onClose}>{t(locale, "orchCancel")}</button>
           <button type="submit" className="orch-primary" data-board-save disabled={!complete || busy}>{t(locale, "boardSave")}</button>
         </div>

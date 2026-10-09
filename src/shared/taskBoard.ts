@@ -87,6 +87,9 @@ export interface TaskStatus {
   attempts: number;
   current: string | null; // runId of the latest run
   completion: "confirmed" | "no_checks" | null;
+  // B3 (§4.2): «Done», while a task it depends on is not «Done» any more (a new run of it stopped). Not rolled back:
+  // only said («the dependency changed after it was done»); recomputing the result is stage D.
+  depsChanged: boolean;
 }
 
 const REVIEW_PURPOSES: readonly OrchestrationTurnPurpose[] = ["review", "final_review"];
@@ -153,7 +156,7 @@ export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTa
 // A task by its own runs only.
 export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFacts[]): TaskStatus {
   const sorted = [...runs].sort((a, b) => a.createdAt - b.createdAt || a.runId.localeCompare(b.runId));
-  const base = { attempts: sorted.length, waitsFor: [] as string[], cycle: false, done: null };
+  const base = { attempts: sorted.length, waitsFor: [] as string[], cycle: false, done: null, depsChanged: false };
   const current = sorted.at(-1);
   if (!current) return { ...base, column: "queue", reason: null, current: null, completion: null };
   const readable = [...sorted].reverse().find((r) => r.status !== "unreadable" && !r.newer);
@@ -189,6 +192,7 @@ export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFac
 // Dependencies come into a task that has not started (or whose last run stopped or failed): it waits for the tasks not
 // «Done», then for a result that is not where a dependent task would see it (stage-b-board.md §5.2, the base rule).
 function withDependencies(s: TaskStatus, deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus {
+  if (s.done) return deps.some(([, d]) => !isDone(d)) ? { ...s, depsChanged: true } : s;
   if (s.column !== "queue" || s.reason === "run_newer") return s;
   const notDone = deps.filter(([, d]) => !isDone(d)).map(([t]) => t.key);
   if (notDone.length) return { ...s, reason: "waits_task", waitsFor: notDone };

@@ -36,7 +36,9 @@ const claudeScript = script("claude", [
   { report: { summary: "two added", done: true }, writes: [["src/two.mjs", "export const two = 2;\n"]] }
 ]);
 // run 2's executor asks to run a command first: the run waits for the person, the board and the card say so
-fs.writeFileSync(path.join(claudeScript, "2.asks.json"), JSON.stringify([{ tool: "Bash", command: "ls src" }]));
+// B3: with the CLI's own reason (decision_reason), which the board's line and the feed show as it was said
+const CLI_WHY = "Permission rule Bash(ls:*) requires approval";
+fs.writeFileSync(path.join(claudeScript, "2.asks.json"), JSON.stringify([{ tool: "Bash", command: "ls src", request: { decision_reason_type: "rule", decision_reason: CLI_WHY } }]));
 fs.mkdirSync(D("mock-state", ".codex"), { recursive: true });
 fs.writeFileSync(D("mock-state", ".codex", "config.toml"), "");
 const ledger = D("ledger.jsonl");
@@ -135,6 +137,15 @@ try {
   const t3 = await shown("T-3");
   expect(t3?.column === "queue" && t3.reason === "waits_task" && t3.line.includes("T-2") && !t3.buttons.includes("Запустить"), "T-3 waits for T-2, no «Start»", t3);
   expect(!await app.ev(`${q(task("T-3"))}.querySelector("[data-board-after]")`), "T-3 says «waits for T-2» once (no second «after T-2» line)");
+  // B3 (§4.2): «Start anyway» asks first, naming what it waits for
+  expect(t3.buttons.includes("Запустить всё равно"), "T-3 offers «Start anyway»", t3);
+  await app.clickEl(`${q(task("T-3"))}.querySelector("[data-board-start-anyway]")`);
+  await app.waitFor(`${q("[data-board-anyway-confirm]")} && true`, "start anyway confirmation");
+  const anywayWhy = await app.ev(`${q("[data-board-anyway-confirm]")}.textContent`);
+  expect(anywayWhy.includes("T-2 ещё не готова") && anywayWhy.includes("Запустить всё равно?"), "«Start anyway» says T-2 is not done and asks", anywayWhy);
+  await app.shot("board-03b-start-anyway");
+  await boardShot("board-03b-start-anyway-board");
+  await app.clickEl(`${q("[data-board-anyway-confirm]")}.querySelectorAll("button")[1]`);
   const fresh = await shown("T-1");
   expect(fresh?.column === "queue" && fresh.line === "Ещё не запускалась" && fresh.buttons.includes("Запустить"), "T-1 not started, «Start»", fresh);
   await app.shot("board-03-three-tasks");
@@ -163,8 +174,11 @@ try {
   await app.waitFor(`${q("[data-orch-permission]")} && true`, "permission prompt", 60_000);
   await closePanel();
   const waiting = await until("T-2", (s) => s.reason === "waits_permission", "T-2 waits for a permission", 30_000);
-  expect(waiting.column === "work" && waiting.line.startsWith("Ждёт разрешения: ") && waiting.buttons.includes("Ответить на запрос"),
+  expect(waiting.column === "work" && waiting.line.startsWith("Ждёт разрешения: ls src") && waiting.buttons.includes("Ответить на запрос"),
     "T-2 at work: «Waits for a permission: <what>», «Answer the request»", waiting);
+  expect(waiting.line.includes(`причина CLI: ${CLI_WHY}`), "the line gives the CLI's reason as it said it", waiting.line);
+  const asksFact = await app.ev(`${q(task("T-2"))}.querySelector("[data-board-facts]")?.textContent ?? ""`);
+  expect(asksFact.includes("вопросов о правах: 1"), "the task counts the permission prompts of its run", asksFact);
   const cardTask = await app.ev(`${q(`[data-agent-id="${exec.agentId}"] [data-agent-task]`)}?.textContent ?? null`);
   expect(cardTask === "T-2 · Модуль two", "the agent card at work shows «T-2 · Модуль two»", cardTask);
   await app.shot("board-05a-waits-permission");
@@ -180,6 +194,10 @@ try {
   expect(agentState.includes("agent-card--completed_no_checks"), "the agent card says the same: completed without checks", agentState);
   const t3Before = await shown("T-3");
   expect(t3Before.reason === "waits_task", "T-3 waits while T-2 is not accepted", t3Before);
+  // B3 (decision 10): the Dock badge counts the task waiting for «Accept the result»
+  const lastBadge = () => [...app.output().matchAll(/\[smoke\] notify badge (\d+)/g)].map((m) => Number(m[1])).at(-1) ?? null;
+  await until("T-2", () => lastBadge() === 1, "the badge counts T-2", 15_000).catch(() => null);
+  expect(lastBadge() === 1, "the Dock badge counts the task waiting for «Accept the result»", lastBadge());
   await app.shot("board-05-completed-without-checks");
   await boardShot("board-05-completed-without-checks-board");
   await app.clickEl(`${q(task("T-2"))}.querySelector("[data-board-accept]")`);
@@ -193,6 +211,8 @@ try {
   const accepted = await until("T-2", (s) => s.done === "accepted", "T-2 accepted");
   expect(accepted.column === "done" && accepted.line.startsWith("Готово (принято вами, без проверок)") && accepted.badge?.includes("accepted") && !accepted.badge.includes("confirmed"),
     "T-2: Done (accepted by you, without checks), its own mark", accepted);
+  await until("T-2", () => lastBadge() === 0, "the badge back to 0", 15_000).catch(() => null);
+  expect(lastBadge() === 0, "accepted: the badge is back to 0", lastBadge());
   const t3Free = await until("T-3", (s) => s.reason === null, "T-3 free");
   expect(t3Free.column === "queue" && t3Free.buttons.includes("Запустить"), "T-3 no longer waits (the result is in the project folder)", t3Free);
   await app.shot("board-07-done-confirmed-and-accepted");

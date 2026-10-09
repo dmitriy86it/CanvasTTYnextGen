@@ -129,6 +129,10 @@ export interface OrchestrationCreateRequest {
   requestId: string; // UUID chosen by the renderer; it becomes the runId, so a repeat never creates a second run
   source: string; // absolute path of the project's Git repository (its top level)
   goal: OrchestrationGoalInput;
+  // B3 (§4.2): the goal's task waits for other tasks (not «Done», or their result not where it would see it) and the
+  // person confirmed «Start anyway». Without it such a start is refused (task_not_ready); the board's autopilot never
+  // sets it. Not part of the request's identity.
+  anyway?: boolean;
 }
 
 export type OrchestrationRunCommand =
@@ -230,6 +234,8 @@ export interface OrchestrationPermissionRequest {
   form?: OrchestrationForm | null; // elicitation
   plan?: string | null; // plan: the plan the agent wants to leave plan mode with
   server?: string | null; // elicitation: the MCP server
+  // B3 (§5.3 п. 4): why the CLI asks, as it said it (Claude: decision_reason_type / decision_reason; Codex: reason)
+  why?: { type: string | null; text: string | null };
 }
 
 export interface OrchestrationCommandRequest {
@@ -578,7 +584,7 @@ export interface OrchestrationApi {
   // link is removed and its folder freed, the run's files stay as they are. A repeat of commandId answers the same.
   releaseNewerLink(input: { commandId: string; linkId: string; runId: string }): Promise<OrchestrationResult<OrchestrationReleasedNewerRun>>;
   // Creates a run on the link: the source is the lead card's project, chosen in main.
-  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
+  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
   // The listener gets the run's current state first (the snapshot, as an event), then only newer states in order;
   // `snapshot` is the same result. One main subscription per run and page, however many listeners. unwatch() stops it.
   // Activity batches of the run travel on the same subscription (onActivity listeners get them while it is held).
@@ -600,7 +606,8 @@ export interface OrchestrationApi {
   boardCreate(input: BoardTaskInput): Promise<OrchestrationResult<BoardTask>>;
   boardUpdate(id: string, patch: BoardTaskPatch): Promise<OrchestrationResult<BoardTask>>;
   boardArchive(id: string, archived: boolean): Promise<OrchestrationResult<BoardTask>>;
-  boardRemove(id: string): Promise<OrchestrationResult<null>>;
+  // dependents: the tasks the person was shown as losing this dependency (task_has_dependents otherwise)
+  boardRemove(id: string, dependents?: string[]): Promise<OrchestrationResult<null>>;
   boardAccept(id: string): Promise<OrchestrationResult<BoardTask>>;
   boardPlace(workspaceId: string, bounds: BoardPlace | null): Promise<OrchestrationResult<null>>; // B2: the card's place, null: hidden
   // The same checks the start makes, without starting anything (no model, no run).
