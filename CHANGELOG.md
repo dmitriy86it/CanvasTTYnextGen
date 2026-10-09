@@ -4,6 +4,19 @@
 
 ## Unreleased
 
+## 1.5.15 — 2026-10-09
+
+Dependencies between tasks, the reasons a task waits, and «Run the board» — the board's autopilot.
+
+- Dependencies are checked: tasks of the same workspace, no cycle. A task that waits for another one offers «Start anyway», which names what is not done and asks first. Deleting a task others depend on shows them and asks first.
+- A «Done» task whose dependency is not «Done» any more is never rolled back, only marked: «a dependency changed after this was done», or «done without its dependencies done (started anyway)». The mark goes on to the tasks after it; «Accept the result» warns about it.
+- «Waits for a permission: <what> (CLI's reason: …)» — the CLI's own reason, never retold; it is in the run's feed too. The application's own answers to prompts it settles itself are recorded apart. A task card counts its run's permission prompts and, above 3, suggests checking the rights mode.
+- The Dock badge also counts the tasks waiting for «Accept the result».
+- «Run the board» on the board card: the autopilot takes the next queue task by order and dependencies and starts it on the link with the project's settings, after the same readiness check as the dialog (no model call). When a task is «Done» it takes the result as a branch in the project («Create a branch»); the next task in a separate copy starts from that branch, so a chain A → B → C goes on branch by branch and your working folder is never touched. Two dependencies with results in two branches wait for you (merging is stage C).
+- The autopilot waits for you on a question, a permission request, a decision and «Accept the result»; it never answers and never widens or carries over a right. It stops, saying why, when a run is stopped, fails or pauses for another reason, when the budget (5 runs, 240 working minutes by default) is used up, when the project's settings change (a permission saved for the project is named), or when every task is done. It is off after a restart of the application. A notification says «The board's autopilot stopped: <why>» or «Board: every task is done» (Settings → Notifications → «Board autopilot»).
+- One run of a task at a time, and only from the workspace that owns the task. Outside the autopilot the goal dialog asks what a task's copy starts from: the dependency's branch or the working folder. «Apply to the working folder» is not offered for a result started from a branch: the branch holds the whole chain.
+- Checked on the real Codex 0.160.0 and Claude 2.1.295: three tasks in a chain, each «Done — confirmed by checks», each next one from the branch before, 12 model calls, no permission prompt.
+
 ## 1.5.14 — 2026-10-09
 
 A task board on the canvas: tasks, their status from the runs, «Accept the result».
