@@ -105,5 +105,5 @@ mac:
 
 publish:
   provider: github
-  owner: dmitriy86it
+  owner: dontpanicops
   repo: CanvasTTYnextGen

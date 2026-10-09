@@ -34,7 +34,7 @@ Raoden Loom does not install provider CLIs. If a provider is missing, the launch
 
 ## Install
 
-Download the latest release from [GitHub Releases](https://github.com/dmitriy86it/CanvasTTYnextGen/releases): AppImage/deb for Linux x86_64, installer/portable app for Windows x64, and dmg/zip for Apple Silicon macOS. macOS bundles are ad-hoc signed and verified but do not have a Developer ID signature or Apple notarization; Windows packages remain unsigned. Intel Mac builds are not included yet. Read [installing and local-data security](docs/installing-and-security.md).
+Download the latest release from [GitHub Releases](https://github.com/dontpanicops/CanvasTTYnextGen/releases): AppImage/deb for Linux x86_64, installer/portable app for Windows x64, and dmg/zip for Apple Silicon macOS. macOS bundles are ad-hoc signed and verified but do not have a Developer ID signature or Apple notarization; Windows packages remain unsigned. Intel Mac builds are not included yet. Read [installing and local-data security](docs/installing-and-security.md).
 
 | Platform | Canvas, terminals, browser, plugins | Agent orchestration |
 |:--|:--|:--|

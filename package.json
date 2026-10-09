@@ -9,10 +9,10 @@
     "dmitriy86it"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/dmitriy86it/CanvasTTYnextGen",
+  "homepage": "https://github.com/dontpanicops/CanvasTTYnextGen",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dmitriy86it/CanvasTTYnextGen.git"
+    "url": "https://github.com/dontpanicops/CanvasTTYnextGen.git"
   },
   "main": "./out/main/index.js",
   "type": "module",
