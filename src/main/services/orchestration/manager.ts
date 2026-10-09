@@ -498,7 +498,8 @@ export function createRunManager(deps: RunManagerDeps) {
         text: g.text, criteria: g.criteria, checks: g.checks, reviewPlan: g.reviewPlan ?? false, limits: { ...DEFAULT_LIMITS, ...(g.limits ?? {}) },
         ...(g.commands ? { commands: g.commands } : {}), ...(g.workMode ? { workMode: g.workMode } : {}),
         ...(g.mode ? { mode: g.mode } : {}), ...(g.finish ? { finish: g.finish } : {}), ...(g.models ? { models: g.models } : {}),
-        ...(g.task ? { task: g.task } : {}) // only when there: the keys of runs created before B1 stay as they were
+        ...(g.task ? { task: g.task } : {}), // only when there: the keys of runs created before B1 stay as they were
+        ...(g.base ? { base: g.base } : {})
       }
     })).digest("hex");
     return { key, source };
@@ -744,8 +745,11 @@ export function createRunManager(deps: RunManagerDeps) {
           // ponytail: taken.json as written, not matched to the current tree (a finished run's tree does not move)
           const raw = await readFile(join(dir, "workspace", "taken.json"), "utf8").catch(() => null);
           try {
-            const t = raw ? JSON.parse(raw) as { v?: number; branch?: { name?: unknown }; applied?: unknown } : null;
-            taken = t?.v === 1 ? { branch: typeof t.branch?.name === "string" ? t.branch.name : null, applied: !!t.applied } : null;
+            const t = raw ? JSON.parse(raw) as { v?: number; branch?: { name?: unknown; commit?: unknown }; applied?: unknown } : null;
+            taken = t?.v === 1 ? {
+              branch: typeof t.branch?.name === "string" ? t.branch.name : null,
+              commit: typeof t.branch?.commit === "string" && /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(t.branch.commit) ? t.branch.commit : null, applied: !!t.applied
+            } : null;
           } catch { taken = null; }
         }
         facts = {

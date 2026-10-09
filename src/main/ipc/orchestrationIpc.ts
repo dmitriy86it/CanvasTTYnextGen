@@ -58,7 +58,7 @@ export function parseCreate(v: unknown): OrchestrationCreateRequest {
 const anyway = (v: unknown): { anyway?: true } => (v === undefined || v === false ? {} : v === true ? { anyway: true } : bad("anyway must be a boolean"));
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
-  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task"]);
+  const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task", "base"]);
   // A goal names its checks either by catalog ids or (stage 12) by its own commands, then `checks` is [].
   // Stage 13: a goal with a mode may leave its commands to the project profile.
   const checks = (g.commands !== undefined || g.mode !== undefined) && Array.isArray(g.checks) && g.checks.length === 0 ? [] : strings(g.checks, "goal.checks", 16, 64);
@@ -88,7 +88,8 @@ function parseGoal(v: unknown): OrchestrationGoalInput {
     ...(g.models !== undefined ? { models: roleModels(g.models, "goal.models") } : {}),
     ...(g.language !== undefined ? { language: g.language as "ru" | "en" } : {}),
     ...(g.accessOverride !== undefined ? { accessOverride: accessOverride(g.accessOverride, "goal.accessOverride") } : {}),
-    ...(g.task !== undefined ? { task: taskRef(g.task, "goal.task") } : {})
+    ...(g.task !== undefined ? { task: taskRef(g.task, "goal.task") } : {}),
+    ...(g.base !== undefined ? { base: baseRef(g.base, "goal.base") } : {})
   };
 }
 
@@ -108,6 +109,15 @@ function absolute(v: unknown, what: string): string {
 function uuids(v: unknown, what: string): string[] {
   if (!Array.isArray(v) || v.length > 200) bad(`${what} must be at most 200 ids`);
   return (v as unknown[]).map((x, i) => uuid(x, `${what}[${i}]`));
+}
+
+function baseRef(v: unknown, what: string): { branch: string; commit: string; key: string } {
+  const o = obj(v, what, ["branch", "commit", "key"]);
+  const key = str(o.key, `${what}.key`, 8);
+  if (!/^T-\d{1,6}$/.test(key)) bad(`${what}.key must be T-<n>`);
+  const commit = str(o.commit, `${what}.commit`, 64);
+  if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(commit)) bad(`${what}.commit must be a full commit id`);
+  return { branch: str(o.branch, `${what}.branch`, 200), commit, key };
 }
 
 function taskRef(v: unknown, what: string): { id: string; key: string } {

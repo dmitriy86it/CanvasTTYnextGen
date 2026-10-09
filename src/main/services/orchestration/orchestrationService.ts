@@ -79,6 +79,9 @@ export interface GoalInput {
   language?: "ru" | "en";
   // B1, journal v2 only: the board task this run works on (journal-v2-format.md §2.10)
   task?: { id: string; key: string };
+  // B4 (owner's decision 11), journal v2 and a separate copy only: the copy starts from this commit — the result branch
+  // of the task `key` this run's task depends on — instead of the project's working folder
+  base?: { branch: string; commit: string; key: string };
 }
 
 // Stage 12: the checks of a goal with commands are those command lines, run by the user's login shell.
@@ -464,6 +467,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
   const models = input.models === undefined ? undefined : checkModels(input.models, v2, bad);
   if (input.language !== undefined && input.language !== "ru" && input.language !== "en") bad("language must be ru or en");
   const task = input.task === undefined ? undefined : checkTask(input.task, v2, bad);
+  const base = input.base === undefined ? undefined : checkBase(input.base, v2, input.workMode, bad);
   const registry = registryOf(commands);
   if (typeof input?.text !== "string" || input.text.trim() === "" || input.text.length > 8000) bad("text must be 1..8000 characters");
   if (!Array.isArray(input.criteria) || input.criteria.length < 1 || input.criteria.length > 32
@@ -484,8 +488,22 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
     ...(commands ? { commands } : {}), ...(input.workMode ? { workMode: input.workMode } : {}),
     ...(input.mode ? { mode: input.mode } : {}), ...(prepare ? { prepare } : {}), ...(finish ? { finish } : {}),
     ...(input.access ? { access: { claude: input.access.claude, codex: input.access.codex } } : {}),
-    ...(models ? { models } : {}), ...(input.language ? { language: input.language } : {}), ...(task ? { task } : {})
+    ...(models ? { models } : {}), ...(input.language ? { language: input.language } : {}), ...(task ? { task } : {}),
+    ...(base ? { base } : {})
   };
+}
+
+// B4: a base for a separate copy — a branch of the project and the commit it named when the run was asked for (the
+// commit is what the copy starts from: a branch moved later changes nothing here)
+function checkBase(b: unknown, v2: boolean, workMode: GoalInput["workMode"], bad: (m: string) => never): { branch: string; commit: string; key: string } {
+  const o = b as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || Array.isArray(o) || Object.keys(o).some((k) => !["branch", "commit", "key"].includes(k))) bad("base must be { branch, commit, key }");
+  if (typeof o!.branch !== "string" || !/^[A-Za-z0-9._\/-]{1,200}$/.test(o!.branch) || o!.branch.includes("..")) bad("base.branch must be a branch name");
+  if (typeof o!.commit !== "string" || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(o!.commit)) bad("base.commit must be a full commit id");
+  if (typeof o!.key !== "string" || !/^T-\d{1,6}$/.test(o!.key)) bad("base.key must be T-<n>");
+  if (!v2) bad("base: recorded only in a journal v2 goal");
+  if (workMode !== "copy") bad("base: a separate copy only");
+  return { branch: o!.branch as string, commit: o!.commit as string, key: o!.key as string };
 }
 
 // B1: a board task in the goal — journal v2 only, like models (a v1 goal is read by 1.5.7 without a schema)
@@ -575,7 +593,8 @@ export function createOrchestrationService(deps: OrchestrationDeps) {
       const writer = await storeCreateRun(deps.root, runId, { goal: canonical(goal), version: v2 ? 2 : 1, io: deps.storeIo });
       let ws: Workspace;
       try {
-        ws = await createWorkspace({ root: deps.root, runId, source: input.source, gitPath: deps.gitPath, mode: goal.workMode ?? "copy" });
+        ws = await createWorkspace({ root: deps.root, runId, source: input.source, gitPath: deps.gitPath, mode: goal.workMode ?? "copy",
+          ...(goal.base ? { from: goal.base.commit } : {}) });
         await writer.recordWorkspaceCreated({
           sourcePathSha256: createHash("sha256").update(ws.sourcePath).digest("hex"),
           baseline: { commit: ws.baseline.commit, tree: ws.baseline.tree }, head: ws.head

@@ -14,6 +14,7 @@ import { isUuid } from "./journal.ts";
 
 export type WorkspaceErrorCode =
   | "run_not_found"
+  | "invalid_base" // B4: a base commit that is not a full id, not in the project, or not for a copy
   | "not_a_repository"
   | "unsupported_repository"
   | "operation_in_progress"
@@ -316,8 +317,12 @@ async function assertNoGitlinks(ctx: GitContext, tree: string): Promise<void> {
 
 // ---------- create / open / verify ----------
 
-export async function createWorkspace(opts: { root: string; runId: string; source: string; gitPath: string; userHome?: string; mode?: WorkMode }): Promise<Workspace> {
+// from (B4, owner's decision 11; copy mode only): a commit of the project to start from instead of its working folder —
+// the result branch of the task this run's task depends on. The working folder, its index and HEAD are not read for the
+// baseline then; the commit becomes the baseline's parent (what «Take the result» builds on).
+export async function createWorkspace(opts: { root: string; runId: string; source: string; gitPath: string; userHome?: string; mode?: WorkMode; from?: string }): Promise<Workspace> {
   const mode: WorkMode = opts.mode ?? "copy";
+  if (opts.from !== undefined && (mode !== "copy" || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(opts.from))) fail("invalid_base", "a base commit is a full object id, for a separate copy only");
   const rd = runDir(opts?.root, opts?.runId);
   requireAbsolute(opts.gitPath, "gitPath");
   await requireRun(rd);
@@ -360,29 +365,35 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
       await writeFile(join(ws.control, "info", "exclude"), "");
     });
 
-    // 4. baseline = source working tree for tracked ∪ untracked-not-ignored paths (a worktree starts from HEAD)
-    const paths = await presentPaths(info.path, info.paths);
-    const tree = mode === "worktree" ? await runText(controlCtx(ws), ["rev-parse", `${info.head}^{tree}`]) : await withIndex(ws.tmp, async (indexFile) => {
+    // 4. baseline = source working tree for tracked ∪ untracked-not-ignored paths (a worktree starts from HEAD, a copy
+    //    with a base from that commit)
+    const parent = opts.from !== undefined
+      ? await runText(controlCtx(ws), ["rev-parse", "--verify", "--quiet", `${opts.from}^{commit}`]).catch(() => fail("invalid_base", "the base commit is not in the project"))
+      : info.head;
+    if (parent !== info.head) { ws.head = parent; ws.baseline.parent = parent; }
+    const tree = mode === "worktree" ? await runText(controlCtx(ws), ["rev-parse", `${info.head}^{tree}`])
+      : opts.from !== undefined ? await runText(controlCtx(ws), ["rev-parse", `${parent}^{tree}`]) : await withIndex(ws.tmp, async (indexFile) => {
+      const paths = await presentPaths(info.path, info.paths);
       const ctx = controlCtx(ws, { workTree: info.path, indexFile });
       await run(ctx, ["read-tree", "--empty"]);
       if (paths.length > 0) await run(ctx, ["update-index", "--add", "-z", "--stdin"], { ...HEAVY, input: paths.join("\0") + "\0" });
       return runText(ctx, ["write-tree"]);
     });
     await assertNoGitlinks(controlCtx(ws), tree);
-    let commit = await commitSnapshot(ws, tree, info.head, `CanvasTTY baseline\n\nCanvasTTY-Snapshot: ${ws.runId}:baseline\n`);
+    let commit = await commitSnapshot(ws, tree, parent, `CanvasTTY baseline\n\nCanvasTTY-Snapshot: ${ws.runId}:baseline\n`);
     try {
       await publishRef(ws, "baseline", commit);
     } catch (error) {
       if (!(error instanceof WorkspaceError && error.code === "ref_conflict")) throw error;
       const existing = (error.detail as { existing: string }).existing;
       const prev = await readCommit(ws, existing).catch(() => null);
-      if (prev === null || prev.tree !== tree || prev.parent !== info.head) {
+      if (prev === null || prev.tree !== tree || prev.parent !== parent) {
         fail("baseline_conflict", "a different baseline ref already exists in the source repository", { existing });
       }
       commit = existing; // same tree and parent: the earlier attempt's baseline is reused
     }
     await setControlRef(ws, `${refPrefix(ws.runId)}baseline`, commit);
-    ws.baseline = { commit, tree, parent: info.head };
+    ws.baseline = { commit, tree, parent };
 
     // 5. the copy (copy mode only): shared objects, no templates, checkout by the orchestrator with a config clone just wrote
     const copyGit = join(ws.repo, ".git");

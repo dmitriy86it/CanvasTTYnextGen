@@ -118,7 +118,11 @@ export interface OrchestrationGoalInput {
   // B1 (journal v2 only, journal-v2-format.md §2.10): the board task this run works on. Older builds ignore it; it
   // changes nothing in the run, it only links the run to its task.
   task?: OrchestrationTaskRef;
+  // B4 (owner's decision 11; journal v2, a separate copy only): start the copy from the result branch of the task `key`
+  // this task depends on, at `commit` — instead of the project's working folder. The folder is not touched.
+  base?: OrchestrationBaseRef;
 }
+export interface OrchestrationBaseRef { branch: string; commit: string; key: string }
 
 import type { BoardPlace, BoardTask, BoardTaskInput, BoardTaskPatch, BoardView } from "./taskBoard.ts";
 

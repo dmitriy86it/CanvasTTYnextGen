@@ -70,19 +70,20 @@ export interface RunTaskFacts {
   phase: "work" | "review"; // the active turn's, else the last turn's (no column flickers between turns)
   permission: boolean; // a permission request waits for the person
   workMode: OrchestrationWorkMode | null;
-  taken: { branch: string | null; applied: boolean } | null; // «Take the result» of its current result (taken.json)
+  // «Take the result» of its current result (taken.json): the branch made and the commit it points to, applied or not
+  taken: { branch: string | null; commit?: string | null; applied: boolean } | null;
 }
 
 export type TaskColumn = "queue" | "work" | "review" | "done";
 export type TaskReason =
   | "run_unreadable" | "waits_permission" | "waits_answer" | "waits_decision" | "limit_reached" | "waits_task"
-  | "waits_result" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other";
+  | "waits_result" | "waits_merge" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other";
 
 export interface TaskStatus {
   column: TaskColumn;
   done: "confirmed" | "accepted" | null; // «Done» confirmed by checks, or accepted by the person without checks
   reason: TaskReason | null;
-  waitsFor: string[]; // the keys of the tasks it waits for (waits_task, waits_result)
+  waitsFor: string[]; // the keys of the tasks it waits for (waits_task, waits_result, waits_merge)
   cycle: boolean; // waits_task because its dependencies make a cycle (a hand-edited board.json)
   attempts: number;
   current: string | null; // runId of the latest run
@@ -196,13 +197,49 @@ function withDependencies(s: TaskStatus, deps: readonly (readonly [BoardTask, Ta
   if (s.column !== "queue" || s.reason === "run_newer") return s;
   const notDone = deps.filter(([, d]) => !isDone(d)).map(([t]) => t.key);
   if (notDone.length) return { ...s, reason: "waits_task", waitsFor: notDone };
-  const notTaken = deps.filter(([t, d]) => {
-    const run = runsOf.get(t.id)?.find((r) => r.runId === d.current);
-    // a copy or worktree result not applied; a run without a work folder of its own has nothing to take
-    return run && (run.workMode === "copy" || run.workMode === "worktree") && !run.taken?.applied;
-  }).map(([t]) => t.key);
+  const where = deps.map(([t, d]) => [t, resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current))] as const);
+  const notTaken = where.filter(([, w]) => w === "none").map(([t]) => t.key);
   if (notTaken.length) return { ...s, reason: "waits_result", waitsFor: notTaken };
+  // owner's decision 11: a result in a branch is the base of a separate copy — one of them, and nothing else to join
+  // with it; a second result (another branch, or one in the folder) would need a merge: stage C, the person's
+  if (where.some(([, w]) => w === "branch") && where.length > 1) return { ...s, reason: "waits_merge", waitsFor: where.map(([t]) => t.key) };
   return s;
+}
+
+// Where a dependency's result is for a task after it: in the project folder (it worked there, or its result was applied),
+// in a branch of the project only («Create a branch»), or not taken at all.
+function resultOf(run: RunTaskFacts | undefined): "folder" | "branch" | "none" {
+  if (!run || (run.workMode !== "copy" && run.workMode !== "worktree") || run.taken?.applied) return "folder";
+  return run.taken?.branch && run.taken.commit ? "branch" : "none";
+}
+
+// B4 (owner's decision 11): what a task's separate copy starts from — the working folder (null), or the one dependency
+// result that is in a branch only. Asked only of a task without a reason (all dependencies «Done», nothing to merge).
+export function baseOf(task: Pick<BoardTask, "dependsOn">, board: Pick<Board, "tasks">, statuses: ReadonlyMap<string, TaskStatus>,
+  facts: readonly RunTaskFacts[]): { branch: string; commit: string; key: string } | null {
+  for (const id of task.dependsOn) {
+    const dep = board.tasks.find((t) => t.id === id);
+    const run = facts.find((f) => f.runId === statuses.get(id)?.current);
+    if (dep && run && resultOf(run) === "branch") return { branch: run.taken!.branch!, commit: run.taken!.commit!, key: dep.key };
+  }
+  return null;
+}
+
+// B4 (§5.1): the board's autopilot takes, of the tasks of the link's workspace and the lead's folder, not archived, in
+// the queue without a reason and never tried (a retry after stopped or failed is the person's), the first by order.
+export function nextTask(board: Pick<Board, "tasks">, statuses: ReadonlyMap<string, TaskStatus>, at: { workspaceId: string; project: string }): BoardTask | null {
+  return board.tasks.filter((t) => {
+    const s = statuses.get(t.id);
+    return t.workspaceId === at.workspaceId && t.project === at.project && !t.archivedAt && s?.column === "queue" && s.reason === null && s.attempts === 0;
+  }).sort((a, b) => a.order - b.order)[0] ?? null;
+}
+
+// Why there is no next task: every task of the place «Done», or the ones left wait (their keys with their reasons)
+export function idleOf(board: Pick<Board, "tasks">, statuses: ReadonlyMap<string, TaskStatus>, at: { workspaceId: string; project: string }):
+  { allDone: boolean; waiting: { key: string; reason: TaskReason | null; waitsFor: string[] }[] } {
+  const mine = board.tasks.filter((t) => t.workspaceId === at.workspaceId && t.project === at.project && !t.archivedAt);
+  const left = mine.filter((t) => !statuses.get(t.id)?.done);
+  return { allDone: left.length === 0, waiting: left.map((t) => ({ key: t.key, reason: statuses.get(t.id)?.reason ?? null, waitsFor: statuses.get(t.id)?.waitsFor ?? [] })) };
 }
 
 // Owner's decision 8: in the board's autopilot, a task that became «Done» (confirmed or accepted) gets its result taken
