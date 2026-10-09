@@ -387,7 +387,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     setBusy(true);
     setError(null);
-    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway || withoutBase ? { anyway: true } : {}) });
+    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway ? { anyway: true } : {}), ...(withoutBase ? { withoutBase: true } : {}) });
     setBusy(false);
     // taken after the readiness check: the hint below names the run and its workspace instead of the bare refusal
     if (outcome.kind === "refused" && outcome.code === "folder_busy" && folderBusy?.(refused)) {

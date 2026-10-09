@@ -13,6 +13,7 @@ import { findGit } from "../src/main/services/orchestration/git.ts";
 import { createBoardAutopilot } from "../src/main/services/orchestration/boardAutopilot.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
+import { parseCreate } from "../src/main/ipc/orchestrationIpc.ts";
 import { AUTOPILOT_BUDGET, activeMs, autopilotStep, boardStatuses, goalFor } from "../src/shared/taskBoard.ts";
 import { boardNotes, DEFAULT_NOTIFY_PREFS } from "../src/renderer/src/features/orchestration/notify.ts";
 import { stopText } from "../src/renderer/src/features/orchestration/boardModel.ts";
@@ -119,6 +120,8 @@ test("another run of the place goes on (the person's, another link's): the autop
   const mine = run({ taskId: a.id, taskKey: a.key }); // A started by the person, still at work
   assert.deepEqual(autopilotStep({ tasks: [a, b] }, [mine], AT, null, NONE, AUTOPILOT_BUDGET), { kind: "wait", why: "run" });
   assert.deepEqual(autopilotStep({ tasks: [a, b] }, [{ ...mine, status: "paused", reason: "plan_review" }], AT, null, NONE, AUTOPILOT_BUDGET), { kind: "wait", why: "run" });
+  // paused for something that waits for nobody: the others wait — off, said so (not a wait for ever)
+  assert.equal(autopilotStep({ tasks: [a, b] }, [{ ...mine, status: "paused", reason: "user_request" }], AT, null, NONE, AUTOPILOT_BUDGET).code, "others_wait");
   // the same run in another project: not this place's
   assert.equal(autopilotStep({ tasks: [{ ...a, project: "/q" }, b] }, [mine], AT, null, NONE, AUTOPILOT_BUDGET).code, "others_wait");
 });
@@ -467,10 +470,14 @@ test("notifications: «the board's autopilot stopped: <why>» and «every task i
 
 test("a dependency's result in a branch only: a start without that base is a start without the result — refused unless «anyway»", OPTS, async () => {
   const src = project();
-  const m = manager([...turns("a2.txt"), ...turns("b2.txt")]);
+  const m = manager([...turns("a2.txt"), turns("b2.txt")[0], ...turns("b2.txt")]);
   await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: ["true"] });
   const a = (await m.boardCreate(input({ project: src }))).value;
   const b = (await m.boardCreate(input({ project: src, dependsOn: [a.id] }))).value;
+  // withoutBase lifts the branch check only: B before A is «Done» is still refused
+  assert.equal((await m.create({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"], workMode: "copy", mode: "autopilot", task: { id: b.id, key: b.key } }, withoutBase: true })).code, "task_not_ready");
+  assert.equal(parseCreate({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"] }, withoutBase: true }).withoutBase, true);
+  assert.throws(() => parseCreate({ requestId: randomUUID(), source: src, goal: { text: "x", criteria: ["c"], checks: [], commands: ["true"] }, withoutBase: 1 }), /withoutBase/);
   const goal = (t, over = {}) => ({ text: "x", criteria: ["c"], checks: [], commands: ["true"], workMode: "copy", mode: "autopilot", task: { id: t.id, key: t.key }, ...over });
   const ra = await m.create({ requestId: randomUUID(), source: src, goal: goal(a) });
   await until(async () => (await m.get(ra.value.runId)).value.view.status === "completed", "A completed");
@@ -482,6 +489,12 @@ test("a dependency's result in a branch only: a start without that base is a sta
     assert.equal(r.code, "task_not_ready", JSON.stringify(over));
     assert.match(r.message, new RegExp(taken.branch));
   }
+  // the working folder chosen (withoutBase): only the branch check goes; a dependency not «Done» would still refuse it
+  const chosen = await m.create({ requestId: randomUUID(), source: src, goal: goal(b, { reviewPlan: true }), withoutBase: true });
+  assert.ok(chosen.ok, JSON.stringify(chosen));
+  await until(async () => (await m.get(chosen.value.runId)).value.view.reason === "plan_review", "the plan review");
+  await m.command(chosen.value.runId, { commandId: randomUUID(), expectedRevision: (await m.get(chosen.value.runId)).value.view.revision, command: { kind: "stop" } });
+  await until(async () => (await m.get(chosen.value.runId)).value.view.status === "stopped", "stopped");
   const ok = await m.create({ requestId: randomUUID(), source: src, goal: goal(b, { base: { branch: taken.branch, commit: taken.commit, key: a.key } }) });
   assert.ok(ok.ok, JSON.stringify(ok));
   await until(async () => (await m.get(ok.value.runId)).value.view.status === "completed", "B completed");

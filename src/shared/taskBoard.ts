@@ -318,7 +318,6 @@ export function goalFor(task: Pick<BoardTask, "id" | "key" | "text" | "criteria"
 const WAIT_PAUSES = new Set(["awaiting_answer", "plan_review", "awaiting_checks_decision", "awaiting_finish_confirmation", "awaiting_person_decision",
   "stage_done", "step_done"]);
 const ACTIVE = new Set(["created", "preparing", "running", "pausing", "stopping"]);
-const ACTIVE_OR_PAUSED = new Set([...ACTIVE, "paused"]);
 
 // The working time of a run by its journal: from its first record, without the pauses that wait for the person, to its
 // end or now. A permission request is not journaled: it counts as work (§5.2 — the budget ends sooner, never later).
@@ -368,7 +367,8 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
   }
   const next = nextTask(board, statuses, at);
   // another run of this place goes on (the person's, another link's): what it leaves may free the next task
-  const busyHere = facts.some((f) => f.status !== "unreadable" && ACTIVE_OR_PAUSED.has(f.status)
+  // (a run paused for another reason waits for nobody: the others wait, said as such)
+  const busyHere = facts.some((f) => (ACTIVE.has(f.status) || f.permission || (f.status === "paused" && WAIT_PAUSES.has(f.reason ?? "")))
     && board.tasks.some((t) => t.id === f.taskId && t.workspaceId === at.workspaceId && t.project === at.project));
   if (!next && busyHere) return { kind: "wait", why: "run" };
   if (!next) {

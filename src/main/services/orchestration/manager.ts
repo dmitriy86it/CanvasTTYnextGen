@@ -542,7 +542,7 @@ export function createRunManager(deps: RunManagerDeps) {
         const stored = JSON.parse((await readText(deps.root, runId, existing.state.goal)).toString("utf8")) as Record<string, unknown>;
         return stored.requestKey === key ? { runId, created: false } : conflict();
       }
-      await taskOk(source, runId, req.goal, req.anyway === true, inQueue); // a repeat of a created run is answered above, whatever became of the task
+      await taskOk(source, runId, req.goal, req.anyway === true, inQueue, req.withoutBase === true); // a repeat of a created run is answered above, whatever became of the task
       // The catalog is checked before anything is resolved (no agent, no CLI version probe).
       const native = Array.isArray(req.goal.commands) || req.goal.mode !== undefined;
       if (!native) for (const id of req.goal.checks) if (!CHECK_CATALOG.checks.some((c) => c.id === id)) refuse("unknown_check", `no check with id ${id}`);
@@ -817,7 +817,7 @@ export function createRunManager(deps: RunManagerDeps) {
   // ponytail: checked before the run is created, not under a lock with it; a dependency added in between is not seen
   // B4: also one run of a task at a time, of the workspace that owns the task (the link's lead's, or the common one for
   // a start not on a link), and a base (decision 11) only from the branch a dependency's result was taken into.
-  async function taskOk(source: string, runId: string, goal: OrchestrationGoalInput, anyway: boolean, inQueue?: OrchestrationCanvas): Promise<void> {
+  async function taskOk(source: string, runId: string, goal: OrchestrationGoalInput, anyway: boolean, inQueue?: OrchestrationCanvas, withoutBase = false): Promise<void> {
     const task = goal.task;
     if (!task) { if (goal.base) refuse("invalid_base", "a base is given only for a task of the board"); return; }
     if (leavingTasks.has(task.id)) refuse("task_changing", "the task is being deleted or archived");
@@ -849,8 +849,8 @@ export function createRunManager(deps: RunManagerDeps) {
     const wait = statusesNow.get(t!.id)?.depsWait;
     if (wait) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
     // a dependency's result in a branch only (decision 11) is seen by a separate copy from that branch alone: a start
-    // without it (another mode, or the working folder chosen) goes without that result — the person says so (anyway)
-    const inBranch = !goal.base && baseOf(t!, b, statusesNow, facts);
+    // without it (another mode, or the working folder chosen) goes without that result — the person says so (withoutBase)
+    const inBranch = !goal.base && !withoutBase && baseOf(t!, b, statusesNow, facts);
     if (inBranch) refuse("task_not_ready", `the result of ${inBranch.key} is in the branch ${inBranch.branch} only: start from it, or start anyway?`);
   }
 
@@ -859,7 +859,7 @@ export function createRunManager(deps: RunManagerDeps) {
     board: () => result(boardView),
     // B4: the board's autopilot of a link (§5): on or off, and its budget in board.json
     boardAutopilot: (linkId: string, on: boolean, language: "ru" | "en") => result(async () => {
-      if (on) { platformOk(); notOpen(); }
+      if (on) { platformOk(); notOpen(); if (deps.journalV2 !== true) refuse("journal_v1", "the board's autopilot needs journal v2 (goal.task)"); }
       await autopilot.set(linkId, on, language);
       return (await autopilot.state())[linkId] ?? null;
     }),
@@ -916,11 +916,11 @@ export function createRunManager(deps: RunManagerDeps) {
     // Only a link that holds a newer version's run (busy says "newer" for that run), and only its own run.
     releaseNewerLink: (input: { commandId: string; linkId: string; runId: string }) =>
       result(() => canvas.releaseNewer({ ...input, appVersion: deps.appVersion?.() ?? "unknown" }, busy)),
-    startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }) => result(() => {
+    startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }) => result(() => {
       notOpen();
       platformOk();
       return canvas.startOnLink(input.linkId, input.requestId, busy, exists,
-        (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}) }, current));
+        (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}), ...(input.withoutBase ? { withoutBase: true } : {}) }, current));
     }),
 
     command: (runId: string, input: { commandId: string; expectedRevision: number; command: RunCommand }) => result(async (): Promise<CommandOutcome> => {

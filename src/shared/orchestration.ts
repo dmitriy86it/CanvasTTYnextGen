@@ -137,6 +137,8 @@ export interface OrchestrationCreateRequest {
   // person confirmed «Start anyway». Without it such a start is refused (task_not_ready); the board's autopilot never
   // sets it. Not part of the request's identity.
   anyway?: boolean;
+  // B4: the person chose to start without the branch a dependency's result is in (the working folder, another mode)
+  withoutBase?: boolean;
 }
 
 export type OrchestrationRunCommand =
@@ -588,7 +590,7 @@ export interface OrchestrationApi {
   // link is removed and its folder freed, the run's files stay as they are. A repeat of commandId answers the same.
   releaseNewerLink(input: { commandId: string; linkId: string; runId: string }): Promise<OrchestrationResult<OrchestrationReleasedNewerRun>>;
   // Creates a run on the link: the source is the lead card's project, chosen in main.
-  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
+  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
   // The listener gets the run's current state first (the snapshot, as an event), then only newer states in order;
   // `snapshot` is the same result. One main subscription per run and page, however many listeners. unwatch() stops it.
   // Activity batches of the run travel on the same subscription (onActivity listeners get them while it is held).

@@ -49,13 +49,14 @@ const strings = (v: unknown, what: string, maxItems: number, maxLen: number): st
   Array.isArray(v) && v.length >= 1 && v.length <= maxItems ? v.map((x, i) => str(x, `${what}[${i}]`, maxLen)) : bad(`${what} must be 1..${maxItems} strings`);
 
 export function parseCreate(v: unknown): OrchestrationCreateRequest {
-  const o = obj(v, "request", ["requestId", "source", "goal"], ["anyway"]);
+  const o = obj(v, "request", ["requestId", "source", "goal"], ["anyway", "withoutBase"]);
   const source = str(o.source, "source", 4096);
   if (!source.startsWith("/")) bad("source must be an absolute path");
-  return { requestId: uuid(o.requestId, "requestId"), source, goal: parseGoal(o.goal), ...anyway(o.anyway) };
+  return { requestId: uuid(o.requestId, "requestId"), source, goal: parseGoal(o.goal), ...anyway(o.anyway), ...withoutBase(o.withoutBase) };
 }
 
 const anyway = (v: unknown): { anyway?: true } => (v === undefined || v === false ? {} : v === true ? { anyway: true } : bad("anyway must be a boolean"));
+const withoutBase = (v: unknown): { withoutBase?: true } => (v === undefined || v === false ? {} : v === true ? { withoutBase: true } : bad("withoutBase must be a boolean"));
 
 function parseGoal(v: unknown): OrchestrationGoalInput {
   const g = obj(v, "goal", ["text", "criteria", "checks"], ["reviewPlan", "limits", "commands", "workMode", "mode", "finish", "models", "language", "accessOverride", "task", "base"]);
@@ -348,9 +349,9 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
       { commandId: string; linkId: string; runId: string }];
   }, manager.releaseNewerLink));
   handleMain(IPC.orchestrationLinkStart, (_e, input: unknown) => checked(() => {
-    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway"]);
-    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway) }] as [
-      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean }];
+    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway", "withoutBase"]);
+    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway), ...withoutBase(o.withoutBase) }] as [
+      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }];
   }, manager.startOnLink));
   handleMain(IPC.orchestrationActivity, (_e, runId: unknown, afterId: unknown, limit: unknown) => checked(
     () => [uuid(runId, "runId"), int(afterId, "afterId", 0), int(limit, "limit", 1, 500)] as [string, number, number], manager.activity));
