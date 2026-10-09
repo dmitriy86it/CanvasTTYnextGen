@@ -34,7 +34,7 @@ Raoden Loom не устанавливает CLI провайдеров. Если
 
 ## Установка
 
-Скачайте свежий релиз из [GitHub Releases](https://github.com/dmitriy86it/CanvasTTYnextGen/releases): AppImage/deb для Linux x86_64, установщик и portable-версию для Windows x64, dmg/zip для macOS на Apple Silicon. Бандлы macOS подписаны ad-hoc и проходят проверку целостности, но не имеют Developer ID и notarization Apple; пакеты Windows остаются неподписанными. Сборки для Intel Mac ещё нет. Сначала прочитайте про [установку и локальные данные](docs/installing-and-security.ru.md).
+Скачайте свежий релиз из [GitHub Releases](https://github.com/dontpanicops/CanvasTTYnextGen/releases): AppImage/deb для Linux x86_64, установщик и portable-версию для Windows x64, dmg/zip для macOS на Apple Silicon. Бандлы macOS подписаны ad-hoc и проходят проверку целостности, но не имеют Developer ID и notarization Apple; пакеты Windows остаются неподписанными. Сборки для Intel Mac ещё нет. Сначала прочитайте про [установку и локальные данные](docs/installing-and-security.ru.md).
 
 | Платформа | Холст, терминалы, браузер, плагины | Оркестрация агентов |
 |:--|:--|:--|
