@@ -211,7 +211,7 @@ test("board.json: numbers per workspace above the file and above the runs' keys;
   }
   // a task with runs is archived, not deleted; a task without runs goes and its dependents lose it openly
   await assert.rejects(again.remove(a.id, async () => true), /archived/);
-  await again.remove(a.id, async () => false);
+  await again.remove(a.id, async () => false, [b.id]); // B3: the dependents the person was shown
   assert.deepEqual((await again.read()).board.tasks.find((t) => t.id === b.id).dependsOn, []);
 });
 
