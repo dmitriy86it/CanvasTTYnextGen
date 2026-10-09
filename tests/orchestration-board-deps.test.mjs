@@ -32,6 +32,10 @@ test("a «Done» task on a dependency not «Done» now stays «Done» and says w
   // B started anyway while A was never «Done»: done, «not ready», never «changed»
   s = boardStatuses({ tasks: [a, b] }, [run({ taskId: b.id, status: "completed", completion: "confirmed" })]);
   assert.deepEqual([s.get(b.id).done, s.get(b.id).depsNote], ["confirmed", "not_ready"]);
+  // A's latest run before B's started had stopped (an earlier one was confirmed): B started anyway — «not ready»
+  s = boardStatuses({ tasks: [a, b] }, [run({ taskId: a.id, status: "completed", completion: "confirmed" }), run({ taskId: a.id, status: "stopped" }),
+    run({ taskId: b.id, status: "completed", completion: "confirmed" })]);
+  assert.equal(s.get(b.id).depsNote, "not_ready");
   // a task not done is never noted (its line says what it waits for)
   const d = task({ dependsOn: [a.id] });
   assert.equal(boardStatuses({ tasks: [a, d] }, [run({ taskId: a.id, status: "stopped" })]).get(d.id).depsNote, null);
