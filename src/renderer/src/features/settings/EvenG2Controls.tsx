@@ -27,7 +27,9 @@ export function EvenG2Controls({
   const initialized = useRef(false);
   const pairRequested = useRef(false);
   const preparingSpeech = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stage is the trigger: scroll the panel into view on each step
   useEffect(() => { panelRef.current?.scrollIntoView({ block: "start" }); }, [stage]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: locale stands for text; the poll restarts when the language changes
   useEffect(() => {
     let active = true;
     const read = () =>
@@ -73,6 +75,7 @@ export function EvenG2Controls({
       clearInterval(timer);
     };
   }, [locale]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: command only uses stable setters; run when the pairing conditions change
   useEffect(() => {
     if (
       stage === "pair" &&

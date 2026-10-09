@@ -409,7 +409,7 @@ export function App(): React.JSX.Element {
     void window.canvasTTY.workspaces.activate(id).then((r) => {
       if (!r.ok) showToast(t(settingsRef.current.locale, "wsActionFailed"));
     }, () => showToast(t(settingsRef.current.locale, "wsActionFailed")));
-  }, []);
+  }, [showToast]);
 
   // A state main answered with: its list, keeping the cameras this window already has (they were saved already).
   const adoptWorkspaces = useCallback((next: WorkspacesState): void => {

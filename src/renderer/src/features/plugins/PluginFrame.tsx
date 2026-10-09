@@ -79,7 +79,7 @@ export function PluginFrame({
       title: contribution.title
     },
     appearance: { locale, palette }
-  }), [contribution.id, contribution.kind, contribution.title, locale, palette, plugin.manifest]);
+  }), [contribution.id, contribution.kind, contribution.title, locale, palette, plugin.manifest, plugin.selectedModules]);
 
   useEffect(() => {
     const receive = (event: MessageEvent): void => {

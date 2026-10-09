@@ -146,6 +146,7 @@ export function TerminalCard({
     setSize(bounds.size);
   }, [session.position, session.size]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the terminal lives per session; palette has its own effect, locale is read only for an error line
   useEffect(() => {
     const host = terminalHost.current;
     if (!host) return;

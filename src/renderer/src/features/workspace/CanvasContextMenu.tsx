@@ -72,6 +72,7 @@ export function CanvasContextMenu({
   const [launcherOpen, setLauncherOpen] = useState(false);
   const [submenuSide, setSubmenuSide] = useState<CanvasSubmenuSide>("right");
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: kind is the trigger: focus the first row when the menu changes
   useEffect(() => {
     menu.current?.querySelector<HTMLButtonElement>(".canvas-menu__row")?.focus({ preventScroll: true });
   }, [kind]);

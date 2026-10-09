@@ -113,6 +113,7 @@ export function useOrchestration() {
   // (seq, tick) states replace what is shown.
   const latestRunIds = useMemo(() => [...new Set([...canvas.links.map((l) => l.runIds.at(-1)), ...pinned].filter((id): id is string => !!id))], [canvas.links, pinned]);
   const runKey = latestRunIds.join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runKey stands for latestRunIds; watchEpoch restarts the watches on retry
   useEffect(() => {
     const stops = latestRunIds.map((runId) => {
       let base = true;
@@ -157,7 +158,6 @@ export function useOrchestration() {
       return () => { live = false; offActivity(); w.unwatch(); };
     });
     return () => { for (const stop of stops) stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runKey, watchEpoch]);
 
   // Journals: read once a run is known, again whenever its seq passes what was read. Records only, no model turn.

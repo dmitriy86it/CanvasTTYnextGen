@@ -76,6 +76,7 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
     if (outcome.kind === "accepted" && panelLinkId === link.linkId) setPanel(null);
   }, [locale, orch, panelLinkId, say]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: orch.watchRun is a new closure each render that only calls a stable setter
   return useMemo(() => ({
     linkingFrom, setLinkingFrom, messages, connect, createAgent, deleteAgent, deleteLink,
     createAt, openCreate: (provider: OrchestrationProviderKind, point: Point) => setCreateAt({ provider, point }),

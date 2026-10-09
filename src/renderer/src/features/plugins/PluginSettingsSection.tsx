@@ -139,6 +139,7 @@ export function PluginSettingsSection({
     const delta = anchor.target.getBoundingClientRect().top - anchor.top;
     if (Math.abs(delta) > 1) anchor.scroller.scrollTop += delta;
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the pages are triggers; fixPaginationScroll only reads refs
   useLayoutEffect(() => {
     fixPaginationScroll();
   }, [installedPage, showcasePage]);
@@ -164,6 +165,7 @@ export function PluginSettingsSection({
   useEffect(() => {
     setInstalledPage((current) => clampPage(current, plugins.length, INSTALLED_PAGE_SIZE));
   }, [plugins.length]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showcaseTotal is the trigger: a new result list starts at page 0
   useEffect(() => {
     setShowcasePage(0);
   }, [showcaseTotal]);

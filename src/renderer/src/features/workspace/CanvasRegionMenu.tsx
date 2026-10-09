@@ -28,6 +28,7 @@ export function CanvasRegionMenu({
   const [title, setTitle] = useState(initialTitle);
   const [color, setColor] = useState(initialColor);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mode is the trigger: the form is re-seeded when it opens in another mode
   useEffect(() => {
     setTitle(initialTitle);
     setColor(initialColor);
