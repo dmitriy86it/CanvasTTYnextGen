@@ -4,6 +4,17 @@
 
 ## Unreleased
 
+## 1.5.16 — 2026-10-09
+
+Stabilization after stage B: the repository's new home, two flaky checks found and fixed, React hook dependencies, clearer dialogs.
+
+- The repository moved to `github.com/dontpanicops/CanvasTTYnextGen`; the links in the package, the README and the docs point there. Technical identifiers (`canvastty`, appId, the data folder) did not change.
+- The goal dialog: readable field labels instead of small capitals (in every dialog); the task, requirements, run mode and check commands on top; rights, where the agents work, the steps after a successful check, limits and models in «Advanced», with a one-line summary of what is chosen. Example placeholders and one line on how requirements differ from check commands.
+- Readiness keeps in view only what needs you (blockers, confirmations, warnings); the rest is in «Check details». A failing check command is shown once, in its own line with its output. «Switch to a separate copy» is the main button of the uncommitted-changes warning.
+- A disputed review item shows the new problem beside the closed finding, the files they share and how to choose between «A new defect» and «A repeat».
+- Changing the Home or Rename window shortcut now takes effect at once; before, the old chord kept priority over the workspace shortcuts until the canvas re-rendered for another reason.
+- Tests: a race in an Even G2 companion test and the layout of a link-gesture smoke scenario are fixed; a drag in the smokes is repeated once if the real mouse moves over the window during it.
+
 ## 1.5.15 — 2026-10-09
 
 Dependencies between tasks, the reasons a task waits, and «Run the board» — the board's autopilot.
