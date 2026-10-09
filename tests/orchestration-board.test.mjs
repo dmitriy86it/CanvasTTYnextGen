@@ -425,6 +425,20 @@ test("«Start anyway»: a run of a task whose dependency is not «Done» is refu
   assert.equal("anyway" in parseCreate({ ...base, anyway: false }), false);
   assert.throws(() => parseCreate({ ...base, anyway: "yes" }), /anyway/);
   await until(async () => (await m.get(runId)).value.view.reason === "plan_review", "the plan review");
+  // not by its own column: T-2 is at work now, and a start of it is still refused while T-1 is not «Done»
+  assert.equal((await m.create({ requestId: randomUUID(), source: src, goal })).code, "task_not_ready");
+  // a start on a link (inside the canvas queue) with a change of the board at once (which reads the canvas): neither
+  // waits for the other (review of B3: they did, for ever)
+  const src2 = project(); // another folder: the first one is busy with T-2's run
+  await createProfileStore(m.root).save(src2, { ...(await suggestProfile(src2)), workMode: "project", checks: ["false"] });
+  const t3 = (await m.boardCreate(input({ project: src2, dependsOn: [t1.id] }))).value;
+  const lead2 = (await m.createAgent({ agentId: randomUUID(), provider: "codex", project: src2, bounds })).value.agentId;
+  const exec2 = (await m.createAgent({ agentId: randomUUID(), provider: "claude", project: src2, bounds })).value.agentId;
+  const link2 = (await m.createLink({ linkId: randomUUID(), fromAgentId: lead2, toAgentId: exec2 })).value.linkId;
+  const both = Promise.all([m.startOnLink({ linkId: link2, requestId: randomUUID(), goal: { ...goal, task: { id: t3.id, key: t3.key } } }), m.boardCreate(input({ project: src }))]);
+  const r = await Promise.race([both, new Promise((res) => setTimeout(() => res("hung"), 10_000))]);
+  assert.notEqual(r, "hung");
+  assert.deepEqual([r[0].code, r[1].ok], ["task_not_ready", true]);
   await m.shutdown();
 });
 
@@ -439,4 +453,25 @@ test("deleting a task others depend on needs its dependents confirmed", async ()
   await store.remove(a.id, async () => false, [b.id, c.id]);
   const left = (await store.read()).board.tasks;
   assert.deepEqual(left.map((x) => [x.key, x.dependsOn]), [["T-2", []], ["T-3", []]]);
+});
+
+// review of B3: a task on a cycle written by hand can still be renamed; a dependent of another workspace (a hand edit,
+// never shown on this workspace's board) does not block a deletion forever
+test("board.json edited by hand: a task on a cycle is renamed; another workspace's dependent is not asked for", async () => {
+  const file = path.join(TMP, `hand-${++n}.json`);
+  const store = createBoardStore(file, async () => 0);
+  const a = await store.create(input({ project: "/p" }));
+  const b = await store.create(input({ project: "/p", dependsOn: [a.id] }));
+  const x = await store.create(input({ project: "/p", workspaceId: "other" }));
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  raw.tasks.find((t) => t.id === a.id).dependsOn = [b.id]; // a cycle
+  raw.tasks.find((t) => t.id === x.id).dependsOn = [a.id]; // across workspaces
+  fs.writeFileSync(file, JSON.stringify(raw));
+  const again = createBoardStore(file, async () => 0);
+  assert.equal((await again.update(a.id, { title: "renamed" })).title, "renamed");
+  await assert.rejects(again.update(a.id, { dependsOn: [b.id] }), (e) => e.code === "task_cycle", "changing the dependencies still checks the cycle");
+  // T-1's dependents: T-2 here, T-3 in another workspace — only T-2 is asked for
+  await assert.rejects(again.remove(a.id, async () => false), (e) => e.code === "task_has_dependents" && /T-2/.test(e.message) && !/T-3/.test(e.message));
+  await again.remove(a.id, async () => false, [b.id]);
+  assert.equal((await again.read()).board.tasks.some((t) => t.id === a.id), false);
 });

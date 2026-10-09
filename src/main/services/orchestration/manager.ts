@@ -783,17 +783,20 @@ export function createRunManager(deps: RunManagerDeps) {
     return board.accept(taskId, run!.runId);
   }
   // A goal naming a task: the task is on the board, of this project, not archived; and ready (every dependency «Done»,
-  // its result where this run would see it), unless the person confirmed «Start anyway» (§4.2)
+  // its result where this run would see it), whatever the task's own column, unless the person confirmed «Start anyway»
+  // (§4.2). The board as last saved (peek): a start on a link runs inside the canvas queue, and a change of the board
+  // may wait for the canvas (a new number, a deletion) — waiting for the board's queue here would wait both ways.
+  // ponytail: checked before the run is created, not under a lock with it; a dependency added in between is not seen
   async function taskOk(source: string, task: { id: string; key: string } | undefined, anyway: boolean, inQueue?: OrchestrationCanvas): Promise<void> {
     if (!task) return;
-    const b = (await board.read()).board;
+    const b = (await board.peek()).board;
     const t = b.tasks.find((x) => x.id === task.id);
     if (!t || t.key !== task.key) refuse("task_not_found", `no task ${task.key} on the board`);
     if (await realpath(t!.project).catch(() => t!.project) !== source) refuse("task_project", "the task belongs to another project folder");
     if (t!.archivedAt) refuse("task_archived", "the task is archived");
     if (anyway) return;
-    const s = boardStatuses(b, await taskFacts(inQueue)).get(t!.id);
-    if (s?.reason === "waits_task" || s?.reason === "waits_result") refuse("task_not_ready", `${t!.key} waits for ${s.waitsFor.join(", ")}: start anyway?`);
+    const wait = boardStatuses(b, await taskFacts(inQueue)).get(t!.id)?.depsWait;
+    if (wait) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
   }
 
   return {

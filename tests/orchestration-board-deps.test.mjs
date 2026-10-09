@@ -14,21 +14,37 @@ const run = (over = {}) => ({ runId: randomUUID(), taskId: null, taskKey: null, 
 const task = (over = {}) => ({ id: randomUUID(), key: `T-${++n}`, workspaceId: "common", project: "/p", title: "t", text: "x", criteria: ["c"],
   dependsOn: [], order: n, createdAt: "2026-10-09T00:00:00Z", updatedAt: "2026-10-09T00:00:00Z", archivedAt: null, accepted: null, ...over });
 
-test("a «Done» task whose dependency lost «Done» stays «Done» and says the dependency changed", () => {
+test("a «Done» task on a dependency not «Done» now stays «Done» and says why: changed after, or never ready; it goes on", () => {
   const a = task();
   const b = task({ dependsOn: [a.id] });
+  const c = task({ dependsOn: [b.id] });
   const done = (t) => run({ taskId: t.id, status: "completed", completion: "confirmed" });
   const ra = done(a);
   const rb = done(b);
-  let s = boardStatuses({ tasks: [a, b] }, [ra, rb]);
-  assert.deepEqual([s.get(b.id).done, s.get(b.id).depsChanged], ["confirmed", false]);
-  // a new run of A stopped: A is not «Done»; B is not rolled back, it is marked
-  s = boardStatuses({ tasks: [a, b] }, [ra, rb, run({ taskId: a.id, status: "stopped" })]);
+  const rc = done(c);
+  let s = boardStatuses({ tasks: [a, b, c] }, [ra, rb, rc]);
+  assert.deepEqual([s.get(b.id).done, s.get(b.id).depsNote, s.get(c.id).depsNote], ["confirmed", null, null]);
+  // a new run of A stopped: A is not «Done»; B is not rolled back, it is marked; so is C after it
+  s = boardStatuses({ tasks: [a, b, c] }, [ra, rb, rc, run({ taskId: a.id, status: "stopped" })]);
   assert.deepEqual([s.get(a.id).done, s.get(a.id).reason], [null, "last_stopped"]);
-  assert.deepEqual([s.get(b.id).column, s.get(b.id).done, s.get(b.id).depsChanged], ["done", "confirmed", true]);
-  // a task not done is never marked (its line says what it waits for)
-  const c = task({ dependsOn: [a.id] });
-  assert.equal(boardStatuses({ tasks: [a, c] }, [run({ taskId: a.id, status: "stopped" })]).get(c.id).depsChanged, false);
+  assert.deepEqual([s.get(b.id).column, s.get(b.id).done, s.get(b.id).depsNote], ["done", "confirmed", "changed"]);
+  assert.equal(s.get(c.id).depsNote, "changed", "the note goes on to the tasks after it");
+  // B started anyway while A was never «Done»: done, «not ready», never «changed»
+  s = boardStatuses({ tasks: [a, b] }, [run({ taskId: b.id, status: "completed", completion: "confirmed" })]);
+  assert.deepEqual([s.get(b.id).done, s.get(b.id).depsNote], ["confirmed", "not_ready"]);
+  // a task not done is never noted (its line says what it waits for)
+  const d = task({ dependsOn: [a.id] });
+  assert.equal(boardStatuses({ tasks: [a, d] }, [run({ taskId: a.id, status: "stopped" })]).get(d.id).depsNote, null);
+});
+
+test("what a task waits for by its dependencies is known whatever its own column", () => {
+  const a = task();
+  const b = task({ dependsOn: [a.id] });
+  // B completed without checks (Review), while A is not «Done»: B is still not ready to start again
+  const s = boardStatuses({ tasks: [a, b] }, [run({ taskId: a.id, status: "stopped" }), run({ taskId: b.id, status: "completed", completion: "no_checks" })]);
+  assert.deepEqual([s.get(b.id).column, s.get(b.id).reason], ["review", "no_checks"], "its own reason stays");
+  assert.deepEqual(s.get(b.id).depsWait, { reason: "waits_task", waitsFor: [a.key], cycle: false });
+  assert.equal(s.get(a.id).depsWait, null);
 });
 
 test("the Dock badge counts the tasks waiting for «Accept the result» with the runs waiting for the person", () => {

@@ -707,7 +707,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
   }
   // B3 (§5.3): why the CLI asked, as it said it (sanitized): in the feed and on the request
   const whyText = (ask: PermissionAsk): Record<string, string | null> =>
-    (ask.why ? { reasonType: ask.why.type, reason: ask.why.text === null ? null : sanitize(ask.why.text, ws.repo, 300).text } : {});
+    (ask.why ? { reasonType: ask.why.type === null ? null : sanitize(ask.why.type, ws.repo, 64).text, reason: ask.why.text === null ? null : sanitize(ask.why.text, ws.repo, 300).text } : {});
   function askPerson(role: AgentRole): AskPerson {
     const provider = role === "executor" ? "claude" as const : "codex" as const; // the reviewer runs the lead's CLI (A3)
     const asked: AskPerson = async (ask: PermissionAsk, signal: AbortSignal) => {
@@ -742,7 +742,7 @@ function controller(deps: OrchestrationDeps, clock: () => number, writer: RunWri
             options: q.options.slice(0, 12).map((o) => sanitize(o, ws.repo, 200).text), ...(q.secret ? { secret: true } : {})
           })),
           ...(ask.alwaysAsk ? { alwaysAsk: true } : {}),
-          ...(ask.why ? { why: { type: ask.why.type, text: ask.why.text === null ? null : sanitize(ask.why.text, ws.repo, 300).text } } : {}),
+          ...(ask.why ? { why: { type: ask.why.type === null ? null : sanitize(ask.why.type, ws.repo, 64).text, text: ask.why.text === null ? null : sanitize(ask.why.text, ws.repo, 300).text } } : {}),
           askedAt: new Date(clock()).toISOString(),
           ...(ask.form ? { form: ask.form } : {}), ...(ask.plan !== undefined ? { plan: sanitize(ask.plan, ws.repo, 20_000).text } : {}),
           ...(ask.server !== undefined ? { server: sanitize(ask.server, ws.repo, 120).text } : {})
