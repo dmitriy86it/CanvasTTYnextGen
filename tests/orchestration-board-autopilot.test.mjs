@@ -446,7 +446,7 @@ test("notifications: «the board's autopilot stopped: <why>» and «every task i
   const stopped = (code, over = {}) => ({ ...on, on: false, waits: null, stop: { code, detail: null, key: "T-2", at: `2026-10-09T10:00:0${++n % 10}Z`, ...over } });
   const place = () => "proj";
   // first seen: only recorded
-  let r = boardNotes("ru", { [link]: on }, {}, DEFAULT_NOTIFY_PREFS, false, place);
+  const r = boardNotes("ru", { [link]: on }, {}, DEFAULT_NOTIFY_PREFS, false, place);
   assert.deepEqual([r.notes, r.notified[`board-${link}`]], [[], ""]);
   const s1 = stopped("run_stopped");
   const r1 = boardNotes("ru", { [link]: s1 }, r.notified, DEFAULT_NOTIFY_PREFS, false, place);
