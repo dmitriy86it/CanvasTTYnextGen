@@ -104,7 +104,16 @@ async function arrange(app, ids, place) {
   if (!place) return;
   const W = await app.ev("innerWidth"), H = await app.ev("innerHeight");
   const lr0 = await rect(app, card(ids.lead));
-  await moveCard(app, ids.lead, { x: Math.round(W / 2 - lr0.width / 2), y: Math.round(H / 2 - lr0.height - 20) });
+  const to = { x: Math.round(W / 2 - lr0.width / 2), y: Math.round(H / 2 - lr0.height - 20) };
+  // Zoomed in (S5a) the lead's new place covers the executor's header, which the next move grabs: the executor goes to
+  // its place for that position first, then the lead, then the executor once more from where the lead really landed.
+  const target = { left: to.x, top: to.y, right: to.x + lr0.width, bottom: to.y + lr0.height, width: lr0.width, height: lr0.height };
+  const er0 = await rect(app, card(ids.exec));
+  if (target.left < er0.right && er0.left < target.right && target.top < er0.bottom && er0.top < target.bottom) {
+    const port0 = await app.center(card(ids.lead, ".agent-card__port"));
+    await moveCard(app, ids.exec, place(target, { x: port0.x - lr0.left + to.x, y: port0.y - lr0.top + to.y }, er0));
+  }
+  await moveCard(app, ids.lead, to);
   const lr = await rect(app, card(ids.lead));
   const port = await app.center(card(ids.lead, ".agent-card__port"));
   const er = await rect(app, card(ids.exec));
@@ -333,4 +342,4 @@ const report = { tag: TAG, at: new Date().toISOString(), build: { outRendererMti
 fs.writeFileSync(path.join(OUT, `${TAG}.json`), JSON.stringify(report, null, 2));
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log(`${report.passed} passed, ${report.failed} failed -> ${path.join(OUT, `${TAG}.json`)}`);
-process.exit(0);
+process.exit(report.failed ? 1 : 0); // a failed scenario fails the smoke (until 1.5.15 S5a failed every run unseen)

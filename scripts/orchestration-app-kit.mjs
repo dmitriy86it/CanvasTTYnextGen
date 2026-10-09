@@ -252,15 +252,28 @@ export async function launch({ userData, providers, port, shots, env = {}, execu
         if (!best) throw new Error("no empty canvas to drag");
         await app.drag(best.start, best.end, 20);
       },
+      // The person's own mouse moving while the app is active reaches the page as a move without a button and ends a
+      // drag of the protocol in the middle (lost pointer capture; the same as K4b of smoke-link-gesture). Such a move is
+      // counted during the drag; a drag it cut is made once more, said in the output. The page's own handling is not
+      // changed: an interrupted gesture still has to do nothing.
       async drag(from, to, steps = 12) {
-        await app.mouse("mouseMoved", from.x, from.y);
-        await app.mouse("mousePressed", from.x, from.y, "left", 1);
-        for (let i = 1; i <= steps; i++) {
-          await app.mouse("mouseMoved", from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps, "left", 1);
-          await sleep(16);
+        for (let attempt = 1; ; attempt++) {
+          await app.mouse("mouseMoved", from.x, from.y);
+          await app.mouse("mousePressed", from.x, from.y, "left", 1);
+          // counted from the press on: the move to the start above has no button either
+          await app.ev(`(() => { window.__smokeDrag = { osMoves: [] }; if (window.__smokeDragHooked) return; window.__smokeDragHooked = true;
+            document.addEventListener("pointermove", (e) => { if (window.__smokeDrag && e.pointerType === "mouse" && e.buttons === 0) window.__smokeDrag.osMoves.push([Math.round(e.clientX), Math.round(e.clientY)]); }, true); })()`);
+          for (let i = 1; i <= steps; i++) {
+            await app.mouse("mouseMoved", from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps, "left", 1);
+            await sleep(16);
+          }
+          // read before the release: the release itself is a move without a button
+          const osMoves = await app.ev("(() => { const n = window.__smokeDrag?.osMoves ?? []; window.__smokeDrag = null; return n; })()");
+          await app.mouse("mouseReleased", to.x, to.y, "left", 0);
+          await sleep(150);
+          if (!osMoves.length || attempt > 1) return { osMoves, attempt };
+          console.log(`[smoke] the OS mouse moved during a drag (moves without a button at ${JSON.stringify(osMoves)}): the drag is made again`);
         }
-        await app.mouse("mouseReleased", to.x, to.y, "left", 0);
-        await sleep(150);
       },
       async key(key, code = key, keyCode = 0, text) {
         await call("Input.dispatchKeyEvent", { type: text ? "keyDown" : "rawKeyDown", key, code, windowsVirtualKeyCode: keyCode, text });

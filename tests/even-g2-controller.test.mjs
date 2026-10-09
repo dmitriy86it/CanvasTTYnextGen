@@ -652,11 +652,15 @@ test("a second handshake gets its own key and cannot speak for the approved devi
   const first = await connectionFromCode(code, options);
   const send = localFetcher(first.connection, { allowLoopback: true });
   let deviceId = "";
+  // the token works as soon as the device is approved, before the approval is saved: the next command waits for it
+  // (the controller refuses a command while another one runs — operation-pending)
+  let approving;
   const paired = await pairComputer(origin, code, { fetcher: send,
     onPending: () => {
       deviceId = f.controller.state().pairing.pending.id;
-      void f.controller.command({ type: "approve", id: deviceId });
+      approving = f.controller.command({ type: "approve", id: deviceId });
     } });
+  await approving;
   const bearer = { headers: { Authorization: "Bearer " + paired.token } };
   assert.equal((await send(origin + "/g2/api/home", bearer)).status, 200);
 
@@ -731,14 +735,16 @@ test("real HTTP client pairs with six digits, rejects wrong PIN and waits for Ma
   assert.equal(resolved.code, code);
   const send = localFetcher(resolved.connection, { allowLoopback: true });
   let pendingObserved = false;
+  let approving;
   const paired = await pairComputer(origin, code, { fetcher: send,
     onPending: () => {
       pendingObserved = true;
       const pending = f.controller.state().pairing.pending;
       assert.ok(pending);
-      void f.controller.command({ type: "approve", id: pending.id });
+      approving = f.controller.command({ type: "approve", id: pending.id });
     },
   });
+  await approving; // as above: the approval is saved before the test goes on
   assert.ok(pendingObserved);
   assert.deepEqual(paired.home.sessions.map(s => s.id), ["one"]);
   const response = await send(origin + "/g2/api/control", { method: "POST",
