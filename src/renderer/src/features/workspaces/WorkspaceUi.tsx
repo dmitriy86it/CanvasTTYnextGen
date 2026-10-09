@@ -290,6 +290,7 @@ export function CloseDialog({ controls, orch, locale, id, onClose, onOpenRun }: 
   const allStopped = liveStops !== null && all.length === runs.length + terms.length && all.every((s) => s.state === "stopped");
   const failed = all.some((s) => s.state === "error" || s.state === "timeout" || s.state === "unconfirmed");
   const unknownNow = liveStops ? all.some((s) => s.state === "unknown") : runs.some((r) => unknownOf(r) !== null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fires once when everything is stopped; the lists are the ones the person saw
   useEffect(() => {
     if (!allStopped) return;
     if (runsNow().some((r) => !runs.includes(r)) || termsNow().some((s) => !terms.some((x) => x.id === s.id))) {
@@ -297,7 +298,6 @@ export function CloseDialog({ controls, orch, locale, id, onClose, onOpenRun }: 
       return;
     }
     void controls.close(id).then((text) => (text ? setError(text) : onClose()));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allStopped]);
 
   const hide = async (): Promise<void> => {
@@ -328,13 +328,13 @@ export function CloseDialog({ controls, orch, locale, id, onClose, onOpenRun }: 
     await Promise.all([...runs.map(stopRun), ...terms.map((s) => stopTerminal(s.id))]);
   };
   // A run whose state was unknown when the person asked to stop is stopped as soon as its state is read (retry).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: orch.runs is the trigger: retry a stop once its run state is read
   useEffect(() => {
     if (!stops) return;
     for (const r of runs) {
       const view = orch.runs[r]?.view;
       if (stops[`run:${r}`]?.state === "unknown" && view && !TERMINAL_STATUSES.includes(view.status)) void stopRun(r);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orch.runs]);
   // Every participant not confirmed stopped keeps its way to it ("Open"); a run whose state is unknown also offers to
   // read it again.
@@ -394,7 +394,7 @@ function HistoryDialog({ controls, orch, locale, id, onClose, onOpenRun }: {
       setRuns(r.value.filter((s) => owner(s.view.runId) === id).map((s) => ({ runId: s.view.runId, status: s.view.newer ? "newer" : runStatusKey(s.view), project: folderName(s.view.workDir ?? "") })).reverse());
     }, () => setFailed(true));
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load once per workspace id
   useEffect(load, [id]);
   const w = controls.state.workspaces.find((x) => x.id === id);
   return (

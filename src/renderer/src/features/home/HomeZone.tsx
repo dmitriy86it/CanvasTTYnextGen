@@ -190,6 +190,7 @@ function SessionFailureDetails({ sessionId, details, locale }: SessionFailureDet
     triggerRef.current?.focus();
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: positionTooltip only reads refs and constants
   useEffect(() => {
     if (!open) return;
     window.addEventListener("resize", positionTooltip);
@@ -200,6 +201,7 @@ function SessionFailureDetails({ sessionId, details, locale }: SessionFailureDet
     };
   }, [open]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: unmount-only cleanup; cancelClose only reads a ref
   useEffect(() => () => cancelClose(), []);
 
   return (
@@ -284,6 +286,7 @@ export function HomeZone({
   const launcherProviders = resolveHomeLauncherProviders(settings);
   const limitProviders = resolveHomeLimitProviders(settings);
   const [now, setNow] = useState(() => new Date());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: limitProviders is a fresh array each render; settings.homeLimitProviders is its source
   const home = useMemo(
     () => selectHomeModel(sessions, limits, limitsLoadState, now.getTime(), limitProviders),
     [sessions, limits, limitsLoadState, now, settings.homeLimitProviders]

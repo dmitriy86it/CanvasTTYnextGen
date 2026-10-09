@@ -455,6 +455,7 @@ function ChangesTab({ locale, runId, seq, inPlace }: { locale: LocaleId; runId: 
     const { outcome, value } = await outcomeOf(() => api().changes(runId));
     if (outcome.kind === "accepted" && value) { setChanges(value); setError(null); } else setError(outcomeText(locale, outcome));
   }, [locale, runId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: seq is the trigger: reload the changes when the run moves
   useEffect(() => { const id = window.setTimeout(() => void load(), 300); return () => window.clearTimeout(id); }, [load, seq]);
   const open = async (path: string): Promise<void> => {
     if (diff?.path === path) return setDiff(null);
@@ -820,10 +821,10 @@ function RunSummary({ orch, runId, view, records, locale, changedFiles, gaps, in
   const planKey = planShas.map((sha) => `${sha}:${orch.texts[sha]?.status ?? ""}`).join(",");
   const goalText = useText(orch, runId, (records.find((r) => r.type === "run.created")?.data.goal as TextRef | undefined)?.sha256);
   const commands = useMemo(() => { const g = goalText ? parseGoal(goalText) : null; return Array.isArray(g?.commands) ? g.commands.filter((c): c is string => typeof c === "string") : null; }, [goalText]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: planKey stands for orch.texts (the plan titles read)
   const m = useMemo(() => summaryModel(view, records, {
     planTitles: (sha) => { const s = orch.texts[sha]; return s?.status === "ready" ? parsePlan(s.text).map((p) => p.title) : null; },
     goalCommands: commands, complete: !incomplete
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [view, records, planKey, commands, incomplete]);
   const finalText = useText(orch, runId, m.finalReport?.sha256);
   const lastText = useText(orch, runId, m.lastReport?.sha256);
@@ -1101,6 +1102,7 @@ function NewerRunPanel({ orch, runId, locale, onClose, newer }: {
   const linkId = linkOfRun(orch, runId);
   const [journal, setJournal] = useState<RunJournalState>({ records: [], next: 0, status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is the retry trigger
   useEffect(() => {
     let live = true;
     let cur: RunJournalState = { records: [], next: 0, status: "loading" };
@@ -1254,13 +1256,14 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   const now = useNow();
   const [expanded, setExpanded] = useState(false);
   // The run ended while the person watched another tab: offer the summary, never switch or scroll by itself.
-  const lastStatus = useRef(view?.status ?? null);
+  const status = view?.status ?? null;
+  const lastStatus = useRef(status);
   const [endedHere, setEndedHere] = useState(false);
   useEffect(() => {
     const was = lastStatus.current;
-    lastStatus.current = view?.status ?? null;
-    if (was && view && !TERMINAL_STATUSES.includes(was) && TERMINAL_STATUSES.includes(view.status)) setEndedHere(true);
-  }, [view?.status]);
+    lastStatus.current = status;
+    if (was && status && !TERMINAL_STATUSES.includes(was) && TERMINAL_STATUSES.includes(status)) setEndedHere(true);
+  }, [status]);
   useEffect(() => { if (panel.tab === "summary") setEndedHere(false); }, [panel.tab]);
 
   const [sending, setSending] = useState(false);
@@ -1293,6 +1296,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
 
   // Every "open" (also of the panel that is already open): the pinned summary gets focus and a short highlight, the
   // answer field first when a question waits. Nothing else is scrolled: the reader's place in a tab stays.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: panel.focus is the trigger: every open focuses the summary
   useEffect(() => {
     (answerBox.current ?? summary.current)?.focus({ preventScroll: true });
     summary.current?.scrollIntoView({ block: "nearest" });
@@ -1303,6 +1307,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   // A waiting request (or the lead's question) is brought into the summary's view whenever the panel is opened or a new
   // one arrives: its top goes to the top of the summary when it would not fit below; its buttons stay pinned (CSS).
   const waitingId = state?.view.permission?.requestId ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: panel.focus and waitingId are triggers: bring a waiting request into view
   useEffect(() => {
     const box = summary.current;
     const block = box?.querySelector<HTMLElement>("[data-orch-permission], [data-orch-question]");
@@ -1313,6 +1318,7 @@ function CurrentRunPanel({ orch, runId, locale, panel, onClose, onNewGoal, onVie
   }, [panel.focus, waitingId]);
 
   // The count of changed files for the result facts (the list itself is in the Changes tab).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: state.seq is the trigger: recount the changed files when the run moves
   useEffect(() => {
     if (!runId) return;
     let live = true;

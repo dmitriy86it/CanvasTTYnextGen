@@ -96,6 +96,7 @@ export function useCanvasWidgetFocus({
     if (browserSelected) focus(browserCanvasWidgetId, "explicit");
   }, [browserSelected, focus]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: widgetTreeVersion is the trigger: check the focused widget still exists
   useEffect(() => {
     if (state.id === null) return;
     const widgets = viewport.current?.querySelectorAll<HTMLElement>("[data-canvas-widget-id]");

@@ -172,6 +172,7 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
   const [acks, setAcks] = useState<Record<string, boolean>>({});
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([linkId, commands, workMode, models, accessOverride]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-asked by key (the JSON of the inputs), attempt and the pickers; callbacks and locale must not restart the check
   useEffect(() => {
     if (!auto) { setState({ kind: "idle" }); return; }
     let live = true;
@@ -187,7 +188,6 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
       } else setState({ kind: "error", message: r.code === "transport" ? t(locale, "orchTransportError") : tr(locale, `orchError_${r.code}`) });
     }, 350);
     return () => { live = false; window.clearTimeout(id); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, attempt, models, accessOverride, auto]);
   const checkNow = async (): Promise<void> => {
     setChecking(true);
@@ -288,6 +288,7 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
 function useProfile(linkId: string | undefined) {
   const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; code: string } | { kind: "ready"; info: OrchestrationProfileInfo }>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt is the retry trigger
   useEffect(() => {
     if (!linkId) return;
     let live = true;

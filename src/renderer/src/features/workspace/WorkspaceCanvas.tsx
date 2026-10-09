@@ -444,10 +444,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     ...(boardPlace ? [boardPlace] : [])
   ];
 
-  const homeBounds: SessionBounds = {
+  const homeBounds = useMemo<SessionBounds>(() => ({
     position: { x: 0, y: 0 },
     size: homeGridPixelSize(settings.homeGridSize)
-  };
+  }), [settings.homeGridSize]);
 
   const selectMarquee = useCallback((bounds: SessionBounds | null): void => {
     if (bounds === null) {
@@ -539,6 +539,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
   // HUD; the page can only yield by hiding. Slot boxes are measured instead of their children:
   // they are content-sized, which keeps this effect keyed to what can move or resize a slot and
   // not to every row inside the dynamic panels.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the placements and scale move the slots: they are triggers
   useEffect(() => {
     const root = overlays.current;
     if (!root) return;
@@ -602,6 +603,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
   const { cancelPendingPan } = wheelNavigation;
   const { handlePointerCancel } = pointerNavigation;
   const firstWorkspace = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: workspace.activeId is the trigger: drop the gestures on a workspace switch
   useLayoutEffect(() => {
     if (firstWorkspace.current) { firstWorkspace.current = false; return; }
     cancelPendingPan();
@@ -758,7 +760,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
     };
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [browserViewVisible, homeEditing, onOpenSettings, workspace]);
+  }, [browserViewVisible, homeEditing, onOpenSettings, settings.shortcuts.home, settings.shortcuts.renameWindow, workspace]);
 
   return (
     <div

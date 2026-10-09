@@ -157,6 +157,7 @@ export function CanvasCommandPalette({
   const actionCommands = filtered.filter((command) => command.group === "actions");
 
   useEffect(() => input.current?.focus({ preventScroll: true }), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: query is the trigger: back to the first row on each edit
   useEffect(() => setSelected(0), [query]);
 
   const run = (command: CommandItem | undefined): void => {

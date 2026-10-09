@@ -129,10 +129,12 @@ export function BrowserCard({
     setSize(bounds.size);
   }, [bounds]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-seed the address when switching to another tab with the same url
   useEffect(() => {
     if (!addressFocused.current) setAddress(activeTab?.url ?? "");
   }, [activeTab?.id, activeTab?.url]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: openedAt marks a new dialog with the same default prompt
   useEffect(() => {
     setDialogPrompt(browser.pendingDialog?.defaultPrompt ?? "");
   }, [browser.pendingDialog?.defaultPrompt, browser.pendingDialog?.openedAt]);
@@ -165,6 +167,7 @@ export function BrowserCard({
     });
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: camera and bounds are triggers: the viewport is re-measured when they move
   useLayoutEffect(() => {
     reportViewport();
   }, [camera.x, camera.y, position, reportViewport, showAgentPresence, size, surface, zoom]);
@@ -629,6 +632,7 @@ function TabFavicon({ tab, large = false }: { tab: BrowserTabSnapshot | null; la
   const source = safeFavicon(tab?.favicon ?? null);
   const failedTab = tab?.status === "error" || tab?.status === "crashed";
   const [failed, setFailed] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: source is the trigger: reset the failed flag for a new favicon
   useEffect(() => setFailed(false), [source]);
 
   return (

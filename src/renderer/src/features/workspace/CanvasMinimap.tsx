@@ -72,6 +72,7 @@ export function CanvasMinimap({
   cameraRef.current = camera;
 
   // A switch drops the drag before the next frame; the rest of its moves (the capture stays until release) do nothing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: workspaceId is the trigger: drop the drag on a workspace switch
   useLayoutEffect(() => { dragState.current = null; }, [workspaceId]);
 
   useEffect(() => {
