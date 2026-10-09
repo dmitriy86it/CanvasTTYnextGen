@@ -52,7 +52,7 @@ import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
 import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
 import { boardStatuses, runPhase } from "../../../shared/taskBoard.ts";
-import { AUTOPILOT_BUDGET, type AutopilotBudget, type BoardPlace, type BoardTask, type BoardView, type RunTaskFacts } from "../../../shared/taskBoard.ts";
+import { AUTOPILOT_BUDGET, baseOf, type AutopilotBudget, type BoardPlace, type BoardTask, type BoardView, type RunTaskFacts } from "../../../shared/taskBoard.ts";
 import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
 import { runOwners, workspaceOf } from "../../../shared/workspaceOwnership.ts";
 import { createBoardAutopilot } from "./boardAutopilot.ts";
@@ -182,6 +182,7 @@ export function createRunManager(deps: RunManagerDeps) {
   const creating = new Map<string, { key: string; p: Promise<{ runId: string; created: boolean }> }>();
   // B1: the tasks a create is under way for, from its first line: a removal asked meanwhile is refused (§3.3)
   const startingTasks = new Map<string, number>();
+  const startingRuns = new Map<string, Set<string>>(); // taskId → the requests being created for it (B4: one run of a task)
   const watchers = new Map<string, Set<(e: OrchestrationRunEvent) => void>>();
   let closing = false;
   const known = (id: string) => deps.workspaceKnown?.(id) ?? true;
@@ -513,7 +514,12 @@ export function createRunManager(deps: RunManagerDeps) {
     const taskId = typeof req?.goal?.task?.id === "string" ? req.goal.task.id : null;
     if (!taskId) return createRunFor(req);
     startingTasks.set(taskId, (startingTasks.get(taskId) ?? 0) + 1);
+    const mine = startingRuns.get(taskId) ?? new Set<string>();
+    startingRuns.set(taskId, mine);
+    const added = !mine.has(req.requestId);
+    mine.add(req.requestId);
     try { return await createRunFor(req, inQueue); } finally {
+      if (added) { mine.delete(req.requestId); if (!mine.size) startingRuns.delete(taskId); }
       const left = startingTasks.get(taskId)! - 1;
       if (left) startingTasks.set(taskId, left); else startingTasks.delete(taskId);
     }
@@ -655,22 +661,25 @@ export function createRunManager(deps: RunManagerDeps) {
     const tree = stage !== null ? st.workspace!.checkpoints[String(stage)].tree : await snapshotCopyTree(ws, st.workspace!.baseline.tree);
     const files = (await diffTreeNames(ws, st.workspace!.baseline.tree, tree)).files.length;
     const taken = await readTaken(ws);
-    const goalText = await readText(deps.root, runId, st.goal).then((b) => String((JSON.parse(b.toString("utf8")) as { text?: unknown }).text ?? ""), () => "");
+    const goalJson = await readText(deps.root, runId, st.goal).then((b) => JSON.parse(b.toString("utf8")) as { text?: unknown; base?: unknown }, () => ({} as { text?: unknown; base?: unknown }));
+    const goalText = String(goalJson.text ?? "");
+    const fromBranch = !!goalJson.base; // B4: a copy started from a dependency's branch
     const runBranch = ws.mode === "worktree" ? taken?.branch?.name ?? ws.branch : null;
     const base = `raoden/${branchSlug(goalText)}-${runId.slice(0, 8)}`;
     let suggested = base;
     for (let n = 2; n < 50 && await branchCommit(ws, suggested) !== null && suggested !== runBranch; n++) suggested = `${base}-${n}`;
     const info: OrchestrationTake = {
       mode: ws.mode as "copy" | "worktree", from: stage !== null ? "checkpoint" : "current", stage, files,
-      allowed: ["completed", "stopped", "paused"].includes(view.status) && !view.newer && files > 0,
+      // a completed run without changes is taken too (review of B4): its branch is the next task's base, else the chain stops
+      allowed: ["completed", "stopped", "paused"].includes(view.status) && !view.newer && (files > 0 || view.status === "completed"),
       suggested: taken?.branch && ws.mode === "worktree" ? taken.branch.name : suggested, runBranch,
       branch: taken?.branch && taken.branch.tree === tree ? { name: taken.branch.name, at: taken.branch.at } : null,
       applied: taken?.applied && taken.applied.tree === tree ? { at: taken.applied.at } : null
     };
-    return { ws, st, tree, taken, info, message: commitMessage(goalText || "Raoden Loom run", runId) };
+    return { ws, st, tree, taken, info, fromBranch, message: commitMessage(goalText || "Raoden Loom run", runId) };
   }
   async function takeResult(runId: string, input: OrchestrationTakeInput): Promise<OrchestrationTakeOutcome> {
-    const { ws, st, tree, taken, info, message } = await takeState(runId);
+    const { ws, st, tree, taken, info, fromBranch, message } = await takeState(runId);
     const done = async (result: OrchestrationTakeOutcome["result"], extra: Partial<OrchestrationTakeOutcome> = {}) => ({ result, ...extra, take: (await takeState(runId)).info });
     if (!info.allowed) return { result: "unavailable", take: info };
     const at = new Date().toISOString();
@@ -685,6 +694,9 @@ export function createRunManager(deps: RunManagerDeps) {
     }
     if (input?.action === "apply") {
       if (info.applied) return { result: "already", take: info };
+      // its changes are on top of the branch it started from: applied alone they would leave out the tasks before it
+      // (review of B4); the branch holds the whole chain. ponytail: applying a chain to the folder is stage C
+      if (fromBranch) return { result: "unavailable", detail: "started from a dependency's branch: take it as a branch (it holds the chain)", take: info };
       const r = await applyToProject(ws, st.workspace!.baseline.tree, tree);
       if (!r.applied) return { result: "conflict", files: r.files, detail: r.detail, take: info };
       await writeTaken(ws, { v: 1, ...taken, applied: { tree, at } });
@@ -818,7 +830,9 @@ export function createRunManager(deps: RunManagerDeps) {
     const c = inQueue ?? await canvas.read(exists);
     if (runOwners(c, known)(runId) !== t!.workspaceId) refuse("task_workspace", `${t!.key} belongs to another workspace`);
     const facts = await taskFacts(c);
-    if (facts.some((f) => f.taskId === t!.id && f.runId !== runId && f.status !== "unreadable" && !TERMINAL_STATUSES.includes(f.status))) {
+    // another run of the task: active by its journal, or being created now (two starts at once, review of B4)
+    if ([...(startingRuns.get(t!.id) ?? [])].some((id) => id !== runId)
+      || facts.some((f) => f.taskId === t!.id && f.runId !== runId && f.status !== "unreadable" && !TERMINAL_STATUSES.includes(f.status))) {
       refuse("task_active_run", `${t!.key} has an active run`);
     }
     if (goal.base) {
@@ -831,8 +845,13 @@ export function createRunManager(deps: RunManagerDeps) {
       if (!ok) refuse("invalid_base", `the base is not the branch of a result of what ${t!.key} depends on`);
     }
     if (anyway) return;
-    const wait = boardStatuses(b, facts).get(t!.id)?.depsWait;
+    const statusesNow = boardStatuses(b, facts);
+    const wait = statusesNow.get(t!.id)?.depsWait;
     if (wait) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
+    // a dependency's result in a branch only (decision 11) is seen by a separate copy from that branch alone: a start
+    // without it (another mode, or the working folder chosen) goes without that result — the person says so (anyway)
+    const inBranch = !goal.base && baseOf(t!, b, statusesNow, facts);
+    if (inBranch) refuse("task_not_ready", `the result of ${inBranch.key} is in the branch ${inBranch.branch} only: start from it, or start anyway?`);
   }
 
   const api = {

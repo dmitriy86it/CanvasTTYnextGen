@@ -99,12 +99,25 @@ test("the latest run decides: waits for the person (a question, a permission, a 
     const s = at(over);
     assert.deepEqual([s.kind, s.code, s.key], ["off", code, a.key], JSON.stringify(over));
   }
-  // its journal not there yet: waits
+  // its journal not there yet: waits; its task deleted: off (review of B4: it waited for ever)
   assert.deepEqual(autopilotStep(board, [], AT, randomUUID(), NONE, AUTOPILOT_BUDGET), { kind: "wait", why: "run" });
+  const orphan = run({ taskId: randomUUID(), taskKey: "T-77", status: "completed", completion: "confirmed" });
+  assert.deepEqual([autopilotStep(board, [orphan], AT, orphan.runId, NONE, AUTOPILOT_BUDGET).code], ["task_gone"]);
+  // the outcome of commit/push/QA not known: not a wait for an answer — off
+  assert.equal(at({ status: "paused", reason: "finish_unconfirmed" }).code, "run_paused");
   // the budget: runs, then minutes
   assert.equal(autopilotStep(board, [], AT, null, { runs: 5, ms: 0 }, AUTOPILOT_BUDGET).code, "budget_runs");
   assert.equal(autopilotStep(board, [], AT, null, { runs: 1, ms: 240 * 60_000 }, AUTOPILOT_BUDGET).code, "budget_minutes");
   assert.equal(autopilotStep(board, [], AT, null, { runs: 1, ms: 0 }, { runs: 1, minutes: 9 }).code, "budget_runs");
+});
+
+test("another run of the place goes on (the person's, another link's): the autopilot waits, never turns off for it", () => {
+  const a = task(), b = task({ dependsOn: [a.id] });
+  const mine = run({ taskId: a.id, taskKey: a.key }); // A started by the person, still at work
+  assert.deepEqual(autopilotStep({ tasks: [a, b] }, [mine], AT, null, NONE, AUTOPILOT_BUDGET), { kind: "wait", why: "run" });
+  assert.deepEqual(autopilotStep({ tasks: [a, b] }, [{ ...mine, status: "paused", reason: "plan_review" }], AT, null, NONE, AUTOPILOT_BUDGET), { kind: "wait", why: "run" });
+  // the same run in another project: not this place's
+  assert.equal(autopilotStep({ tasks: [{ ...a, project: "/q" }, b] }, [mine], AT, null, NONE, AUTOPILOT_BUDGET).code, "others_wait");
 });
 
 test("a dependency «Done» on a shaky base (changed after, started anyway) is the person's: not taken next", () => {
@@ -248,6 +261,11 @@ test("controller: the project's settings changed since it was turned on — off;
   await ap.tick(LINK);
   let st = (await ap.state())[LINK];
   assert.deepEqual([st.on, st.stop.code, st.stop.detail, s.calls.start.length], [false, "grant_added", "claude: npm test", 1]);
+  // turned on again: a preparation step added after it — off (it would run a new command)
+  await ap.set(LINK, true);
+  s.state.profile = { ...s.state.profile, prepare: { auto: false, steps: ["npm ci"] } };
+  await ap.tick(LINK);
+  assert.deepEqual([(await ap.state())[LINK].stop.code, s.calls.start.length], ["settings_changed", 1]);
   // turned on again: the new settings are the snapshot; then the work mode changes
   await ap.set(LINK, true);
   s.state.profile = { ...s.state.profile, workMode: "project" };
@@ -361,6 +379,10 @@ test("a chain A → B → C on the board's autopilot: each «Done», each result
   g(src, "merge-base", "--is-ancestor", rb.taken.commit, rc.taken.commit);
   assert.deepEqual([g(src, "rev-parse", "HEAD").trim(), g(src, "status", "--porcelain").trim(), fs.readdirSync(src).sort()], [head, "", [".git", "a.txt"]]);
   assert.equal(end.used.runs, 0, "off: nothing counted any more");
+  // «Apply to the working folder» of a run started from a branch would bring its own link of the chain only: refused
+  const applied = (await m.takeResult(rc.runId, { action: "apply" })).value;
+  assert.equal(applied.result, "unavailable");
+  assert.deepEqual(fs.readdirSync(src).sort(), [".git", "a.txt"]);
   await m.shutdown();
 });
 
@@ -376,9 +398,16 @@ test("main checks a task's start: one run of a task at a time (two links at once
   // a base the task's dependencies never made
   const bad = await m.startOnLink({ linkId: await linkOn(m, src), requestId: randomUUID(), goal: { ...goal, base: { branch: "main", commit: g(src, "rev-parse", "HEAD").trim(), key: "T-9" } } });
   assert.equal(bad.code, "invalid_base");
+  // two direct starts of one task at once (no canvas queue between them): one run (review of B4: both ran)
+  const direct = await Promise.all([1, 2].map(() => m.create({ requestId: randomUUID(), source: src, goal })));
+  assert.equal(direct.filter((r) => r.ok).length, 1, JSON.stringify(direct));
+  assert.equal(direct.find((r) => !r.ok).code, "task_active_run");
+  await until(async () => { const id = direct.find((r) => r.ok).value.runId; return (await m.get(id)).value.view.reason === "plan_review"; }, "the plan review");
+  for (const r of direct.filter((x) => x.ok)) await m.command(r.value.runId, { commandId: randomUUID(), expectedRevision: (await m.get(r.value.runId)).value.view.revision, command: { kind: "stop" } });
+  await until(async () => (await m.get(direct.find((r) => r.ok).value.runId)).value.view.status === "stopped", "stopped");
   // two starts of one task at once, on two links of its workspace: one run
   const [l1, l2] = [await linkOn(m, src), await linkOn(m, src)];
-  const both = await Promise.all([m.startOnLink({ linkId: l1, requestId: randomUUID(), goal }), m.startOnLink({ linkId: l2, requestId: randomUUID(), goal })]);
+  const both = await Promise.all([m.startOnLink({ linkId: l1, requestId: randomUUID(), goal, anyway: true }), m.startOnLink({ linkId: l2, requestId: randomUUID(), goal, anyway: true })]);
   assert.equal(both.filter((r) => r.ok).length, 1, JSON.stringify(both));
   assert.ok(["task_active_run", "folder_busy"].includes(both.find((r) => !r.ok).code), JSON.stringify(both));
   await m.shutdown();
@@ -431,4 +460,27 @@ test("notifications: «the board's autopilot stopped: <why>» and «every task i
   assert.equal(stopText("ru", { code: "others_wait", detail: "x", key: null, at: "x", waiting: [{ key: "T-4", reason: "waits_merge", waitsFor: ["T-2", "T-3"] }] }),
     "остальные ждут: T-4 — Нужно объединить результаты T-2, T-3 (этап C)");
   assert.equal(stopText("ru", { code: "grant_added", detail: "claude: npm test", key: "T-3", at: "x" }), "добавлено разрешение проекта: claude: npm test");
+});
+
+test("a dependency's result in a branch only: a start without that base is a start without the result — refused unless «anyway»", OPTS, async () => {
+  const src = project();
+  const m = manager([...turns("a2.txt"), ...turns("b2.txt")]);
+  await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: ["true"] });
+  const a = (await m.boardCreate(input({ project: src }))).value;
+  const b = (await m.boardCreate(input({ project: src, dependsOn: [a.id] }))).value;
+  const goal = (t, over = {}) => ({ text: "x", criteria: ["c"], checks: [], commands: ["true"], workMode: "copy", mode: "autopilot", task: { id: t.id, key: t.key }, ...over });
+  const ra = await m.create({ requestId: randomUUID(), source: src, goal: goal(a) });
+  await until(async () => (await m.get(ra.value.runId)).value.view.status === "completed", "A completed");
+  const info = (await m.take(ra.value.runId)).value;
+  assert.equal((await m.takeResult(ra.value.runId, { action: "branch", name: info.suggested })).value.result, "created");
+  const taken = (await m.board()).value.facts.find((f) => f.runId === ra.value.runId).taken;
+  for (const over of [{}, { workMode: "worktree" }]) {
+    const r = await m.create({ requestId: randomUUID(), source: src, goal: goal(b, over) });
+    assert.equal(r.code, "task_not_ready", JSON.stringify(over));
+    assert.match(r.message, new RegExp(taken.branch));
+  }
+  const ok = await m.create({ requestId: randomUUID(), source: src, goal: goal(b, { base: { branch: taken.branch, commit: taken.commit, key: a.key } }) });
+  assert.ok(ok.ok, JSON.stringify(ok));
+  await until(async () => (await m.get(ok.value.runId)).value.view.status === "completed", "B completed");
+  await m.shutdown();
 });

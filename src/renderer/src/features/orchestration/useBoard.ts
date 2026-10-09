@@ -34,6 +34,19 @@ export function useBoard(orch: Orchestration) {
     return () => window.clearInterval(id);
   }, [anyOn, reload]);
 
+  // B4: a run the board's autopilot started in main is on its link there, not here yet — its card, its notifications and
+  // the Dock badge follow the link's latest run: read the canvas again, once per run not seen on a link
+  const askedRuns = useRef(new Set<string>());
+  const { canvas, reload: reloadCanvas } = orch;
+  useEffect(() => {
+    if (!view) return;
+    const known = new Set(canvas.links.flatMap((l) => l.runIds));
+    const fresh = view.facts.filter((f) => !known.has(f.runId) && !askedRuns.current.has(f.runId));
+    if (!fresh.length) return;
+    for (const f of fresh) askedRuns.current.add(f.runId);
+    void reloadCanvas();
+  }, [view, canvas, reloadCanvas]);
+
   const statuses = useMemo(() => (view ? boardStatuses(view.board, view.facts) : new Map<string, TaskStatus>()), [view]);
   // the task of a run (agent cards, the summary): from the facts main read in its goal
   const taskOfRun = useCallback((runId: string): BoardTask | null => {

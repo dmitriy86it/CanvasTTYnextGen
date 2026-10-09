@@ -376,6 +376,8 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
       return [[kind, kind === "runMs" ? n * 60_000 : n]];
     }))
   };
+  // the dependency's result is in a branch only and this start does not take it: the person's choice, said and sent as such
+  const withoutBase = !!task?.base && !asked.base;
   const complete = asked.text !== "" && asked.criteria.length > 0 && (commands.length > 0 || optionalChecks);
   const kept = commands.filter((c) => !failing.includes(c.slice(0, 200)));
   const submit = async (only?: string[]): Promise<void> => {
@@ -385,7 +387,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     setBusy(true);
     setError(null);
-    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway ? { anyway: true } : {}) });
+    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway || withoutBase ? { anyway: true } : {}) });
     setBusy(false);
     // taken after the readiness check: the hint below names the run and its workspace instead of the bare refusal
     if (outcome.kind === "refused" && outcome.code === "folder_busy" && folderBusy?.(refused)) {
@@ -423,6 +425,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           </div>
         )}
         {/* owner's decision 11: outside the autopilot the person chooses what the copy starts from */}
+        {withoutBase && <small className="orch-hint orch-hint--warn" data-goal-base-without>{t(locale, "goalBaseWithout").replace("{key}", task!.base!.key)}</small>}
         {task?.base && workMode === "copy" && optionalChecks && (
           <fieldset className="orch-field" data-goal-base>
             <legend>{t(locale, "goalBase")}</legend>

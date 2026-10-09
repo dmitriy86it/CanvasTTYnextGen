@@ -48,7 +48,7 @@ export interface BoardView {
 export interface AutopilotBudget { runs: number; minutes: number }
 export const AUTOPILOT_BUDGET: AutopilotBudget = { runs: 5, minutes: 240 };
 export type AutopilotStopCode = "all_done" | "others_wait" | "budget_runs" | "budget_minutes" | "run_stopped" | "run_failed" | "limit_reached"
-  | "run_paused" | "run_unreadable" | "settings_changed" | "grant_added" | "not_ready" | "take_failed" | "start_failed" | "worktree_base" | "link_gone";
+  | "run_paused" | "run_unreadable" | "settings_changed" | "grant_added" | "not_ready" | "take_failed" | "start_failed" | "worktree_base" | "link_gone" | "task_gone";
 export interface AutopilotWaiting { key: string; reason: TaskReason | null; waitsFor: string[] }
 export interface AutopilotStop { code: AutopilotStopCode; detail: string | null; key: string | null; at: string; waiting?: AutopilotWaiting[] }
 export interface AutopilotState {
@@ -316,8 +316,9 @@ export function goalFor(task: Pick<BoardTask, "id" | "key" | "text" | "criteria"
 
 // B4 (§5.2): the pauses of a run the autopilot waits through — the person answers, the run goes on
 const WAIT_PAUSES = new Set(["awaiting_answer", "plan_review", "awaiting_checks_decision", "awaiting_finish_confirmation", "awaiting_person_decision",
-  "finish_unconfirmed", "stage_done", "step_done"]);
+  "stage_done", "step_done"]);
 const ACTIVE = new Set(["created", "preparing", "running", "pausing", "stopping"]);
+const ACTIVE_OR_PAUSED = new Set([...ACTIVE, "paused"]);
 
 // The working time of a run by its journal: from its first record, without the pauses that wait for the person, to its
 // end or now. A permission request is not journaled: it counts as work (§5.2 — the budget ends sooner, never later).
@@ -347,7 +348,8 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
   const statuses = boardStatuses(board, facts);
   const run = last ? facts.find((f) => f.runId === last) : undefined;
   const task = run?.taskId ? board.tasks.find((t) => t.id === run.taskId) : undefined;
-  if (last && (!run || !task)) return { kind: "wait", why: "run" }; // its journal is not there yet
+  if (last && !run) return { kind: "wait", why: "run" }; // its journal is not there yet
+  if (run && !task) return { kind: "off", code: "task_gone", detail: run.taskKey, key: run.taskKey };
   if (run && task) {
     const key = task.key;
     if (run.newer || run.status === "unreadable") return { kind: "off", code: "run_unreadable", detail: null, key };
@@ -367,6 +369,10 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
   if (used.runs >= budget.runs) return { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };
   if (used.ms >= budget.minutes * 60_000) return { kind: "off", code: "budget_minutes", detail: String(budget.minutes), key: null };
   const next = nextTask(board, statuses, at);
+  // another run of this place goes on (the person's, another link's): what it leaves may free the next task
+  const busyHere = facts.some((f) => f.status !== "unreadable" && ACTIVE_OR_PAUSED.has(f.status)
+    && board.tasks.some((t) => t.id === f.taskId && t.workspaceId === at.workspaceId && t.project === at.project));
+  if (!next && busyHere) return { kind: "wait", why: "run" };
   if (!next) {
     const idle = idleOf(board, statuses, at);
     if (idle.allDone) return { kind: "off", code: "all_done", detail: null, key: null };

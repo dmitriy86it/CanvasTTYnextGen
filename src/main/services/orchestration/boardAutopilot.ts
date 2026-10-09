@@ -31,14 +31,14 @@ interface Live {
   print: string; // the profile's fingerprint when turned on
   grants: OrchestrationProjectProfile["grants"];
   started: string[];
-  pending: string | null; // a start asked and not answered yet: asked again with the same id
+  pending: string | null; // a start asked and not answered yet (a refusal clears it; an error turns the autopilot off)
   waits: string | null;
   busy: boolean;
 }
 
 // §5.1: the settings a start takes, and the project's saved permissions — any change turns the autopilot off
 const fingerprint = (p: OrchestrationProjectProfile): string => JSON.stringify({
-  access: p.access, workMode: p.workMode, models: p.models ?? null, finish: p.finish, checks: p.checks,
+  access: p.access, workMode: p.workMode, models: p.models ?? null, finish: p.finish, checks: p.checks, prepare: p.prepare, env: p.env,
   grants: p.grants.map((g) => `${g.provider}:${g.kind}:${g.fingerprint}`).sort()
 });
 
@@ -106,6 +106,8 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
       l.pending = deps.newId();
     }
     if (live.get(linkId) !== l) return;
+    // ponytail: turned off while this start waits in the canvas queue, the run still starts (the person sees it on the
+    // link; a new autopilot does not count or take it)
     const r = await deps.start({ linkId, requestId: l.pending, goal });
     if (!r.ok) {
       if (LATER.has(r.code)) { l.pending = null; l.waits = "run"; return; }
@@ -125,7 +127,9 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
       const profile = await deps.profile(at.project);
       live.set(linkId, { language, project: at.project, print: fingerprint(profile), grants: profile.grants, started: [], pending: null, waits: null, busy: false });
       stops.delete(linkId);
-      timer ??= setInterval(() => { for (const id of live.keys()) void tick(id); }, tickMs); // the first step on the next beat
+      // the first step on the next beat; the timer alone never keeps the process up
+      timer ??= setInterval(() => { for (const id of live.keys()) void tick(id); }, tickMs);
+      timer.unref?.();
     },
     async state(): Promise<Record<string, AutopilotState>> {
       const out: Record<string, AutopilotState> = {};

@@ -267,6 +267,11 @@ try {
   expect(apWait.waits === "ждёт ответа на запрос прав" && apWait.used?.startsWith("запусков 2 из 5"), "the autopilot waits for the answer, 2 runs of 5 used", apWait);
   const t4Wait = await shown("T-4");
   expect(t4Wait.reason === "waits_permission", "T-4 still waits (the autopilot never answers)", t4Wait);
+  // the run started in main reaches the window: the line names the request, the agent card the task, the badge counts it
+  expect(t4Wait.line.startsWith("Ждёт разрешения: ls src"), "T-4's line names the request of the autopilot's run", t4Wait.line);
+  const cardT4 = await app.ev(`${q(`[data-agent-id="${exec.agentId}"] [data-agent-task]`)}?.textContent ?? null`);
+  expect(cardT4 === "T-4 · Модуль four", "the agent card shows the autopilot's task", cardT4);
+  expect(lastBadge() >= 1, "the Dock badge counts the autopilot's run waiting for you", lastBadge());
   await app.shot("board-10-autopilot-waits-permission");
   await boardShot("board-10-autopilot-waits-permission-board");
   await app.clickEl(`${q(task("T-4"))}.querySelector("[data-board-open]")`);
