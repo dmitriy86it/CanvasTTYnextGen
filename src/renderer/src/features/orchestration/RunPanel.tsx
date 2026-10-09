@@ -1854,15 +1854,24 @@ function PersonDecide({ locale, d, sending, onDecide }: {
         <div key={`${x.reviewTurnId}:${x.index}`} data-orch-disputed={`${x.reviewTurnId}:${x.index}`}>
           <p>{t(locale, "orchDisputedItem")}</p>
           <p className="orch-hint" data-orch-disputed-consequence>{t(locale, "orchDisputedConsequence")}</p>
-          <p className="orch-panel__text">{x.problem}</p>
-          {x.evidence && <p className="orch-hint">{x.evidence}</p>}
-          {x.paths.length > 0 && <p className="orch-hint">{x.paths.join(", ")}</p>}
-          {x.candidates.map((c) => (
-            <blockquote key={c.id} data-orch-disputed-candidate={c.id}>
-              <b title={c.id}>{fill(t(locale, "orchDisputedCandidate"), { n: idNumber(c.id) })}</b>: {c.problem}
-              {c.paths.length > 0 && <span className="orch-hint"> · {c.paths.join(", ")}</span>}
-            </blockquote>
-          ))}
+          <div className="orch-seen">
+            <div data-orch-disputed-now>
+              <p className="orch-panel__text"><b>{t(locale, "orchDisputedNow")}</b> {x.problem}</p>
+              {x.evidence && <p className="orch-hint">{x.evidence}</p>}
+              {x.paths.length > 0 && <p className="orch-hint">{x.paths.join(", ")}</p>}
+            </div>
+            {x.candidates.map((c) => {
+              const shared = c.paths.filter((f) => x.paths.includes(f));
+              return (
+                <blockquote key={c.id} data-orch-disputed-candidate={c.id}>
+                  <b title={c.id}>{fill(t(locale, "orchDisputedCandidate"), { n: idNumber(c.id) })}</b>: {c.problem}
+                  {c.paths.length > 0 && <span className="orch-hint"> · {c.paths.join(", ")}</span>}
+                  {shared.length > 0 && <p className="orch-hint" data-orch-disputed-shared>{fill(t(locale, "orchDisputedShared"), { files: shared.join(", ") })}</p>}
+                </blockquote>
+              );
+            })}
+          </div>
+          <p className="orch-hint" data-orch-disputed-how>{t(locale, "orchDisputedHow")}</p>
           <div className="orch-panel__actions">
             <button type="button" className="orch-primary" disabled={sending} data-orch-disputed-new
               onClick={() => onDecide({ subject: "disputed", target: { reviewTurnId: x.reviewTurnId, index: x.index }, decision: "new", finding: null, runKey: d.runKey })}>

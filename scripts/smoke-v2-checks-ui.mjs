@@ -379,6 +379,7 @@ try {
     expect(saved?.ok === true, "finish (A4): push and QA set up for the project", saved);
     await startGoal(app, ids.link, { onDialog: async () => {
       await app.type(q("[data-orch-commands]"), "");
+      await app.ev(`${q(".orch-dialog .orch-advanced")}.open = true`);
       await app.clickEl(q('[data-finish-option="push"] input'));
       await app.clickEl(q('[data-finish-option="qa"] input'));
     } });

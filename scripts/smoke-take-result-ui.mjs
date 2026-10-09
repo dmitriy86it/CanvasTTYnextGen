@@ -192,7 +192,8 @@ try {
   await app.clickEl(q(".orch-dialog button[type=submit]"));
   await app.waitFor(`!!${q("[data-orch-failing-choice]")}`, "the choice");
   const choice = await app.ev(`${q("[data-orch-failing-choice]")}.textContent`);
-  expect(choice.includes("lint: 3 problems") || choice.includes("process.exit(1)"), "the choice names the failing command", choice);
+  const failedLine = await app.ev(`[...document.querySelectorAll('[data-ready-id^="source_"]')].map((e) => e.textContent).find((x) => x.includes("Упала")) ?? ""`);
+  expect((failedLine.includes("lint: 3 problems") || failedLine.includes("process.exit(1)")) && !(choice.includes("lint: 3 problems") || choice.includes("process.exit(1)")) && /отмечены выше/.test(choice), "the failing command is named once, in its readiness item; the choice points to it", { failedLine, choice });
   expect(await app.ev(`${q("[data-orch-failing-drop]")}.dataset.orchPrimary === "drop_failing"`), "«leave them out» is the main button", null);
   expect(!(await app.ev(`!!${q(".orch-panel")}`)), "nothing started before the choice", null);
   await app.ev(`${q("[data-orch-failing-choice]")}.scrollIntoView({ block: "center" })`);

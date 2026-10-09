@@ -182,6 +182,7 @@ try {
   expect(prep?.level === "info" && prep.text.includes("composer install"), "readiness: the preparation is automatic", prep);
   expect(vendor?.level === "ok" && vendor.text.includes("composer install"), "readiness: vendor/ is prepared, not a warning", vendor);
   expect(testdb?.level === "ok" && testdb.text.includes("sqlite"), "readiness: the test database is the test one", testdb);
+  await app.ev(`${q(".orch-dialog .orch-advanced")}.open = true`);
   await app.clickEl(q('[data-finish-option="commit"] input'));
   await app.clickEl(q('[data-finish-option="qa"] input'));
   expect(await app.ev(`${q('[data-finish-option="push"] input')}.disabled`), "push is off: not set up for the project", null);
