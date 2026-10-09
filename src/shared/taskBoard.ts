@@ -213,8 +213,11 @@ function dependencies(deps: readonly (readonly [BoardTask, TaskStatus])[], runsO
 // or it never was (this task was started anyway); a dependency's own note goes on to the tasks after it.
 function noteOf(task: BoardTask, s: TaskStatus, deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus["depsNote"] {
   const since = runsOf.get(task.id)?.find((r) => r.runId === s.current)?.createdAt ?? Infinity;
-  const wasDone = (t: BoardTask) => (runsOf.get(t.id) ?? []).some((r) => r.createdAt < since && r.status === "completed"
-    && (r.completion === "confirmed" || (r.completion === "no_checks" && t.accepted?.runId === r.runId)));
+  // the dependency's latest run before this task's run started, and it ended «Done» (review of B3: not any earlier one)
+  const wasDone = (t: BoardTask) => {
+    const r = (runsOf.get(t.id) ?? []).filter((x) => x.createdAt < since).sort((a, b) => a.createdAt - b.createdAt).at(-1);
+    return !!r && r.status === "completed" && (r.completion === "confirmed" || (r.completion === "no_checks" && t.accepted?.runId === r.runId));
+  };
   const notes = deps.map(([t, d]) => (!isDone(d) ? (wasDone(t) ? "changed" : "not_ready") : d.depsNote));
   return notes.includes("not_ready") ? "not_ready" : notes.includes("changed") ? "changed" : null;
 }

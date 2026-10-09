@@ -157,8 +157,10 @@ export function createBoardStore(file: string, usedKeys: (workspaceId: string) =
     // A task's text and requirements may change after runs (decision 4): the runs keep their own goal.
     update: (id: string, patch: BoardTaskPatch) => change(async (b) => {
       const t = b.tasks.find((x) => x.id === id) ?? refuse("task_not_found", `no task ${id}`);
-      // a cycle is checked when the dependencies change: a task on a hand-made cycle can still be renamed
-      const ok = checkInput(b, { ...t, ...patch }, patch.dependsOn !== undefined ? id : null);
+      // a cycle is checked when the dependencies change: a task on a hand-made cycle can still be renamed (the form
+      // sends its dependencies each time: the same set is no change)
+      const same = patch.dependsOn === undefined || (new Set(patch.dependsOn).size === new Set(t.dependsOn).size && patch.dependsOn.every((d) => t.dependsOn.includes(d)));
+      const ok = checkInput(b, { ...t, ...patch }, same ? null : id);
       if (patch.order !== undefined && !Number.isFinite(patch.order)) refuse("invalid_task", "order");
       const next: BoardTask = { ...t, ...ok, ...(patch.order !== undefined ? { order: patch.order } : {}), updatedAt: new Date().toISOString() };
       return { next: { ...b, tasks: b.tasks.map((x) => (x.id === id ? next : x)) }, value: next };

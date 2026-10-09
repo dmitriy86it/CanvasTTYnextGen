@@ -439,6 +439,12 @@ test("«Start anyway»: a run of a task whose dependency is not «Done» is refu
   const r = await Promise.race([both, new Promise((res) => setTimeout(() => res("hung"), 10_000))]);
   assert.notEqual(r, "hung");
   assert.deepEqual([r[0].code, r[1].ok], ["task_not_ready", true]);
+  // archived while a start on a link reads the board as last saved: never both (review of B3). ponytail: the window
+  // (the archive's write not finished when the start reads) is not forced here; the marker (leavingTasks) closes it
+  const t4 = (await m.boardCreate(input({ project: src2 }))).value;
+  const [arch, st] = await Promise.all([m.boardArchive(t4.id, true), m.startOnLink({ linkId: link2, requestId: randomUUID(), goal: { ...goal, task: { id: t4.id, key: t4.key } }, anyway: true })]);
+  assert.ok(!(arch.ok && st.ok), JSON.stringify([arch.code, st.code]));
+  if (st.ok) await until(async () => (await m.get(st.value.runId)).value.view.reason === "plan_review", "the plan review");
   await m.shutdown();
 });
 
@@ -469,7 +475,9 @@ test("board.json edited by hand: a task on a cycle is renamed; another workspace
   fs.writeFileSync(file, JSON.stringify(raw));
   const again = createBoardStore(file, async () => 0);
   assert.equal((await again.update(a.id, { title: "renamed" })).title, "renamed");
-  await assert.rejects(again.update(a.id, { dependsOn: [b.id] }), (e) => e.code === "task_cycle", "changing the dependencies still checks the cycle");
+  assert.equal((await again.update(a.id, { title: "again", dependsOn: [b.id] })).title, "again", "the form sends the same dependencies: no change");
+  const extra = await again.create(input({ project: "/p" }));
+  await assert.rejects(again.update(a.id, { dependsOn: [b.id, extra.id] }), (e) => e.code === "task_cycle", "changing the dependencies still checks the cycle");
   // T-1's dependents: T-2 here, T-3 in another workspace — only T-2 is asked for
   await assert.rejects(again.remove(a.id, async () => false), (e) => e.code === "task_has_dependents" && /T-2/.test(e.message) && !/T-3/.test(e.message));
   await again.remove(a.id, async () => false, [b.id]);

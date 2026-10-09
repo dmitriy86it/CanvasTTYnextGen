@@ -786,6 +786,17 @@ export function createRunManager(deps: RunManagerDeps) {
     if (run?.status !== "completed" || run.completion !== "no_checks") refuse("accept_unavailable", "only a result completed without checks is accepted");
     return board.accept(taskId, run!.runId);
   }
+  // A task being deleted or archived: marked before its change waits in the board's queue, so a start that reads the
+  // board as last saved (peek) does not pass in between and leave a run of a task that is gone (review of B3)
+  const leavingTasks = new Map<string, number>();
+  async function leaving<T>(id: string, on: boolean, change: () => Promise<T>): Promise<T> {
+    if (!on) return change();
+    leavingTasks.set(id, (leavingTasks.get(id) ?? 0) + 1);
+    try { return await change(); } finally {
+      const left = leavingTasks.get(id)! - 1;
+      if (left) leavingTasks.set(id, left); else leavingTasks.delete(id);
+    }
+  }
   // A goal naming a task: the task is on the board, of this project, not archived; and ready (every dependency «Done»,
   // its result where this run would see it), whatever the task's own column, unless the person confirmed «Start anyway»
   // (§4.2). The board as last saved (peek): a start on a link runs inside the canvas queue, and a change of the board
@@ -793,7 +804,9 @@ export function createRunManager(deps: RunManagerDeps) {
   // ponytail: checked before the run is created, not under a lock with it; a dependency added in between is not seen
   async function taskOk(source: string, task: { id: string; key: string } | undefined, anyway: boolean, inQueue?: OrchestrationCanvas): Promise<void> {
     if (!task) return;
-    const b = (await board.peek()).board;
+    if (leavingTasks.has(task.id)) refuse("task_changing", "the task is being deleted or archived");
+    // inside the canvas queue the board as last saved; elsewhere after the board's queue (a change in it is seen)
+    const b = (inQueue ? await board.peek() : await board.read()).board;
     const t = b.tasks.find((x) => x.id === task.id);
     if (!t || t.key !== task.key) refuse("task_not_found", `no task ${task.key} on the board`);
     if (await realpath(t!.project).catch(() => t!.project) !== source) refuse("task_project", "the task belongs to another project folder");
@@ -811,9 +824,10 @@ export function createRunManager(deps: RunManagerDeps) {
       return board.create({ ...input, project: await realpath(input.project).catch(() => refuse("invalid_task", "the project folder does not exist")) });
     }),
     boardUpdate: (id: string, patch: Parameters<typeof board.update>[1]) => result(() => board.update(id, patch)),
-    boardArchive: (id: string, archived: boolean) => result(() => board.archive(id, archived, () => startingTasks.has(id))),
+    boardArchive: (id: string, archived: boolean) => result(() => leaving(id, archived, () => board.archive(id, archived, () => startingTasks.has(id)))),
     // a run being created counts: its journal may not be there yet (stage-b-board.md §3.3)
-    boardRemove: (id: string, dependents: string[] = []) => result(() => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id), dependents)),
+    boardRemove: (id: string, dependents: string[] = []) => result(() => leaving(id, true,
+      () => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id), dependents))),
     boardAccept: (id: string) => result(() => acceptTask(id)),
     boardPlace: (workspaceId: string, bounds: BoardPlace | null) => result(() => { workspaceOk(workspaceId); return board.place(workspaceId, bounds); }),
 
