@@ -871,8 +871,8 @@ test("drops overlapping Home placements and always preserves a Settings entry po
 
 // UX audit PR 3: the notification switches — defaults for an older file, each switch kept on its own, garbage ignored.
 test("notification settings: defaults when missing, each switch normalized on its own", () => {
-  assert.deepEqual(normalizeSettings({}, fallback).notifications, { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false });
+  assert.deepEqual(normalizeSettings({}, fallback).notifications, { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false, board: true });
   assert.deepEqual(normalizeSettings({ notifications: { waiting: false, bounce: true, failed: "no", dockBadge: null } }, fallback).notifications,
-    { waiting: false, completed: true, failed: true, dockBadge: true, bounce: true });
+    { waiting: false, completed: true, failed: true, dockBadge: true, bounce: true, board: true });
   assert.deepEqual(normalizeSettings({ notifications: [false] }, fallback).notifications.waiting, true);
 });

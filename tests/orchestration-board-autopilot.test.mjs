@@ -14,6 +14,8 @@ import { createBoardAutopilot } from "../src/main/services/orchestration/boardAu
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { AUTOPILOT_BUDGET, activeMs, autopilotStep, boardStatuses, goalFor } from "../src/shared/taskBoard.ts";
+import { boardNotes, DEFAULT_NOTIFY_PREFS } from "../src/renderer/src/features/orchestration/notify.ts";
+import { stopText } from "../src/renderer/src/features/orchestration/boardModel.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GIT = findGit(process.env);
@@ -407,4 +409,26 @@ test("«Completed without checks» holds the chain until «Accept the result»; 
   assert.ok((await m.boardAutopilot(linkId, false, "ru")).ok);
   assert.equal((await m.board()).value.autopilot[linkId], undefined, "turned off by the person: no reason kept");
   await m.shutdown();
+});
+
+test("notifications: «the board's autopilot stopped: <why>» and «every task is done», once per stop, behind their own switch", () => {
+  const link = randomUUID();
+  const on = { on: true, budget: AUTOPILOT_BUDGET, used: { runs: 1, minutes: 2 }, waits: "run", stop: null };
+  const stopped = (code, over = {}) => ({ ...on, on: false, waits: null, stop: { code, detail: null, key: "T-2", at: `2026-10-09T10:00:0${++n % 10}Z`, ...over } });
+  const place = () => "proj";
+  // first seen: only recorded
+  let r = boardNotes("ru", { [link]: on }, {}, DEFAULT_NOTIFY_PREFS, false, place);
+  assert.deepEqual([r.notes, r.notified[`board-${link}`]], [[], ""]);
+  const s1 = stopped("run_stopped");
+  const r1 = boardNotes("ru", { [link]: s1 }, r.notified, DEFAULT_NOTIFY_PREFS, false, place);
+  assert.deepEqual(r1.notes, [{ runId: `board-${link}`, signal: "failed", title: "Автопилот доски остановился: T-2: запуск остановлен", body: "proj" }]);
+  assert.deepEqual(boardNotes("ru", { [link]: s1 }, r1.notified, DEFAULT_NOTIFY_PREFS, false, place).notes, [], "once per stop");
+  const done = stopped("all_done", { key: null });
+  assert.deepEqual(boardNotes("ru", { [link]: done }, r1.notified, DEFAULT_NOTIFY_PREFS, false, place).notes.map((x) => [x.title, x.signal]), [["Доска: все задачи готовы", "completed"]]);
+  assert.deepEqual(boardNotes("ru", { [link]: done }, r1.notified, { ...DEFAULT_NOTIFY_PREFS, board: false }, false, place).notes, [], "its own switch");
+  assert.deepEqual(boardNotes("ru", { [link]: done }, r1.notified, DEFAULT_NOTIFY_PREFS, true, place).notes, [], "the window has the focus: the card says it");
+  // the reasons in the person's words: the tasks left waiting with their own reasons, the added permission named
+  assert.equal(stopText("ru", { code: "others_wait", detail: "x", key: null, at: "x", waiting: [{ key: "T-4", reason: "waits_merge", waitsFor: ["T-2", "T-3"] }] }),
+    "остальные ждут: T-4 — Нужно объединить результаты T-2, T-3 (этап C)");
+  assert.equal(stopText("ru", { code: "grant_added", detail: "claude: npm test", key: "T-3", at: "x" }), "добавлено разрешение проекта: claude: npm test");
 });

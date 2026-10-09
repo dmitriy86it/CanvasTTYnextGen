@@ -318,6 +318,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
   const [commandsText, setCommandsText] = useState("");
   const edited = useRef(false);
   const [workMode, setWorkMode] = useState<OrchestrationWorkMode>("copy");
+  const [fromBranch, setFromBranch] = useState(true); // B4: a task's copy from its dependency's branch, or the working folder
   const [finish, setFinish] = useState<{ commit: boolean; push: boolean; qa: boolean }>({ commit: false, push: false, qa: false });
   const suggest = useCallback((lines: string[]) => { if (!edited.current) setCommandsText((cur) => cur || lines.join("\n")); }, []);
   const [limits, setLimits] = useState<Record<string, string>>({});
@@ -367,6 +368,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     language: locale === "ru" ? "ru" : "en", // the agents write what the person reads in the interface's language
     ...(Object.keys(accessOverride).length ? { accessOverride } : {}),
     ...(task ? { task: { id: task.id, key: task.key } } : {}),
+    ...(task?.base && fromBranch && workMode === "copy" && optionalChecks ? { base: task.base } : {}),
     ...(chosen && (chosen.commit || chosen.push || chosen.qa) ? { finish: chosen } : {}),
     limits: Object.fromEntries(LIMITS.flatMap((kind) => {
       const n = Number(limits[kind]);
@@ -419,6 +421,15 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
             <strong title={task.title}>{task.key} · {task.title}</strong>
             {task.anyway && <small className="orch-hint orch-hint--warn" data-goal-task-anyway>{t(locale, "boardStartAnywayNote")}</small>}
           </div>
+        )}
+        {/* owner's decision 11: outside the autopilot the person chooses what the copy starts from */}
+        {task?.base && workMode === "copy" && optionalChecks && (
+          <fieldset className="orch-field" data-goal-base>
+            <legend>{t(locale, "goalBase")}</legend>
+            <label><input type="radio" name="goal-base" checked={fromBranch} onChange={() => setFromBranch(true)} data-goal-base-branch />
+              {t(locale, "goalBaseBranch").replace("{key}", task.base.key).replace("{branch}", task.base.branch)}</label>
+            <label><input type="radio" name="goal-base" checked={!fromBranch} onChange={() => setFromBranch(false)} data-goal-base-folder /> {t(locale, "goalBaseFolder")}</label>
+          </fieldset>
         )}
         <div className="orch-field orch-field--static">
           <span>{t(locale, "orchProject")}</span>

@@ -1387,6 +1387,11 @@ button { border: 0; }
 .board-card__header strong { font-weight: 850; }
 .board-card__readonly { padding: .2em .6em; border-radius: 99px; color: var(--text-dark); background: var(--yellow); font-size: .82em; font-weight: 800; }
 .board-card__header-actions { margin-left: auto; display: flex; gap: .4em; }
+.board-card__autopilot { display: flex; flex-wrap: wrap; align-items: center; gap: .5em; margin: .4em .9em 0; font-size: .9em; color: var(--text-muted-on-dark); }
+.board-card__autopilot strong { color: var(--text); }
+.board-card__autopilot-ask { display: flex; flex-wrap: wrap; align-items: center; gap: .5em; }
+.board-card__autopilot-ask input { width: 4.5em; }
+.board-card__autopilot-stop { color: var(--text); }
 .board-card button { padding: .4em .8em; border-radius: 8px; color: var(--text-dark); background: var(--secondary); font-weight: 800; cursor: pointer; white-space: nowrap; }
 .board-card button:disabled { opacity: .5; cursor: default; }
 .board-card button.orch-primary { background: var(--primary); }

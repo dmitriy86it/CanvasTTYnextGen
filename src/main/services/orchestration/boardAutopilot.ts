@@ -6,7 +6,7 @@
 import type { OrchestrationGoalInput, OrchestrationProjectProfile, OrchestrationReadiness, OrchestrationResult, OrchestrationTakeOutcome } from "../../../shared/orchestration.ts";
 import {
   activeMs, autopilotStep, goalFor,
-  type AutopilotBudget, type AutopilotState, type AutopilotStop, type AutopilotStopCode, type Board, type RunTaskFacts
+  type AutopilotBudget, type AutopilotState, type AutopilotStop, type AutopilotStopCode, type AutopilotWaiting, type Board, type RunTaskFacts
 } from "../../../shared/taskBoard.ts";
 
 type R<T> = OrchestrationResult<T>;
@@ -51,9 +51,9 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
   const stops = new Map<string, AutopilotStop>();
   let timer: ReturnType<typeof setInterval> | null = null;
 
-  function off(linkId: string, code: AutopilotStopCode, detail: string | null, key: string | null): void {
+  function off(linkId: string, code: AutopilotStopCode, detail: string | null, key: string | null, waiting?: AutopilotWaiting[]): void {
     live.delete(linkId);
-    stops.set(linkId, { code, detail: detail?.slice(0, 400) ?? null, key, at: new Date(deps.now()).toISOString() });
+    stops.set(linkId, { code, detail: detail?.slice(0, 400) ?? null, key, at: new Date(deps.now()).toISOString(), ...(waiting ? { waiting: waiting.slice(0, 20) } : {}) });
     if (!live.size && timer) { clearInterval(timer); timer = null; }
   }
 
@@ -81,7 +81,7 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     const next = autopilotStep(board, facts, { ...at, workMode: profile.workMode }, l.started.at(-1) ?? null, await used(l), await budgetOf(linkId));
     l.waits = next.kind === "wait" ? next.why : null;
     if (next.kind === "wait") return;
-    if (next.kind === "off") return off(linkId, next.code, next.detail, next.key);
+    if (next.kind === "off") return off(linkId, next.code, next.detail, next.key, next.waiting);
     if (next.kind === "take") {
       const r = await deps.take(next.runId);
       if (!r.ok) return off(linkId, "take_failed", r.code, next.key);
@@ -97,7 +97,8 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     const goal = goalFor(next.task, profile, { optionalChecks: deps.optionalChecks, language: l.language, base: next.base });
     if (!l.pending) {
       const ready = await deps.readiness({ linkId, commands: goal.commands ?? [], workMode: profile.workMode, ...(goal.models ? { models: goal.models } : {}) });
-      if (!ready.ok) return LATER.has(ready.code) ? void (l.waits = "run") : off(linkId, "not_ready", ready.code, next.task.key);
+      if (!ready.ok && LATER.has(ready.code)) { l.waits = "run"; return; }
+      if (!ready.ok) return off(linkId, "not_ready", ready.code, next.task.key);
       // a blocker refuses the start; a «confirm» item needs the person's acknowledgement, which the autopilot never gives
       const stop = ready.value.items.find((i) => i.level === "blocker" || i.level === "confirm");
       if (stop && stop.id === "busy") { l.waits = "run"; return; }

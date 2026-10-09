@@ -5,10 +5,12 @@ import type { OrchestrationActivityEntry, OrchestrationRunView } from "../../../
 import type { LocaleId, NotificationSettings } from "../../../../shared/contracts.ts";
 import { t } from "../../lib/i18n.ts";
 import { PAUSES, viewPauseLabel } from "./runModel.ts";
+import { stopText, tr } from "./boardModel.ts";
+import type { AutopilotState } from "../../../../shared/taskBoard.ts";
 
 export type NotifySignal = "waiting" | "completed" | "completed_no_checks" | "failed";
 export type NotifyPrefs = NotificationSettings;
-export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false };
+export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { waiting: true, completed: true, failed: true, dockBadge: true, bounce: false, board: true };
 
 // The state a notification is about, with what tells one state from another ("" — nothing to tell).
 export function runSignal(view: OrchestrationRunView, onMac = true): { signal: NotifySignal; key: string } | null {
@@ -63,3 +65,20 @@ export function pruneNotified(notified: Readonly<Record<string, string>>, keep =
 // them, and the window shows its own banner meanwhile. Cleared once a notification is shown again.
 export const NOTIFY_UNAVAILABLE_KEY = "orch.notify.unavailable";
 export const NOTIFIED_KEY = "orch.notified.v1";
+
+// B4 (owner's decision 10): the board's autopilot stopped — why, or that every task is done. Once per stop (its time is
+// the key, kept with the runs' record under board-<linkId>); a stop by the person keeps no reason and tells nothing.
+export function boardNotes(locale: LocaleId, autopilot: Readonly<Record<string, AutopilotState>>, notified: Readonly<Record<string, string>>, prefs: NotifyPrefs, focused: boolean,
+  place: (linkId: string) => string): { notes: Note[]; notified: Record<string, string> } {
+  const next: Record<string, string> = { ...notified };
+  const notes: Note[] = [];
+  for (const [linkId, s] of Object.entries(autopilot)) {
+    const id = `board-${linkId}`;
+    const before = notified[id];
+    next[id] = s.stop?.at ?? "";
+    if (!s.stop || before === undefined || before === s.stop.at || focused || !prefs.board) continue;
+    const title = s.stop.code === "all_done" ? t(locale, "boardApNoteDone") : tr(locale, "boardApNoteStopped", { reason: stopText(locale, s.stop) });
+    notes.push({ runId: id, signal: s.stop.code === "all_done" ? "completed" : "failed", title: title.slice(0, 120), body: place(linkId) });
+  }
+  return { notes, notified: next };
+}

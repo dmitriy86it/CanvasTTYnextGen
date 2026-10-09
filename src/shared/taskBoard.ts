@@ -49,7 +49,8 @@ export interface AutopilotBudget { runs: number; minutes: number }
 export const AUTOPILOT_BUDGET: AutopilotBudget = { runs: 5, minutes: 240 };
 export type AutopilotStopCode = "all_done" | "others_wait" | "budget_runs" | "budget_minutes" | "run_stopped" | "run_failed" | "limit_reached"
   | "run_paused" | "run_unreadable" | "settings_changed" | "grant_added" | "not_ready" | "take_failed" | "start_failed" | "worktree_base" | "link_gone";
-export interface AutopilotStop { code: AutopilotStopCode; detail: string | null; key: string | null; at: string }
+export interface AutopilotWaiting { key: string; reason: TaskReason | null; waitsFor: string[] }
+export interface AutopilotStop { code: AutopilotStopCode; detail: string | null; key: string | null; at: string; waiting?: AutopilotWaiting[] }
 export interface AutopilotState {
   on: boolean;
   budget: AutopilotBudget;
@@ -337,7 +338,7 @@ export type AutopilotStep =
   | { kind: "wait"; why: string }
   | { kind: "take"; runId: string; key: string }
   | { kind: "start"; task: BoardTask; base: OrchestrationBaseRef | null }
-  | { kind: "off"; code: AutopilotStopCode; detail: string | null; key: string | null };
+  | { kind: "off"; code: AutopilotStopCode; detail: string | null; key: string | null; waiting?: AutopilotWaiting[] };
 
 // B4 (§5.2): what the board's autopilot of a link does next, from the board and the facts of the runs alone (the
 // settings, the readiness and the start itself are main's). last: the run it started last (null: none yet).
@@ -370,7 +371,7 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
     const idle = idleOf(board, statuses, at);
     if (idle.allDone) return { kind: "off", code: "all_done", detail: null, key: null };
     const detail = idle.waiting.map((w) => (w.waitsFor.length ? `${w.key} (${w.reason}: ${w.waitsFor.join(", ")})` : `${w.key} (${w.reason ?? "-"})`)).join("; ");
-    return { kind: "off", code: "others_wait", detail, key: null };
+    return { kind: "off", code: "others_wait", detail, key: null, waiting: idle.waiting };
   }
   const base = baseOf(next, board, statuses, facts);
   // a worktree starts from HEAD: from a ref is stage C (§5.2); a copy takes the branch (owner's decision 11)

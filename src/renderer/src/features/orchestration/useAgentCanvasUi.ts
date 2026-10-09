@@ -1,5 +1,6 @@
 // Presentation state around the agent cards: which dialog or panel is open, the linking mode, the last refusal shown
 // on a card. Every decision still comes from main through useOrchestration.
+import type { OrchestrationBaseRef } from "../../../../shared/orchestration";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { LocaleId, Point } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink, OrchestrationProviderKind } from "../../../../shared/orchestration";
@@ -117,4 +118,5 @@ export function useAgentCanvasUi(orch: Orchestration, locale: LocaleId, workspac
 
 export type AgentCanvasUi = ReturnType<typeof useAgentCanvasUi>;
 // anyway: the person confirmed «Start anyway» for a task that waits for others (§4.2)
-export interface GoalTask { id: string; key: string; title: string; text: string; criteria: string[]; anyway?: boolean }
+// base (B4, owner's decision 11): the branch a dependency's result was taken into — a separate copy may start from it
+export interface GoalTask { id: string; key: string; title: string; text: string; criteria: string[]; anyway?: boolean; base?: OrchestrationBaseRef }

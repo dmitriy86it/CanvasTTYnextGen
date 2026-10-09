@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LocaleId, NotificationSettings } from "../../../../shared/contracts";
 import { t } from "../../lib/i18n";
-import { NOTIFIED_KEY, NOTIFY_UNAVAILABLE_KEY, notifyStep, pruneNotified, type Note } from "./notify";
+import { NOTIFIED_KEY, NOTIFY_UNAVAILABLE_KEY, boardNotes, notifyStep, pruneNotified, type Note } from "./notify";
+import type { AutopilotState } from "../../../../shared/taskBoard";
 import type { RunActivityState, RunState } from "./useOrchestration";
 
 const store = {
@@ -15,10 +16,12 @@ const store = {
   setUnavailable(): void { try { localStorage.setItem(NOTIFY_UNAVAILABLE_KEY, "1"); } catch { /* the banner still shows */ } }
 };
 
-export function useRunNotifications({ locale, prefs, runs, activity, title, open, accepting = 0 }: {
+const NO_AUTOPILOT: Record<string, AutopilotState> = {};
+export function useRunNotifications({ locale, prefs, runs, activity, title, open, accepting = 0, autopilot = NO_AUTOPILOT, boardPlace = () => "" }: {
   locale: LocaleId; prefs: NotificationSettings; runs: Record<string, RunState>; activity: Record<string, RunActivityState>;
   title(runId: string): string; open(runId: string): void;
   accepting?: number; // the board's tasks waiting for «Accept the result» (counted on the badge)
+  autopilot?: Record<string, AutopilotState>; boardPlace?(linkId: string): string; // B4: the board's autopilot of each link
 }): { banner: Note[]; openNote(runId: string): void; dismiss(runId: string): void } {
   const notified = useRef<Record<string, string> | null>(null);
   const badge = useRef<number | null>(null);
@@ -31,9 +34,12 @@ export function useRunNotifications({ locale, prefs, runs, activity, title, open
   useEffect(() => {
     notified.current ??= store.read();
     const list = Object.entries(runs).map(([runId, r]) => ({ runId, view: r.view, place: title(runId), entries: activity[runId]?.entries ?? [] }));
-    const step = notifyStep(locale, list, notified.current, prefs, document.hasFocus() && !document.hidden, true, accepting);
-    notified.current = step.notified;
-    store.write(step.notified);
+    const focused = document.hasFocus() && !document.hidden;
+    const step = notifyStep(locale, list, notified.current, prefs, focused, true, accepting);
+    const board = boardNotes(locale, autopilot, step.notified, prefs, focused, boardPlace);
+    step.notes.push(...board.notes);
+    notified.current = board.notified;
+    store.write(board.notified);
     if (badge.current !== step.badge) { badge.current = step.badge; window.canvasTTY.notify.setBadge(step.badge); }
     if (step.bounce) window.canvasTTY.notify.bounce();
     for (const n of step.notes) {
@@ -41,7 +47,7 @@ export function useRunNotifications({ locale, prefs, runs, activity, title, open
       shown.current.set(n.runId, n);
       void window.canvasTTY.notify.show(n).then((r) => { if (!r.shown) { store.setUnavailable(); toBanner(n); } }, () => toBanner(n));
     }
-  }, [accepting, activity, locale, prefs, runs, title, toBanner]);
+  }, [accepting, activity, autopilot, boardPlace, locale, prefs, runs, title, toBanner]);
 
   useEffect(() => {
     const offClick = window.canvasTTY.notify.onClick((runId) => openRef.current(runId));

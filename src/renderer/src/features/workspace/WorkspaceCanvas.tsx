@@ -270,7 +270,15 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps): React.JSX.Element 
   // B3: tasks of every workspace waiting for «Accept the result» are the person's too (the run is completed, not waiting)
   const accepting = useMemo(() => (board.view?.board.tasks ?? []).filter((x) => !x.archivedAt && board.statuses.get(x.id)?.reason === "no_checks").length,
     [board.statuses, board.view]);
-  const notes = useRunNotifications({ locale: settings.locale, prefs: settings.notifications, runs: orch.runs, activity: orch.activity, title: noteTitle, open: openRunInWorkspace, accepting });
+  // B4: a note of the board's autopilot opens the link's latest run (where it stopped)
+  const lastOfLink = useCallback((id: string) => orch.canvas.links.find((l) => `board-${l.linkId}` === id || l.linkId === id)?.runIds.at(-1), [orch.canvas]);
+  const openNote = useCallback((id: string) => {
+    const runId = id.startsWith("board-") ? lastOfLink(id) : id;
+    if (runId) openRunInWorkspace(runId);
+  }, [lastOfLink, openRunInWorkspace]);
+  const autopilotPlace = useCallback((linkId: string) => { const runId = lastOfLink(linkId); return runId ? noteTitle(runId) : "Raoden Loom"; }, [lastOfLink, noteTitle]);
+  const notes = useRunNotifications({ locale: settings.locale, prefs: settings.notifications, runs: orch.runs, activity: orch.activity, title: noteTitle, open: openNote, accepting,
+    autopilot: board.view?.autopilot, boardPlace: autopilotPlace });
   // The run holding the folder and its workspace are main's answer, not rebuilt here from snapshots.
   const folderBusy = useCallback((held: unknown) => {
     const h = folderHolderOf(held, knownWorkspace);

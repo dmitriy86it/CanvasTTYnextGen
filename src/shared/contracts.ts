@@ -216,7 +216,7 @@ export interface WorkspacesApi {
 }
 
 // Notifications of orchestration runs (UX audit PR 3): which events tell the person, and the Dock.
-export interface NotificationSettings { waiting: boolean; completed: boolean; failed: boolean; dockBadge: boolean; bounce: boolean }
+export interface NotificationSettings { waiting: boolean; completed: boolean; failed: boolean; dockBadge: boolean; bounce: boolean; board: boolean }
 
 export interface AppSettings {
   locale: LocaleId;
