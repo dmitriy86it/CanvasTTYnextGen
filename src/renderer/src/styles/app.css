@@ -1102,7 +1102,7 @@ button { border: 0; }
 .orch-dialog__title { font-size: 18px; }
 .orch-form { display: flex; flex-direction: column; gap: 12px; }
 .orch-field { min-width: 0; display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; }
-.orch-field > span:first-child, .orch-field legend { font-size: 10px; font-weight: 900; letter-spacing: .11em; text-transform: uppercase; opacity: .62; }
+.orch-field > span:first-child, .orch-field legend { font-size: 13px; font-weight: 600; opacity: .85; }
 .orch-field input, .orch-field textarea, .orch-panel textarea, .orch-panel input, .orch-panel select { width: 100%; padding: 9px 11px; border: 0; border-radius: 10px; color: var(--text-dark); background: rgba(255,255,255,.72); font: inherit; }
 .orch-field--static strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
 .orch-field__row { display: flex; gap: 8px; }
@@ -1246,6 +1246,14 @@ button { border: 0; }
 .orch-advanced { display: flex; flex-direction: column; gap: 8px; }
 .orch-advanced > summary { cursor: pointer; font-weight: 700; opacity: .8; }
 .orch-advanced[open] > summary { margin-bottom: 6px; }
+.orch-advanced > summary [data-orch-advanced-summary] { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; font-size: 12px; opacity: .8; }
+.orch-advanced[open] > summary [data-orch-advanced-summary] { display: none; }
+.orch-ready__details { display: flex; flex-direction: column; gap: 6px; }
+.orch-ready__details > summary { cursor: pointer; font-size: 12px; font-weight: 600; opacity: .8; }
+.orch-seen { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin: 4px 0; }
+.orch-seen blockquote { margin: 0; }
+.orch-hint--warn > button.orch-primary { justify-self: start; }
+.orch-seen p { margin: 0; }
 .orch-profile { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; opacity: .85; }
 .orch-settings .dialog-error { display: block; }
 .orch-ready__fix { opacity: .8; }

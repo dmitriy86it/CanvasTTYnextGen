@@ -127,12 +127,12 @@ try {
   notes.failingCheckMs = await checkNow("copy, failing");
   it = await by();
   expect(it.source_1?.level === "warning" && /expected 2 notes, got 1/.test(it.source_1.text), "failing: the command and its first lines", it.source_1);
-  expect(it.source_failing?.level === "warning" && /уже падают до изменений/.test(it.source_failing.text), "failing: «the checks already fail before any change»", it.source_failing);
+  expect(!it.source_failing && it.source_1?.level === "warning", "failing: each command is said once; no aggregate «already fail» row", it.source_failing);
   expect(!Object.values(it).some((i) => i.level === "blocker"), "failing on the source is a warning, not a blocker", it);
   expect(await app.ev(`${q("[data-orch-ready-summary]")}.dataset.orchReadySummary === "warnings"`), "failing: the summary says warnings, the start is possible", null);
   await scrollToCheck("source_1");
   await app.shot("02-check-commands-fail-on-source");
-  await app.clickEl(q('[data-ready-id="source_failing"] [data-orch-fix="commands"]'));
+  await app.clickEl(q('[data-ready-id="source_1"] [data-orch-fix="commands"]'));
   await sleep(300);
   expect(await app.ev(`document.activeElement === ${q("[data-orch-commands]")}`), "«Fix» on a failing command focuses the check commands", null);
   await closeDialog();

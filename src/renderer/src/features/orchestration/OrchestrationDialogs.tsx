@@ -208,6 +208,51 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
   const failing = checked && checked.key === key ? failingOnSource(items).join("\n") : "";
   useEffect(() => { onFailing?.(failing ? failing.split("\n") : []); }, [failing, onFailing]);
   const dirty = onWorkMode ? dirtyInPlace(workMode, items) : null;
+  // each failing command is said once, by its own item: the aggregate «already fail» row would repeat them
+  const hasEach = failingOnSource(items).length > 0;
+  const shown = items.filter((i) => !(hasEach && i.id === "source_failing"));
+  const loud = shown.filter((i) => i.level === "blocker" || i.level === "confirm" || i.level === "warning");
+  const quiet = shown.filter((i) => i.level === "ok" || i.level === "info");
+  const renderItem = (item: OrchestrationReadinessItem): React.JSX.Element => {
+    const id = readyKey(item.id);
+    const fix = item.level === "blocker" || item.level === "confirm" || item.level === "warning" ? t(locale, `orchReadyFix_${id}_${item.level}` as TranslationKey) : undefined;
+    const target = onFix ? fixTarget(item) : null;
+    const output = typeof item.facts?.output === "string" && item.facts.output ? item.facts.output : null;
+    return (
+      <li key={item.id} className={`orch-ready__item orch-ready__item--${item.level}`} data-ready-id={item.id} data-ready-level={item.level}>
+        <span className="orch-ready__mark" aria-hidden="true">{item.level === "ok" ? "✓" : item.level === "info" ? "i" : item.level === "blocker" ? "✕" : "!"}</span>
+        <span>
+          {item.id === "permissions" && access ? `${t(locale, "orchReady_permissions_access")} ${rightsText(locale, access)}.` : readinessLine(locale, item)}
+          {output && <pre className="orch-ready__output" data-ready-output>{output}</pre>}
+          {fix && <small className="orch-ready__fix">{fix}</small>}
+          {target && <button type="button" className="orch-ready__fix-button" data-orch-fix={target} onClick={() => onFix?.(target)}>{t(locale, "orchReadyFixButton")}</button>}
+          {item.level === "blocker" && /^access_(claude|codex)$/.test(item.id) && onAccessOverride && (() => {
+            const p = item.id === "access_codex" ? "codex" : "claude";
+            const cli = p === "codex" ? "Codex" : "Claude";
+            return confirming !== p
+              ? <button type="button" data-orch-access-once={p} onClick={() => { setConfirming(p); setConfirmed(false); }}>{tr(locale, "orchAccessOnce").replace("{cli}", cli)}</button>
+              : (
+                <span className="orch-access-once" data-orch-access-once-confirm={p}>
+                  <small className="orch-hint orch-hint--warn">{tr(locale, "orchAccessOnceWarn").replace("{cli}", cli)}</small>
+                  <label className="orch-check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /><span>{tr(locale, "orchAccessOnceAck")}</span></label>
+                  <button type="button" disabled={!confirmed} data-orch-access-once-apply={p} onClick={() => { onAccessOverride({ ...accessOverride, [p]: "terminal" }); setConfirming(null); }}>{tr(locale, "orchAccessOnceApply")}</button>
+                  <button type="button" onClick={() => setConfirming(null)}>{t(locale, "orchCancel")}</button>
+                </span>
+              );
+          })()}
+          {/^access_(claude|codex)_once$/.test(item.id) && onAccessOverride && (
+            <button type="button" data-orch-access-once-undo onClick={() => { const { [item.id.startsWith("access_codex") ? "codex" : "claude"]: _, ...rest } = accessOverride; onAccessOverride(rest); }}>{tr(locale, "orchAccessOnceUndo")}</button>
+          )}
+          {item.level === "confirm" && (
+            <label className="orch-check">
+              <input type="checkbox" checked={acks[item.id] ?? false} onChange={(e) => setAcks((a) => ({ ...a, [item.id]: e.target.checked }))} />
+              <span>{tr(locale, `orchReadyAck_${id}`)}</span>
+            </label>
+          )}
+        </span>
+      </li>
+    );
+  };
   return (
     <fieldset className="orch-field orch-ready" data-orch-readiness={state.kind === "ready" ? (state.value.ready ? (ok ? "ready" : "confirm") : "blocked") : state.kind} data-orch-checked={checked && checked.key === key ? "full" : undefined}>
       <legend>{t(locale, "orchReadyTitle")}</legend>
@@ -218,8 +263,8 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
             : <small className="orch-hint">{t(locale, "orchCheckNowHint")}</small>}
       </div>
       {state.kind === "ready" && (() => {
-        const blockers = items.filter((i) => i.level === "blocker").length;
-        const warnings = items.filter((i) => i.level === "warning").length + (dirty !== null ? 1 : 0);
+        const blockers = loud.filter((i) => i.level === "blocker").length;
+        const warnings = loud.filter((i) => i.level === "warning").length + (dirty !== null ? 1 : 0);
         return (
           <p className={`orch-ready__summary${blockers ? " orch-ready__summary--blocked" : ""}`} data-orch-ready-summary={blockers ? "blocked" : warnings ? "warnings" : "ok"}>
             {t(locale, "orchReadySummary").replace("{blockers}", String(blockers)).replace("{warnings}", String(warnings))}{" "}
@@ -230,56 +275,17 @@ function Readiness({ linkId, commands, workMode, models, access, locale, onChang
       {dirty !== null && (
         <p className="orch-hint orch-hint--warn" role="status" data-orch-dirty={dirty}>
           {t(locale, "orchDirtyInPlace").replace("{n}", String(dirty))}{" "}
-          <button type="button" data-orch-dirty-switch onClick={() => onWorkMode?.("copy")}>{t(locale, "orchDirtySwitch")}</button>
+          <button type="button" className="orch-primary" data-orch-dirty-switch onClick={() => onWorkMode?.("copy")}>{t(locale, "orchDirtySwitch")}</button>
         </p>
       )}
       {state.kind === "loading" && <p className="orch-hint">{t(locale, "orchReadyChecking")}</p>}
       {state.kind === "error" && <p className="dialog-error" role="alert">{t(locale, "orchReadyFailed")}: {state.message} <button type="button" onClick={() => setAttempt((n) => n + 1)}>{t(locale, "orchRepeat")}</button></p>}
-      {items.length > 0 && (
-        <ul>
-          {items.map((item) => {
-            const id = readyKey(item.id);
-            const fix = item.level === "blocker" || item.level === "confirm" || item.level === "warning" ? t(locale, `orchReadyFix_${id}_${item.level}` as TranslationKey) : undefined;
-            const target = onFix ? fixTarget(item) : null;
-            const output = typeof item.facts?.output === "string" && item.facts.output ? item.facts.output : null;
-            return (
-              <li key={item.id} className={`orch-ready__item orch-ready__item--${item.level}`} data-ready-id={item.id} data-ready-level={item.level}>
-                <span className="orch-ready__mark" aria-hidden="true">{item.level === "ok" ? "✓" : item.level === "info" ? "i" : item.level === "blocker" ? "✕" : "!"}</span>
-                <span>
-                  {item.id === "permissions" && access ? `${t(locale, "orchReady_permissions_access")} ${rightsText(locale, access)}.` : readinessLine(locale, item)}
-                  {output && <pre className="orch-ready__output" data-ready-output>{output}</pre>}
-                  {fix && <small className="orch-ready__fix">{fix}</small>}
-                  {target && <button type="button" className="orch-ready__fix-button" data-orch-fix={target} onClick={() => onFix?.(target)}>{t(locale, "orchReadyFixButton")}</button>}
-                  {item.level === "blocker" && /^access_(claude|codex)$/.test(item.id) && onAccessOverride && (() => {
-                    const p = item.id === "access_codex" ? "codex" : "claude";
-                    const cli = p === "codex" ? "Codex" : "Claude";
-                    return confirming !== p
-                      ? <button type="button" data-orch-access-once={p} onClick={() => { setConfirming(p); setConfirmed(false); }}>{tr(locale, "orchAccessOnce").replace("{cli}", cli)}</button>
-                      : (
-                        <span className="orch-access-once" data-orch-access-once-confirm={p}>
-                          <small className="orch-hint orch-hint--warn">{tr(locale, "orchAccessOnceWarn").replace("{cli}", cli)}</small>
-                          <label className="orch-check"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} /><span>{tr(locale, "orchAccessOnceAck")}</span></label>
-                          <button type="button" disabled={!confirmed} data-orch-access-once-apply={p} onClick={() => { onAccessOverride({ ...accessOverride, [p]: "terminal" }); setConfirming(null); }}>{tr(locale, "orchAccessOnceApply")}</button>
-                          <button type="button" onClick={() => setConfirming(null)}>{t(locale, "orchCancel")}</button>
-                        </span>
-                      );
-                  })()}
-                  {/^access_(claude|codex)_once$/.test(item.id) && onAccessOverride && (
-                    <button type="button" data-orch-access-once-undo onClick={() => { const { [item.id.startsWith("access_codex") ? "codex" : "claude"]: _, ...rest } = accessOverride; onAccessOverride(rest); }}>{tr(locale, "orchAccessOnceUndo")}</button>
-                  )}
-                  {item.level === "confirm" && (
-                    <label className="orch-check">
-                      <input type="checkbox" checked={acks[item.id] ?? false} onChange={(e) => setAcks((a) => ({ ...a, [item.id]: e.target.checked }))} />
-                      <span>{tr(locale, `orchReadyAck_${id}`)}</span>
-                    </label>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <Differences locale={locale} />
+      {loud.length > 0 && <ul>{loud.map(renderItem)}</ul>}
+      <details className="orch-ready__details" data-orch-ready-details>
+        <summary>{t(locale, "orchReadyDetails").replace("{n}", String(quiet.length))}</summary>
+        {quiet.length > 0 && <ul>{quiet.map(renderItem)}</ul>}
+        <Differences locale={locale} />
+      </details>
     </fieldset>
   );
 }
@@ -415,6 +421,13 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     );
   }
 
+  const acc = info?.profile.access;
+  const rightsShort = acc ? (acc.claude === acc.codex ? tr(locale, `orchAccess_${acc.claude}`) : rightsText(locale, acc)) : "";
+  const modelsSet = optionalChecks && [models.lead, models.executor, models.reviewer].some((v) => v && v !== "cli");
+  const after = chosen ? [chosen.commit && t(locale, "orchFinish_commit"), chosen.push && t(locale, "orchFinish_push"), chosen.qa && t(locale, "orchFinish_qa")].filter(Boolean).join(", ") || t(locale, "orchAdvKeep") : "";
+  const advSummary = [tr(locale, `orchWorkMode_${workMode}`), acc && `${t(locale, "orchAdvRights")}: ${rightsShort}`,
+    optionalChecks && `${t(locale, "orchAdvModels")}: ${t(locale, modelsSet ? "orchAdvModelsSet" : "orchModelCli")}`,
+    chosen && `${t(locale, "orchAdvAfter")}: ${after}`].filter(Boolean).join(" · ");
   return (
     <Dialog label={t(locale, "orchNewGoal")} onClose={ui.closeGoal} locale={locale}>
       <form className="orch-form" onSubmit={(event) => { event.preventDefault(); if (complete && ready) { if (failing.length) setChoosing(true); else void submit(); } }}>
@@ -446,20 +459,13 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
               : profile.state.kind === "error" && <button type="button" onClick={profile.reload}>{t(locale, "orchRepeat")}</button>}
           </span>
         </div>
-        {info && (
-          <p className="orch-rights" data-orch-rights>
-            <b>{t(locale, "orchRights")}:</b> {rightsText(locale, info.profile.access)}
-            {(info.profile.access.claude === "full" || info.profile.access.codex === "full") && <small className="dialog-error" data-orch-rights-full>{t(locale, "orchAccessFullWarn")}</small>}
-            {(info.profile.access.claude === "terminal" || info.profile.access.codex === "terminal") && <small className="orch-hint orch-hint--warn" data-orch-rights-terminal>{t(locale, "orchAccessTerminalWarn")}</small>}
-          </p>
-        )}
         <label className="orch-field">
           <span>{t(locale, "orchGoalTask")}</span>
           <textarea autoFocus rows={3} value={text} placeholder={t(locale, "orchGoalTaskPlaceholder")} onChange={(e) => setText(e.target.value)} />
         </label>
         <label className="orch-field">
           <span>{t(locale, "orchGoalCriteria")}</span>
-          <textarea rows={3} value={criteria} onChange={(e) => setCriteria(e.target.value)} />
+          <textarea rows={3} value={criteria} placeholder={t(locale, "orchGoalCriteriaPlaceholder")} onChange={(e) => setCriteria(e.target.value)} />
           {criteria.split("\n").some(commandLike) && (
             <small className="orch-hint orch-hint--warn" data-orch-req-command>
               {t(locale, "orchGoalReqLooksLikeCommand")}{" "}
@@ -481,32 +487,54 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
             </label>
           ))}
         </fieldset>
-        <fieldset className="orch-field orch-finish" data-orch-finish-choice>
-          <legend>{t(locale, "orchFinishTitle")}</legend>
-          {!canFinish ? <p className="orch-hint">{t(locale, "orchFinishCopyOff")}</p> : (["commit", "push", "qa"] as const).map((step) => {
-            const configured = step === "commit" || (step === "push" ? !!info?.profile.finish.push : !!info?.profile.finish.qa);
-            const implied = step === "commit" && (finish.push || finish.qa);
-            const target = step === "push" && info?.profile.finish.push ? ` → ${info.profile.finish.push.remote}/${info.profile.finish.push.branch}`
-              : step === "qa" && info?.profile.finish.qa ? ` → ${info.profile.finish.qa.environment}` : "";
-            return (
-              <label key={step} className="orch-check" data-finish-option={step}>
-                <input type="checkbox" disabled={!configured || implied} checked={configured && (finish[step] || implied)}
-                  onChange={(e) => setFinish((f) => ({ ...f, [step]: e.target.checked }))} />
-                <span>{t(locale, `orchFinish_${step}`)}{target}{!configured ? ` — ${t(locale, "orchFinishNotConfigured")}` : ""}{implied ? ` — ${t(locale, "orchFinishCommitImplied")}` : ""}</span>
-              </label>
-            );
-          })}
-          <small className="orch-hint">{t(locale, "orchFinish_keep")} {t(locale, "orchFinishHint")}</small>
-        </fieldset>
         <label className="orch-field">
           <span>{t(locale, "orchGoalCommands")}</span>
           <textarea rows={2} value={commandsText} spellCheck={false} data-orch-commands placeholder={t(locale, "orchGoalCommandsPlaceholder")}
             onChange={(e) => { edited.current = true; setCommandsText(e.target.value); }} />
           <small className="orch-hint">{t(locale, "orchGoalCommandsHint")}{commandsText.trim() && !edited.current ? ` ${t(locale, "orchGoalCommandsFilled")}` : ""}</small>
           {optionalChecks && <small className="orch-hint" data-orch-commands-optional>{t(locale, "orchCommandsOptional")}</small>}
+          <small className="orch-hint" data-orch-commands-vs-req>{t(locale, "orchGoalCommandsVsReq")}</small>
         </label>
+        {info && (
+          <>
+            {(info.profile.access.claude === "full" || info.profile.access.codex === "full") && <small className="dialog-error" data-orch-rights-full>{t(locale, "orchAccessFullWarn")}</small>}
+            {(info.profile.access.claude === "terminal" || info.profile.access.codex === "terminal") && <small className="orch-hint orch-hint--warn" data-orch-rights-terminal>{t(locale, "orchAccessTerminalWarn")}</small>}
+          </>
+        )}
+        <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld}
+          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy} onWorkMode={setWorkMode} onFailing={setFailing}
+          onFix={(target) => {
+            if (target === "settings") { setSettingsOpen(true); return; }
+            const field = document.querySelector<HTMLTextAreaElement>(".orch-dialog [data-orch-commands]");
+            const fold = field?.closest("details");
+            if (fold) fold.open = true;
+            field?.scrollIntoView({ block: "center" });
+            field?.focus();
+          }} />
         <details className="orch-advanced">
-          <summary>{t(locale, "orchAdvanced")}</summary>
+          <summary>{t(locale, "orchAdvanced")}<span data-orch-advanced-summary>{advSummary}</span></summary>
+          {info && (
+            <p className="orch-rights" data-orch-rights>
+              <b>{t(locale, "orchRights")}:</b> {rightsText(locale, info.profile.access)}
+            </p>
+          )}
+          <fieldset className="orch-field orch-finish" data-orch-finish-choice>
+            <legend>{t(locale, "orchFinishTitle")}</legend>
+            {!canFinish ? <p className="orch-hint">{t(locale, "orchFinishCopyOff")}</p> : (["commit", "push", "qa"] as const).map((step) => {
+              const configured = step === "commit" || (step === "push" ? !!info?.profile.finish.push : !!info?.profile.finish.qa);
+              const implied = step === "commit" && (finish.push || finish.qa);
+              const target = step === "push" && info?.profile.finish.push ? ` → ${info.profile.finish.push.remote}/${info.profile.finish.push.branch}`
+                : step === "qa" && info?.profile.finish.qa ? ` → ${info.profile.finish.qa.environment}` : "";
+              return (
+                <label key={step} className="orch-check" data-finish-option={step}>
+                  <input type="checkbox" disabled={!configured || implied} checked={configured && (finish[step] || implied)}
+                    onChange={(e) => setFinish((f) => ({ ...f, [step]: e.target.checked }))} />
+                  <span>{t(locale, `orchFinish_${step}`)}{target}{!configured ? ` — ${t(locale, "orchFinishNotConfigured")}` : ""}{implied ? ` — ${t(locale, "orchFinishCommitImplied")}` : ""}</span>
+                </label>
+              );
+            })}
+            <small className="orch-hint">{t(locale, "orchFinish_keep")} {t(locale, "orchFinishHint")}</small>
+          </fieldset>
           <fieldset className="orch-field orch-workmode" data-orch-workmode={workMode}>
             <legend>{t(locale, "orchWorkMode")}</legend>
             {(["copy", "worktree", "project"] as const).map((m) => (
@@ -534,16 +562,6 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           )}
           {optionalChecks && <RoleModelsField locale={locale} linkId={link.linkId} value={models} hint={t(locale, "orchModelsGoalHint")} onChange={setModels} />}
         </details>
-        <Readiness linkId={link.linkId} commands={commands} workMode={workMode} {...(optionalChecks ? { models } : {})} access={info?.profile.access ?? null} locale={locale} onChange={setReady} onSuggest={suggest} onBusy={setHeld}
-          accessOverride={accessOverride} onAccessOverride={setAccessOverride} onBlocker={setBlockedBy} onWorkMode={setWorkMode} onFailing={setFailing}
-          onFix={(target) => {
-            if (target === "settings") { setSettingsOpen(true); return; }
-            const field = document.querySelector<HTMLTextAreaElement>(".orch-dialog [data-orch-commands]");
-            const fold = field?.closest("details");
-            if (fold) fold.open = true;
-            field?.scrollIntoView({ block: "center" });
-            field?.focus();
-          }} />
         {(() => {
           const other = folderBusy?.(held);
           return other && (
@@ -556,7 +574,6 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
         {choosing && (
           <div className="orch-failing" role="alertdialog" aria-label={t(locale, "orchFailingTitle")} data-orch-failing-choice>
             <p><b>{t(locale, "orchFailingTitle")}</b></p>
-            <ul>{failing.map((c) => <li key={c}><code>{c}</code></li>)}</ul>
             <p className="orch-hint">{t(locale, "orchFailingHint")}</p>
             {!kept.length && !optionalChecks && <p className="orch-hint orch-hint--warn" data-orch-failing-none>{t(locale, "orchFailingDropNone")}</p>}
             <div className="orch-failing__actions">
