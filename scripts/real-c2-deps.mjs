@@ -305,8 +305,9 @@ try {
     const j = journalOf(root, f.runId);
     return [Date.parse(j[0].ts), Date.parse(j.filter((r) => r.type === "run.status").at(-1)?.ts ?? j.at(-1).ts)];
   });
-  report.together = Math.max(together, spans.length === 2 && spans[0][0] < spans[1][1] && spans[1][0] < spans[0][1] ? 2 : 1);
-  report.overlapSec = spans.length === 2 ? Math.max(0, (Math.min(spans[0][1], spans[1][1]) - Math.max(spans[0][0], spans[1][0])) / 1000) : 0;
+  // T-1 and T-2 (the independent ones)
+  report.together = Math.max(together, spans.length >= 2 && spans[0][0] < spans[1][1] && spans[1][0] < spans[0][1] ? 2 : 1);
+  report.overlapSec = spans.length >= 2 ? Math.max(0, (Math.min(spans[0][1], spans[1][1]) - Math.max(spans[0][0], spans[1][0])) / 1000) : 0;
   const head = v.heads?.[0] ?? null;
   report.head = head && { ref: head.ref, commit: head.commit, checks: head.checks ?? null,
     merges: head.merges.map((m) => ({ task: m.task.key, source: m.source ?? "task", status: m.status, completion: m.completion ?? null, reason: m.reason ?? null, conflicts: m.conflicts ?? [] })) };
