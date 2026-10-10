@@ -45,7 +45,8 @@ const wrap = (p) => {
   return f;
 };
 const PATHS = `${path.dirname(NODE)}:/usr/bin:/bin`;
-const env = (extra) => ({ HOME: D("mock-state"), MOCK_STATE: D("mock-state"), MOCK_LEDGER: ledger, MOCK_CHECKS: "none", MOCK_SCRIPT: SCRIPT, MOCK_SCRIPT_PER_CWD: "1", ...extra });
+const env = (extra) => ({ HOME: D("mock-state"), MOCK_STATE: D("mock-state"), MOCK_LEDGER: ledger, MOCK_CHECKS: "none", MOCK_SCRIPT: SCRIPT, MOCK_SCRIPT_PER_CWD: "1",
+  MOCK_TURN_DELAY_MS: "2000", ...extra }); // 2 s a turn: both runs still on while the card switches between them
 const SHELL = D("login-shell");
 fs.writeFileSync(SHELL, `#!/bin/sh\n[ "$1" = "-ilc" ] && shift\nexec /bin/sh -c "$1"\n`, { mode: 0o755 });
 const providers = D("providers.json");
