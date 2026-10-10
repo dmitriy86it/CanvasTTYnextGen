@@ -5,8 +5,8 @@
 // Whether it is on lives here only: a restart of the application turns it off.
 import type { OrchestrationGoalInput, OrchestrationProjectProfile, OrchestrationReadiness, OrchestrationResult, OrchestrationTakeOutcome } from "../../../shared/orchestration.ts";
 import {
-  activeMs, autopilotStep, goalFor,
-  type AutopilotBudget, type AutopilotState, type AutopilotStop, type AutopilotStopCode, type AutopilotWaiting, type Board, type RunTaskFacts
+  activeMs, autopilotParallelStep, autopilotStep, goalFor,
+  type AutopilotBudget, type BoardHead, type AutopilotState, type AutopilotStop, type AutopilotStopCode, type AutopilotWaiting, type Board, type RunTaskFacts
 } from "../../../shared/taskBoard.ts";
 
 type R<T> = OrchestrationResult<T>;
@@ -21,6 +21,10 @@ export interface BoardAutopilotDeps {
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationProjectProfile["workMode"]; models?: OrchestrationGoalInput["models"] }): Promise<R<OrchestrationReadiness>>;
   start(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput }): Promise<R<{ runId: string }>>;
   take(runId: string): Promise<R<OrchestrationTakeOutcome>>;
+  // C1 (stage-c-parallel.md §4): the board's merged head of a place with its merges, its start, a merge into it
+  head(workspaceId: string, project: string): Promise<BoardHead | null>;
+  ensureHead(workspaceId: string, project: string): Promise<void>;
+  merge(input: { workspaceId: string; project: string; task: { id: string; key: string }; taskRunId: string; commit: string; language: "ru" | "en" }): Promise<R<{ runId: string } | { already: true }>>;
   newId(): string;
   now(): number;
 }
@@ -78,10 +82,20 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     const profile = await deps.profile(at.project);
     const { board, facts } = await deps.view();
     if (live.get(linkId) !== l) return; // turned off meanwhile
-    const next = autopilotStep(board, facts, { ...at, workMode: profile.workMode }, l.started.at(-1) ?? null, await used(l), await budgetOf(linkId));
+    // C1: a separate copy goes with N slots and the board's merged head; the project folder and a worktree as in B
+    const next = profile.workMode === "copy"
+      ? autopilotParallelStep(board, facts, at, l.started, await used(l), await budgetOf(linkId), await deps.head(at.workspaceId, at.project))
+      : autopilotStep(board, facts, { ...at, workMode: profile.workMode }, l.started.at(-1) ?? null, await used(l), await budgetOf(linkId));
     l.waits = next.kind === "wait" ? next.why : null;
     if (next.kind === "wait") return;
     if (next.kind === "off") return off(linkId, next.code, next.detail, next.key, next.waiting);
+    if (next.kind === "head") { await deps.ensureHead(at.workspaceId, at.project); return; }
+    if (next.kind === "merge") {
+      const r = await deps.merge({ workspaceId: at.workspaceId, project: at.project, task: { id: next.taskId, key: next.key }, taskRunId: next.runId, commit: next.commit, language: l.language });
+      // another merge into this head goes on or waits for the person: the next step sees it
+      if (!r.ok && r.code !== "merge_busy") return off(linkId, "merge_failed", r.code, next.key);
+      return;
+    }
     if (next.kind === "take") {
       const r = await deps.take(next.runId);
       if (!r.ok) return off(linkId, "take_failed", r.code, next.key);
@@ -110,7 +124,10 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     // link; a new autopilot does not count or take it)
     const r = await deps.start({ linkId, requestId: l.pending, goal });
     if (!r.ok) {
-      if (LATER.has(r.code)) { l.pending = null; l.waits = "run"; return; }
+      // C1: the head moved by a merge between this step and the start, or another link's autopilot took the task: the
+      // next step decides again from the board as it is
+      const raced = next.base?.key === "T-0" && (r.code === "invalid_base" || r.code === "task_active_run");
+      if (LATER.has(r.code) || raced) { l.pending = null; l.waits = "run"; return; }
       return off(linkId, "start_failed", r.code, next.task.key);
     }
     l.pending = null;

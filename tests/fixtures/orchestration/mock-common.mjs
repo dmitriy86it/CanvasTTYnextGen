@@ -103,9 +103,15 @@ export function withProposal(answer, schema) {
 // and <dir>/<n>.reads.json (optional, [path]) file reads for mock-claude structured-edit.
 // A missing <n>.json throws: a cycle that makes more calls than scripted fails loudly. Unset: null.
 // Calls are expected one at a time (the counter is read-modify-write, not locked).
-export function scriptedTurn() {
-  const dir = process.env.MOCK_SCRIPT;
+// MOCK_SCRIPT_PER_CWD=1 (C1: runs in parallel, each in its own copy): <dir>/<k>/ is the script of the k-th work folder
+// that made a call; a folder keeps its k (claimed with mkdir, safe across processes).
+export function scriptedTurn(cwd = process.cwd()) {
+  let dir = process.env.MOCK_SCRIPT;
   if (!dir) return null;
+  // MOCK_TURN_DELAY_MS: each scripted turn takes this long (runs that must overlap on a fast machine)
+  const delay = Number(process.env.MOCK_TURN_DELAY_MS ?? 0);
+  if (delay > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
+  if (process.env.MOCK_SCRIPT_PER_CWD === "1") dir = path.join(dir, slotOf(dir, fs.realpathSync(cwd)));
   const counter = path.join(dir, "counter");
   let n = 1;
   try { n = Number(fs.readFileSync(counter, "utf8")) + 1; } catch {}
@@ -194,4 +200,16 @@ export async function mcpConnect(spec, clientName) {
   }
   child.stdin.end();
   return tools;
+}
+
+function slotOf(dir, cwd) {
+  const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  for (let k = 1; k < 100; k++) {
+    const claim = path.join(dir, `claim-${k}`);
+    try { fs.mkdirSync(claim); fs.writeFileSync(path.join(claim, "cwd"), cwd); return String(k); } catch (e) { if (e.code !== "EEXIST") throw e; }
+    let owner = "";
+    for (let i = 0; i < 100 && !owner; i++) { try { owner = fs.readFileSync(path.join(claim, "cwd"), "utf8"); } catch { pause(20); } }
+    if (owner === cwd) return String(k);
+  }
+  throw new Error("mock: no script slot left");
 }

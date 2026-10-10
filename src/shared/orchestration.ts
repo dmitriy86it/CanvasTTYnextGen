@@ -619,6 +619,16 @@ export interface OrchestrationApi {
   // B4: the board's autopilot of a link on or off (never stored); its budget in board.json (null: the default)
   boardAutopilot(linkId: string, on: boolean, language: "ru" | "en"): Promise<OrchestrationResult<AutopilotState | null>>;
   boardBudget(linkId: string, budget: AutopilotBudget | null): Promise<OrchestrationResult<null>>;
+  // C1 (stage-c-parallel.md §4): «Объединить» a task «Done» into the board's merged head; «Объединить все»; a paused merge's
+  // «Готово, проверить» (confirm: «Да, я менял и их») and «Пропустить»; its copy opened; on the head: «Создать ветку из итога
+  // доски», «Применить к рабочей папке», «Начать новую общую вершину»
+  boardMerge(taskId: string, language: "ru" | "en"): Promise<OrchestrationResult<{ runId: string } | { already: true }>>;
+  boardMergeAll(workspaceId: string, project: string, language: "ru" | "en"): Promise<OrchestrationResult<{ tasks: string[] }>>;
+  boardMergeResolve(runId: string, confirm: boolean): Promise<OrchestrationResult<{ result: "checking" } | { result: "unresolved" | "confirm"; files: string[] }>>;
+  boardMergeSkip(runId: string): Promise<OrchestrationResult<void>>;
+  boardMergeOpen(runId: string): Promise<OrchestrationResult<null>>;
+  boardHead(action: "branch" | "apply" | "new", workspaceId: string, project: string): Promise<OrchestrationResult<
+    { name: string; commit: string } | { applied: true } | { applied: false; files: string[]; detail: string } | { n: number; ref: string; commit: string }>>;
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;

@@ -6,9 +6,10 @@
 //   3. T-2 run without checks: «Review», «Completed without checks …»; «Accept the result» explains first, then
 //      «Done (accepted by you, without checks)» — its own mark, not the confirmed one; T-3 no longer waits;
 //   4. the window reloads: the same columns, reasons and marks; no CLI starts again;
-//   5. B4, «Run the board» in a separate copy: T-3, then T-4 (after T-3) from T-3's result branch; T-4's executor asks
-//      for a permission — the autopilot waits and answers nothing; answered in the panel, it ends «every task is done»;
-//      the project folder untouched, the results in two raoden/ branches.
+//   5. B4/C1, «Run the board» in a separate copy: T-3, merged into the board's result, then T-4 (after T-3) from that
+//      result (owner's decision 9 of stage C); T-4's executor asks for a permission — the autopilot waits and answers
+//      nothing; answered in the panel, it ends «every task is done»; the project folder untouched, the results in two
+//      raoden/ branches and in the board's result.
 // Needs `npm run build` first. Starts no real model. Usage: node scripts/smoke-board-ui.mjs [--shots <dir>]
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -292,9 +293,14 @@ try {
     return JSON.parse(fs.readFileSync(path.join(dir, "texts", first.data.goal.sha256), "utf8"));
   };
   const b4 = goalOf(f4.runId).base;
+  const b3 = goalOf(f3.runId).base;
   expect(f3?.mode === "copy" && f3.taken?.branch?.startsWith("raoden/") && f4?.taken?.branch?.startsWith("raoden/"), "both results taken as raoden/ branches", { f3, f4 });
-  expect(b4?.key === "T-3" && b4.branch === f3.taken.branch && b4.commit === f3.taken.commit && goalOf(f3.runId).base === undefined,
-    "T-4's copy started from T-3's branch; T-3 from the working folder", b4);
+  // C1 (decision 9): both from the board's result; T-4's holds T-3 merged
+  expect(b3?.branch?.startsWith("refs/raoden/board/") && b4?.branch === b3.branch && b4.key === "T-0" && b4.commit !== b3.commit,
+    "T-3 and T-4 started from the board's result; T-4's after T-3 was merged into it", { b3, b4 });
+  const headLine = await app.ev(`${q("[data-board-head-tasks]")}?.textContent ?? null`);
+  expect(headLine === "Итог доски: T-3, T-4" && await app.ev(`${q("[data-board-head-checks]")}?.dataset.boardHeadChecks`) === "passed",
+    "the board's result: T-3, T-4, checks passed", headLine);
   const files4 = git("ls-tree", "-r", "--name-only", f4.taken.branch).split("\n");
   expect(files4.includes("src/three.mjs") && files4.includes("src/four.mjs"), "T-4's branch holds T-3's change and its own", files4.filter((f) => f.startsWith("src/")));
   expect(git("rev-parse", "HEAD") === headBefore && git("status", "--porcelain") === statusBefore && !fs.existsSync(path.join(node, "src", "three.mjs")),

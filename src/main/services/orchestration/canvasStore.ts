@@ -69,15 +69,28 @@ const refuseBusy = (b: boolean | "unreadable" | "newer", code: string, message: 
 // folder_busy names the run that holds the folder; runReadable false: its journal cannot be read, so its state is unknown.
 export interface FolderHolder { runId: string; workspaceId: string; runReadable: boolean }
 
+// C1 (stage-c-parallel.md §3.1): the work mode of a run (its workspace marker, else its goal); null: unknown.
+export type RunMode = (runId: string) => Promise<"project" | "copy" | "worktree" | null>;
+
+// Does this run hold the folder (or the link) against a new run? Stage 12: any active run does. C1: a new run in a
+// separate copy is held off only by a run that is not in one (the project folder, a worktree, a newer version's, an
+// unreadable one, a mode unknown): two copies never share files, each holds its own slot.
+async function holds(busy: Busy, link: OrchestrationAgentLink, runId: string, copy: RunMode | null): Promise<boolean | "unreadable" | "newer"> {
+  const b = await busy({ ...link, runIds: [runId] });
+  if (!b || !copy || b === "newer" || b === "unreadable") return b;
+  return (await copy(runId)) === "copy" ? false : b;
+}
+
 // Stage 12: one active run per project folder, whatever link started it. The caller's busy rule is asked run by run, so
 // the run that holds the folder is named, with its owner workspace by the rule of runOwners (workspaces-spec.md §2).
+// copy (C1): the new run works in a separate copy — the mode of each run decides (holds)
 export async function folderHolder(c: OrchestrationCanvas, project: string, exceptLinkId: string, busy: Busy,
-  known: (workspaceId: string) => boolean): Promise<FolderHolder | null> {
+  known: (workspaceId: string) => boolean, copy: RunMode | null = null): Promise<FolderHolder | null> {
   const owner = runOwners(c, known);
   for (const other of c.links) {
     if (other.linkId === exceptLinkId || c.agents.find((a) => a.agentId === other.fromAgentId)?.project !== project) continue;
     for (const runId of other.runIds) {
-      const b = await busy({ ...other, runIds: [runId] });
+      const b = await holds(busy, other, runId, copy);
       if (b) return { runId, workspaceId: owner(runId), runReadable: b !== "unreadable" };
     }
   }
@@ -274,6 +287,13 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
         return { next, value: next };
       }),
 
+    // C1 (§5.3): a run of the workspace that stands on no link — a merge run. Its owner is written before it is created,
+    // as startOnLink does; a repeat keeps the owner it has.
+    own: (runId: string, workspaceId: string) => change<null>(async (c) => {
+      if (!UUID.test(runId) || !WORKSPACE_ID.test(workspaceId)) refuse("invalid_argument", "runId and workspaceId");
+      return { next: c.owners?.[runId] ? null : { ...c, owners: { ...(c.owners ?? {}), [runId]: workspaceId } }, value: null };
+    }),
+
     // A run on a link (stage-8-contract.md §3.1). Inside the queue, so two starts of one link cannot both pass the busy
     // check. The run id (= requestId) is written into the link first, durably, and only then is the run created:
     //   - the reservation cannot be written → store_failed, no run;
@@ -286,12 +306,14 @@ export function createCanvasStore(file: string, known: (workspaceId: string) => 
     startOnLink: (linkId: string, requestId: string, busy: Busy,
       exists: (runId: string) => Promise<boolean>,
       // current: the canvas as this queue holds it — create must not read it again (canvas.read waits for this queue)
-      create: (source: string, current: OrchestrationCanvas) => Promise<{ runId: string; created: boolean }>) => change<{ runId: string; created: boolean }>(async (c) => {
+      create: (source: string, current: OrchestrationCanvas) => Promise<{ runId: string; created: boolean }>,
+      // C1: the new run works in a separate copy: other runs in copies hold neither the link nor the folder (§3.1)
+      copy: RunMode | null = null) => change<{ runId: string; created: boolean }>(async (c) => {
       const link = linkOf(c, linkId);
       const lead = agentOf(c, link.fromAgentId);
-      refuseBusy(await busy({ ...link, runIds: link.runIds.filter((id) => id !== requestId) }), "link_busy", "this link already has an active run");
+      for (const id of link.runIds.filter((x) => x !== requestId)) refuseBusy(await holds(busy, link, id, copy), "link_busy", "this link already has an active run");
       // Stage 12: agents work in the project folder itself, so one active run per folder: their changes never interleave.
-      const holder = await folderHolder(c, lead.project, linkId, busy, known);
+      const holder = await folderHolder(c, lead.project, linkId, busy, known, copy);
       if (holder) throw Object.assign(new Refusal("folder_busy", "another run works in this project folder now"), holder);
       const reserved = link.runIds.includes(requestId);
       let current = c;

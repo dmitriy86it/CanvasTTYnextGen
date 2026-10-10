@@ -46,12 +46,14 @@ import type { CommandOutcome, GoalInput, RunCommand, RunHandle } from "./orchest
 import { readRun, readText } from "./store.ts";
 import type { RunReadResult } from "./store.ts";
 import type { SupervisorLaunch } from "./types.ts";
-import { applyToProject, branchCommit, branchNameOk, diffTreeNames, diffTreePath, openWorkspace, readTaken, readWorkspacePlace, snapshotCopyTree, takeToBranch, writeTaken } from "./workspace.ts";
+import { BOARD_REF, applyToProject, branchCommit, branchNameOk, diffTreeNames, diffTreePath, openWorkspace, readTaken, readWorkspacePlace, snapshotCopyTree, takeToBranch, writeTaken } from "./workspace.ts";
 import type { CloneDir } from "./workspace.ts";
 import { canvasFile, createCanvasStore, folderHolder } from "./canvasStore.ts";
+import type { RunMode } from "./canvasStore.ts";
+import { createBoardMerge } from "./boardMerge.ts";
 import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
-import { boardStatuses, runPhase } from "../../../shared/taskBoard.ts";
+import { boardStatuses, mergeOfTask, runPhase, type BoardHead } from "../../../shared/taskBoard.ts";
 import { AUTOPILOT_BUDGET, baseOf, type AutopilotBudget, type BoardPlace, type BoardTask, type BoardView, type RunTaskFacts } from "../../../shared/taskBoard.ts";
 import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
 import { runOwners, workspaceOf } from "../../../shared/workspaceOwnership.ts";
@@ -258,6 +260,23 @@ export function createRunManager(deps: RunManagerDeps) {
   // A run exists once its journal does (a link's reserved id may name a run that was never created, §3.1).
   const exists = (runId: string): Promise<boolean> =>
     stat(join(deps.root, "runs", runId, "journal.jsonl")).then(() => true, () => false);
+  // C1 (§3.1): where a run works — its workspace marker, else its goal (a run being created has no marker yet)
+  const runMode: RunMode = async (runId) => (await readWorkspacePlace(deps.root, runId).catch(() => null))?.mode ?? (await metaOf(runId)).goalWorkMode;
+  // C1: the board's merged head and its merge runs (stage-c-parallel.md §4)
+  const merges = createBoardMerge({
+    root: deps.root, gitPath: () => deps.gitPath(), launch: () => deps.launch(),
+    own: async (runId, workspaceId) => { await canvas.own(runId, workspaceId); },
+    // the project's saved settings only: the merged code is checked with what the person confirmed (never a guess)
+    checks: async (project) => (await profiles.get(project))?.checks ?? null,
+    prepare: async (project) => (await profiles.get(project))?.prepare ?? { auto: false, steps: [] },
+    shell: async (project) => {
+      if (!deps.native) refuse("provider_unavailable", "no native runtime for the checks");
+      const rt = await deps.native!(project, await direnvOf(project));
+      return { shell: rt.shell, env: rt.env };
+    },
+    // ponytail: no run held here is in a turn — of any project
+    quiet: async () => ![...handles.values()].some((h) => h.view().active?.kind === "turn")
+  });
 
   const workspaceOk = (id: string) => {
     if (!(deps.workspaceOpen ?? ((w: string) => w === COMMON_WORKSPACE_ID))(id)) refuse("workspace_unavailable", "no such open workspace");
@@ -709,7 +728,7 @@ export function createRunManager(deps: RunManagerDeps) {
   // journal's first record (run.created), so a run of a newer version, an unreadable or a damaged one keeps its task.
   // The facts of a run not held here are kept while its journal and taken.json are the same (size, mtime); a held run
   // has state the journal does not (the active turn, a permission request), so it is read each time.
-  const goalMeta = new Map<string, { taskId: string | null; taskKey: string | null; createdAt: number; goalWorkMode: OrchestrationWorkMode | null }>();
+  const goalMeta = new Map<string, { taskId: string | null; taskKey: string | null; createdAt: number; goalWorkMode: OrchestrationWorkMode | null; board: string | null }>();
   const factsCache = new Map<string, { stamp: string; facts: RunTaskFacts }>();
   async function metaOf(runId: string) {
     const known = goalMeta.get(runId);
@@ -725,13 +744,15 @@ export function createRunManager(deps: RunManagerDeps) {
       } catch { first = null; } finally { await fh.close().catch(() => {}); }
     }
     const ref = first?.type === "run.created" && isTextRef(first.data?.goal) ? first.data.goal : null;
-    const g = ref ? await readText(deps.root, runId, ref).then((b) => JSON.parse(b.toString("utf8")) as { task?: { id?: unknown; key?: unknown }; createdAt?: unknown; workMode?: unknown }, () => null) : null;
+    const g = ref ? await readText(deps.root, runId, ref).then((b) => JSON.parse(b.toString("utf8")) as { task?: { id?: unknown; key?: unknown }; createdAt?: unknown; workMode?: unknown; base?: { branch?: unknown } }, () => null) : null;
     const meta = {
       taskId: typeof g?.task?.id === "string" && isUuid(g.task.id) ? g.task.id : null,
       taskKey: typeof g?.task?.key === "string" && /^T-\d{1,6}$/.test(g.task.key) ? g.task.key : null,
       createdAt: typeof g?.createdAt === "number" ? g.createdAt : 0,
       // the goal's work mode: the run's own when its work folder's marker cannot be read
-      goalWorkMode: g?.workMode === "project" || g?.workMode === "copy" || g?.workMode === "worktree" ? g.workMode as OrchestrationWorkMode : null
+      goalWorkMode: g?.workMode === "project" || g?.workMode === "copy" || g?.workMode === "worktree" ? g.workMode as OrchestrationWorkMode : null,
+      // C1: the board's merged head its copy started from
+      board: typeof g?.base?.branch === "string" && BOARD_REF.test(g.base.branch) ? g.base.branch : null
     };
     if (g) goalMeta.set(runId, meta); // a goal text not readable yet (a run being created) is asked again next time
     return meta;
@@ -787,7 +808,64 @@ export function createRunManager(deps: RunManagerDeps) {
   }
   async function boardView(): Promise<BoardView> {
     const r = await board.read();
-    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey), autopilot: await autopilot.state() };
+    const places = [...new Map(r.board.tasks.map((t) => [`${t.workspaceId}\0${t.project}`, { workspaceId: t.workspaceId, project: t.project }])).values()];
+    const heads = await merges.heads(places).catch(() => [] as BoardHead[]);
+    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey), autopilot: await autopilot.state(), ...(heads.length ? { heads } : {}) };
+  }
+  // C1 (§4.5): «Объединить» — a task «Done» in a separate copy into its place's head (started if it has none); its result
+  // branch is made first, if it has none (the same as decision 8)
+  async function mergeTask(taskId: string, language: "ru" | "en"): Promise<{ runId: string } | { already: true }> {
+    notOpen();
+    platformOk();
+    const { board: b } = await board.read();
+    const t = b.tasks.find((x) => x.id === taskId) ?? refuse("task_not_found", `no task ${taskId}`);
+    const st = boardStatuses(b, await taskFacts()).get(t.id)!;
+    if (!st.done || !st.current) refuse("merge_unavailable", `${t.key} is not «Done»`);
+    let run = (await taskFacts()).find((f) => f.runId === st.current);
+    if (run?.workMode !== "copy") refuse("merge_unavailable", "only a result of a separate copy is merged");
+    if (!run!.taken?.commit) {
+      const info = await takeState(run!.runId);
+      const made = await takeResult(run!.runId, { action: "branch", name: info.info.suggested });
+      if (!["created", "already"].includes(made.result)) refuse("take_failed", made.result);
+      run = (await taskFacts()).find((f) => f.runId === st.current);
+    }
+    await merges.ensureHead(t.workspaceId, t.project);
+    return merges.merge({ workspaceId: t.workspaceId, project: t.project, task: { id: t.id, key: t.key }, taskRunId: run!.runId, commit: run!.taken!.commit!, language });
+  }
+  // a place of the board: a project folder some task of the board names (realpath), never any path
+  async function placeProject(project: string): Promise<string> {
+    const real = await realpath(project).catch(() => refuse("invalid_argument", "no such project folder"));
+    if (!(await board.read()).board.tasks.some((t) => t.project === real)) refuse("invalid_argument", "no task of the board in this folder");
+    return real;
+  }
+  // «Объединить все» (§4.5): the tasks «Done» that started from the head and are not in it, one after another in the
+  // background, the oldest first; a merge that does not complete (conflict, checks) ends the series
+  async function mergeAll(workspaceId: string, project: string, language: "ru" | "en"): Promise<{ tasks: string[] }> {
+    notOpen();
+    const h = await merges.head(workspaceId, project) ?? refuse("no_head", "the board has no merged head");
+    const { board: b } = await board.read();
+    const facts = await taskFacts();
+    const statuses = boardStatuses(b, facts);
+    const into = await merges.mergesInto(h.ref);
+    const todo = b.tasks.map((t) => ({ t, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
+      .filter(({ t, run }) => t.workspaceId === workspaceId && t.project === project && statuses.get(t.id)?.done && run?.workMode === "copy" && run.board === h.ref
+        && mergeOfTask({ merges: into }, t.id, run.runId)?.status !== "completed")
+      .sort((a, z) => a.run!.createdAt - z.run!.createdAt).map(({ t }) => t);
+    void (async () => {
+      for (const t of todo) {
+        const r = await result(() => mergeTask(t.id, language));
+        if (!r.ok) return;
+        if (!("runId" in r.value)) continue;
+        const id = r.value.runId;
+        for (;;) {
+          await new Promise((res) => setTimeout(res, 1000));
+          const m = (await merges.mergesInto(h.ref)).find((x) => x.runId === id);
+          if (m?.status === "completed") break;
+          if (!m || !["preparing", "running"].includes(m.status)) return;
+        }
+      }
+    })();
+    return { tasks: todo.map((t) => t.key) };
   }
   // «Accept the result» (owner's decision 2): only of the task's latest run, completed without checks by its journal
   async function acceptTask(taskId: string): Promise<BoardTask> {
@@ -835,6 +913,23 @@ export function createRunManager(deps: RunManagerDeps) {
       || facts.some((f) => f.taskId === t!.id && f.runId !== runId && f.status !== "unreadable" && !TERMINAL_STATUSES.includes(f.status))) {
       refuse("task_active_run", `${t!.key} has an active run`);
     }
+    // C1: from the board's merged head of the task's place, as it is now; a dependency counts once it is in the head
+    // (owner's decision 9 of stage C) — B's rule of results in branches does not apply then
+    if (goal.base && BOARD_REF.test(goal.base.branch)) {
+      const h = await merges.head(t!.workspaceId, source).catch(() => null);
+      if (!h || h.ref !== goal.base.branch || h.commit !== goal.base.commit || goal.base.key !== "T-0") refuse("invalid_base", "the base is not the board's merged head as it is now");
+      if (anyway) return;
+      const into = await merges.mergesInto(h!.ref);
+      const statuses = boardStatuses(b, facts);
+      const out = t!.dependsOn.map((d) => b.tasks.find((x) => x.id === d)).filter((d): d is BoardTask => !!d)
+        .filter((d) => {
+          const run = facts.find((f) => f.runId === statuses.get(d.id)?.current);
+          const inFolder = !!run && ((run.workMode !== "copy" && run.workMode !== "worktree") || !!run.taken?.applied); // the head starts from the folder
+          return !statuses.get(d.id)?.done || (mergeOfTask({ merges: into }, d.id, statuses.get(d.id)?.current ?? null)?.status !== "completed" && !inFolder);
+        }).map((d) => d.key);
+      if (out.length) refuse("task_not_ready", `${t!.key} waits for ${out.join(", ")} in the board's result: start anyway?`);
+      return;
+    }
     if (goal.base) {
       const from = b.tasks.filter((d) => t!.dependsOn.includes(d.id) && d.key === goal.base!.key);
       const statuses = boardStatuses(b, facts);
@@ -875,6 +970,16 @@ export function createRunManager(deps: RunManagerDeps) {
       () => board.remove(id, async () => startingTasks.has(id) || (await taskFacts()).some((f) => f.taskId === id), dependents))),
     boardAccept: (id: string) => result(() => acceptTask(id)),
     boardPlace: (workspaceId: string, bounds: BoardPlace | null) => result(() => { workspaceOk(workspaceId); return board.place(workspaceId, bounds); }),
+    // C1 (stage-c-parallel.md §4): «Объединить», «Объединить все», a paused merge's «Готово, проверить» and «Пропустить»,
+    // and the person's actions on the head — never automatic
+    boardMerge: (taskId: string, language: "ru" | "en" = "en") => result(() => mergeTask(taskId, language)),
+    boardMergeAll: (workspaceId: string, project: string, language: "ru" | "en" = "en") => result(async () => mergeAll(workspaceId, await placeProject(project), language)),
+    boardMergeResolve: (runId: string, confirm: boolean) => result(() => { notOpen(); return merges.resolve(runIdOk(runId), confirm === true); }),
+    boardMergeSkip: (runId: string) => result(() => merges.skip(runIdOk(runId))),
+    boardMergeDir: (runId: string) => result(() => merges.copyOf(runIdOk(runId))),
+    boardHeadBranch: (workspaceId: string, project: string) => result(async () => { notOpen(); return merges.branch(workspaceId, await placeProject(project)); }),
+    boardHeadApply: (workspaceId: string, project: string) => result(async () => { notOpen(); return merges.apply(workspaceId, await placeProject(project)); }),
+    boardHeadNew: (workspaceId: string, project: string) => result(async () => { notOpen(); workspaceOk(workspaceId); return merges.newHead(workspaceId, await placeProject(project)); }),
 
     catalog: () => result(async (): Promise<OrchestrationCatalog> => ({
       ...CHECK_CATALOG,
@@ -888,6 +993,7 @@ export function createRunManager(deps: RunManagerDeps) {
       const names = await readdir(join(deps.root, "runs")).catch(() => [] as string[]);
       const out: OrchestrationRunSnapshot[] = [];
       for (const id of names.filter(isUuid).sort()) {
+        if (await merges.isMerge(id)) continue; // C1: a merge run is shown on the board, not as a newer version's run
         const s = await result(() => snapshot(id));
         if (s.ok) out.push(s.value);
       }
@@ -919,8 +1025,16 @@ export function createRunManager(deps: RunManagerDeps) {
     startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }) => result(() => {
       notOpen();
       platformOk();
-      return canvas.startOnLink(input.linkId, input.requestId, busy, exists,
-        (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}), ...(input.withoutBase ? { withoutBase: true } : {}) }, current));
+      return (async () => {
+        // C1 (§3.1): a run in a separate copy is held off only by a run that is not in one
+        const project = await leadProject(input.linkId);
+        const mode = input.goal?.workMode ?? (input.goal?.mode ? ((await profiles.get(project)) ?? await suggestProfile(project)).workMode : undefined);
+        // a merge into the board's result reads the project's repository and moves its ref: the project folder waits
+        if (mode !== "copy" && mode !== "worktree" && await merges.active(project)) refuse("folder_busy", "a merge into the board's result goes on in this project");
+        return canvas.startOnLink(input.linkId, input.requestId, busy, exists,
+          (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}), ...(input.withoutBase ? { withoutBase: true } : {}) }, current),
+          mode === "copy" ? runMode : null);
+      })();
     }),
 
     command: (runId: string, input: { commandId: string; expectedRevision: number; command: RunCommand }) => result(async (): Promise<CommandOutcome> => {
@@ -1012,7 +1126,7 @@ export function createRunManager(deps: RunManagerDeps) {
       const c = await canvas.read(exists);
       const link = c.links.find((l) => l.linkId === input.linkId) ?? refuse("link_not_found", "no such link");
       const lead = c.agents.find((a) => a.agentId === link.fromAgentId) ?? refuse("link_not_found", "the link has no lead");
-      const holder = await folderHolder(c, lead.project, link.linkId, busy, known);
+      const holder = await folderHolder(c, lead.project, link.linkId, busy, known, input.workMode === "copy" ? runMode : null);
       // Nothing is measured where a run could not finish: no CLI and no login shell for a start that is refused anyway.
       if (!orchestrationAvailable(platform)) return { ready: false, items: [platformItem(platform)] };
       const profile = (await profiles.get(lead.project)) ?? await suggestProfile(lead.project);
@@ -1194,6 +1308,10 @@ export function createRunManager(deps: RunManagerDeps) {
       const info = await api.take(runId);
       return info.ok ? api.takeResult(runId, { action: "branch", name: info.value.suggested }) : info;
     },
+    // C1: the head of a place with its merges, its start, a merge into it
+    head: async (workspaceId, project) => (await merges.heads([{ workspaceId, project }]))[0] ?? null,
+    ensureHead: async (workspaceId, project) => { await merges.ensureHead(workspaceId, project); },
+    merge: (input) => result(() => merges.merge(input)),
     newId: () => randomUUID(),
     now: () => Date.now()
   }, async (linkId) => (await board.read()).board.autopilot?.[linkId] ?? AUTOPILOT_BUDGET);

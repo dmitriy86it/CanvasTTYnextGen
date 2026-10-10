@@ -127,7 +127,7 @@ async function appServer(args) {
   if (args.length !== 1) { process.stderr.write(`mock-codex: app-server takes no flags here ${JSON.stringify(args)}\n`); process.exitCode = 2; return; }
   const input = lineReader(process.stdin);
   const reply = (id, result) => emit({ id, result });
-  let threadId = null, prev = null, nextId = 1000;
+  let threadId = null, prev = null, nextId = 1000, threadCwd = process.cwd();
   for (;;) {
     const m = await input.next((x) => typeof x.method === "string" && "id" in x || x.method === "initialized");
     if (!m) return; // EOF: the client is done
@@ -181,6 +181,7 @@ async function appServer(args) {
     if (m.method === "thread/start" || m.method === "thread/resume") {
       if (process.env.MOCK_STATE) fs.appendFileSync(`${process.env.MOCK_STATE}/codex-thread.jsonl`, JSON.stringify({ method: m.method, model: p.model ?? null }) + "\n");
       threadId = m.method === "thread/resume" ? p.threadId : randomUUID();
+      threadCwd = p.cwd ?? threadCwd;
       prev = m.method === "thread/resume" ? loadState(threadId) : null;
       if (m.method === "thread/resume" && !prev) { await emit({ id: m.id, error: { code: -32602, message: `no thread ${threadId}` } }); continue; }
       // as codex-cli 0.155.1 does (evidence/codex-trust-probe): a workspace-write thread in a folder neither the config nor
@@ -203,7 +204,7 @@ async function appServer(args) {
       const task = Buffer.from(String(p.input?.[0]?.text ?? ""));
       await reply(m.id, { turn: { id: turnId, status: "inProgress", items: [] } });
       await emit({ method: "turn/started", params: { threadId, turn: { id: turnId, status: "inProgress", items: [] } } });
-      const script = scriptedTurn();
+      const script = scriptedTurn(threadCwd);
       const st = saveTurn(threadId, prev, task, { appServer: true, outputSchema: p.outputSchema ?? null });
       prev = st;
       if (MODE === "sleep") {

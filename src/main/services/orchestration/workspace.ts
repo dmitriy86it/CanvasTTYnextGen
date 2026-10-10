@@ -798,8 +798,23 @@ export async function publishRef(ws: Workspace, name: string, commit: string): P
   return fetchInto(ws, commit, () => createRef(src, ref, commit));
 }
 
+// C1 (stage-c-parallel.md §3.3): what writes into a project's repository goes one at a time per repository — the
+// baseline and checkpoint refs of parallel runs, «Create a branch», the board's head. A failed operation does not block
+// the next. ponytail: in this process only; another application writing the same repository is not ordered
+const sourceQueues = new Map<string, Promise<unknown>>();
+export function inSourceQueue<T>(gitDir: string, fn: () => Promise<T>): Promise<T> {
+  const next = (sourceQueues.get(gitDir) ?? Promise.resolve()).then(fn, fn);
+  const tail = next.catch(() => {});
+  sourceQueues.set(gitDir, tail);
+  void tail.then(() => { if (sourceQueues.get(gitDir) === tail) sourceQueues.delete(gitDir); });
+  return next;
+}
+
 // The commit's objects into the source through a temporary ref of each repository, then `then` sets the target ref.
-async function fetchInto<T>(ws: Workspace, commit: string, then: () => Promise<T>): Promise<T> {
+function fetchInto<T>(ws: Workspace, commit: string, then: () => Promise<T>): Promise<T> {
+  return inSourceQueue(ws.sourceGitDir, () => fetchIntoNow(ws, commit, then));
+}
+async function fetchIntoNow<T>(ws: Workspace, commit: string, then: () => Promise<T>): Promise<T> {
   const src = sourceCtx(ws);
   const id = randomUUID();
   const controlTmp = `refs/canvastty/tmp/${id}`;
@@ -1022,4 +1037,134 @@ export async function applyTreeToCopy(ws: Workspace, fromTree: string, toTree: s
     }
     await clearIncompleteRestore(ws);
   });
+}
+
+// ---------- C1: the board's merged head (stage-c-parallel.md §4.1–4.2) ----------
+// Done by the application with its own hardened Git, without a model. The head is a ref of the project outside
+// refs/heads (refs/raoden/board/<workspace>/<n>): nobody stands on it, so moving it moves nothing under the person.
+// The working folder, its index, HEAD and branches are never written; objects and refs/raoden/… are.
+
+export const BOARD_REF = /^refs\/raoden\/board\/[A-Za-z0-9_-]{1,64}\/[1-9][0-9]{0,5}$/;
+
+// A merge in the run's copy without a commit: the copy's own index and files, never the project's. The conflicted paths,
+// or none. A refusal of another kind (an unrelated history, a dirty copy) is the error itself.
+export async function mergeIntoCopy(ws: Workspace, commit: string): Promise<{ conflicts: string[] }> {
+  requireOid(commit, "commit");
+  if (ws.mode !== "copy") fail("invalid_input", "a merge runs in a separate copy only");
+  const ctx: GitContext = { gitPath: ws.gitPath, gitDir: join(ws.repo, ".git"), workTree: ws.repo, home: homeOf(ws) };
+  try {
+    await git(ctx, ["merge", "--no-ff", "--no-commit", "--no-edit", "--no-verify", commit], { ...HEAVY, identity: true });
+    return { conflicts: [] };
+  } catch (error) {
+    if (!(error instanceof GitError) || error.code !== "git_failed") throw error instanceof GitError ? toWorkspaceError(error) : error;
+    const conflicts = splitZ(await run(ctx, ["diff", "--name-only", "--diff-filter=U", "-z"], HEAVY));
+    if (!conflicts.length) throw toWorkspaceError(error);
+    return { conflicts: [...new Set(conflicts)] };
+  }
+}
+
+// The merge commit, built by the application: the copy's tree and the two parents (the head it was built on, the task's
+// result). The copy's HEAD is never read: whatever was done in its .git does not reach the result.
+export async function commitMerge(ws: Workspace, tree: string, parents: readonly [string, string], message: string): Promise<string> {
+  requireOid(tree, "tree");
+  for (const p of parents) requireOid(p, "parent");
+  return runText(controlCtx(ws), ["commit-tree", tree, "-p", parents[0], "-p", parents[1]], { identity: true, input: message });
+}
+
+// The head moves to `commit` only from `expected` (update-ref with the old value): a head moved by anyone else refuses.
+export async function advanceBoardRef(ws: Workspace, ref: string, commit: string, expected: string): Promise<void> {
+  if (!BOARD_REF.test(ref)) fail("invalid_input", "not a board head ref");
+  requireOid(commit, "commit");
+  requireOid(expected, "expected");
+  const src = sourceCtx(ws);
+  await fetchInto(ws, commit, async () => {
+    const now = await revParse(src, ref);
+    if (now !== expected) fail("ref_conflict", `${ref} is not where it was expected`, { ref, existing: now, expected });
+    await run(src, ["update-ref", "--no-deref", ref, commit, expected]);
+  });
+}
+
+// A project's repository for the board's head, read and written without a run: its .git (realpath), its HEAD.
+export interface BoardRepo { gitPath: string; gitDir: string; path: string; home: string }
+const boardCtx = (r: BoardRepo, extra: Partial<GitContext> = {}): GitContext => ({ gitPath: r.gitPath, gitDir: r.gitDir, home: r.home, ...extra });
+
+// Light: the folder and its own .git directory (no linked worktree, no commondir); the full inspection is the head's start.
+export async function openBoardRepo(source: string, gitPath: string, home: string): Promise<BoardRepo> {
+  requireAbsolute(gitPath, "gitPath");
+  const path = await realpath(source).catch(() => fail("not_a_repository", "source does not exist"));
+  const st = await lstat(join(path, ".git")).catch(() => null);
+  if (!st?.isDirectory() || await exists(join(path, ".git", "commondir"))) fail("unsupported_repository", ".git is not a directory of its own");
+  return { gitPath, gitDir: await realpath(join(path, ".git")), path, home };
+}
+
+// The heads of a workspace in the project: n → commit
+export async function boardRefs(r: BoardRepo, workspaceId: string): Promise<{ n: number; ref: string; commit: string }[]> {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(workspaceId)) fail("invalid_input", "workspaceId");
+  const out = await runText(boardCtx(r), ["for-each-ref", "--format=%(objectname) %(refname)", `refs/raoden/board/${workspaceId}/`]);
+  return out === "" ? [] : out.split("\n").map((line) => {
+    const [commit, ref] = line.split(" ");
+    return { n: Number(ref.slice(ref.lastIndexOf("/") + 1)), ref, commit };
+  }).filter((h) => BOARD_REF.test(h.ref)).sort((a, b) => a.n - b.n);
+}
+
+// A new head: the working folder as a «copy at the start» would take it (tracked and untracked, not ignored), on top of
+// HEAD, as a commit of the project; the ref is created only if its name is free. The person's index is not used.
+export async function startBoardRef(r: BoardRepo, workspaceId: string, n: number): Promise<{ ref: string; commit: string }> {
+  const ref = `refs/raoden/board/${workspaceId}/${n}`;
+  if (!BOARD_REF.test(ref)) fail("invalid_input", "not a board head ref");
+  return inSourceQueue(r.gitDir, async () => {
+    const info = await inspect(r.path, r.gitPath, undefined, r.home);
+    const tree = await withIndex(r.home, async (indexFile) => {
+      const ctx = boardCtx(r, { workTree: info.path, indexFile });
+      const paths = await presentPaths(info.path, info.paths);
+      await run(ctx, ["read-tree", "--empty"]);
+      if (paths.length > 0) await run(ctx, ["update-index", "--add", "-z", "--stdin"], { ...HEAVY, input: paths.join("\0") + "\0" });
+      return runText(ctx, ["write-tree"]);
+    });
+    await assertNoGitlinks(boardCtx(r), tree);
+    const commit = await runText(boardCtx(r), ["commit-tree", tree, ...(info.head ? ["-p", info.head] : [])],
+      { identity: true, input: `Raoden Loom: board head\n\nRaoden-Board: ${workspaceId}/${n}\n` });
+    await createRef(boardCtx(r), ref, commit);
+    return { ref, commit };
+  });
+}
+
+export const boardRefCommit = (r: BoardRepo, ref: string) => revParse(boardCtx(r), ref);
+export async function isAncestor(r: BoardRepo, commit: string, of: string): Promise<boolean> {
+  requireOid(commit, "commit");
+  requireOid(of, "of");
+  return git(boardCtx(r), ["merge-base", "--is-ancestor", commit, of]).then(() => true, (e) => {
+    if (e instanceof GitError && e.exitCode === 1) return false;
+    throw e instanceof GitError ? toWorkspaceError(e) : e;
+  });
+}
+
+// «Create a branch from the board's result»: a new name at the head's commit, create-only (never moved)
+export async function boardBranch(r: BoardRepo, name: string, commit: string): Promise<"created" | "exists_same"> {
+  requireOid(commit, "commit");
+  if (!/^(?!-)[A-Za-z0-9._/-]{1,200}$/.test(name) || !(await run(boardCtx(r), ["check-ref-format", "--branch", name]).then(() => true, () => false))) fail("invalid_input", "invalid branch name");
+  return inSourceQueue(r.gitDir, () => createRef(boardCtx(r), `refs/heads/${name}`, commit));
+}
+
+// «Apply»: the head's changes since it started (its first commit of its own) onto the working folder, only if all of
+// it applies to the files as they are now; the index is not touched (as applyToProject).
+export async function applyBoard(r: BoardRepo, head: string): Promise<{ applied: true } | { applied: false; files: string[]; detail: string }> {
+  requireOid(head, "head");
+  const start = await runText(boardCtx(r), ["rev-list", "--first-parent", "--no-merges", "-n", "1", head]);
+  const patch = await run(boardCtx(r), ["diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", `${start}^{tree}`, `${head}^{tree}`], HEAVY);
+  if (patch.length === 0) return { applied: true };
+  const project = boardCtx(r, { workTree: r.path });
+  const refused = (error: unknown) => {
+    if (!(error instanceof GitError) || error.code !== "git_failed") throw error instanceof GitError ? toWorkspaceError(error) : error;
+    const files = new Set<string>();
+    for (const m of error.stderr.matchAll(/^error: (?:patch failed: (.+):\d+|(.+?): (?:already exists in working directory|No such file or directory|does not exist in index|patch does not apply|wrong type))$/gm)) files.add(m[1] ?? m[2]);
+    return { applied: false as const, files: [...files], detail: error.stderr.trim().slice(0, 2000) };
+  };
+  try {
+    await git(project, ["apply", "--check", "--whitespace=nowarn", "-"], { ...HEAVY, input: patch });
+    await git(project, ["apply", "--whitespace=nowarn", "-"], { ...HEAVY, input: patch });
+  } catch (error) {
+    return refused(error);
+  }
+  return { applied: true };
 }

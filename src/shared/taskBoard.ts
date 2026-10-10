@@ -41,14 +41,62 @@ export interface BoardView {
   readOnly: null | "newer_version" | "damaged_unmoved";
   facts: RunTaskFacts[];
   autopilot: Record<string, AutopilotState>; // linkId → the board's autopilot of that link, as main holds it now
+  heads?: BoardHead[]; // C1: the board's merged head of each workspace and project that has one
+}
+
+// C1 (stage-c-parallel.md §4): the board's merged head — a ref of the project outside refs/heads that only a merge run
+// moves — and the merge runs into it, as their v3 journals say (never board.json: principle 8).
+export interface BoardHead {
+  workspaceId: string;
+  project: string;
+  ref: string; // refs/raoden/board/<workspaceId>/<n>
+  n: number;
+  commit: string;
+  merges: BoardMerge[]; // into this head, the newest first
+}
+export type BoardMergeStatus = "preparing" | "running" | "paused" | "completed" | "stopped" | "failed";
+export interface BoardMerge {
+  runId: string;
+  board: string; // the head's ref
+  base: string; // the head it was built on
+  task: { id: string; key: string; runId: string; commit: string };
+  status: BoardMergeStatus;
+  // paused: merge_conflict | merge_checks_failed | merge_prepare_failed | merge_prepare_changed | recovered;
+  // stopped: skipped | interrupted; failed: head_moved | error; completed: null | already (the result was in the head)
+  reason: string | null;
+  detail: string | null;
+  completion: "confirmed" | "no_checks" | null;
+  conflicts: string[];
+  outside: string[]; // files out of the conflict the resolution changed (the mechanical condition)
+  interference: boolean; // the checks failed twice: possibly another task's port or process
+  retrying: boolean; // the first checks failed; the retry waits for the project to be quiet
+  dir: string | null; // the merge copy, where the person resolves
+  createdAt: number;
+}
+
+// A task's mark on the board (§4.4): its latest merge into the current head of its place — of its current run (a task
+// run again is a new result: an older merge says nothing of it)
+export type MergeMark = { kind: "in_board"; checks: boolean } | { kind: "merging" } | { kind: "not_merged"; reason: string; waits: boolean; runId: string } | null;
+export const mergeOfTask = (head: Pick<BoardHead, "merges"> | null | undefined, taskId: string, runId?: string | null): BoardMerge | undefined =>
+  head?.merges.find((x) => x.task.id === taskId && (runId === undefined || x.task.runId === runId));
+export function mergeMark(taskId: string, head: BoardHead | undefined, runId?: string | null): MergeMark {
+  const m = mergeOfTask(head, taskId, runId);
+  if (!m) return null;
+  if (m.status === "completed") return { kind: "in_board", checks: m.completion === "confirmed" };
+  if (m.status === "preparing" || m.status === "running") return { kind: "merging" };
+  return { kind: "not_merged", reason: m.reason ?? m.status, waits: m.status === "paused", runId: m.runId };
 }
 
 // B4 (§5.1): the board's autopilot of a link. on — never stored (a restart turns it off); the budget is board.json's;
 // used — the runs it started since it was turned on and their working minutes; stop — why it turned itself off last.
-export interface AutopilotBudget { runs: number; minutes: number }
+// parallel (C1, §2.1): tasks at once, 1..4, in a separate copy only; absent: 2
+export interface AutopilotBudget { runs: number; minutes: number; parallel?: number }
 export const AUTOPILOT_BUDGET: AutopilotBudget = { runs: 5, minutes: 240 };
+export const AUTOPILOT_PARALLEL = 2;
+export const parallelOf = (b: AutopilotBudget): number => (Number.isInteger(b.parallel) && b.parallel! >= 1 && b.parallel! <= 4 ? b.parallel! : AUTOPILOT_PARALLEL);
 export type AutopilotStopCode = "all_done" | "others_wait" | "budget_runs" | "budget_minutes" | "run_stopped" | "run_failed" | "limit_reached"
-  | "run_paused" | "run_unreadable" | "settings_changed" | "grant_added" | "not_ready" | "take_failed" | "start_failed" | "worktree_base" | "link_gone" | "task_gone";
+  | "run_paused" | "run_unreadable" | "settings_changed" | "grant_added" | "not_ready" | "take_failed" | "start_failed" | "worktree_base" | "link_gone" | "task_gone"
+  | "head_moved" | "merge_failed";
 export interface AutopilotWaiting { key: string; reason: TaskReason | null; waitsFor: string[] }
 export interface AutopilotStop { code: AutopilotStopCode; detail: string | null; key: string | null; at: string; waiting?: AutopilotWaiting[] }
 export interface AutopilotState {
@@ -91,6 +139,7 @@ export interface RunTaskFacts {
   workMode: OrchestrationWorkMode | null;
   // «Take the result» of its current result (taken.json): the branch made and the commit it points to, applied or not
   taken: { branch: string | null; commit?: string | null; applied: boolean } | null;
+  board?: string | null; // C1: the board head ref its copy started from (goal.base.branch), else null
 }
 
 export type TaskColumn = "queue" | "work" | "review" | "done";
@@ -384,4 +433,99 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
   // a worktree starts from HEAD: from a ref is stage C (§5.2); a copy takes the branch (owner's decision 11)
   if (base && at.workMode !== "copy") return { kind: "off", code: "worktree_base", detail: base.key, key: next.key };
   return { kind: "start", task: next, base };
+}
+
+// C1 (stage-c-parallel.md §2, §4.5, §8): the board's autopilot of a link in a separate copy, with N slots and the board's
+// merged head. One action per step, from the board, the facts of the runs and the head alone:
+// - head: there is something to start or merge and no head yet — main starts it from the working folder;
+// - take: a task «Done» by a run in a copy gets its result branch (decision 8), as in B;
+// - merge: a task «Done», started from this head, not in it and never merged into it — one at a time, the oldest first;
+// - start: a free slot and a task without a reason (its dependencies, if any, in the head), from the head.
+// It waits while a run or a merge goes on or the person is asked; it is off, with a reason, when nothing goes on and
+// nothing waits for the person. started: the runs it started (stops of those decide); slots count every run of the place.
+export type AutopilotParallelStep = AutopilotStep | { kind: "head" } | { kind: "merge"; taskId: string; key: string; runId: string; commit: string };
+const MERGE_ACTIVE = new Set(["preparing", "running"]);
+export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[], at: { workspaceId: string; project: string },
+  started: readonly string[], used: { runs: number; ms: number }, budget: AutopilotBudget, head: BoardHead | null): AutopilotParallelStep {
+  const statuses = boardStatuses(board, facts);
+  const place = board.tasks.filter((t) => t.workspaceId === at.workspaceId && t.project === at.project);
+  const mergeOf = (taskId: string) => mergeOfTask(head, taskId, statuses.get(taskId)?.current ?? null);
+  const inHead = (taskId: string) => mergeOf(taskId)?.status === "completed";
+  let halt: { code: AutopilotStopCode; detail: string | null; key: string | null } | null = null;
+  let person: string | null = null; // what the person is asked: a permission, a decision in a run, «Accept the result», a merge
+  // the runs it started: a stop or a failure takes no new task; a question of the person waits
+  for (const id of started) {
+    const run = facts.find((f) => f.runId === id);
+    if (!run) return { kind: "wait", why: "run" }; // its journal is not there yet
+    const task = board.tasks.find((t) => t.id === run.taskId);
+    if (!task) { halt ??= { code: "task_gone", detail: run.taskKey, key: run.taskKey }; continue; }
+    const s = statuses.get(task.id)!;
+    if (s.current !== run.runId) continue; // a later run of the task (the person's) is the person's
+    const key = task.key;
+    if (run.newer || run.status === "unreadable") halt ??= { code: "run_unreadable", detail: null, key };
+    else if (run.permission) person ??= "permission";
+    else if (run.status === "stopped") halt ??= { code: "run_stopped", detail: run.reason, key };
+    else if (run.status === "failed") halt ??= { code: "run_failed", detail: run.reason, key };
+    else if (run.status === "paused") {
+      if (WAIT_PAUSES.has(run.reason ?? "")) person ??= "person";
+      else halt ??= run.reason === "limit_reached" ? { code: "limit_reached", detail: run.limit, key } : { code: "run_paused", detail: run.reason, key };
+    } else if (run.status !== "completed") { if (run.halted) halt ??= { code: "run_paused", detail: run.reason, key }; }
+    else if (s.reason === "no_checks") person ??= "accept";
+    else if (!s.done) halt ??= { code: "run_paused", detail: run.reason, key };
+    else if (autoTakeOnDone(s, run) === "branch") return { kind: "take", runId: run.runId, key };
+  }
+  // the merges: one at a time; a paused one waits for the person, the head moved by someone else ends it
+  const merges = head?.merges ?? [];
+  const merging = merges.some((m) => MERGE_ACTIVE.has(m.status));
+  if (merges.some((m) => m.status === "paused")) person ??= "merge";
+  // the head moved by someone else: only while that is the latest merge (a later one went on from the new value)
+  const moved = merges[0]?.status === "failed" && merges[0].reason === "head_moved" ? merges[0] : undefined;
+  if (moved) halt ??= { code: "head_moved", detail: moved.task.key, key: moved.task.key };
+  // a «Done» task whose merge failed or was interrupted is not in the result and nothing will merge it: the person
+  // decides (§4.3); «Пропустить» is the person's decision already
+  for (const t of place) {
+    const m = statuses.get(t.id)?.done && !t.archivedAt ? mergeOf(t.id) : undefined;
+    if (m && m !== moved && (m.status === "failed" || (m.status === "stopped" && m.reason !== "skipped"))) halt ??= { code: "merge_failed", detail: m.reason, key: t.key };
+  }
+  const retrying = merges.some((m) => m.retrying);
+  // what is «Done», started from this head and not in it yet: the oldest first (reconciliation, §4.5)
+  const pending = place.map((t) => ({ t, s: statuses.get(t.id)!, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
+    .filter(({ t, s, run }) => s.done && run && head && run.board === head.ref && run.workMode === "copy" && !mergeOf(t.id)
+      && (run.taken?.commit || autoTakeOnDone(s, run) === "branch"))
+    .sort((a, b) => a.run!.createdAt - b.run!.createdAt);
+  const take = pending.find(({ s, run }) => autoTakeOnDone(s, run) === "branch");
+  if (take) return { kind: "take", runId: take.run!.runId, key: take.t.key };
+  const ready = pending.find(({ run }) => run!.taken?.commit);
+  // a stop takes no new task, but what is «Done» still goes into the head; not onto a head moved by someone else
+  if (ready && !merging && !merges.some((m) => m.status === "paused") && !moved) {
+    return { kind: "merge", taskId: ready.t.id, key: ready.t.key, runId: ready.run!.runId, commit: ready.run!.taken!.commit! };
+  }
+  // the slots: every run of the place that is not over (a pause holds its copy and may go on)
+  const SLOT = new Set(["created", "preparing", "running", "pausing", "stopping", "paused"]);
+  const busy = facts.filter((f) => place.some((t) => t.id === f.taskId) && (SLOT.has(f.status) || f.permission
+    || (f.status === "completed" && statuses.get(f.taskId!)?.reason === "no_checks" && statuses.get(f.taskId!)?.current === f.runId))).length;
+  const goingOn = busy > 0 || merging || (pending.length > 0 && !moved);
+  if (halt) return goingOn || person ? { kind: "wait", why: "run" } : { kind: "off", ...halt };
+  // a task without a reason, never tried; a dependency counts once it is in the head (owner's decision 9), or its result
+  // is in the working folder (it worked there, or was applied) — the head starts from that folder. ponytail: a folder
+  // result that came after the head started is not in it; «Начать новый итог доски» takes it in
+  const resultIn = (d: string) => resultOf(facts.find((f) => f.runId === statuses.get(d)?.current)) === "folder";
+  const next = place.filter((t) => {
+    const s = statuses.get(t.id);
+    if (!s || t.archivedAt || s.column !== "queue" || s.attempts !== 0 || t.dependsOn.some((d) => statuses.get(d)?.depsNote)) return false;
+    if (!t.dependsOn.length) return s.reason === null;
+    return t.dependsOn.every((d) => !board.tasks.some((x) => x.id === d) || (statuses.get(d)?.done && (inHead(d) || resultIn(d))));
+  }).sort((a, b) => a.order - b.order)[0] ?? null;
+  // a merge's checks wait to be retried while the project is quiet: no new task meanwhile (§2.3)
+  if (next && busy < parallelOf(budget) && !retrying) {
+    if (used.runs >= budget.runs) return goingOn ? { kind: "wait", why: "run" } : { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };
+    if (used.ms >= budget.minutes * 60_000) return goingOn ? { kind: "wait", why: "run" } : { kind: "off", code: "budget_minutes", detail: String(budget.minutes), key: null };
+    if (!head) return { kind: "head" };
+    return { kind: "start", task: next, base: { branch: head.ref, commit: head.commit, key: "T-0" } };
+  }
+  if (goingOn || next || person) return { kind: "wait", why: person ?? "run" };
+  const idle = idleOf(board, statuses, at);
+  if (idle.allDone) return { kind: "off", code: "all_done", detail: null, key: null };
+  const detail = idle.waiting.map((w) => (w.waitsFor.length ? `${w.key} (${w.reason}: ${w.waitsFor.join(", ")})` : `${w.key} (${w.reason ?? "-"})`)).join("; ");
+  return { kind: "off", code: "others_wait", detail, key: null, waiting: idle.waiting };
 }

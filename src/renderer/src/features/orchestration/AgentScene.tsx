@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LocaleId, Point, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationAgentCard, OrchestrationAgentLink } from "../../../../shared/orchestration";
 import { t, type TranslationKey } from "../../lib/i18n";
+import { tr } from "./boardModel";
 import { agentLayerId, pastCanvasDragThreshold } from "../workspace/canvasSelectionGesture";
 import { AgentCard } from "./AgentCard";
 import { chipCenter, chipSize } from "./linkChip";
@@ -65,26 +66,41 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
 
   const agents = orch.canvas.agents.map((card) => ({ card, bounds: props.withNudge(agentLayerId(card.agentId), card.bounds) }));
   const boundsOf = new Map(agents.map(({ card, bounds }) => [card.agentId, bounds]));
+  // C1 (stage-c-parallel.md §6.2): a link may run several tasks at once, each in its own copy. The cards do not multiply:
+  // they show one run — the one picked by the switcher, else the latest that goes on, else the latest.
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const liveRuns = (link: OrchestrationAgentLink) => link.runIds.slice(-4).filter((id) => {
+    const v = orch.runs[id]?.view;
+    return !!v && !TERMINAL_STATUSES.includes(v.status);
+  });
+  const runIdOf = (link: OrchestrationAgentLink | undefined): string | undefined => {
+    if (!link) return undefined;
+    const live = liveRuns(link);
+    const p = picked[link.linkId];
+    return p && live.includes(p) ? p : live.at(-1) ?? link.runIds.at(-1);
+  };
   const runOf = (link: OrchestrationAgentLink | undefined) => {
-    const runId = link?.runIds.at(-1);
+    const runId = runIdOf(link);
     return runId ? orch.runs[runId]?.view ?? null : null;
   };
   const linkOf = (card: OrchestrationAgentCard) =>
     orch.canvas.links.find((l) => l.fromAgentId === card.agentId || l.toAgentId === card.agentId);
   // "Working" only once its CLI process reported its start; before that the turn is only being started.
   const cardState = (card: OrchestrationAgentCard, link: OrchestrationAgentLink | undefined): AgentState => {
-    const runId = link?.runIds.at(-1);
+    const runId = runIdOf(link);
     const run = runId ? orch.runs[runId] ?? null : null;
     const s = agentState(card.role, run?.view ?? null);
     if (s !== "working" || !runId) return s;
     const p = participantState(cardRole(card.role, run!.view), run!.view, orch.activity[runId]?.entries ?? [], run!.open);
     return p.phase === "running" || p.phase === "finishing" ? "working" : "starting";
   };
+  const isLatest = (link: OrchestrationAgentLink) => runIdOf(link) === link.runIds.at(-1);
+  const openRunOf = (link: OrchestrationAgentLink) => (isLatest(link) ? ui.openRun(link.linkId) : ui.openRunById(runIdOf(link)!));
   // The concrete line under the state: the same rules as the home widget and the summary.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
   const cardStatus = (card: OrchestrationAgentCard, link: OrchestrationAgentLink | undefined): { status: StatusLine | null; time: string | null; conditions: string | null; findings: string | null; cost: string | null } => {
-    const runId = link?.runIds.at(-1);
+    const runId = runIdOf(link);
     const run = runId ? orch.runs[runId] : undefined;
     if (!runId || !run) return { status: null, time: runId && orch.runErrors[runId] ? t(locale, "actRunError") : null, conditions: null, findings: null, cost: null };
     const status = roleStatus(locale, cardRole(card.role, run.view), { view: run.view, entries: orch.activity[runId]?.entries ?? [], open: run.open, stageTitles: orch.stageTitles(runId), now });
@@ -141,9 +157,9 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             portDisabledHint={entry.hint ? t(locale, entry.hint) : undefined}
             onPortActivate={(agentId) => { if (!entry.disabled) ui.setLinkingFrom(ui.linkingFrom === agentId ? null : agentId); }}
             onConnectHere={(agentId) => { if (ui.linkingFrom) void ui.connect(ui.linkingFrom, agentId); }}
-            onOpenRun={() => { if (link) ui.openRun(link.linkId); }}
-            onSummary={() => { if (link) ui.openPanel(link.linkId, { tab: "summary" }); }}
-            onObserve={() => { if (link) ui.openPanel(link.linkId, { tab: "activity", role: card.role }); }}
+            onOpenRun={() => { if (link) openRunOf(link); }}
+            onSummary={() => { if (link) (isLatest(link) ? ui.openPanel(link.linkId, { tab: "summary" }) : ui.openRunById(runIdOf(link)!, "summary")); }}
+            onObserve={() => { if (link) (isLatest(link) ? ui.openPanel(link.linkId, { tab: "activity", role: card.role }) : ui.openRunById(runIdOf(link)!, "activity")); }}
             onPortDown={(agentId, event) => {
               linkTrace("port.down", { agentId, pointerId: event.pointerId, button: event.button, x: event.clientX, y: event.clientY });
               if (event.button !== 0 || entry.disabled) return;
@@ -205,7 +221,16 @@ export function AgentScene(props: AgentSceneProps): React.JSX.Element {
             </span>
             {!busy && <button type="button" disabled={entry.disabled} title={entry.hint ? t(locale, entry.hint) : undefined}
               onClick={() => ui.openGoal(link.linkId)}>{t(locale, "orchNewGoal")}</button>}
-            {view && <button type="button" onClick={() => ui.openRun(link.linkId)}>{t(locale, "orchOpenRun")}</button>}
+            {liveRuns(link).length > 1 && (() => {
+              const live = liveRuns(link);
+              const i = Math.max(0, live.indexOf(runIdOf(link) ?? ""));
+              return (
+                <button type="button" data-agent-runs={live.length} title={tr(locale, "agentRunPick", { n: i + 1, total: live.length })}
+                  onClick={() => setPicked((p) => ({ ...p, [link.linkId]: live[(i + 1) % live.length] }))}>
+                  {`${tr(locale, "agentRuns", { n: live.length })} · ${i + 1}/${live.length} ›`}</button>
+              );
+            })()}
+            {view && <button type="button" onClick={() => openRunOf(link)}>{t(locale, "orchOpenRun")}</button>}
             {view?.newer && <ReleaseNewerLink orch={orch} linkId={link.linkId} runId={view.runId} locale={locale} />}
             {view && <button type="button" onClick={() => {
               const r = view.permission?.role ?? activeRole(view);

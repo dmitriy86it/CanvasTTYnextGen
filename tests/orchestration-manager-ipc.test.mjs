@@ -95,7 +95,7 @@ const statusIs = (m, runId, ...s) => async () => s.includes((await view(m, runId
 
 test("the channels are the ones registerIpc guards", () => {
   const source = fs.readFileSync(path.join(HERE, "..", "src", "main", "ipc", "registerIpc.ts"), "utf8");
-  assert.match(source, /registerOrchestrationIpc\(handleMain, orchestration\)/);
+  assert.match(source, /registerOrchestrationIpc\(handleMain, orchestration, \(path\) => shell.openPath\(path\)\)/);
   const { handlers } = ipc(manager(path.join(TMP, "unused")).m);
   assert.deepEqual([...handlers.keys()].sort(), Object.entries(IPC).filter(([k]) => k.startsWith("orchestration") && k !== "orchestrationEvent").map(([, v]) => v).sort());
 });

@@ -276,7 +276,8 @@ const checked = <A extends unknown[], T>(parse: () => A, call: (...a: A) => Prom
   return call(...args);
 };
 
-export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager): void {
+// openPath: Electron's shell.openPath (the merge copy's folder, «Открыть папку»); absent in tests
+export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager, openPath?: (path: string) => Promise<string>): void {
   // The current page of each webContents: runId -> its one subscription. A watch that is still being set up has
   // unwatch null; when it settles it stays only if its page is still current and the entry is still its own, otherwise
   // it is released at once (an unwatch, a newer watch, a reload or a closed window came first).
@@ -408,10 +409,33 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
   }, manager.boardAutopilot));
   handleMain(IPC.orchestrationBoardBudget, (_e, linkId: unknown, budget: unknown) => checked(() => {
     if (budget === null) return [uuid(linkId, "linkId"), null] as [string, null];
-    const o = obj(budget, "budget", ["runs", "minutes"]);
+    const o = obj(budget, "budget", ["runs", "minutes"], ["parallel"]);
     const int = (v: unknown, what: string, max: number) => (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= max ? v as number : bad(`${what} must be 1..${max}`));
-    return [uuid(linkId, "linkId"), { runs: int(o.runs, "budget.runs", 100), minutes: int(o.minutes, "budget.minutes", 1440) }] as [string, AutopilotBudget];
+    return [uuid(linkId, "linkId"), { runs: int(o.runs, "budget.runs", 100), minutes: int(o.minutes, "budget.minutes", 1440),
+      ...(o.parallel !== undefined ? { parallel: int(o.parallel, "budget.parallel", 4) } : {}) }] as [string, AutopilotBudget];
   }, manager.boardBudget));
+  // C1 (stage-c-parallel.md §4): merges into the board's merged head and the person's actions on it
+  const lang = (v: unknown) => (v === "ru" || v === "en" ? v : bad("language must be ru or en"));
+  handleMain(IPC.orchestrationBoardMerge, (_e, taskId: unknown, language: unknown) => checked(() => [uuid(taskId, "taskId"), lang(language)] as [string, "ru" | "en"], manager.boardMerge));
+  handleMain(IPC.orchestrationBoardMergeAll, (_e, workspaceId: unknown, project: unknown, language: unknown) => checked(
+    () => [str(workspaceId, "workspaceId", 64), str(project, "project", 4096), lang(language)] as [string, string, "ru" | "en"], manager.boardMergeAll));
+  handleMain(IPC.orchestrationBoardMergeResolve, (_e, runId: unknown, confirm: unknown) => checked(() => {
+    if (typeof confirm !== "boolean") bad("confirm must be a boolean");
+    return [uuid(runId, "runId"), confirm as boolean] as [string, boolean];
+  }, manager.boardMergeResolve));
+  handleMain(IPC.orchestrationBoardMergeSkip, (_e, runId: unknown) => checked(() => [uuid(runId, "runId")] as [string], manager.boardMergeSkip));
+  // the merge copy of this run only, by the path its journal holds (never a path from the renderer)
+  handleMain(IPC.orchestrationBoardMergeOpen, (_e, runId: unknown) => checked(() => [uuid(runId, "runId")] as [string], async (id: string) => {
+    const dir = await manager.boardMergeDir(id);
+    if (!dir.ok || !dir.value) return dir.ok ? { ok: false as const, code: "merge_no_copy", message: "the merge has no copy yet" } : dir;
+    const error = openPath ? await openPath(dir.value) : "no shell";
+    return error ? { ok: false as const, code: "open_failed", message: error } : { ok: true as const, value: null };
+  }));
+  handleMain(IPC.orchestrationBoardHead, (_e, action: unknown, workspaceId: unknown, project: unknown) => checked(() => {
+    if (action !== "branch" && action !== "apply" && action !== "new") bad("action must be branch, apply or new");
+    return [action as "branch" | "apply" | "new", str(workspaceId, "workspaceId", 64), str(project, "project", 4096)] as ["branch" | "apply" | "new", string, string];
+  }, async (action: "branch" | "apply" | "new", ws: string, project: string): Promise<OrchestrationResult<unknown>> => (action === "branch" ? manager.boardHeadBranch(ws, project)
+    : action === "apply" ? manager.boardHeadApply(ws, project) : manager.boardHeadNew(ws, project))));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");

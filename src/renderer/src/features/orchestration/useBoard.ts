@@ -27,7 +27,8 @@ export function useBoard(orch: Orchestration) {
   }, [runs, reload]);
 
   // B4: while an autopilot of a link is on, its steps (a take, a stop) may change nothing the runs show: read every 2 s
-  const anyOn = !!view && Object.values(view.autopilot ?? {}).some((s) => s.on);
+  const anyOn = !!view && (Object.values(view.autopilot ?? {}).some((s) => s.on)
+    || !!view.heads?.some((h) => h.merges.some((m) => m.status === "preparing" || m.status === "running"))); // C1: a merge has no run on a link
   useEffect(() => {
     if (!anyOn) return;
     const id = window.setInterval(() => void reload(), 2000);
@@ -69,7 +70,14 @@ export function useBoard(orch: Orchestration) {
     accept: (id: string) => act(() => api.boardAccept(id)),
     place: (workspaceId: string, bounds: SessionBounds | null) => act(() => api.boardPlace(workspaceId, bounds)),
     autopilot: (linkId: string, on: boolean, language: "ru" | "en") => act(() => api.boardAutopilot(linkId, on, language)),
-    budget: (linkId: string, budget: AutopilotBudget | null) => act(() => api.boardBudget(linkId, budget))
+    budget: (linkId: string, budget: AutopilotBudget | null) => act(() => api.boardBudget(linkId, budget)),
+    // C1: merges into the board's merged head and the person's actions on it
+    merge: (taskId: string, language: "ru" | "en") => act(() => api.boardMerge(taskId, language)),
+    mergeAll: (workspaceId: string, project: string, language: "ru" | "en") => act(() => api.boardMergeAll(workspaceId, project, language)),
+    resolve: (runId: string, confirm: boolean) => act(() => api.boardMergeResolve(runId, confirm)),
+    skip: (runId: string) => act(() => api.boardMergeSkip(runId)),
+    openMerge: (runId: string) => act(() => api.boardMergeOpen(runId)),
+    head: (action: "branch" | "apply" | "new", workspaceId: string, project: string) => act(() => api.boardHead(action, workspaceId, project))
   };
 }
 
