@@ -4,7 +4,7 @@
 import { useState } from "react";
 import type { LocaleId, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink } from "../../../../shared/orchestration";
-import { AUTOPILOT_BUDGET, baseOf, isCopy, mergeMark, parallelOf, type AutopilotBudget, type AutopilotState, type BoardHead, type BoardMerge, type BoardTask, type RunTaskFacts, type TaskColumn, type TaskStatus } from "../../../../shared/taskBoard";
+import { AUTOPILOT_BUDGET, isCopy, startBase, mergeMark, parallelOf, type AutopilotBudget, type AutopilotState, type BoardHead, type BoardMerge, type BoardTask, type RunTaskFacts, type TaskColumn, type TaskStatus } from "../../../../shared/taskBoard";
 import { t } from "../../lib/i18n";
 import { Dialog } from "./OrchestrationDialogs";
 import { ACTIVE_STATUSES } from "./runModel";
@@ -69,8 +69,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
     const link = links.find((l) => !busy(l));
     if (!link) { say(task.id, tr(locale, "boardNoLink", { project: task.project })); return; }
     // C2: a place with the board's merged head starts from it (its dependencies are there, decision 9); else B's base
-    const head = headOf(task);
-    const base = head ? { branch: head.ref, commit: head.commit, key: "T-0" } : view ? baseOf(task, view.board, board.statuses, view.facts) : null;
+    const base = view ? startBase(task, view.board, board.statuses, view.facts, view.heads ?? []) : null;
     ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria, ...(startAnyway ? { anyway: true } : {}), ...(base ? { base } : {}) });
   };
   const projects = [...new Set([...orch.canvas.agents.map((a) => a.project), ...(props.defaultProject ? [props.defaultProject] : [])])];
@@ -392,7 +391,9 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
   // C2 (decision 13): the person's commits the head does not have; its update only by the person
   const behind = head.behind ?? 0;
   const many = locale === "ru" ? (behind % 10 === 1 && behind % 100 !== 11 ? "one" : [2, 3, 4].includes(behind % 10) && ![12, 13, 14].includes(behind % 100) ? "few" : "many") : behind === 1 ? "one" : "many";
-  const checks = done.length ? (done.some((m) => m.completion === "no_checks") ? t(locale, "boardHeadNoChecks") : t(locale, "boardHeadChecked")) : null;
+  // decision 15: a merge that found nothing new checked nothing — it says nothing of the checks
+  const merged = done.filter((m) => m.reason !== "already");
+  const checks = merged.length ? (merged.some((m) => m.completion === "no_checks") ? t(locale, "boardHeadNoChecks") : t(locale, "boardHeadChecked")) : null;
   const notMerged = tasks.filter((x) => {
     const st = statuses.get(x.id);
     const f = facts.find((y) => y.runId === st?.current);
@@ -420,7 +421,7 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
     <div className="board-card__head" data-board-head={head.ref}>
       <div className="board-card__head-line">
         <strong data-board-head-tasks>{keys.length ? tr(locale, "boardHeadTasks", { keys: keys.join(", ") }) : t(locale, "boardHeadEmpty")}</strong>
-        {checks && <span data-board-head-checks={done.some((m) => m.completion === "no_checks") ? "none" : "passed"}>{` · ${checks}`}</span>}
+        {checks && <span data-board-head-checks={merged.some((m) => m.completion === "no_checks") ? "none" : "passed"}>{` · ${checks}`}</span>}
         {going && <span data-board-head-merging>{` · ${tr(locale, "boardHeadMerging", { key: nameOf(going) })}`}</span>}
         <span className="board-card__header-actions">
           {keys.length > 0 && <button type="button" data-board-head-branch onClick={() => setAsking("branch")}>{t(locale, "boardHeadBranch")}</button>}
@@ -430,7 +431,8 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
       </div>
       {asking && (
         <div className="board-task__confirm" role="alertdialog" data-board-head-confirm={asking}>
-          <p>{t(locale, asking === "branch" ? "boardHeadBranchWhy" : asking === "apply" ? "boardHeadApplyWhy" : asking === "update" ? "boardHeadUpdateWhy" : "boardHeadNewWhy")}</p>
+          <p>{asking === "update" ? tr(locale, "boardHeadUpdateWhy", { branch: head.branch ?? "HEAD" })
+            : t(locale, asking === "branch" ? "boardHeadBranchWhy" : asking === "apply" ? "boardHeadApplyWhy" : "boardHeadNewWhy")}</p>
           <button type="button" className="orch-primary" data-board-head-yes onClick={() => void act(asking)}>
             {t(locale, asking === "branch" ? "boardHeadBranch" : asking === "apply" ? "boardHeadApply" : asking === "update" ? "boardHeadUpdate" : "boardHeadNew")}</button>
           <button type="button" onClick={() => setAsking(null)}>{t(locale, "orchCancel")}</button>

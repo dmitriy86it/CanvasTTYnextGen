@@ -351,6 +351,7 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
     baseline: { commit: "", tree: "", parent: info.head }, head: info.head,
     branch: mode === "worktree" ? `canvastty/${opts.runId.slice(0, 8)}` : null
   };
+  let added: string | null = null; // the worktree's start, once it and its branch exist
   try {
     await mkdir(homeOf(ws), { recursive: true, mode: 0o700 });
 
@@ -410,6 +411,7 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
       await inSourceQueue(info.gitDir, async () => {
         if (await revParse(sourceCtx(ws), `refs/heads/${ws.branch}`) !== null) fail("ref_conflict", `the branch ${ws.branch} already exists`, { ref: `refs/heads/${ws.branch}` });
         await run(sourceCtx(ws), ["worktree", "add", "-q", "-b", ws.branch!, "--", ws.repo, parent!], HEAVY);
+        added = parent!;
       });
     }
 
@@ -423,6 +425,15 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
     await writeJson(dir, MARKER, marker);
     return ws;
   } catch (error) {
+    // C2: a worktree added before the failure goes with its branch — the branch only while it is still at its start
+    // (nothing of anyone's on it), so a retry of this run does not meet its own leftovers
+    if (added) {
+      const at = added;
+      await inSourceQueue(ws.sourceGitDir, async () => {
+        await run(sourceCtx(ws), ["worktree", "remove", "--force", "--", ws.repo]).catch(() => {});
+        await run(sourceCtx(ws), ["update-ref", "--no-deref", "-d", `refs/heads/${ws.branch}`, at]).catch(() => {});
+      });
+    }
     await rm(dir, { recursive: true, force: true }); // a published baseline ref stays and is reused as exists_same
     throw error;
   }
@@ -1137,6 +1148,16 @@ export async function startBoardRef(r: BoardRepo, workspaceId: string, n: number
 export const boardRefCommit = (r: BoardRepo, ref: string) => revParse(boardCtx(r), ref);
 // C2 (owner's decision 13): the project's HEAD commit, read only; null — no commit yet
 export const projectHead = (r: BoardRepo) => revParse(boardCtx(r), "HEAD");
+// the branch HEAD is on (null: detached), read only
+export const projectBranch = (r: BoardRepo) => runText(boardCtx(r), ["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => null);
+// Is `now` on the line the head started from: the HEAD of its start (the parent of its first commit of its own) is in
+// its history? A head started without a commit counts any HEAD.
+export async function onHeadLine(r: BoardRepo, head: string, now: string): Promise<boolean> {
+  requireOid(head, "head");
+  const first = await runText(boardCtx(r), ["rev-list", "--first-parent", "--no-merges", "-n", "1", head]);
+  const from = await revParse(boardCtx(r), `${first}^1`);
+  return from === null || isAncestor(r, from, now);
+}
 // the commits of `of` that `head` does not have
 export async function behindBy(r: BoardRepo, head: string, of: string): Promise<number> {
   requireOid(head, "head");

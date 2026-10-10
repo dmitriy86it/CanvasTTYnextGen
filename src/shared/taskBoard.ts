@@ -67,6 +67,7 @@ export interface BoardHead {
   // C2 (owner's decision 13): the commits of the project's HEAD not in the head (the person committed after it started);
   // null: HEAD unknown (no commit, detached at nothing)
   behind?: number | null;
+  branch?: string | null; // the branch HEAD is on now (null: detached)
 }
 export type BoardMergeStatus = "preparing" | "running" | "paused" | "completed" | "stopped" | "failed";
 export interface BoardMerge {
@@ -291,10 +292,14 @@ function dependencies(deps: readonly (readonly [BoardTask, TaskStatus])[], runsO
   if (notDone.length) return { reason: "waits_task", waitsFor: notDone, cycle: false };
   // C2 (decision 9): with the board's merged head, a dependency counts once its current result is in it — or in the
   // working folder (it worked there, or was applied), which the head started from; no merge is left to the person
+  // A dependency of another project never gets into this head: B's rule for it
   if (head) {
-    const out = deps.filter(([t, d]) => mergeOfTask(head, t.id, d.current)?.status !== "completed"
+    const here = deps.filter(([t]) => t.project === head.project);
+    const out = here.filter(([t, d]) => mergeOfTask(head, t.id, d.current)?.status !== "completed"
       && resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current)) !== "folder").map(([t]) => t.key);
-    return out.length ? { reason: "waits_head", waitsFor: out, cycle: false } : null;
+    if (out.length) return { reason: "waits_head", waitsFor: out, cycle: false };
+    const others = deps.filter(([t]) => t.project !== head.project);
+    return others.length ? dependencies(others, runsOf) : null;
   }
   const where = deps.map(([t, d]) => [t, resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current))] as const);
   const notTaken = where.filter(([, w]) => w === "none").map(([t]) => t.key);
@@ -323,6 +328,17 @@ function noteOf(task: BoardTask, s: TaskStatus, deps: readonly (readonly [BoardT
 function resultOf(run: RunTaskFacts | undefined): "folder" | "branch" | "none" {
   if (!run || (run.workMode !== "copy" && run.workMode !== "worktree") || run.taken?.applied) return "folder";
   return run.taken?.branch && run.taken.commit ? "branch" : "none";
+}
+
+// C2: what a person's start of a task offers to start from — the board's merged head of its place; but a dependency
+// whose result is in the working folder (it worked there, or was applied) may not be in the head: then B's base (the
+// folder, or a dependency's branch). ponytail: a folder result from before the head started is in it too; told apart
+// only by «Начать новый итог доски»
+export function startBase(task: Pick<BoardTask, "dependsOn" | "workspaceId" | "project">, board: Pick<Board, "tasks">, statuses: ReadonlyMap<string, TaskStatus>,
+  facts: readonly RunTaskFacts[], heads: readonly BoardHead[]): { branch: string; commit: string; key: string } | null {
+  const head = heads.find((h) => h.workspaceId === task.workspaceId && h.project === task.project);
+  const inFolder = task.dependsOn.some((id) => resultOf(facts.find((f) => f.runId === statuses.get(id)?.current)) === "folder" && statuses.get(id)?.done);
+  return head && !inFolder ? { branch: head.ref, commit: head.commit, key: "T-0" } : baseOf(task, board, statuses, facts);
 }
 
 // B4 (owner's decision 11): what a task's separate copy starts from — the working folder (null), or the one dependency
@@ -536,7 +552,10 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
   const SLOT = new Set(["created", "preparing", "running", "pausing", "stopping", "paused"]);
   const busy = facts.filter((f) => place.some((t) => t.id === f.taskId) && (SLOT.has(f.status) || f.permission
     || (f.status === "completed" && statuses.get(f.taskId!)?.reason === "no_checks" && statuses.get(f.taskId!)?.current === f.runId))).length;
-  const goingOn = busy > 0 || merging || (pending.length > 0 && !moved);
+  // what goes on by itself: a run at work or waiting for the person's answer — a run paused for another reason (a bad
+  // report, an external failure) holds its place but moves only by the person's «Продолжить»: no wait on it (§8)
+  const moving = facts.some((f) => place.some((t) => t.id === f.taskId) && (ACTIVE.has(f.status) || f.permission || (f.status === "paused" && WAIT_PAUSES.has(f.reason ?? ""))));
+  const goingOn = moving || merging || (pending.length > 0 && !moved);
   if (halt) return goingOn || person ? { kind: "wait", why: "run" } : { kind: "off", ...halt };
   // a task without a reason, never tried; a dependency counts once it is in the head (owner's decision 9), or its result
   // is in the working folder (it worked there, or was applied) — the head starts from that folder. ponytail: a folder
@@ -595,11 +614,14 @@ export function overlapsOf(board: Pick<Board, "tasks">, facts: readonly RunTaskF
     const named = namedPaths(`${t.text}\n${t.criteria.join("\n")}`);
     const run = s.current ? facts.find((f) => f.runId === s.current) : undefined;
     let side: Side | null = null;
-    if (run && !run.newer && !OVER.has(run.status)) {
-      const head = heads.find((h) => h.workspaceId === t.workspaceId && h.project === t.project);
-      // a result in the head is not at work any more: what it changed is the base of the others
-      if (!(s.done && mergeOfTask(head, t.id, run.runId)?.status === "completed")) side = { t, files: [...(run.files ?? []), ...(run.named ?? []), ...named], going: true };
-    } else if (!run && s.column === "queue") side = { t, files: named, going: false };
+    const head = heads.find((h) => h.workspaceId === t.workspaceId && h.project === t.project);
+    // at work: a run not over; or «Done» in a copy from the head, still to be merged into it (its merge not completed
+    // nor skipped). Any other «Done» — in the folder, applied, in an older head, without a head — is the others' base.
+    const merge = run && mergeOfTask(head, t.id, run.runId);
+    const going = !!run && !run.newer && !OVER.has(run.status) && (run.status !== "completed"
+      || (!!head && isCopy(run.workMode) && run.board === head.ref && !run.taken?.applied && (!merge || ["preparing", "running", "paused"].includes(merge.status))));
+    if (going) side = { t, files: [...(run!.files ?? []), ...(run!.named ?? []), ...named], going: true };
+    else if (!run && s.column === "queue") side = { t, files: named, going: false };
     if (!side?.files.length) continue;
     const k = `${t.workspaceId}\0${t.project}`;
     places.set(k, [...(places.get(k) ?? []), side]);

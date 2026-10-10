@@ -72,9 +72,9 @@ function rehearsalProviders() {
     "import { clamp } from \"./clamp.mjs\";\nimport { slugify } from \"./slugify.mjs\";\nexport const label = (text, max) => slugify(text).slice(0, clamp(max, 1, 64));\n"
   ];
   TASKS.forEach((t, i) => {
-    codex.push({ report: { stages: [{ title: t.title, task: t.text, conditions: [change(`${t.file} exists`, ["R1"]), change("tests pass", ["R2"])] }], dropped: [], dropRequirements: [], question: null } },
+    codex.push({ report: { stages: [{ title: t.title, task: t.text, conditions: [change(`${t.file} exists`, ["R1"]), change("tests pass", t.criteria.slice(1).map((_, k) => `R${k + 2}`))] }], dropped: [], dropRequirements: [], question: null } },
       { report: { conditions: [{ id: "C1", status: "met", paths: [t.file], note: "done" }, { id: "C2", status: "met", paths: [t.file], note: "done" }], findings: [], request: "none", question: null } },
-      { report: { conditions: [], findings: [], request: "none", question: null, requirements: [{ id: "R1", status: "met", note: "done" }, { id: "R2", status: "met", note: "done" }] } });
+      { report: { conditions: [], findings: [], request: "none", question: null, requirements: t.criteria.map((_, k) => ({ id: `R${k + 1}`, status: "met", note: "done" })) } });
     claude.push({ report: { summary: t.title, done: true }, writes: [[t.file, bodies[i]]] });
   });
   const st = path.join(dir, "mock-state");
@@ -183,6 +183,8 @@ try {
   const t3Reasons = new Set(); // what T-3 showed while it waited (never «waits_merge»)
   let committed = null; // the person's commit in the project folder while the tasks work
   let behindSeen = 0;
+  const states = new Map(); // each run's status as last logged
+  let apSeen = "";
   while (!stop) {
     await sleep(2000);
     const v = await app.ev("window.canvasTTY.orchestration.board().then((r) => r.value)");
@@ -198,6 +200,12 @@ try {
       log(`the person committed ${committed.slice(0, 8)} in the project folder`);
     }
     behindSeen = Math.max(behindSeen, v.heads?.[0]?.behind ?? 0);
+    for (const f of v.facts) {
+      const now = `${f.status}/${f.reason ?? "-"}`;
+      if (states.get(f.runId) !== now) { states.set(f.runId, now); log(`${f.taskKey} ${f.runId.slice(0, 8)}: ${now}`); }
+    }
+    const ap = `${v.autopilot[linkId]?.on}/${v.autopilot[linkId]?.waits ?? "-"}`;
+    if (ap !== apSeen) { apSeen = ap; log(`autopilot: ${ap}`); }
     const st = v.autopilot[linkId];
     const runIds = v.facts.map((f) => f.runId);
     for (const id of runIds) if (!seen.has(id)) { seen.add(id); log(`run ${id.slice(0, 8)} of ${v.facts.find((f) => f.runId === id).taskKey} started`); }
@@ -239,7 +247,7 @@ try {
   report.personCommit = committed;
 
   // ---------- «Итог доски отстаёт от вашей ветки» → «Обновить итог от текущего HEAD» (the person's click) ----------
-  const behindLine = await app.waitFor(`${q("[data-board-head-behind]")}?.textContent`, "the line «the result is behind your branch»", 30_000).catch(() => null);
+  const behindLine = await app.waitFor(`${q("[data-board-head-behind]")}?.querySelector("span")?.textContent`, "the line «the result is behind your branch»", 30_000).catch(() => null);
   report.behind = { seenWhileWorking: behindSeen, line: behindLine };
   log(`behind line: ${behindLine}`);
   await shotBoard("c2-03-behind-head").catch(() => {});

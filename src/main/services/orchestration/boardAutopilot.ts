@@ -34,6 +34,7 @@ interface Live {
   workspaceId: string;
   project: string;
   since: number; // when it was turned on: the merges into the head since then count in its minutes (decision 14)
+  merges: Set<string>; // those merge runs, kept: a new head does not take the old one's out of the minutes
   print: string; // the profile's fingerprint when turned on
   grants: OrchestrationProjectProfile["grants"];
   started: string[];
@@ -69,7 +70,8 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     let ms = 0;
     for (const id of l.started) ms += activeMs(await deps.journal(id).catch(() => []), deps.now());
     const merges = (head === undefined ? await deps.head(l.workspaceId, l.project).catch(() => null) : head)?.merges ?? [];
-    for (const m of merges.filter((x) => x.createdAt >= l.since)) ms += activeMs(await deps.journal(m.runId).catch(() => []), deps.now(), () => true);
+    for (const m of merges) if (m.createdAt >= l.since) l.merges.add(m.runId);
+    for (const id of l.merges) ms += activeMs(await deps.journal(id).catch(() => []), deps.now(), () => true);
     return { runs: l.started.length, ms };
   }
 
@@ -149,7 +151,7 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
       const at = await deps.link(linkId);
       if (!at) throw Object.assign(new Error("no such link"), { code: "link_not_found" });
       const profile = await deps.profile(at.project);
-      live.set(linkId, { language, workspaceId: at.workspaceId, project: at.project, since: deps.now(), print: fingerprint(profile), grants: profile.grants, started: [], pending: null, waits: null, busy: false });
+      live.set(linkId, { language, workspaceId: at.workspaceId, project: at.project, since: deps.now(), merges: new Set(), print: fingerprint(profile), grants: profile.grants, started: [], pending: null, waits: null, busy: false });
       stops.delete(linkId);
       // the first step on the next beat; the timer alone never keeps the process up
       timer ??= setInterval(() => { for (const id of live.keys()) void tick(id); }, tickMs);

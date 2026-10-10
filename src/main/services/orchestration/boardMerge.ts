@@ -23,7 +23,7 @@ import type { PrepareStep } from "./prepare.ts";
 import { runShell } from "./shellRun.ts";
 import {
   BOARD_REF, WorkspaceError, advanceBoardRef, applyBoard, boardBranch, boardRefCommit, boardRefs, changedPaths, cloneDependencies, commitMerge, readDependencyRecord,
-  behindBy, createWorkspace, diffPaths, isAncestor, mergeIntoCopy, openBoardRepo, openWorkspace, projectHead, snapshotCopyTree, startBoardRef
+  behindBy, createWorkspace, diffPaths, isAncestor, mergeIntoCopy, onHeadLine, openBoardRepo, openWorkspace, projectBranch, projectHead, snapshotCopyTree, startBoardRef
 } from "./workspace.ts";
 import type { BoardRepo, Workspace } from "./workspace.ts";
 
@@ -302,6 +302,7 @@ export function createBoardMerge(deps: BoardMergeDeps) {
         const commit = source ? await withRepo(input.project, projectHead) ?? refuse("no_project_head", "the project has no commit") : input.commit;
         const already = await withRepo(input.project, (r) => isAncestor(r, commit, h.commit));
         if (already && source) refuse("head_current", "the board's result has the project's HEAD already");
+        if (source && !(await withRepo(input.project, (r) => onHeadLine(r, h.commit, commit)))) refuse("head_other_line", "HEAD is on another line than the board's result started from");
         const runId = randomUUID();
         const g: Goal = {
           v: 3, kind: "merge", createdAt: Date.now(), workspaceId: input.workspaceId, project: input.project,
@@ -360,11 +361,12 @@ export function createBoardMerge(deps: BoardMergeDeps) {
         const h = await head(p.workspaceId, p.project).catch(() => null);
         if (!h) continue;
         // C2 (decision 13): the person's commits after the head started, read from HEAD only
-        const behind = await withRepo(p.project, async (r) => {
+        // another line checked out (a branch that does not go on from the head's start) is not «behind»: never offered
+        const { behind, branch } = await withRepo(p.project, async (r) => {
           const now = await projectHead(r);
-          return now ? behindBy(r, h.commit, now) : null;
-        }).catch(() => null);
-        out.push({ workspaceId: p.workspaceId, project: p.project, ref: h.ref, n: h.n, commit: h.commit, behind,
+          return { behind: now && await onHeadLine(r, h.commit, now) ? await behindBy(r, h.commit, now) : null, branch: await projectBranch(r) };
+        }).catch(() => ({ behind: null, branch: null }));
+        out.push({ workspaceId: p.workspaceId, project: p.project, ref: h.ref, n: h.n, commit: h.commit, behind, branch,
           merges: merges.filter((m) => m.board === h.ref && m.goal.project === p.project).map(({ goal: _g, committed: _c, auto: _a, ...m }) => m) });
       }
       return out;

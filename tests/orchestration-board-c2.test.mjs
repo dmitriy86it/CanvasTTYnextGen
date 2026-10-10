@@ -17,7 +17,7 @@ import { createBoardMerge } from "../src/main/services/orchestration/boardMerge.
 import { createBoardStore } from "../src/main/services/orchestration/boardStore.ts";
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
-import { AUTOPILOT_BUDGET, boardStatuses, goalFor, mergeMark, namedPaths, overlapsOf } from "../src/shared/taskBoard.ts";
+import { AUTOPILOT_BUDGET, autopilotParallelStep, boardStatuses, goalFor, mergeMark, namedPaths, overlapsOf, startBase } from "../src/shared/taskBoard.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GIT = findGit(process.env);
@@ -167,6 +167,13 @@ test("«Обновить итог от текущего HEAD» with a conflict p
   assert.equal(g(src2, "rev-parse", k0.ref).trim(), k0.commit);
   assert.equal((await m2.heads([{ workspaceId: WS, project: src2 }]))[0].behind, 1, "still behind");
   assert.deepEqual(personSide(src2), before2);
+  await m2.skip(up2.runId);
+  // another line checked out (not from the head's start): nothing «behind», nothing to update from
+  g(src2, "checkout", "-q", "--orphan", "other");
+  g(src2, "commit", "-q", "-m", "other line");
+  const [k1] = await m2.heads([{ workspaceId: WS, project: src2 }]);
+  assert.deepEqual([k1.behind, k1.branch], [null, "other"]);
+  await assert.rejects(m2.fromHead({ workspaceId: WS, project: src2, language: "en" }), { code: "head_other_line" });
 });
 
 // ---------------- the shared rules (no Git) ----------------
@@ -194,9 +201,27 @@ test("dependencies through the head (decision 9): «waits_head» until the depen
   const t4 = bt("T-4", { dependsOn: [t1.id] });
   assert.equal(boardStatuses({ tasks: [t1, t4] }, [r1], [head([])]).get(t4.id).reason, "waits_head");
   assert.equal(boardStatuses({ tasks: [t1, t4] }, [r1]).get(t4.id).reason, null, "B: one result in a branch is its base");
+  // a dependency of another project never gets into this head: B's rule for it (its branch is the base)
+  const tB = bt("T-5", { project: "/q", dependsOn: [t1.id] });
+  assert.equal(boardStatuses({ tasks: [t1, tB] }, [r1], [{ ...head([]), project: "/q" }]).get(tB.id).depsWait, null);
+  // a person's start: from the head — unless a dependency's result is in the working folder (it may not be in the head)
+  const t6 = bt("T-6", { dependsOn: [t1.id] });
+  const inFolder = { ...r1, workMode: "project", taken: null };
+  const h1 = head([merge(t1, r1, "completed")]);
+  assert.equal(startBase(t6, { tasks: [t1, t6] }, boardStatuses({ tasks: [t1, t6] }, [r1], [h1]), [r1], [h1]).key, "T-0");
+  assert.equal(startBase(t6, { tasks: [t1, t6] }, boardStatuses({ tasks: [t1, t6] }, [inFolder], [h1]), [inFolder], [h1]), null);
   // a merge of an older run of the dependency says nothing of its current result
   const old = merge(t1, { ...r1, runId: randomUUID() }, "completed");
   assert.equal(boardStatuses({ tasks: [t1, t4] }, [r1], [head([old])]).get(t4.id).reason, "waits_head");
+});
+
+test("no state without a way out (§8): a run the autopilot started, paused for a reason that is not the person's question, turns it off once nothing else goes on; a question waits", () => {
+  const [t1, t2] = [bt("T-1"), bt("T-2")];
+  const head = { workspaceId: WS, project: "/p", ref: "refs/raoden/board/common/1", n: 1, commit: "c".repeat(40), merges: [] };
+  const paused = (reason) => fact({ taskId: t1.id, taskKey: "T-1", status: "paused", reason, completion: null, board: head.ref });
+  const step = (f) => autopilotParallelStep({ tasks: [t1, t2] }, [f], { workspaceId: WS, project: "/p" }, [f.runId], { runs: 1, ms: 0 }, { runs: 1, minutes: 60, parallel: 2 }, head);
+  assert.deepEqual([step(paused("invalid_report")).kind, step(paused("invalid_report")).code], ["off", "run_paused"]);
+  assert.equal(step(paused("awaiting_answer")).kind, "wait");
 });
 
 test("«already in the result» (decision 15): a merge that found the result in the head is marked so; «without checks» only when there were none", () => {
@@ -233,6 +258,15 @@ test("overlap warnings (§4.7): two tasks at work that changed one file; a task 
   const after = overlapsOf(board, [done, r2], boardStatuses(board, [done, r2], [head]), [head]);
   assert.equal(after.get(t1.id), undefined);
   assert.equal(after.get(t4.id), undefined);
+  // «Done» long ago — in the folder, or with no head — is nobody's work in progress: no warning between two such
+  const [d1, d2] = [bt("T-1", { text: "src/auth.ts" }), bt("T-2", { text: "src/auth.ts" })];
+  const old = [fact({ taskId: d1.id, workMode: "project" }), fact({ taskId: d2.id, taken: { branch: "b", commit: "a".repeat(40), applied: false } })];
+  assert.equal(overlapsOf({ tasks: [d1, d2] }, old, boardStatuses({ tasks: [d1, d2] }, old)).size, 0);
+  // «Done» in a copy from the head and not merged yet is still to come into it
+  const pending = fact({ taskId: d2.id, board: "r", taken: { branch: "b", commit: "a".repeat(40), applied: false } });
+  const h0 = { ...head, merges: [] };
+  const going = [fact({ taskId: d1.id, status: "running", completion: null }), pending];
+  assert.deepEqual(overlapsOf({ tasks: [d1, d2] }, going, boardStatuses({ tasks: [d1, d2] }, going, [h0]), [h0]).get(d1.id), [{ key: "T-2", files: ["src/auth.ts"], kind: "now" }]);
 });
 
 test("the autopilot's minutes count the merges into the head since it was turned on (decision 14): their preparation and checks, never their pause for the person", async () => {
@@ -261,6 +295,8 @@ test("the autopilot's minutes count the merges into the head since it was turned
   now = on + 3_000_000;
   const s = (await ap.state()).L;
   assert.equal(s.used.minutes, 15, JSON.stringify(s.used));
+  merges.length = 0; // «Начать новый итог доски»: the old head's merges stay counted
+  assert.equal((await ap.state()).L.used.minutes, 15);
   ap.shutdown();
 });
 
