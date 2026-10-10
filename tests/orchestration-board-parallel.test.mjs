@@ -448,4 +448,14 @@ test("merge runs: a conflict without markers is never committed unnoticed; a res
   assert.deepEqual([s4.status, s4.reason, s4.detail], ["paused", "merge_prepare_changed", "keep.txt"]);
   assert.equal(g(src, "rev-parse", h0.ref).trim(), h1);
   assert.equal(await prep.active(src), false);
+  await prep.skip(r4.runId);
+  // a failure that repeats (unrelated histories: no conflict paths, git refuses): «Пропустить» is the way out
+  const empty = g(src, "hash-object", "-t", "tree", "-w", "/dev/null").trim();
+  const orphan = g(src, "commit-tree", empty, "-m", "unrelated").trim();
+  const r5 = await m.merge({ workspaceId: WS, project: src, task: task("T-5"), taskRunId: randomUUID(), commit: orphan, language: "ru" });
+  const s5 = await settled(m, h0.ref, r5.runId);
+  assert.deepEqual([s5.status, s5.reason], ["failed", "error"]);
+  await m.skip(r5.runId);
+  assert.deepEqual([(await m.mergesInto(h0.ref)).find((x) => x.runId === r5.runId).reason], ["skipped"]);
+  await assert.rejects(m.skip(r5.runId), { code: "merge_not_paused" });
 });

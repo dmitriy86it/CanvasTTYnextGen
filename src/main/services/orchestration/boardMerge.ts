@@ -7,7 +7,7 @@
 //   the head and the copy stay as they were;
 // - the working folder, its index, HEAD and branches are never written (workspace.ts, «the board's merged head»).
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, open, readdir, readFile, rename, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readdir, readFile, realpath, rename, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoardHead, BoardMerge, BoardMergeStatus } from "../../../shared/taskBoard.ts";
@@ -193,7 +193,8 @@ export function createBoardMerge(deps: BoardMergeDeps) {
   // The project's required commands, one by one through the project's check queue (userCheck.ts), on the copy's tree,
   // which must be the tree that will be committed. null: the project has no commands.
   async function runChecks(runId: string, ws: Workspace, project: string, tree: string, attempt: number): Promise<boolean | null> {
-    const commands = await deps.checks(project) ?? [];
+    const commands = await deps.checks(project);
+    if (commands === null) throw new Refusal("merge_no_settings", "the project's settings are not saved");
     if (!commands.length) return null;
     const { shell, env } = await deps.shell(project);
     const registry = shellRegistry(shell, commands);
@@ -235,6 +236,8 @@ export function createBoardMerge(deps: BoardMergeDeps) {
 
   // the checks (one retry when no run of the project is in a turn, at most after retryWaitMs), the commit, the head
   async function finish(runId: string, ws: Workspace, g: Goal, tree: string): Promise<void> {
+    // the settings removed while the merge waited for the person: it waits again, never moves the head unchecked
+    if (await deps.checks(g.project) === null) return status(runId, "paused", "merge_no_settings");
     // the dependencies of the merged code (its lock files are the merged ones): cloned from the project, else prepared
     await cloneDependencies(ws).catch(() => []);
     const failed = await prepare(runId, ws, g.project);
@@ -289,7 +292,10 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     },
     head,
     // Is a merge into a head of this project going on (§3.1: a run in the project folder waits for it)?
-    active: async (project: string) => (await all()).some((m) => m.goal.project === project && (m.status === "preparing" || m.status === "running")),
+    active: async (project: string) => {
+      const real = await realpath(project).catch(() => project);
+      return (await all()).some((m) => m.goal.project === real && (m.status === "preparing" || m.status === "running"));
+    },
     // the head of a place, started from the working folder if it has none (§4.1)
     ensureHead: (workspaceId: string, project: string) => inQueue(Q(workspaceId, project), () => withRepo(project, async (r) =>
       (await boardRefs(r, workspaceId)).at(-1) ?? { n: 1, ...(await startBoardRef(r, workspaceId, 1)) })),
@@ -390,7 +396,9 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     skip: async (runId: string): Promise<void> => {
       const s = await stateOf(runId) ?? refuse("run_not_found", "no such merge run");
       await inQueue(Q(s.goal.workspaceId, s.goal.project), async () => {
-        if ((await stateOf(runId))?.status !== "paused") refuse("merge_not_paused", "the merge does not wait for the person");
+        // a merge that waits for the person, or one that failed or was interrupted (a failure that repeats has no other way out)
+        const now = await stateOf(runId);
+        if (!(now?.status === "paused" || now?.status === "failed" || (now?.status === "stopped" && now.reason !== "skipped"))) refuse("merge_not_paused", "the merge does not wait for the person");
         await status(runId, "stopped", "skipped");
       });
     },

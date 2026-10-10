@@ -484,7 +484,7 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
   // a «Done» task whose merge failed or was interrupted is not in the result and nothing will merge it: the person
   // decides (§4.3); «Пропустить» is the person's decision already
   for (const t of place) {
-    const m = statuses.get(t.id)?.done ? mergeOf(t.id) : undefined;
+    const m = statuses.get(t.id)?.done && !t.archivedAt ? mergeOf(t.id) : undefined;
     if (m && m !== moved && (m.status === "failed" || (m.status === "stopped" && m.reason !== "skipped"))) halt ??= { code: "merge_failed", detail: m.reason, key: t.key };
   }
   const retrying = merges.some((m) => m.retrying);
