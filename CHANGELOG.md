@@ -4,6 +4,20 @@
 
 ## Unreleased
 
+## 1.5.18 — 2026-10-10
+
+Dependencies through the board's result, worktrees in parallel, overlap warnings, a start queue and the result updated from your HEAD.
+
+- A task that depends on others starts once their results are merged into the board's result and checked, and starts from it. Two dependencies no longer wait for you to merge: the card says «waits for T-1 to be in the board's result». A dependency whose result is in your working folder keeps the old rule; a mix of the two waits for you.
+- Worktrees run in parallel like separate copies: each task in its own worktree, started from the board's result and merged into it. A worktree that failed to be created is removed together with its branch.
+- Overlap warnings on task cards: «Overlaps T-2: src/auth.ts» for tasks at work, «May overlap T-1: …» for a task still to start — from the files a run changed (up to its last checkpoint) and the paths its task and plan name. A warning only, nothing is stopped.
+- When every place of the project is taken, «Start» puts the task in a queue: «Starts when a place frees up (2 of 2 running)»; it starts by itself when one frees. «Start now over the limit» (confirmed) and «Remove from the queue».
+- «The board's result is N commits behind your branch» and «Update the result from the current HEAD»: your HEAD is merged into the result in a separate copy with the project's checks; the result moves only after them and only from the value it expected; a conflict waits for you. Your folder, index, HEAD and branches are only read. The autopilot never does it by itself. Another branch checked out is said on the board.
+- The autopilot's minutes now include the merges into the result (their preparation and checks), and a run it started that is paused for a reason other than a question to you turns it off instead of keeping it waiting.
+- «in the board's result already (no new changes)» when there was nothing to merge; «without checks» only when the project has no check commands.
+- board.json does not change. 1.5.17 shows an update from HEAD as a merge of a task «HEAD» and refuses «Apply» after it (your folder stays as it is); it does not merge a worktree's result.
+- Checked on the real Codex 0.160.0 and Claude 2.1.296: T-1 and T-2 at once, T-3 after both from the result with both in it, all «Done — confirmed by checks»; your commit during the work brought «behind by 1 commit», and «Update» merged it with the check passing; 12 model calls, no permission prompt.
+
 ## 1.5.17 — 2026-10-10
 
 Parallel tasks and the board's result: two independent tasks at once, merged by the application with your checks.
