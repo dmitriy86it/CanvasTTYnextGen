@@ -176,6 +176,28 @@ test("«Обновить итог от текущего HEAD» with a conflict p
   await assert.rejects(m2.fromHead({ workspaceId: WS, project: src2, language: "en" }), { code: "head_other_line" });
 });
 
+test("two projects of a workspace: their heads share a name (refs/raoden/board/common/1) but not their merges — one waiting for the person blocks only its own; «Применить» takes only its own project's update from HEAD", OPTS, async () => {
+  const [a, b] = [project(), project()];
+  const m = merger(path.join(TMP, `root-${++n}`), ["test ! -f bad.txt"]);
+  const [ha, hb] = [await m.ensureHead(WS, a), await m.ensureHead(WS, b)];
+  assert.equal(ha.ref, hb.ref, "the same name in two repositories");
+  // A: a merge whose checks fail waits for the person
+  const ra = await m.merge({ workspaceId: WS, project: a, task: task("T-1"), taskRunId: randomUUID(), commit: taskCommit(a, ha.commit, { "bad.txt": "x\n" }, "ta"), language: "en" });
+  assert.equal((await settled(m, ha.ref, ra.runId)).reason, "merge_checks_failed");
+  // B: not «merge_busy» because of A — its own merge and an update from its HEAD go in
+  const rb = await m.merge({ workspaceId: WS, project: b, task: task("T-2"), taskRunId: randomUUID(), commit: taskCommit(b, hb.commit, { "y.txt": "y\n" }, "tb"), language: "en" });
+  assert.equal((await settled(m, hb.ref, rb.runId)).status, "completed");
+  assert.deepEqual((await m.mergesInto(hb.ref, b)).map((x) => x.runId), [rb.runId]);
+  assert.deepEqual((await m.mergesInto(ha.ref, a)).map((x) => x.runId), [ra.runId]);
+  await m.skip(ra.runId);
+  personCommits(a, { "mine.txt": "mine\n" }, "mine");
+  const ua = await m.fromHead({ workspaceId: WS, project: a, language: "en" });
+  assert.equal((await settled(m, ha.ref, ua.runId)).status, "completed");
+  // B's «Применить» brings B's task onto B's folder — not on top of A's HEAD (a commit B does not have)
+  assert.deepEqual(await m.apply(WS, b), { applied: true });
+  assert.equal(fs.readFileSync(path.join(b, "y.txt"), "utf8"), "y\n");
+});
+
 // ---------------- the shared rules (no Git) ----------------
 
 const fact = (over) => ({ runId: randomUUID(), taskId: null, taskKey: null, createdAt: 1, workspaceId: WS, status: "completed", reason: null, newer: false,

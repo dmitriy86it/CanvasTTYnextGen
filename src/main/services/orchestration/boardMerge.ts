@@ -295,7 +295,8 @@ export function createBoardMerge(deps: BoardMergeDeps) {
       // recovery first, outside this queue: it queues its own work there
       void recovered().then(() => inQueue(Q(input.workspaceId, input.project), async () => {
         const h = await head(input.workspaceId, input.project) ?? refuse("no_head", "the board has no merged head");
-        const open = (await all()).find((m) => m.board === h.ref && !["completed", "stopped", "failed"].includes(m.status));
+        // a head's ref is named per repository (refs/raoden/board/<workspace>/<n>): two projects of a workspace may share it
+        const open = (await all()).find((m) => m.board === h.ref && m.goal.project === input.project && !["completed", "stopped", "failed"].includes(m.status));
         if (open) refuse("merge_busy", `${open.task.key} is being merged or waits for you`);
         // the checks of the merged code are the project's saved ones, never guessed (§4.2)
         if (await deps.checks(input.project) === null) refuse("merge_no_settings", "the project's settings are not saved");
@@ -438,11 +439,12 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     apply: (workspaceId: string, project: string) => withRepo(project, async (r) => {
       const h = (await boardRefs(r, workspaceId)).at(-1) ?? refuse("no_head", "the board has no merged head");
       // C2: after an update from HEAD, the changes on top of the HEAD it took in (the newest such merge)
-      const updated = (await all()).find((m) => m.board === h.ref && m.goal.merge.source === "head" && m.status === "completed" && m.reason !== "already");
+      const updated = (await all()).find((m) => m.board === h.ref && m.goal.project === project && m.goal.merge.source === "head" && m.status === "completed" && m.reason !== "already");
       return applyBoard(r, h.commit, updated?.task.commit);
     }),
-    // the merges into a head as their journals say, newest first (no recovery awaited: safe inside other queues)
-    mergesInto: async (ref: string): Promise<BoardMerge[]> => (await all()).filter((m) => m.board === ref),
+    // the merges into a head as their journals say, newest first (no recovery awaited: safe inside other queues);
+    // project: the head's — another project of the workspace may have a head of the same name
+    mergesInto: async (ref: string, project?: string): Promise<BoardMerge[]> => (await all()).filter((m) => m.board === ref && (project === undefined || m.goal.project === project)),
     copyOf: async (runId: string): Promise<string | null> => (await stateOf(runId))?.dir ?? null,
     // C2 (§4.7): the paths changed between two commits of a project (a run's base and its last checkpoint); kept, as
     // commits never change. ponytail: the cache grows with the checkpoints seen in this process (a few per run)
