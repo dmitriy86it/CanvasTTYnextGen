@@ -4,6 +4,18 @@
 
 ## Unreleased
 
+## 1.5.17 — 2026-10-10
+
+Parallel tasks and the board's result: two independent tasks at once, merged by the application with your checks.
+
+- «Run the board» in a separate copy runs independent tasks at once: 2 by default, 1–4 in the budget («N at once»). Each task works in its own copy; your working folder, index, HEAD and branches are never touched. The project folder and worktree modes keep one run at a time. A link may carry several runs; its agent cards show one and a switch on the card goes to the others.
+- The board's result: a merged head of the board (`refs/raoden/board/…`), started from your working folder. Tasks start from it; a task that depends on another starts once that one is in the result.
+- A «Done» task is merged into the result by the application, without a model, in a separate copy, one at a time: `merge --no-ff`, a merge commit the application builds, the project's saved check commands on the merged code, and only then the result moves — and only from the value it expected. A failed check is retried once when no other run of the project is in a turn; meanwhile no new task starts.
+- A conflict, checks that fail twice or a failed preparation pause the merge for you: «Open the folder» (the merge copy), «Done, check» (conflict markers are refused; files changed out of the conflict, or a conflict left as the merge left it, are named and need your «yes»), «Skip». The task's card says «in the board's result», «being merged» or «not merged: why».
+- The board's header: what is in the result and whether its checks passed; «Create a branch from the board's result» (a new name only), «Apply to the working folder» (on your click, checked first), «Start a new board result»; «Merge all» for the «Done» tasks not in it.
+- Merge runs use journal v3, which 1.5.16 shows read only («created by a newer version») and never continues or stops. board.json stays v1: a link's «at once» is an optional key that 1.5.16 keeps, and drops (back to 2) only when it changes that link's budget itself.
+- Checked on the real Codex 0.160.0 and Claude 2.1.296: two tasks at once, both «Done — confirmed by checks», both in the board's result with its check passing on the merged code, 8 model calls, no permission prompt.
+
 ## 1.5.16 — 2026-10-09
 
 Stabilization after stage B: the repository's new home, two flaky checks found and fixed, React hook dependencies, clearer dialogs.
