@@ -872,7 +872,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const { board: b } = await board.read();
     const facts = await taskFacts();
     const statuses = boardStatuses(b, facts);
-    const into = await merges.mergesInto(h.ref);
+    const into = await merges.mergesInto(h.ref, project);
     const todo = b.tasks.map((t) => ({ t, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
       .filter(({ t, run }) => t.workspaceId === workspaceId && t.project === project && statuses.get(t.id)?.done && isCopy(run?.workMode) && run!.board === h.ref
         && mergeOfTask({ merges: into }, t.id, run!.runId)?.status !== "completed")
@@ -885,7 +885,7 @@ export function createRunManager(deps: RunManagerDeps) {
         const id = r.value.runId;
         for (;;) {
           await new Promise((res) => setTimeout(res, 1000));
-          const m = (await merges.mergesInto(h.ref)).find((x) => x.runId === id);
+          const m = (await merges.mergesInto(h.ref, project)).find((x) => x.runId === id);
           if (m?.status === "completed") break;
           if (!m || !["preparing", "running"].includes(m.status)) return;
         }
@@ -945,7 +945,7 @@ export function createRunManager(deps: RunManagerDeps) {
       const h = await merges.head(t!.workspaceId, source).catch(() => null);
       if (!h || h.ref !== goal.base.branch || h.commit !== goal.base.commit || goal.base.key !== "T-0") refuse("invalid_base", "the base is not the board's merged head as it is now");
       if (anyway) return;
-      const into = await merges.mergesInto(h!.ref);
+      const into = await merges.mergesInto(h!.ref, source);
       const statuses = boardStatuses(b, facts);
       const out = t!.dependsOn.map((d) => b.tasks.find((x) => x.id === d)).filter((d): d is BoardTask => !!d)
         .filter((d) => {
