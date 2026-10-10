@@ -444,6 +444,8 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
           {!going && !waits && asking !== "update" && <button type="button" data-board-head-update onClick={() => setAsking("update")}>{t(locale, "boardHeadUpdate")}</button>}
         </div>
       )}
+      {head.otherLine && <div className="board-card__head-line orch-hint orch-hint--warn" data-board-head-other-line>
+        {tr(locale, "boardHeadOtherLine", { branch: head.branch ?? "HEAD" })}</div>}
       {notMerged.length > 0 && !going && !waits && (
         <div className="board-card__head-line" data-board-not-merged>
           <span>{tr(locale, "boardNotMerged", { keys: notMerged.map((x) => x.key).join(", ") })}</span>

@@ -362,11 +362,12 @@ export function createBoardMerge(deps: BoardMergeDeps) {
         if (!h) continue;
         // C2 (decision 13): the person's commits after the head started, read from HEAD only
         // another line checked out (a branch that does not go on from the head's start) is not «behind»: never offered
-        const { behind, branch } = await withRepo(p.project, async (r) => {
+        const { behind, branch, otherLine } = await withRepo(p.project, async (r) => {
           const now = await projectHead(r);
-          return { behind: now && await onHeadLine(r, h.commit, now) ? await behindBy(r, h.commit, now) : null, branch: await projectBranch(r) };
-        }).catch(() => ({ behind: null, branch: null }));
-        out.push({ workspaceId: p.workspaceId, project: p.project, ref: h.ref, n: h.n, commit: h.commit, behind, branch,
+          const on = !!now && await onHeadLine(r, h.commit, now);
+          return { behind: on ? await behindBy(r, h.commit, now!) : null, branch: await projectBranch(r), otherLine: !!now && !on };
+        }).catch(() => ({ behind: null, branch: null, otherLine: false }));
+        out.push({ workspaceId: p.workspaceId, project: p.project, ref: h.ref, n: h.n, commit: h.commit, behind, branch, ...(otherLine ? { otherLine } : {}),
           merges: merges.filter((m) => m.board === h.ref && m.goal.project === p.project).map(({ goal: _g, committed: _c, auto: _a, ...m }) => m) });
       }
       return out;

@@ -352,6 +352,7 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
     branch: mode === "worktree" ? `canvastty/${opts.runId.slice(0, 8)}` : null
   };
   let added: string | null = null; // the worktree's start, once it and its branch exist
+  let adding: string | null = null; // the same, from the moment `worktree add -b` was asked
   try {
     await mkdir(homeOf(ws), { recursive: true, mode: 0o700 });
 
@@ -410,6 +411,7 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
     if (mode === "worktree") {
       await inSourceQueue(info.gitDir, async () => {
         if (await revParse(sourceCtx(ws), `refs/heads/${ws.branch}`) !== null) fail("ref_conflict", `the branch ${ws.branch} already exists`, { ref: `refs/heads/${ws.branch}` });
+        adding = parent!; // from here the branch may be ours, even if the add fails half way
         await run(sourceCtx(ws), ["worktree", "add", "-q", "-b", ws.branch!, "--", ws.repo, parent!], HEAVY);
         added = parent!;
       });
@@ -427,11 +429,15 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
   } catch (error) {
     // C2: a worktree added before the failure goes with its branch — the branch only while it is still at its start
     // (nothing of anyone's on it), so a retry of this run does not meet its own leftovers
-    if (added) {
-      const at = added;
+    if (adding) {
+      const at = adding;
+      const wt = added;
       await inSourceQueue(ws.sourceGitDir, async () => {
-        await run(sourceCtx(ws), ["worktree", "remove", "--force", "--", ws.repo]).catch(() => {});
-        await run(sourceCtx(ws), ["update-ref", "--no-deref", "-d", `refs/heads/${ws.branch}`, at]).catch(() => {});
+        // the branch goes only once no worktree of git's records holds it (removed, or pruned when its folder is gone)
+        const gone = !wt || await run(sourceCtx(ws), ["worktree", "remove", "--force", "--", ws.repo]).then(() => true, () => false);
+        await run(sourceCtx(ws), ["worktree", "prune"]).catch(() => {});
+        const held = (await runText(sourceCtx(ws), ["worktree", "list", "--porcelain"]).catch(() => "")).includes(`branch refs/heads/${ws.branch}\n`);
+        if (gone || !held) await run(sourceCtx(ws), ["update-ref", "--no-deref", "-d", `refs/heads/${ws.branch}`, at]).catch(() => {});
       });
     }
     await rm(dir, { recursive: true, force: true }); // a published baseline ref stays and is reused as exists_same

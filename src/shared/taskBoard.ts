@@ -68,6 +68,7 @@ export interface BoardHead {
   // null: HEAD unknown (no commit, detached at nothing)
   behind?: number | null;
   branch?: string | null; // the branch HEAD is on now (null: detached)
+  otherLine?: boolean; // HEAD does not go on from the head's start (another branch checked out, a history rewritten)
 }
 export type BoardMergeStatus = "preparing" | "running" | "paused" | "completed" | "stopped" | "failed";
 export interface BoardMerge {
@@ -298,6 +299,9 @@ function dependencies(deps: readonly (readonly [BoardTask, TaskStatus])[], runsO
     const out = here.filter(([t, d]) => mergeOfTask(head, t.id, d.current)?.status !== "completed"
       && resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current)) !== "folder").map(([t]) => t.key);
     if (out.length) return { reason: "waits_head", waitsFor: out, cycle: false };
+    // a result in the folder and one in a copy (in the head, or a branch) at once: no base has both — the person's, as in B
+    const where = here.map(([t, d]) => resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current)));
+    if (where.includes("folder") && where.some((w) => w !== "folder")) return { reason: "waits_merge", waitsFor: here.map(([t]) => t.key), cycle: false };
     const others = deps.filter(([t]) => t.project !== head.project);
     return others.length ? dependencies(others, runsOf) : null;
   }

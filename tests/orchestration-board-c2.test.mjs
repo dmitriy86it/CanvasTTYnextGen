@@ -172,7 +172,7 @@ test("«Обновить итог от текущего HEAD» with a conflict p
   g(src2, "checkout", "-q", "--orphan", "other");
   g(src2, "commit", "-q", "-m", "other line");
   const [k1] = await m2.heads([{ workspaceId: WS, project: src2 }]);
-  assert.deepEqual([k1.behind, k1.branch], [null, "other"]);
+  assert.deepEqual([k1.behind, k1.branch, k1.otherLine], [null, "other", true]);
   await assert.rejects(m2.fromHead({ workspaceId: WS, project: src2, language: "en" }), { code: "head_other_line" });
 });
 
@@ -210,6 +210,11 @@ test("dependencies through the head (decision 9): «waits_head» until the depen
   const h1 = head([merge(t1, r1, "completed")]);
   assert.equal(startBase(t6, { tasks: [t1, t6] }, boardStatuses({ tasks: [t1, t6] }, [r1], [h1]), [r1], [h1]).key, "T-0");
   assert.equal(startBase(t6, { tasks: [t1, t6] }, boardStatuses({ tasks: [t1, t6] }, [inFolder], [h1]), [inFolder], [h1]), null);
+  // one dependency in the head, another in the folder: no base has both — the person's, as in B
+  const t7 = bt("T-7");
+  const t8 = bt("T-8", { dependsOn: [t1.id, t7.id] });
+  const r7 = fact({ taskId: t7.id, taskKey: "T-7", workMode: "project" });
+  assert.equal(boardStatuses({ tasks: [t1, t7, t8] }, [r1, r7], [h1]).get(t8.id).reason, "waits_merge");
   // a merge of an older run of the dependency says nothing of its current result
   const old = merge(t1, { ...r1, runId: randomUUID() }, "completed");
   assert.equal(boardStatuses({ tasks: [t1, t4] }, [r1], [head([old])]).get(t4.id).reason, "waits_head");
