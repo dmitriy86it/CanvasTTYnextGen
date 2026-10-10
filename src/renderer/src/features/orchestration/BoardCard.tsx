@@ -4,7 +4,7 @@
 import { useState } from "react";
 import type { LocaleId, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink } from "../../../../shared/orchestration";
-import { AUTOPILOT_BUDGET, baseOf, type AutopilotState, type BoardTask, type TaskColumn } from "../../../../shared/taskBoard";
+import { AUTOPILOT_BUDGET, baseOf, mergeMark, parallelOf, type AutopilotBudget, type AutopilotState, type BoardHead, type BoardTask, type RunTaskFacts, type TaskColumn, type TaskStatus } from "../../../../shared/taskBoard";
 import { t } from "../../lib/i18n";
 import { Dialog } from "./OrchestrationDialogs";
 import { ACTIVE_STATUSES } from "./runModel";
@@ -53,10 +53,11 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
   const keysOf = (ids: string[]) => ids.map(keyOf).join(", ");
   const shown = tasks.filter((x) => (showArchive ? x.archivedAt : !x.archivedAt));
   const leadOf = (l: OrchestrationAgentLink) => orch.canvas.agents.find((a) => a.agentId === l.fromAgentId);
-  const busy = (l: OrchestrationAgentLink) => {
-    const v = l.runIds.length ? orch.runs[l.runIds.at(-1)!]?.view : undefined;
-    return !!v && (ACTIVE_STATUSES.includes(v.status) || !!v.newer);
-  };
+  // C1: a link whose runs go on in separate copies is free for another task (main checks the slot and the mode)
+  const busy = (l: OrchestrationAgentLink) => l.runIds.slice(-4).some((id) => {
+    const v = orch.runs[id]?.view;
+    return !!v && ((ACTIVE_STATUSES.includes(v.status) && v.workMode !== "copy") || !!v.newer);
+  });
   const say = (taskId: string | null, text: string) => {
     setMessage({ taskId, text });
     window.setTimeout(() => setMessage((m) => (m?.text === text ? null : m)), 8000);
@@ -71,6 +72,12 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
     ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria, ...(startAnyway ? { anyway: true } : {}), ...(base ? { base } : {}) });
   };
   const projects = [...new Set([...orch.canvas.agents.map((a) => a.project), ...(props.defaultProject ? [props.defaultProject] : [])])];
+  const language = locale === "ru" ? "ru" : "en";
+  // C1: the board's merged head of each project of this workspace
+  const heads = (view?.heads ?? []).filter((h) => h.workspaceId === workspaceId);
+  const headOf = (task: BoardTask) => heads.find((h) => h.project === task.project);
+  const [merging, setMerging] = useState<string | null>(null); // «Объединить» of a task not started from the head, asked
+  const mergeTask = async (task: BoardTask) => { setMerging(null); const f = failure(await board.merge(task.id, language)); if (f) say(task.id, f); };
 
   return (
     <article className={`board-card ${props.selected ? "board-card--selected" : ""}`} data-interactive="true" data-board={workspaceId}
@@ -90,6 +97,9 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
         <AutopilotRow key={l.linkId} locale={locale} state={view.autopilot?.[l.linkId] ?? null} project={leadOf(l)?.project ?? ""} many={orch.canvas.links.length > 1}
           onSet={async (on) => { const r = await board.autopilot(l.linkId, on, locale === "ru" ? "ru" : "en"); const f = failure(r); if (f) say(null, f); }}
           onBudget={async (b) => { const r = await board.budget(l.linkId, b); const f = failure(r); if (f) say(null, f); }} />
+      ))}
+      {view && !readOnly && heads.map((h) => (
+        <HeadRow key={h.ref} locale={locale} head={h} tasks={tasks} statuses={board.statuses} facts={view.facts} board={board} workspaceId={workspaceId} say={(text) => say(null, text)} failure={failure} />
       ))}
       {board.failed && !view && <p className="board-card__message" role="alert">{t(locale, "boardLoadFailed")} ({board.failed})</p>}
       {message && !message.taskId && <p className="board-card__message" role="alert">{message.text}</p>}
@@ -125,6 +135,12 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                   const open = task.dependsOn.filter((d) => !board.statuses.get(d)?.done);
                   const after = open.length && st.reason !== "waits_task" ? tr(locale, "boardAfter", { keys: keysOf(open) }) : null;
                   const archived = !!task.archivedAt;
+                  // C1 (§4.4): «Done · in the board's result / merging / not merged: why», from the merge journals
+                  const head = headOf(task);
+                  const mark = st.done ? mergeMark(task.id, head) : null;
+                  const markText = mark && (mark.kind === "in_board" ? t(locale, mark.checks ? "boardMark_in_board" : "boardMark_in_board_nochecks")
+                    : mark.kind === "merging" ? t(locale, "boardMark_merging") : tr(locale, "boardMark_not_merged", { reason: tr(locale, `boardMergeReason_${mark.reason}`) || mark.reason }));
+                  const canMerge = !!st.done && fact?.workMode === "copy" && (!mark || (mark.kind === "not_merged" && !mark.waits));
                   return (
                     <li key={task.id} className={`board-task board-task--${st.column}${st.done ? ` board-task--done-${st.done}` : ""}`}
                       data-board-task={task.key} data-board-task-column={st.column} data-board-done={st.done ?? undefined} data-board-reason={st.reason ?? undefined}>
@@ -140,6 +156,14 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                       {asks > ASKS_HINT_OVER && <div className="board-task__line board-task__hint" data-board-asks-hint>{t(locale, "boardAsksHint")}</div>}
                       {st.depsNote && <div className="board-task__line board-task__hint" data-board-deps-note={st.depsNote}>{t(locale, `boardDepsNote_${st.depsNote}`)}</div>}
                       {after && <div className="board-task__line" data-board-after title={after}>{after}</div>}
+                      {markText && <div className="board-task__line" data-board-merge-mark={mark!.kind} title={markText}>{markText}</div>}
+                      {merging === task.id && (
+                        <div className="board-task__confirm" role="alertdialog" aria-label={t(locale, "boardMerge")} data-board-merge-confirm>
+                          <p>{tr(locale, "boardMergeNotFromHead", { key: task.key })}</p>
+                          <button type="button" className="orch-primary" data-board-merge-yes onClick={() => void mergeTask(task)}>{t(locale, "boardMerge")}</button>
+                          <button type="button" onClick={() => setMerging(null)}>{t(locale, "orchCancel")}</button>
+                        </div>
+                      )}
                       {run && <div className="board-task__line" data-board-executor title={cost ?? undefined}>{tr(locale, "boardExecutor", { who: "Claude" })}{cost ? ` · ${cost}` : ""}</div>}
                       {message?.taskId === task.id && <div className="board-task__message" role="alert">{message.text}</div>}
                       {accepting === task.id && (
@@ -176,6 +200,8 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                                 ? <button type="button" className="orch-primary" data-board-open data-board-answer onClick={() => ui.openRunById(runId)}>{t(locale, "boardAnswer")}</button>
                                 : runId && <button type="button" data-board-open onClick={() => ui.openRunById(runId)}>{t(locale, "orchOpenRun")}</button>}
                               {st.reason === "no_checks" && <button type="button" className="orch-primary" data-board-accept onClick={() => setAccepting(task.id)}>{t(locale, "boardAccept")}</button>}
+                              {canMerge && merging !== task.id && <button type="button" data-board-merge
+                                onClick={() => (head && fact?.board === head.ref ? void mergeTask(task) : setMerging(task.id))}>{t(locale, "boardMerge")}</button>}
                               {(st.column === "queue" || st.column === "done") && <button type="button" data-board-edit onClick={() => setForm({ task })}>{t(locale, "boardEdit")}</button>}
                               {(st.column === "queue" || st.column === "done") && <button type="button" data-board-archive onClick={() => void board.archive(task.id, true)}>{t(locale, "boardArchive")}</button>}
                             </>
@@ -280,15 +306,16 @@ function TaskForm({ locale, task, tasks, projects, dependents, onClose, onSave, 
 // B4: «Run the board» on a link (stage-b-board.md §5): on — what it waits for and how much of the budget is used; off —
 // why it stopped last. Turning it on says what it does; the budget is the link's, kept in board.json.
 function AutopilotRow({ locale, state, project, many, onSet, onBudget }: {
-  locale: LocaleId; state: AutopilotState | null; project: string; many: boolean; onSet(on: boolean): Promise<void>; onBudget(b: { runs: number; minutes: number }): Promise<void>;
+  locale: LocaleId; state: AutopilotState | null; project: string; many: boolean; onSet(on: boolean): Promise<void>; onBudget(b: AutopilotBudget): Promise<void>;
 }): React.JSX.Element {
   const budget = state?.budget ?? AUTOPILOT_BUDGET;
   const [asking, setAsking] = useState(false);
   const [runs, setRuns] = useState(String(budget.runs));
   const [minutes, setMinutes] = useState(String(budget.minutes));
+  const [parallel, setParallel] = useState(String(parallelOf(budget)));
   const name = project.split("/").filter(Boolean).at(-1) ?? project;
-  const valid = /^\d+$/.test(runs) && +runs >= 1 && +runs <= 100 && /^\d+$/.test(minutes) && +minutes >= 1 && +minutes <= 1440;
-  const changed = valid && (+runs !== budget.runs || +minutes !== budget.minutes);
+  const valid = /^\d+$/.test(runs) && +runs >= 1 && +runs <= 100 && /^\d+$/.test(minutes) && +minutes >= 1 && +minutes <= 1440 && /^[1-4]$/.test(parallel);
+  const changed = valid && (+runs !== budget.runs || +minutes !== budget.minutes || +parallel !== parallelOf(budget));
   return (
     <div className="board-card__autopilot" data-board-autopilot={state?.on ? "on" : "off"}>
       {many && <span className="board-card__autopilot-link">{tr(locale, "boardApLink", { project: name })}</span>}
@@ -296,6 +323,7 @@ function AutopilotRow({ locale, state, project, many, onSet, onBudget }: {
         <>
           <strong data-board-autopilot-on>{t(locale, "boardApOn")}</strong>
           {state.waits && <span data-board-autopilot-waits={state.waits}>{tr(locale, `boardApWaits_${state.waits}`)}</span>}
+          <span data-board-autopilot-parallel>{tr(locale, "boardApOnParallel", { n: parallelOf(budget) })}</span>
           <span data-board-autopilot-used>{tr(locale, "boardApUsed", { runs: state.used.runs, maxRuns: budget.runs, minutes: state.used.minutes, maxMinutes: budget.minutes })}</span>
           <button type="button" data-board-autopilot-off onClick={() => void onSet(false)}>{t(locale, "boardApOff")}</button>
         </>
@@ -304,14 +332,97 @@ function AutopilotRow({ locale, state, project, many, onSet, onBudget }: {
           <span>{t(locale, "boardApToggleWhy")}</span>
           <label>{t(locale, "boardApBudget")}: <input type="number" min={1} max={100} value={runs} onChange={(e) => setRuns(e.target.value)} data-board-budget-runs /> {t(locale, "boardApBudgetRuns")}</label>
           <label><input type="number" min={1} max={1440} value={minutes} onChange={(e) => setMinutes(e.target.value)} data-board-budget-minutes /> {t(locale, "boardApBudgetMinutes")}</label>
-          <button type="button" data-board-autopilot-yes disabled={!valid} onClick={async () => { if (changed) await onBudget({ runs: +runs, minutes: +minutes }); setAsking(false); await onSet(true); }}>{t(locale, "boardApToggle")}</button>
+          <label title={t(locale, "boardApParallelHint")}><input type="number" min={1} max={4} value={parallel} onChange={(e) => setParallel(e.target.value)} data-board-budget-parallel /> {t(locale, "boardApParallelHint")}</label>
+          <button type="button" data-board-autopilot-yes disabled={!valid} onClick={async () => { if (changed) await onBudget({ runs: +runs, minutes: +minutes, parallel: +parallel }); setAsking(false); await onSet(true); }}>{t(locale, "boardApToggle")}</button>
           <button type="button" onClick={() => setAsking(false)}>{t(locale, "cancel")}</button>
         </span>
       ) : (
         <>
-          <button type="button" data-board-autopilot-start onClick={() => { setRuns(String(budget.runs)); setMinutes(String(budget.minutes)); setAsking(true); }}>{t(locale, "boardApToggle")}</button>
+          <button type="button" data-board-autopilot-start onClick={() => { setRuns(String(budget.runs)); setMinutes(String(budget.minutes)); setParallel(String(parallelOf(budget))); setAsking(true); }}>{t(locale, "boardApToggle")}</button>
           {state?.stop && <span className="board-card__autopilot-stop" role="status" data-board-autopilot-stop={state.stop.code}>{tr(locale, "boardApLast", { reason: stopText(locale, state.stop) })}</span>}
         </>
+      )}
+    </div>
+  );
+}
+
+// C1 (stage-c-parallel.md §4.1, §4.3, §6.1): the board's merged head of a project — what is in it and whether its checks
+// passed; the tasks «Done» from it and not in it; a merge that waits for the person, with its copy and its choices; and
+// the person's own actions on it. Nothing here is automatic.
+function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say, failure }: {
+  locale: LocaleId; head: BoardHead; tasks: BoardTask[]; statuses: ReadonlyMap<string, TaskStatus>; facts: readonly RunTaskFacts[]; board: Board;
+  workspaceId: string; say(text: string): void; failure(r: { ok: boolean; code?: string; message?: string }): string | null;
+}): React.JSX.Element {
+  const [asking, setAsking] = useState<null | "branch" | "apply" | "new">(null);
+  const [answer, setAnswer] = useState<{ runId: string; kind: "unresolved" | "confirm"; files: string[] } | null>(null);
+  const language = locale === "ru" ? "ru" : "en";
+  const done = head.merges.filter((m) => m.status === "completed");
+  const keys = [...new Set([...done].reverse().map((m) => m.task.key))];
+  const checks = done.length ? (done.some((m) => m.completion === "no_checks") ? t(locale, "boardHeadNoChecks") : t(locale, "boardHeadChecked")) : null;
+  const notMerged = tasks.filter((x) => {
+    const st = statuses.get(x.id);
+    const f = facts.find((y) => y.runId === st?.current);
+    return x.project === head.project && st?.done && f?.workMode === "copy" && f.board === head.ref && !done.some((m) => m.task.id === x.id);
+  });
+  const going = head.merges.find((m) => m.status === "preparing" || m.status === "running");
+  const waits = head.merges.find((m) => m.status === "paused");
+  const act = async (action: "branch" | "apply" | "new") => {
+    setAsking(null);
+    const r = await board.head(action, workspaceId, head.project);
+    const f = failure(r);
+    if (f || !r.ok) return say(f ?? "");
+    const v = r.value as { name?: string; applied?: boolean; files?: string[]; n?: number };
+    say(action === "branch" ? tr(locale, "boardHeadBranchDone", { name: v.name ?? "" }) : action === "new" ? tr(locale, "boardHeadNewDone", { n: v.n ?? 0 })
+      : v.applied ? t(locale, "boardHeadApplied") : tr(locale, "boardHeadApplyConflict", { files: (v.files ?? []).join(", ") }));
+  };
+  const check = async (runId: string, confirm: boolean) => {
+    const r = await board.resolve(runId, confirm);
+    const f = failure(r);
+    if (f || !r.ok) { setAnswer(null); return say(f ?? ""); }
+    setAnswer(r.value.result === "checking" ? null : { runId, kind: r.value.result, files: r.value.files });
+  };
+  return (
+    <div className="board-card__head" data-board-head={head.ref}>
+      <div className="board-card__head-line">
+        <strong data-board-head-tasks>{keys.length ? tr(locale, "boardHeadTasks", { keys: keys.join(", ") }) : t(locale, "boardHeadEmpty")}</strong>
+        {checks && <span data-board-head-checks={done.some((m) => m.completion === "no_checks") ? "none" : "passed"}>{` · ${checks}`}</span>}
+        {going && <span data-board-head-merging>{` · ${tr(locale, "boardHeadMerging", { key: going.task.key })}`}</span>}
+        <span className="board-card__header-actions">
+          {keys.length > 0 && <button type="button" data-board-head-branch onClick={() => setAsking("branch")}>{t(locale, "boardHeadBranch")}</button>}
+          {keys.length > 0 && <button type="button" data-board-head-apply onClick={() => setAsking("apply")}>{t(locale, "boardHeadApply")}</button>}
+          <button type="button" data-board-head-new onClick={() => setAsking("new")}>{t(locale, "boardHeadNew")}</button>
+        </span>
+      </div>
+      {asking && (
+        <div className="board-task__confirm" role="alertdialog" data-board-head-confirm={asking}>
+          <p>{t(locale, asking === "branch" ? "boardHeadBranchWhy" : asking === "apply" ? "boardHeadApplyWhy" : "boardHeadNewWhy")}</p>
+          <button type="button" className="orch-primary" data-board-head-yes onClick={() => void act(asking)}>
+            {t(locale, asking === "branch" ? "boardHeadBranch" : asking === "apply" ? "boardHeadApply" : "boardHeadNew")}</button>
+          <button type="button" onClick={() => setAsking(null)}>{t(locale, "orchCancel")}</button>
+        </div>
+      )}
+      {notMerged.length > 0 && !going && !waits && (
+        <div className="board-card__head-line" data-board-not-merged>
+          <span>{tr(locale, "boardNotMerged", { keys: notMerged.map((x) => x.key).join(", ") })}</span>
+          <button type="button" data-board-merge-all onClick={async () => { const f = failure(await board.mergeAll(workspaceId, head.project, language)); if (f) say(f); }}>{t(locale, "boardMergeAll")}</button>
+        </div>
+      )}
+      {waits && (
+        <div className="board-card__merge" role="alert" data-board-merge-waits={waits.reason ?? ""}>
+          <strong>{tr(locale, "boardMergeWaits", { key: waits.task.key, why: tr(locale, `boardMergeReason_${waits.reason}`) || String(waits.reason) })}</strong>
+          {waits.conflicts.length > 0 && <p data-board-merge-conflicts>{tr(locale, "boardMergeConflictFiles", { files: waits.conflicts.join(", ") })}</p>}
+          {waits.reason === "merge_checks_failed" && <p>{t(locale, "boardMergeChecksFailed")}</p>}
+          <p className="orch-hint">{t(locale, "boardMergeHow")}</p>
+          {answer?.runId === waits.runId && <p className="orch-hint orch-hint--warn" data-board-merge-answer={answer.kind}>
+            {tr(locale, answer.kind === "unresolved" ? "boardMergeUnresolved" : "boardMergeOutside", { files: answer.files.join(", ") })}</p>}
+          <div className="board-task__actions">
+            <button type="button" data-board-merge-open onClick={async () => { const f = failure(await board.openMerge(waits.runId)); if (f) say(f); }}>{t(locale, "boardMergeOpen")}</button>
+            {answer?.runId === waits.runId && answer.kind === "confirm"
+              ? <button type="button" className="orch-primary" data-board-merge-outside-yes onClick={() => void check(waits.runId, true)}>{t(locale, "boardMergeOutsideYes")}</button>
+              : <button type="button" className="orch-primary" data-board-merge-check onClick={() => void check(waits.runId, false)}>{t(locale, "boardMergeCheck")}</button>}
+            <button type="button" data-board-merge-skip onClick={async () => { setAnswer(null); const f = failure(await board.skip(waits.runId)); if (f) say(f); }}>{t(locale, "boardMergeSkip")}</button>
+          </div>
+        </div>
       )}
     </div>
   );

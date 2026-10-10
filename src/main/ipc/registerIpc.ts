@@ -107,7 +107,7 @@ export function registerIpc({
       listener(event, ...args);
     });
   };
-  registerOrchestrationIpc(handleMain, orchestration);
+  registerOrchestrationIpc(handleMain, orchestration, (path) => shell.openPath(path));
   const pluginBrowserOpenBroker = new PluginBrowserOpenBroker(getMainWindow);
   const requestPluginBrowserOpen = async (pluginId: string, value: unknown): Promise<void> => {
     plugins.assertPermission(pluginId, "browser:open");

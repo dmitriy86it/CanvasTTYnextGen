@@ -14,7 +14,7 @@ import { createBoardAutopilot } from "../src/main/services/orchestration/boardAu
 import { createRunManager, testNativeRuntime } from "../src/main/services/orchestration/manager.ts";
 import { createProfileStore, suggestProfile } from "../src/main/services/orchestration/profile.ts";
 import { parseCreate } from "../src/main/ipc/orchestrationIpc.ts";
-import { AUTOPILOT_BUDGET, activeMs, autopilotStep, boardStatuses, goalFor } from "../src/shared/taskBoard.ts";
+import { AUTOPILOT_BUDGET, activeMs, autopilotStep, boardStatuses, goalFor, mergeMark } from "../src/shared/taskBoard.ts";
 import { boardNotes, DEFAULT_NOTIFY_PREFS } from "../src/renderer/src/features/orchestration/notify.ts";
 import { stopText } from "../src/renderer/src/features/orchestration/boardModel.ts";
 
@@ -162,8 +162,9 @@ test("the goal of a task: the profile as it is, autopilot mode, the dependency's
 
 function standIn({ tasks, profile = { access: { claude: "workspace", codex: "workspace" }, workMode: "copy", checks: ["true"], finish: { commit: false, push: false, qa: false }, grants: [] } }) {
   const facts = [];
-  const calls = { readiness: 0, start: [], take: [] };
-  const state = { tasks, profile, ready: { ready: true, items: [] } };
+  const calls = { readiness: 0, start: [], take: [], merge: [], heads: 0 };
+  // C1: the board's merged head of the place; a merge here completes at once and moves it
+  const state = { tasks, profile, ready: { ready: true, items: [] }, head: { workspaceId: WS, project: "/p", ref: `refs/raoden/board/${WS}/1`, n: 1, commit: C("a"), merges: [] } };
   const deps = {
     view: async () => ({ board: { v: 1, tasks: state.tasks, counters: {} }, facts: [...facts] }),
     link: async () => ({ workspaceId: WS, project: "/p" }),
@@ -173,7 +174,7 @@ function standIn({ tasks, profile = { access: { claude: "workspace", codex: "wor
     readiness: async () => { calls.readiness++; return { ok: true, value: state.ready }; },
     start: async ({ requestId, goal }) => {
       calls.start.push(goal);
-      facts.push(run({ runId: requestId, taskId: goal.task.id, taskKey: goal.task.key }));
+      facts.push(run({ runId: requestId, taskId: goal.task.id, taskKey: goal.task.key, board: goal.base?.branch ?? null, workMode: goal.workMode }));
       return { ok: true, value: { runId: requestId, created: true } };
     },
     take: async (runId) => {
@@ -181,6 +182,16 @@ function standIn({ tasks, profile = { access: { claude: "workspace", codex: "wor
       const f = facts.find((x) => x.runId === runId);
       f.taken = { branch: `raoden/${f.taskKey}`, commit: C(String(calls.take.length)), applied: false };
       return { ok: true, value: { result: "created" } };
+    },
+    head: async () => state.head,
+    ensureHead: async () => { calls.heads++; },
+    merge: async (input) => {
+      calls.merge.push(input.task.key);
+      const to = C(String.fromCharCode(97 + calls.merge.length));
+      const m = { runId: randomUUID(), board: state.head.ref, base: state.head.commit, task: { ...input.task, runId: input.taskRunId, commit: input.commit },
+        status: "completed", reason: null, detail: null, completion: "confirmed", conflicts: [], outside: [], interference: false, dir: null, createdAt: ++n };
+      state.head = { ...state.head, commit: to, merges: [m, ...state.head.merges] };
+      return { ok: true, value: { runId: m.runId } };
     },
     newId: () => randomUUID(),
     now: () => Date.now()
@@ -190,35 +201,35 @@ function standIn({ tasks, profile = { access: { claude: "workspace", codex: "wor
 }
 const LINK = randomUUID();
 
-test("controller: readiness before each start; a chain goes on from each branch; all «Done» — off with the reason", async () => {
+test("controller: readiness before each start; a chain goes on from the board's head after each merge (C, decision 9); all «Done» — off", async () => {
   const a = task(), b = task({ dependsOn: [a.id] }), c = task({ dependsOn: [b.id] });
   const s = standIn({ tasks: [a, b, c] });
   const ap = createBoardAutopilot(s.deps, async () => AUTOPILOT_BUDGET, 3_600_000);
+  const head = (commit) => ({ branch: `refs/raoden/board/${WS}/1`, commit, key: "T-0" });
   await ap.set(LINK, true, "ru");
   await ap.tick(LINK);
-  assert.deepEqual([s.calls.readiness, s.calls.start.map((g) => g.task.key)], [1, [a.key]]);
+  assert.deepEqual([s.calls.readiness, s.calls.start.map((g) => [g.task.key, g.base])], [1, [[a.key, head(C("a"))]]]);
   await ap.tick(LINK);
-  assert.equal(s.calls.start.length, 1, "A is still running: nothing else starts");
+  assert.equal(s.calls.start.length, 1, "A is still running and B waits for it: nothing else starts");
   s.finish(a.key);
   await ap.tick(LINK); // take
-  await ap.tick(LINK); // start B
-  assert.deepEqual([s.calls.readiness, s.calls.start.map((g) => [g.task.key, g.base?.key, g.base?.branch])], [2, [[a.key, undefined, undefined], [b.key, a.key, `raoden/${a.key}`]]]);
+  await ap.tick(LINK); // merge A into the head
+  await ap.tick(LINK); // start B from the head that holds A
+  assert.deepEqual([s.calls.take.length, s.calls.merge, s.calls.start.map((g) => [g.task.key, g.base.commit])], [1, [a.key], [[a.key, C("a")], [b.key, C("b")]]]);
   s.finish(b.key);
-  await ap.tick(LINK);
-  await ap.tick(LINK);
-  assert.deepEqual([s.calls.readiness, s.calls.start.at(-1).base], [3, { branch: `raoden/${b.key}`, commit: C("2"), key: b.key }]);
+  for (let i = 0; i < 3; i++) await ap.tick(LINK);
+  assert.deepEqual([s.calls.readiness, s.calls.start.at(-1).base], [3, head(C("c"))]);
   s.finish(c.key);
-  await ap.tick(LINK);
-  await ap.tick(LINK);
+  for (let i = 0; i < 3; i++) await ap.tick(LINK);
   const st = (await ap.state())[LINK];
-  assert.deepEqual([st.on, st.stop.code, st.used.runs, s.calls.take.length], [false, "all_done", 0, 3]);
+  assert.deepEqual([st.on, st.stop.code, st.used.runs, s.calls.take.length, s.calls.merge], [false, "all_done", 0, 3, [a.key, b.key, c.key]]);
   ap.shutdown();
 });
 
 test("controller: a readiness blocker or a «confirm» item turns it off before the start; a run that waits for the person is never answered", async () => {
   const a = task(), b = task();
   const s = standIn({ tasks: [a, b] });
-  const ap = createBoardAutopilot(s.deps, async () => AUTOPILOT_BUDGET, 3_600_000);
+  const ap = createBoardAutopilot(s.deps, async () => ({ ...AUTOPILOT_BUDGET, parallel: 1 }), 3_600_000);
   s.state.ready = { ready: true, items: [{ id: "tests", level: "confirm", detail: "no test file found" }] };
   await ap.set(LINK, true);
   await ap.tick(LINK);
@@ -250,9 +261,8 @@ test("controller: «Done» without checks waits for «Accept the result», then 
   for (let i = 0; i < 3; i++) await ap.tick(LINK);
   assert.deepEqual([(await ap.state())[LINK].waits, s.calls.start.length, s.calls.take.length], ["accept", 1, 0]);
   s.state.tasks = [{ ...a, accepted: { runId: s.facts[0].runId, at: "x" } }, b];
-  await ap.tick(LINK);
-  await ap.tick(LINK);
-  assert.deepEqual([s.calls.take.length, s.calls.start.map((g) => g.task.key)], [1, [a.key, b.key]]);
+  for (let i = 0; i < 3; i++) await ap.tick(LINK); // take, merge, start
+  assert.deepEqual([s.calls.take.length, s.calls.merge, s.calls.start.map((g) => g.task.key)], [1, [a.key], [a.key, b.key]]);
   ap.shutdown();
 });
 
@@ -356,7 +366,7 @@ const goalOf = (m, runId) => {
   return JSON.parse(fs.readFileSync(path.join(m.root, "runs", runId, "texts", created.data.goal.sha256)));
 };
 
-test("a chain A → B → C on the board's autopilot: each «Done», each result a branch, each next copy from the branch before; the working folder untouched", OPTS, async () => {
+test("a chain A → B → C on the board's autopilot (C1, decision 9): each «Done», merged into the board's head with checks, each next copy from the head; the working folder untouched", OPTS, async () => {
   const src = project();
   const m = manager([...turns("a2.txt"), ...turns("b2.txt"), ...turns("c2.txt")]);
   await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: ["true"] });
@@ -367,28 +377,42 @@ test("a chain A → B → C on the board's autopilot: each «Done», each result
   const linkId = await linkOn(m, src);
   const on = await m.boardAutopilot(linkId, true, "en");
   assert.ok(on.ok && on.value.on, JSON.stringify(on));
-  const end = await until(async () => { const s = (await m.board()).value.autopilot[linkId]; return s && !s.on ? s : null; }, "the autopilot to end");
+  const end = await until(async () => { const s = (await m.board()).value.autopilot[linkId]; return s && !s.on ? s : null; }, "the autopilot to end", 200_000);
   assert.equal(end.stop.code, "all_done", JSON.stringify(end));
   const v = (await m.board()).value;
   const st = boardStatuses(v.board, v.facts);
   assert.deepEqual([a, b, c].map((t) => st.get(t.id).done), ["confirmed", "confirmed", "confirmed"]);
   const runOf = (t) => v.facts.find((f) => f.runId === st.get(t.id).current);
   const [ra, rb, rc] = [a, b, c].map(runOf);
-  for (const r of [ra, rb, rc]) assert.ok(r.taken?.branch?.startsWith("raoden/") && /^[0-9a-f]{40}$/.test(r.taken.commit), JSON.stringify(r.taken));
-  // the bases: B from A's branch, C from B's; A from the working folder
-  assert.equal(goalOf(m, ra.runId).base, undefined);
-  assert.deepEqual(goalOf(m, rb.runId).base, { branch: ra.taken.branch, commit: ra.taken.commit, key: a.key });
-  assert.deepEqual(goalOf(m, rc.runId).base, { branch: rb.taken.branch, commit: rb.taken.commit, key: b.key });
-  // C's branch holds all three changes; the commits chain; the working folder, HEAD and main as they were
-  assert.deepEqual(g(src, "ls-tree", "--name-only", rc.taken.branch).trim().split("\n").sort(), ["a.txt", "a2.txt", "b2.txt", "c2.txt"]);
-  g(src, "merge-base", "--is-ancestor", ra.taken.commit, rb.taken.commit);
-  g(src, "merge-base", "--is-ancestor", rb.taken.commit, rc.taken.commit);
-  assert.deepEqual([g(src, "rev-parse", "HEAD").trim(), g(src, "status", "--porcelain").trim(), fs.readdirSync(src).sort()], [head, "", [".git", "a.txt"]]);
-  assert.equal(end.used.runs, 0, "off: nothing counted any more");
-  // «Apply to the working folder» of a run started from a branch would bring its own link of the chain only: refused
-  const applied = (await m.takeResult(rc.runId, { action: "apply" })).value;
-  assert.equal(applied.result, "unavailable");
-  assert.deepEqual(fs.readdirSync(src).sort(), [".git", "a.txt"]);
+  // the head: one per workspace and project, every task merged with its checks
+  const [h] = v.heads;
+  assert.equal(h.ref, `refs/raoden/board/${WS}/1`);
+  assert.deepEqual(h.merges.map((x) => [x.task.key, x.status, x.completion]).reverse(), [[a.key, "completed", "confirmed"], [b.key, "completed", "confirmed"], [c.key, "completed", "confirmed"]]);
+  assert.equal(g(src, "rev-parse", h.ref).trim(), h.commit);
+  assert.deepEqual(g(src, "ls-tree", "--name-only", h.commit).trim().split("\n").sort(), ["a.txt", "a2.txt", "b2.txt", "c2.txt"]);
+  // the bases: every task from the head as it was at its start — B's holds A, C's holds A and B
+  const bases = [ra, rb, rc].map((r) => goalOf(m, r.runId).base);
+  assert.deepEqual(bases.map((x) => [x.branch, x.key]), [[h.ref, "T-0"], [h.ref, "T-0"], [h.ref, "T-0"]]);
+  g(src, "merge-base", "--is-ancestor", ra.taken.commit, bases[1].commit);
+  g(src, "merge-base", "--is-ancestor", rb.taken.commit, bases[2].commit);
+  // the head moved only through merge commits of the application, each on top of the one before
+  assert.equal(g(src, "rev-list", "--count", "--merges", `${bases[0].commit}..${h.commit}`).trim(), "3");
+  // the working folder, its index, HEAD and the branches it had: as they were (the result branches are new names)
+  assert.deepEqual([g(src, "rev-parse", "HEAD").trim(), g(src, "status", "--porcelain").trim(), fs.readdirSync(src).sort(), g(src, "symbolic-ref", "HEAD").trim()],
+    [head, "", [".git", "a.txt"], "refs/heads/main"]);
+  assert.deepEqual(g(src, "for-each-ref", "--format=%(refname)", "refs/heads").trim().split("\n").filter((r) => !r.startsWith("refs/heads/raoden/")), ["refs/heads/main"]);
+  // the merge runs: journal v3, not on a link, owned by the workspace, not in the list of runs
+  const mergeIds = h.merges.map((x) => x.runId);
+  const first = JSON.parse(fs.readFileSync(path.join(m.root, "runs", mergeIds[0], "journal.jsonl"), "utf8").split("\n")[0]);
+  assert.deepEqual([first.v, first.minReaderVersion], [3, 3]);
+  const canvas = (await m.canvas()).value;
+  assert.ok(mergeIds.every((id) => canvas.owners[id] === WS && !canvas.links.some((l) => l.runIds.includes(id))));
+  assert.ok(!(await m.list()).value.some((r) => mergeIds.includes(r.view.runId)));
+  // «Create a branch from the board's result»: a new name at the head, nothing else
+  const br = await m.boardHeadBranch(WS, src);
+  assert.ok(br.ok, JSON.stringify(br));
+  assert.equal(g(src, "rev-parse", `refs/heads/${br.value.name}`).trim(), h.commit);
+  assert.deepEqual([g(src, "rev-parse", "HEAD").trim(), g(src, "status", "--porcelain").trim()], [head, ""]);
   await m.shutdown();
 });
 
@@ -419,7 +443,7 @@ test("main checks a task's start: one run of a task at a time (two links at once
   await m.shutdown();
 });
 
-test("«Completed without checks» holds the chain until «Accept the result»; then the result is taken and the next task starts from it", OPTS, async () => {
+test("«Completed without checks» holds the chain until «Accept the result»; then it is merged «without checks» and the next task starts from the head", OPTS, async () => {
   const src = project();
   // no check command: the lead proposes none (journal v2), the runs complete without checks
   const m = manager([...turns("a2.txt"), ...turns("b2.txt")], { MOCK_CHECKS: "none" });
@@ -439,7 +463,11 @@ test("«Completed without checks» holds the chain until «Accept the result»; 
   const ra = v.facts.find((f) => f.taskKey === a.key);
   const rb = v.facts.find((f) => f.taskKey === b.key);
   assert.ok(ra.taken?.branch, "A's result taken as a branch once accepted");
-  assert.deepEqual(goalOf(m, rb.runId).base, { branch: ra.taken.branch, commit: ra.taken.commit, key: a.key });
+  // the project has no check commands: «Объединено без проверок» — the head moves, never shown as confirmed
+  const [h] = v.heads;
+  assert.deepEqual(h.merges.map((x) => [x.task.key, x.status, x.completion]), [[a.key, "completed", "no_checks"]]);
+  assert.deepEqual(mergeMark(a.id, h), { kind: "in_board", checks: false });
+  assert.deepEqual(goalOf(m, rb.runId).base, { branch: h.ref, commit: h.commit, key: "T-0" });
   await until(async () => (await m.board()).value.autopilot[linkId]?.waits === "accept", "B's wait for «Accept»");
   assert.ok((await m.boardAutopilot(linkId, false, "ru")).ok);
   assert.equal((await m.board()).value.autopilot[linkId], undefined, "turned off by the person: no reason kept");

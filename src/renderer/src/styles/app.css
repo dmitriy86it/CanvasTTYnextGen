@@ -1400,6 +1400,11 @@ button { border: 0; }
 .board-card__autopilot-ask { display: flex; flex-wrap: wrap; align-items: center; gap: .5em; }
 .board-card__autopilot-ask input { width: 4.5em; }
 .board-card__autopilot-stop { color: var(--text); }
+.board-card__head { margin: .4em .9em 0; font-size: .9em; color: var(--text-muted-on-dark); }
+.board-card__head strong { color: var(--text); }
+.board-card__head-line { display: flex; flex-wrap: wrap; align-items: center; gap: .5em; }
+.board-card__merge { margin-top: .4em; padding: .5em .7em; border-radius: 8px; background: rgba(255,255,255,.06); color: var(--text); }
+.board-card__merge p { margin: .3em 0; }
 .board-card button { padding: .4em .8em; border-radius: 8px; color: var(--text-dark); background: var(--secondary); font-weight: 800; cursor: pointer; white-space: nowrap; }
 .board-card button:disabled { opacity: .5; cursor: default; }
 .board-card button.orch-primary { background: var(--primary); }

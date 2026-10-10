@@ -41,16 +41,33 @@ export type ShellCheckResult = CheckResult & { deps: null; executableSha256: str
 // check would fail (real series, attempt 4, R2). The deny list stays; git just does not look there.
 const SANDBOX_ENV = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 
+// C1 (stage-c-parallel.md §2.3): the checks of one project go one at a time — every run's and the merges' — so two of
+// them never fight for a port or the CPU. ponytail: in memory, in this process; a stop while waiting ends the wait
+const projectChecks = new Map<string, Promise<void>>();
+function checkTurn(project: string): { ready: Promise<void>; release(): void } {
+  const ready = projectChecks.get(project) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((r) => { release = r; });
+  const tail = ready.then(() => mine);
+  projectChecks.set(project, tail);
+  void tail.then(() => { if (projectChecks.get(project) === tail) projectChecks.delete(project); });
+  return { ready, release };
+}
+
 export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; stop(): void; result: Promise<ShellCheckResult> } {
   const checkRunId = randomUUID();
   const clock = opts.clock ?? (() => Date.now());
   const startedAt = clock();
   const c = opts.command;
   let stopCause: StopCause | null = null;
-  let requestStop = (cause: StopCause) => { stopCause ??= cause; };
+  let wake = () => {};
+  const woken = new Promise<void>((r) => { wake = r; });
+  let requestStop = (cause: StopCause) => { stopCause ??= cause; wake(); };
   const sha = (v: unknown) => createHash("sha256").update(canonical(v)).digest("hex");
+  const turn = checkTurn(opts.ws.sourcePath);
 
   const result = (async (): Promise<ShellCheckResult> => {
+    await Promise.race([turn.ready, woken]);
     const base = opts.state.workspace?.current ?? null;
     const empty = { ref: null, bytes: 0, dropped: 0, head: "", tail: "" };
     const make = (status: CheckStatus, reason: NotVerifiedReason | null, detail: unknown, extra: Partial<CheckResult> = {}): ShellCheckResult => ({
@@ -139,5 +156,6 @@ export function startShellCheck(opts: ShellCheckOptions): { checkRunId: string; 
     }
     return r;
   })();
+  void result.then(turn.release, turn.release);
   return { checkRunId, stop: () => requestStop("user"), result };
 }

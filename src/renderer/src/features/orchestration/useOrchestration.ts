@@ -111,7 +111,8 @@ export function useOrchestration() {
 
   // One watch per link's latest run. Each watch starts from its own snapshot (a new base); afterwards only newer
   // (seq, tick) states replace what is shown.
-  const latestRunIds = useMemo(() => [...new Set([...canvas.links.map((l) => l.runIds.at(-1)), ...pinned].filter((id): id is string => !!id))], [canvas.links, pinned]);
+  // C1: the last runs of a link (up to the board's parallelism, 4), so a task that goes on next to a newer one is seen
+  const latestRunIds = useMemo(() => [...new Set([...canvas.links.flatMap((l) => l.runIds.slice(-4)), ...pinned].filter((id): id is string => !!id))], [canvas.links, pinned]);
   const runKey = latestRunIds.join(",");
   // biome-ignore lint/correctness/useExhaustiveDependencies: runKey stands for latestRunIds; watchEpoch restarts the watches on retry
   useEffect(() => {
