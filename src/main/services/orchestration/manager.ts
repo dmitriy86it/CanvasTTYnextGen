@@ -267,6 +267,7 @@ export function createRunManager(deps: RunManagerDeps) {
     root: deps.root, gitPath: () => deps.gitPath(), launch: () => deps.launch(),
     own: async (runId, workspaceId) => { await canvas.own(runId, workspaceId); },
     checks: async (project) => ((await profiles.get(project)) ?? await suggestProfile(project)).checks,
+    prepare: async (project) => ((await profiles.get(project)) ?? await suggestProfile(project)).prepare,
     shell: async (project) => {
       if (!deps.native) refuse("provider_unavailable", "no native runtime for the checks");
       const rt = await deps.native!(project, await direnvOf(project));
@@ -920,7 +921,11 @@ export function createRunManager(deps: RunManagerDeps) {
       const into = await merges.mergesInto(h!.ref);
       const statuses = boardStatuses(b, facts);
       const out = t!.dependsOn.map((d) => b.tasks.find((x) => x.id === d)).filter((d): d is BoardTask => !!d)
-        .filter((d) => !statuses.get(d.id)?.done || into.find((m) => m.task.id === d.id)?.status !== "completed").map((d) => d.key);
+        .filter((d) => {
+          const run = facts.find((f) => f.runId === statuses.get(d.id)?.current);
+          const inFolder = !!run && ((run.workMode !== "copy" && run.workMode !== "worktree") || !!run.taken?.applied); // the head starts from the folder
+          return !statuses.get(d.id)?.done || (into.find((m) => m.task.id === d.id)?.status !== "completed" && !inFolder);
+        }).map((d) => d.key);
       if (out.length) refuse("task_not_ready", `${t!.key} waits for ${out.join(", ")} in the board's result: start anyway?`);
       return;
     }

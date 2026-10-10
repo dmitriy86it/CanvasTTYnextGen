@@ -493,12 +493,15 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
     || (f.status === "completed" && statuses.get(f.taskId!)?.reason === "no_checks" && statuses.get(f.taskId!)?.current === f.runId))).length;
   const goingOn = busy > 0 || merging || (pending.length > 0 && !moved);
   if (halt) return goingOn || person ? { kind: "wait", why: "run" } : { kind: "off", ...halt };
-  // a task without a reason, never tried; a dependency counts once it is in the head (owner's decision 9)
+  // a task without a reason, never tried; a dependency counts once it is in the head (owner's decision 9), or its result
+  // is in the working folder (it worked there, or was applied) — the head starts from that folder. ponytail: a folder
+  // result that came after the head started is not in it; «Начать новый итог доски» takes it in
+  const resultIn = (d: string) => resultOf(facts.find((f) => f.runId === statuses.get(d)?.current)) === "folder";
   const next = place.filter((t) => {
     const s = statuses.get(t.id);
     if (!s || t.archivedAt || s.column !== "queue" || s.attempts !== 0 || t.dependsOn.some((d) => statuses.get(d)?.depsNote)) return false;
     if (!t.dependsOn.length) return s.reason === null;
-    return t.dependsOn.every((d) => !board.tasks.some((x) => x.id === d) || (statuses.get(d)?.done && inHead(d)));
+    return t.dependsOn.every((d) => !board.tasks.some((x) => x.id === d) || (statuses.get(d)?.done && (inHead(d) || resultIn(d))));
   }).sort((a, b) => a.order - b.order)[0] ?? null;
   if (next && busy < parallelOf(budget)) {
     if (used.runs >= budget.runs) return goingOn ? { kind: "wait", why: "run" } : { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };

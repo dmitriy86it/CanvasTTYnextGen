@@ -18,8 +18,11 @@ import type { EventType, JournalRecord, RunState, TextRef } from "./journal.ts";
 import { shellRegistry } from "./orchestrationService.ts";
 import type { SupervisorLaunch } from "./types.ts";
 import { startShellCheck } from "./userCheck.ts";
+import { neededSteps, worktreeSteps } from "./prepare.ts";
+import type { PrepareStep } from "./prepare.ts";
+import { runShell } from "./shellRun.ts";
 import {
-  BOARD_REF, WorkspaceError, advanceBoardRef, applyBoard, boardBranch, boardRefCommit, boardRefs, cloneDependencies, commitMerge,
+  BOARD_REF, WorkspaceError, advanceBoardRef, applyBoard, boardBranch, boardRefCommit, boardRefs, cloneDependencies, commitMerge, readDependencyRecord,
   createWorkspace, diffPaths, isAncestor, mergeIntoCopy, openBoardRepo, openWorkspace, snapshotCopyTree, startBoardRef
 } from "./workspace.ts";
 import type { BoardRepo, Workspace } from "./workspace.ts";
@@ -31,6 +34,8 @@ export interface BoardMergeDeps {
   gitPath(): string;
   own(runId: string, workspaceId: string): Promise<void>; // canvas.json owners: the merge run's workspace
   checks(project: string): Promise<string[]>; // the project's required check commands
+  // the project's preparation (its profile): its steps run in the merge copy when needed, as in a task's copy
+  prepare?(project: string): Promise<{ auto: boolean; steps: PrepareStep[] }>;
   shell(project: string): Promise<{ shell: string; env: Record<string, string> }>; // the login shell of the project
   launch(): SupervisorLaunch;
   quiet(project: string): Promise<boolean>; // no run of the project is in a turn now (the retry of failed checks)
@@ -206,8 +211,30 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     return passed;
   }
 
+  // The project's preparation in the merge copy, by the same rule as a task's copy (prepare.ts): the steps whose result
+  // is missing or stale, the folders cloned from the project counting as installed. null: done; else what failed.
+  async function prepare(runId: string, ws: Workspace, project: string): Promise<string | null> {
+    const p = await deps.prepare?.(project);
+    if (!p?.auto || !p.steps.length) return null;
+    const cloned = Object.fromEntries((await readDependencyRecord(ws)).filter((d) => d.result === "cloned" && d.lock && d.sha256).map((d) => [d.lock!, d.sha256!]));
+    const needed = await neededSteps(ws.repo, await worktreeSteps(project, p.steps), cloned);
+    if (!needed.length) return null;
+    const { shell, env } = await deps.shell(project);
+    for (const { step } of needed) {
+      const r = await runShell({ shell, line: step.command, cwd: ws.repo, env, launch: deps.launch(), timeoutMs: 30 * 60_000, maxOutputBytes: 65_536 }).result;
+      const ok = r.exitCode === 0 && r.signal === null && !r.spawnError;
+      await append(runId, "prepare.finished", { command: step.command, exitCode: r.exitCode, ok, output: r.output.bytes ? await putText(runId, r.output.text) : null });
+      if (!ok) return `${step.command}: ${r.spawnError ?? `exit ${r.exitCode ?? r.signal}`}`;
+    }
+    return null;
+  }
+
   // the checks (one retry when no run of the project is in a turn, at most after retryWaitMs), the commit, the head
   async function finish(runId: string, ws: Workspace, g: Goal, tree: string): Promise<void> {
+    // the dependencies of the merged code (its lock files are the merged ones): cloned from the project, else prepared
+    await cloneDependencies(ws).catch(() => []);
+    const failed = await prepare(runId, ws, g.project);
+    if (failed) return status(runId, "paused", "merge_prepare_failed", { detail: failed });
     let passed = await runChecks(runId, ws, g.project, tree, 1);
     if (passed === false) {
       const until = Date.now() + (deps.retryWaitMs ?? 10 * 60_000);
@@ -233,7 +260,6 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     try {
       await status(runId, "running");
       const ws = await createWorkspace({ root: deps.root, runId, source: g.project, gitPath: deps.gitPath(), mode: "copy", from: g.merge.base });
-      await cloneDependencies(ws).catch(() => []);
       const { conflicts } = await mergeIntoCopy(ws, g.merge.task.commit);
       const auto = await snapshotCopyTree(ws, ws.baseline.tree);
       await append(runId, "merge.prepared", { conflicts, auto, dir: ws.repo });
