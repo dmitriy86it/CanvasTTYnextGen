@@ -1,0 +1,8 @@
+[+2.6s] settings: {"workMode":"copy","access":{"claude":"workspace","codex":"workspace"},"models":null,"checks":["node --test"]}
+[+2.6s] tasks: T-1, T-2
+[+3.4s] «Вести доску» on (budget: 2 runs, 2 at once)
+[+11.8s] run ec007f39 of T-2 started
+[+11.8s] run ecd942c6 of T-1 started
+[+81.5s] merge fcca84e8 of T-2 into the board's result
+[+87.6s] merge fc2b5506 of T-1 into the board's result
+[+89.6s] the autopilot stopped: {"code":"all_done","detail":null,"key":null,"at":"2026-10-10T05:01:40.066Z"}
