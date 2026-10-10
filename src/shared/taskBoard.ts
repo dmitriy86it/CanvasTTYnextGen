@@ -61,21 +61,26 @@ export interface BoardMerge {
   base: string; // the head it was built on
   task: { id: string; key: string; runId: string; commit: string };
   status: BoardMergeStatus;
-  // paused: merge_conflict | merge_checks_failed | recovered; stopped: skipped | interrupted; failed: head_moved | error
+  // paused: merge_conflict | merge_checks_failed | merge_prepare_failed | merge_prepare_changed | recovered;
+  // stopped: skipped | interrupted; failed: head_moved | error; completed: null | already (the result was in the head)
   reason: string | null;
   detail: string | null;
   completion: "confirmed" | "no_checks" | null;
   conflicts: string[];
   outside: string[]; // files out of the conflict the resolution changed (the mechanical condition)
   interference: boolean; // the checks failed twice: possibly another task's port or process
+  retrying: boolean; // the first checks failed; the retry waits for the project to be quiet
   dir: string | null; // the merge copy, where the person resolves
   createdAt: number;
 }
 
-// A task's mark on the board (§4.4): its latest merge into the current head of its place
+// A task's mark on the board (§4.4): its latest merge into the current head of its place — of its current run (a task
+// run again is a new result: an older merge says nothing of it)
 export type MergeMark = { kind: "in_board"; checks: boolean } | { kind: "merging" } | { kind: "not_merged"; reason: string; waits: boolean; runId: string } | null;
-export function mergeMark(taskId: string, head: BoardHead | undefined): MergeMark {
-  const m = head?.merges.find((x) => x.task.id === taskId);
+export const mergeOfTask = (head: Pick<BoardHead, "merges"> | null | undefined, taskId: string, runId?: string | null): BoardMerge | undefined =>
+  head?.merges.find((x) => x.task.id === taskId && (runId === undefined || x.task.runId === runId));
+export function mergeMark(taskId: string, head: BoardHead | undefined, runId?: string | null): MergeMark {
+  const m = mergeOfTask(head, taskId, runId);
   if (!m) return null;
   if (m.status === "completed") return { kind: "in_board", checks: m.completion === "confirmed" };
   if (m.status === "preparing" || m.status === "running") return { kind: "merging" };
@@ -444,7 +449,7 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
   started: readonly string[], used: { runs: number; ms: number }, budget: AutopilotBudget, head: BoardHead | null): AutopilotParallelStep {
   const statuses = boardStatuses(board, facts);
   const place = board.tasks.filter((t) => t.workspaceId === at.workspaceId && t.project === at.project);
-  const mergeOf = (taskId: string) => head?.merges.find((m) => m.task.id === taskId);
+  const mergeOf = (taskId: string) => mergeOfTask(head, taskId, statuses.get(taskId)?.current ?? null);
   const inHead = (taskId: string) => mergeOf(taskId)?.status === "completed";
   let halt: { code: AutopilotStopCode; detail: string | null; key: string | null } | null = null;
   let person: string | null = null; // what the person is asked: a permission, a decision in a run, «Accept the result», a merge
@@ -473,8 +478,16 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
   const merges = head?.merges ?? [];
   const merging = merges.some((m) => MERGE_ACTIVE.has(m.status));
   if (merges.some((m) => m.status === "paused")) person ??= "merge";
-  const moved = merges.find((m) => m.status === "failed" && m.reason === "head_moved");
+  // the head moved by someone else: only while that is the latest merge (a later one went on from the new value)
+  const moved = merges[0]?.status === "failed" && merges[0].reason === "head_moved" ? merges[0] : undefined;
   if (moved) halt ??= { code: "head_moved", detail: moved.task.key, key: moved.task.key };
+  // a «Done» task whose merge failed or was interrupted is not in the result and nothing will merge it: the person
+  // decides (§4.3); «Пропустить» is the person's decision already
+  for (const t of place) {
+    const m = statuses.get(t.id)?.done ? mergeOf(t.id) : undefined;
+    if (m && m !== moved && (m.status === "failed" || (m.status === "stopped" && m.reason !== "skipped"))) halt ??= { code: "merge_failed", detail: m.reason, key: t.key };
+  }
+  const retrying = merges.some((m) => m.retrying);
   // what is «Done», started from this head and not in it yet: the oldest first (reconciliation, §4.5)
   const pending = place.map((t) => ({ t, s: statuses.get(t.id)!, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
     .filter(({ t, s, run }) => s.done && run && head && run.board === head.ref && run.workMode === "copy" && !mergeOf(t.id)
@@ -503,7 +516,8 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
     if (!t.dependsOn.length) return s.reason === null;
     return t.dependsOn.every((d) => !board.tasks.some((x) => x.id === d) || (statuses.get(d)?.done && (inHead(d) || resultIn(d))));
   }).sort((a, b) => a.order - b.order)[0] ?? null;
-  if (next && busy < parallelOf(budget)) {
+  // a merge's checks wait to be retried while the project is quiet: no new task meanwhile (§2.3)
+  if (next && busy < parallelOf(budget) && !retrying) {
     if (used.runs >= budget.runs) return goingOn ? { kind: "wait", why: "run" } : { kind: "off", code: "budget_runs", detail: String(budget.runs), key: null };
     if (used.ms >= budget.minutes * 60_000) return goingOn ? { kind: "wait", why: "run" } : { kind: "off", code: "budget_minutes", detail: String(budget.minutes), key: null };
     if (!head) return { kind: "head" };

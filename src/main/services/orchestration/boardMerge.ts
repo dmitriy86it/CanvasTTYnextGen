@@ -33,7 +33,7 @@ export interface BoardMergeDeps {
   root: string; // <userData>/orchestration
   gitPath(): string;
   own(runId: string, workspaceId: string): Promise<void>; // canvas.json owners: the merge run's workspace
-  checks(project: string): Promise<string[]>; // the project's required check commands
+  checks(project: string): Promise<string[] | null>; // the project's required check commands; null: no saved settings
   // the project's preparation (its profile): its steps run in the merge copy when needed, as in a task's copy
   prepare?(project: string): Promise<{ auto: boolean; steps: PrepareStep[] }>;
   shell(project: string): Promise<{ shell: string; env: Record<string, string> }>; // the login shell of the project
@@ -130,7 +130,7 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     if (!goal) return null;
     const s: BoardMerge & { goal: Goal; committed: string | null; auto: string | null } = {
       runId, board: goal.merge.board, base: goal.merge.base, task: goal.merge.task, status: "preparing", reason: null, detail: null,
-      completion: null, conflicts: [], outside: [], interference: false, dir: null, createdAt: goal.createdAt, goal, committed: null, auto: null
+      completion: null, conflicts: [], outside: [], interference: false, retrying: false, dir: null, createdAt: goal.createdAt, goal, committed: null, auto: null
     };
     for (const r of recs) {
       const d = r.data as Record<string, unknown>;
@@ -147,7 +147,11 @@ export function createBoardMerge(deps: BoardMergeDeps) {
         s.dir = typeof d.dir === "string" ? d.dir : null;
       } else if (type === "merge.resolved") s.outside = Array.isArray(d.outside) ? d.outside.filter((x): x is string => typeof x === "string") : [];
       else if (type === "merge.committed") s.committed = typeof d.commit === "string" ? d.commit : null;
+      // the first checks failed, the retry waits for the project to be quiet: no new task starts meanwhile (§2.3)
+      if (type === "merge.checked") s.retrying = d.attempt === 1 && d.passed === false;
+      else if (type === "run.status" || type === "merge.resolved") s.retrying = false;
     }
+    if (s.status !== "running") s.retrying = false;
     return s;
   }
   async function all(): Promise<NonNullable<Awaited<ReturnType<typeof stateOf>>>[]> {
@@ -189,7 +193,7 @@ export function createBoardMerge(deps: BoardMergeDeps) {
   // The project's required commands, one by one through the project's check queue (userCheck.ts), on the copy's tree,
   // which must be the tree that will be committed. null: the project has no commands.
   async function runChecks(runId: string, ws: Workspace, project: string, tree: string, attempt: number): Promise<boolean | null> {
-    const commands = await deps.checks(project);
+    const commands = await deps.checks(project) ?? [];
     if (!commands.length) return null;
     const { shell, env } = await deps.shell(project);
     const registry = shellRegistry(shell, commands);
@@ -235,6 +239,9 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     await cloneDependencies(ws).catch(() => []);
     const failed = await prepare(runId, ws, g.project);
     if (failed) return status(runId, "paused", "merge_prepare_failed", { detail: failed });
+    // the preparation must leave the tree to commit as it is (a lock file it rewrote would make every check «another tree»)
+    const after = await snapshotCopyTree(ws, ws.baseline.tree);
+    if (after !== tree) return status(runId, "paused", "merge_prepare_changed", { detail: (await diffPaths(ws, tree, after)).slice(0, 20).join(", ") });
     let passed = await runChecks(runId, ws, g.project, tree, 1);
     if (passed === false) {
       const until = Date.now() + (deps.retryWaitMs ?? 10 * 60_000);
@@ -274,12 +281,15 @@ export function createBoardMerge(deps: BoardMergeDeps) {
 
   return {
     recovered,
-    // Is this run a merge run (its journal is v3)? The list of runs leaves them out: the board shows them.
+    // Is this run a merge run (its journal is v3 and its goal a merge)? The list of runs leaves them out: the board shows
+    // them. A v3 journal of anything else is a newer version's run, listed read only as before.
     async isMerge(runId: string): Promise<boolean> {
       const buf = await readFile(journalFile(runId)).then((b) => b.subarray(0, 4096), () => null);
-      return !!buf && newerVersion(buf) === MERGE_JOURNAL_VERSION;
+      return !!buf && newerVersion(buf) === MERGE_JOURNAL_VERSION && (await stateOf(runId)) !== null;
     },
     head,
+    // Is a merge into a head of this project going on (§3.1: a run in the project folder waits for it)?
+    active: async (project: string) => (await all()).some((m) => m.goal.project === project && (m.status === "preparing" || m.status === "running")),
     // the head of a place, started from the working folder if it has none (§4.1)
     ensureHead: (workspaceId: string, project: string) => inQueue(Q(workspaceId, project), () => withRepo(project, async (r) =>
       (await boardRefs(r, workspaceId)).at(-1) ?? { n: 1, ...(await startBoardRef(r, workspaceId, 1)) })),
@@ -314,7 +324,9 @@ export function createBoardMerge(deps: BoardMergeDeps) {
           const h = await head(input.workspaceId, input.project) ?? refuse("no_head", "the board has no merged head");
           const open = (await all()).find((m) => m.board === h.ref && !["completed", "stopped", "failed"].includes(m.status));
           if (open) refuse("merge_busy", `${open.task.key} is being merged or waits for you`);
-          if (await withRepo(input.project, (r) => isAncestor(r, input.commit, h.commit))) return resolve({ already: true });
+          // the checks of the merged code are the project's saved ones, never guessed (§4.2)
+          if (await deps.checks(input.project) === null) refuse("merge_no_settings", "the project's settings are not saved");
+          const already = await withRepo(input.project, (r) => isAncestor(r, input.commit, h.commit));
           const runId = randomUUID();
           const g: Goal = {
             v: 3, kind: "merge", createdAt: Date.now(), workspaceId: input.workspaceId, project: input.project,
@@ -325,9 +337,18 @@ export function createBoardMerge(deps: BoardMergeDeps) {
           await mkdir(runDir(runId), { recursive: true, mode: 0o700 });
           const ref = await putText(runId, canonical(g));
           await append(runId, "run.created", { goal: ref });
-          await status(runId, "preparing");
+          try {
+            // already in the head (§4.6): a run that says so, so the task is marked and nothing asks to merge it again
+            if (already) await status(runId, "completed", "already");
+            else await status(runId, "preparing");
+          } catch (error) {
+            await status(runId, "failed", "error", { detail: String((error as Error)?.message ?? error).slice(0, 500) }).catch(() => {});
+            throw error;
+          }
+          if (already) return resolve({ already: true });
           resolve({ runId });
-          await drive(runId, g); // the queue holds the next merge until this one is over or paused
+          // in the background: the queue is free once the run is «preparing», which keeps the next merge out (one at a time)
+          void drive(runId, g);
         })).catch(reject);
       }),
 
@@ -347,7 +368,11 @@ export function createBoardMerge(deps: BoardMergeDeps) {
         }
         if (unresolved.length) return { result: "unresolved" as const, files: unresolved };
         const tree = await snapshotCopyTree(ws, ws.baseline.tree);
-        const outside = (await diffPaths(ws, s.auto!, tree)).filter((p) => !s.conflicts.includes(p));
+        const changed = await diffPaths(ws, s.auto!, tree);
+        // a conflict without markers (binary, modify/delete, rename, another marker size) left as the merge left it:
+        // the person confirms it, as files out of the conflict — never committed unnoticed
+        const untouched = s.conflicts.filter((p) => !changed.includes(p));
+        const outside = [...changed.filter((p) => !s.conflicts.includes(p)), ...untouched];
         if (outside.length && !confirm) return { result: "confirm" as const, files: outside };
         await append(runId, "merge.resolved", { by: "person", tree, outside });
         await status(runId, "running");

@@ -137,7 +137,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                   const archived = !!task.archivedAt;
                   // C1 (§4.4): «Done · in the board's result / merging / not merged: why», from the merge journals
                   const head = headOf(task);
-                  const mark = st.done ? mergeMark(task.id, head) : null;
+                  const mark = st.done ? mergeMark(task.id, head, st.current) : null;
                   const markText = mark && (mark.kind === "in_board" ? t(locale, mark.checks ? "boardMark_in_board" : "boardMark_in_board_nochecks")
                     : mark.kind === "merging" ? t(locale, "boardMark_merging") : tr(locale, "boardMark_not_merged", { reason: tr(locale, `boardMergeReason_${mark.reason}`) || mark.reason }));
                   const canMerge = !!st.done && fact?.workMode === "copy" && (!mark || (mark.kind === "not_merged" && !mark.waits));

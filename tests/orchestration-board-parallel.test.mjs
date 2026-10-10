@@ -369,3 +369,83 @@ test("a merge run (journal v3) on 1.5.16: listed «created by a newer version»,
   assert.equal(g(src, "rev-parse", h0.ref).trim(), h0.commit);
   await o.shutdown();
 });
+
+// ---------- the review's cases (round 1) ----------
+
+test("the autopilot's step over the merges: a stale «head moved», a failed or interrupted merge, a task run again, a retry", () => {
+  let k = 0;
+  const REF = `refs/raoden/board/${WS}/1`, C = (h) => h.repeat(40).slice(0, 40);
+  const run = (o = {}) => ({ runId: randomUUID(), taskId: null, taskKey: null, createdAt: ++k, workspaceId: WS, status: "running", reason: null, newer: false, halted: false,
+    limit: null, completion: null, phase: "work", permission: false, workMode: "copy", taken: null, board: REF, ...o });
+  const t = (o = {}) => ({ id: randomUUID(), key: `T-${++k}`, workspaceId: WS, project: "/p", title: "t", text: "x", criteria: ["c"], dependsOn: [], order: k,
+    createdAt: "x", updatedAt: "x", archivedAt: null, accepted: null, ...o });
+  const done = (x, o = {}) => run({ taskId: x.id, taskKey: x.key, status: "completed", completion: "confirmed", taken: { branch: "b", commit: C("a"), applied: false }, ...o });
+  const merge = (x, r, o = {}) => ({ runId: randomUUID(), board: REF, base: C("0"), task: { id: x.id, key: x.key, runId: r.runId, commit: r.taken.commit }, status: "completed",
+    reason: null, detail: null, completion: "confirmed", conflicts: [], outside: [], interference: false, retrying: false, dir: null, createdAt: ++k, ...o });
+  const head = (merges) => ({ workspaceId: WS, project: "/p", ref: REF, n: 1, commit: C("f"), merges });
+  const AT = { workspaceId: WS, project: "/p" }, NONE = { runs: 0, ms: 0 };
+  const step = (tasks, facts, merges) => autopilotParallelStep({ tasks }, facts, AT, [], NONE, AUTOPILOT_BUDGET, head(merges));
+  // a «head moved» followed by a merge that went on from the new value: nothing stops (the newest first)
+  { const a = t(), b = t(); const ra = done(a);
+    const r = step([a, b], [ra], [merge(a, ra), merge(a, ra, { status: "failed", reason: "head_moved", completion: null })]);
+    assert.equal(r.kind, "start", JSON.stringify(r)); }
+  // a «Done» task whose merge failed or was interrupted: the person decides — never «all done», never a silent wait
+  { const a = t(); const ra = done(a);
+    const r = step([a], [ra], [merge(a, ra, { status: "failed", reason: "error", completion: null })]);
+    assert.deepEqual([r.kind, r.code, r.key], ["off", "merge_failed", a.key]); }
+  { const a = t(), b = t({ dependsOn: [] }); b.dependsOn = [a.id]; const ra = done(a);
+    const r = step([a, b], [ra], [merge(a, ra, { status: "stopped", reason: "interrupted", completion: null })]);
+    assert.deepEqual([r.kind, r.code], ["off", "merge_failed"]); }
+  // a task run again: its new result is not in the head; the mark and the step say so
+  { const a = t(); const old = done(a); const now = done(a, { createdAt: 1e9, taken: { branch: "d", commit: C("c"), applied: false } });
+    const h = head([merge(a, old)]);
+    assert.equal(mergeMark(a.id, h, now.runId), null);
+    assert.deepEqual(mergeMark(a.id, h, old.runId), { kind: "in_board", checks: true });
+    const r = autopilotParallelStep({ tasks: [a] }, [old, now], AT, [], NONE, AUTOPILOT_BUDGET, h);
+    assert.deepEqual([r.kind, r.runId], ["merge", now.runId]); }
+  // a merge whose checks wait to be retried: no new task starts meanwhile; once it goes on, they do
+  { const a = t(), b = t(); const ra = done(a);
+    assert.deepEqual(step([a, b], [ra], [merge(a, ra, { status: "running", completion: null, retrying: true })]), { kind: "wait", why: "run" });
+    assert.equal(step([a, b], [ra], [merge(a, ra, { status: "running", completion: null })]).kind, "start"); }
+});
+
+test("merge runs: a conflict without markers is never committed unnoticed; a result in the head already is marked; no saved settings, no merge; a preparation that changes the copy pauses", OPTS, async () => {
+  const src = project();
+  fs.writeFileSync(path.join(src, "logo.bin"), Buffer.from([0, 1, 2, 3]));
+  g(src, "add", "-A"); g(src, "commit", "-q", "-m", "logo");
+  const root = path.join(TMP, `root-${++n}`);
+  const m = merger(root, ["true"]);
+  const h0 = await m.ensureHead(WS, src);
+  const t1 = task("T-1"), t2 = task("T-2");
+  const bin = (bytes) => Buffer.from(bytes).toString("latin1");
+  const c1 = taskCommit(src, h0.commit, { "logo.bin": bin([0, 9, 9, 9]) }, "bin1");
+  const c2 = taskCommit(src, h0.commit, { "logo.bin": bin([0, 7, 7, 7]) }, "bin2");
+  const r1 = await m.merge({ workspaceId: WS, project: src, task: t1, taskRunId: randomUUID(), commit: c1, language: "ru" });
+  assert.equal((await settled(m, h0.ref, r1.runId)).status, "completed");
+  const r2 = await m.merge({ workspaceId: WS, project: src, task: t2, taskRunId: randomUUID(), commit: c2, language: "ru" });
+  const p = await settled(m, h0.ref, r2.runId);
+  assert.deepEqual([p.status, p.conflicts], ["paused", ["logo.bin"]]);
+  // «Готово, проверить» at once: no markers in a binary file, but it is as the merge left it — the person confirms it
+  assert.deepEqual(await m.resolve(r2.runId, false), { result: "confirm", files: ["logo.bin"] });
+  await m.skip(r2.runId);
+  // the same result again, already in the head: a completed run says so (the autopilot does not ask again)
+  const h1 = g(src, "rev-parse", h0.ref).trim();
+  assert.deepEqual(await m.merge({ workspaceId: WS, project: src, task: t1, taskRunId: randomUUID(), commit: c1, language: "ru" }), { already: true });
+  const marked = (await m.mergesInto(h0.ref))[0];
+  assert.deepEqual([marked.task.id, marked.status, marked.reason], [t1.id, "completed", "already"]);
+  assert.equal(g(src, "rev-parse", h0.ref).trim(), h1);
+  // the project's settings never saved: the merged code is not checked with guessed commands
+  const unsaved = createBoardMerge({ root, gitPath: () => GIT, launch: () => LAUNCH, own: async () => {}, checks: async () => null,
+    shell: async () => ({ shell: SHELL, env: CHECK_ENV }), quiet: async () => true });
+  const c3 = taskCommit(src, h1, { "c.txt": "c\n" }, "c3");
+  await assert.rejects(unsaved.merge({ workspaceId: WS, project: src, task: task("T-3"), taskRunId: randomUUID(), commit: c3, language: "ru" }), { code: "merge_no_settings" });
+  // a preparation step that rewrites a file of the merged tree: paused with that reason, the head where it was
+  const prep = createBoardMerge({ root, gitPath: () => GIT, launch: () => LAUNCH, own: async () => {}, checks: async () => ["true"],
+    prepare: async () => ({ auto: true, steps: [{ command: "echo more >> keep.txt", unless: null }] }),
+    shell: async () => ({ shell: SHELL, env: CHECK_ENV }), quiet: async () => true });
+  const r4 = await prep.merge({ workspaceId: WS, project: src, task: task("T-3"), taskRunId: randomUUID(), commit: c3, language: "ru" });
+  const s4 = await settled(prep, h0.ref, r4.runId);
+  assert.deepEqual([s4.status, s4.reason, s4.detail], ["paused", "merge_prepare_changed", "keep.txt"]);
+  assert.equal(g(src, "rev-parse", h0.ref).trim(), h1);
+  assert.equal(await prep.active(src), false);
+});

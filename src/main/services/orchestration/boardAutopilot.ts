@@ -124,7 +124,10 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     // link; a new autopilot does not count or take it)
     const r = await deps.start({ linkId, requestId: l.pending, goal });
     if (!r.ok) {
-      if (LATER.has(r.code)) { l.pending = null; l.waits = "run"; return; }
+      // C1: the head moved by a merge between this step and the start, or another link's autopilot took the task: the
+      // next step decides again from the board as it is
+      const raced = next.base?.key === "T-0" && (r.code === "invalid_base" || r.code === "task_active_run");
+      if (LATER.has(r.code) || raced) { l.pending = null; l.waits = "run"; return; }
       return off(linkId, "start_failed", r.code, next.task.key);
     }
     l.pending = null;

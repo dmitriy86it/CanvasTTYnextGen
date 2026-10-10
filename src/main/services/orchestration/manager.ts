@@ -53,7 +53,7 @@ import type { RunMode } from "./canvasStore.ts";
 import { createBoardMerge } from "./boardMerge.ts";
 import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
-import { boardStatuses, runPhase, type BoardHead } from "../../../shared/taskBoard.ts";
+import { boardStatuses, mergeOfTask, runPhase, type BoardHead } from "../../../shared/taskBoard.ts";
 import { AUTOPILOT_BUDGET, baseOf, type AutopilotBudget, type BoardPlace, type BoardTask, type BoardView, type RunTaskFacts } from "../../../shared/taskBoard.ts";
 import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
 import { runOwners, workspaceOf } from "../../../shared/workspaceOwnership.ts";
@@ -266,8 +266,9 @@ export function createRunManager(deps: RunManagerDeps) {
   const merges = createBoardMerge({
     root: deps.root, gitPath: () => deps.gitPath(), launch: () => deps.launch(),
     own: async (runId, workspaceId) => { await canvas.own(runId, workspaceId); },
-    checks: async (project) => ((await profiles.get(project)) ?? await suggestProfile(project)).checks,
-    prepare: async (project) => ((await profiles.get(project)) ?? await suggestProfile(project)).prepare,
+    // the project's saved settings only: the merged code is checked with what the person confirmed (never a guess)
+    checks: async (project) => (await profiles.get(project))?.checks ?? null,
+    prepare: async (project) => (await profiles.get(project))?.prepare ?? { auto: false, steps: [] },
     shell: async (project) => {
       if (!deps.native) refuse("provider_unavailable", "no native runtime for the checks");
       const rt = await deps.native!(project, await direnvOf(project));
@@ -848,7 +849,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const into = await merges.mergesInto(h.ref);
     const todo = b.tasks.map((t) => ({ t, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
       .filter(({ t, run }) => t.workspaceId === workspaceId && t.project === project && statuses.get(t.id)?.done && run?.workMode === "copy" && run.board === h.ref
-        && !into.some((m) => m.task.id === t.id && m.status === "completed"))
+        && mergeOfTask({ merges: into }, t.id, run.runId)?.status !== "completed")
       .sort((a, z) => a.run!.createdAt - z.run!.createdAt).map(({ t }) => t);
     void (async () => {
       for (const t of todo) {
@@ -924,7 +925,7 @@ export function createRunManager(deps: RunManagerDeps) {
         .filter((d) => {
           const run = facts.find((f) => f.runId === statuses.get(d.id)?.current);
           const inFolder = !!run && ((run.workMode !== "copy" && run.workMode !== "worktree") || !!run.taken?.applied); // the head starts from the folder
-          return !statuses.get(d.id)?.done || (into.find((m) => m.task.id === d.id)?.status !== "completed" && !inFolder);
+          return !statuses.get(d.id)?.done || (mergeOfTask({ merges: into }, d.id, statuses.get(d.id)?.current ?? null)?.status !== "completed" && !inFolder);
         }).map((d) => d.key);
       if (out.length) refuse("task_not_ready", `${t!.key} waits for ${out.join(", ")} in the board's result: start anyway?`);
       return;
@@ -1028,6 +1029,8 @@ export function createRunManager(deps: RunManagerDeps) {
         // C1 (§3.1): a run in a separate copy is held off only by a run that is not in one
         const project = await leadProject(input.linkId);
         const mode = input.goal?.workMode ?? (input.goal?.mode ? ((await profiles.get(project)) ?? await suggestProfile(project)).workMode : undefined);
+        // a merge into the board's result reads the project's repository and moves its ref: the project folder waits
+        if (mode !== "copy" && mode !== "worktree" && await merges.active(project)) refuse("folder_busy", "a merge into the board's result goes on in this project");
         return canvas.startOnLink(input.linkId, input.requestId, busy, exists,
           (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}), ...(input.withoutBase ? { withoutBase: true } : {}) }, current),
           mode === "copy" ? runMode : null);
