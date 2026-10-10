@@ -466,7 +466,7 @@ test("«Completed without checks» holds the chain until «Accept the result»; 
   // the project has no check commands: «Объединено без проверок» — the head moves, never shown as confirmed
   const [h] = v.heads;
   assert.deepEqual(h.merges.map((x) => [x.task.key, x.status, x.completion]), [[a.key, "completed", "no_checks"]]);
-  assert.deepEqual(mergeMark(a.id, h), { kind: "in_board", checks: false });
+  assert.deepEqual(mergeMark(a.id, h), { kind: "in_board", checks: false, already: false });
   assert.deepEqual(goalOf(m, rb.runId).base, { branch: h.ref, commit: h.commit, key: "T-0" });
   await until(async () => (await m.board()).value.autopilot[linkId]?.waits === "accept", "B's wait for «Accept»");
   assert.ok((await m.boardAutopilot(linkId, false, "ru")).ok);

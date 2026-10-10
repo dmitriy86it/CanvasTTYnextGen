@@ -166,7 +166,7 @@ test("a project without check commands: «merged without checks» — the head m
   const r = await m.merge({ workspaceId: WS, project: src, task: t1, taskRunId: randomUUID(), commit: c1, language: "ru" });
   const s = await settled(m, h0.ref, r.runId);
   assert.deepEqual([s.status, s.completion], ["completed", "no_checks"]);
-  assert.deepEqual(mergeMark(t1.id, { merges: [s] }), { kind: "in_board", checks: false });
+  assert.deepEqual(mergeMark(t1.id, { merges: [s] }), { kind: "in_board", checks: false, already: false });
   assert.notEqual(g(src, "rev-parse", h0.ref).trim(), h0.commit);
   // a result in the head already starts no merge
   assert.deepEqual(await m.merge({ workspaceId: WS, project: src, task: t1, taskRunId: randomUUID(), commit: c1, language: "ru" }), { already: true });
@@ -401,7 +401,7 @@ test("the autopilot's step over the merges: a stale «head moved», a failed or 
   { const a = t(); const old = done(a); const now = done(a, { createdAt: 1e9, taken: { branch: "d", commit: C("c"), applied: false } });
     const h = head([merge(a, old)]);
     assert.equal(mergeMark(a.id, h, now.runId), null);
-    assert.deepEqual(mergeMark(a.id, h, old.runId), { kind: "in_board", checks: true });
+    assert.deepEqual(mergeMark(a.id, h, old.runId), { kind: "in_board", checks: true, already: false });
     const r = autopilotParallelStep({ tasks: [a] }, [old, now], AT, [], NONE, AUTOPILOT_BUDGET, h);
     assert.deepEqual([r.kind, r.runId], ["merge", now.runId]); }
   // a merge whose checks wait to be retried: no new task starts meanwhile; once it goes on, they do

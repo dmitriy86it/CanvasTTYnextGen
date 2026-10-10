@@ -73,12 +73,13 @@ export interface FolderHolder { runId: string; workspaceId: string; runReadable:
 export type RunMode = (runId: string) => Promise<"project" | "copy" | "worktree" | null>;
 
 // Does this run hold the folder (or the link) against a new run? Stage 12: any active run does. C1: a new run in a
-// separate copy is held off only by a run that is not in one (the project folder, a worktree, a newer version's, an
-// unreadable one, a mode unknown): two copies never share files, each holds its own slot.
+// separate copy (C2: or a worktree) is held off only by a run that is not in one (the project folder, a newer version's,
+// an unreadable one, a mode unknown): two copies never share files, each holds its own slot.
 async function holds(busy: Busy, link: OrchestrationAgentLink, runId: string, copy: RunMode | null): Promise<boolean | "unreadable" | "newer"> {
   const b = await busy({ ...link, runIds: [runId] });
   if (!b || !copy || b === "newer" || b === "unreadable") return b;
-  return (await copy(runId)) === "copy" ? false : b;
+  const mode = await copy(runId);
+  return mode === "copy" || mode === "worktree" ? false : b; // C2: a worktree is a folder of its own too
 }
 
 // Stage 12: one active run per project folder, whatever link started it. The caller's busy rule is asked run by run, so

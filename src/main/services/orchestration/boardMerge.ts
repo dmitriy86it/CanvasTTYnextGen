@@ -22,8 +22,8 @@ import { neededSteps, worktreeSteps } from "./prepare.ts";
 import type { PrepareStep } from "./prepare.ts";
 import { runShell } from "./shellRun.ts";
 import {
-  BOARD_REF, WorkspaceError, advanceBoardRef, applyBoard, boardBranch, boardRefCommit, boardRefs, cloneDependencies, commitMerge, readDependencyRecord,
-  createWorkspace, diffPaths, isAncestor, mergeIntoCopy, openBoardRepo, openWorkspace, snapshotCopyTree, startBoardRef
+  BOARD_REF, WorkspaceError, advanceBoardRef, applyBoard, boardBranch, boardRefCommit, boardRefs, changedPaths, cloneDependencies, commitMerge, readDependencyRecord,
+  behindBy, createWorkspace, diffPaths, isAncestor, mergeIntoCopy, onHeadLine, openBoardRepo, openWorkspace, projectBranch, projectHead, snapshotCopyTree, startBoardRef
 } from "./workspace.ts";
 import type { BoardRepo, Workspace } from "./workspace.ts";
 
@@ -46,7 +46,7 @@ export interface BoardMergeDeps {
 
 interface Goal {
   v: 3; kind: "merge"; text: string; createdAt: number; workspaceId: string; project: string;
-  merge: { board: string; base: string; task: { id: string; key: string; runId: string; commit: string } };
+  merge: { board: string; base: string; task: { id: string; key: string; runId: string; commit: string }; source?: "head" };
 }
 
 const Q = (ws: string, project: string) => `${ws}\0${project}`;
@@ -62,6 +62,7 @@ const refuse = (code: string, message: string): never => { throw new Refusal(cod
 export function createBoardMerge(deps: BoardMergeDeps) {
   const queues = new Map<string, Promise<unknown>>();
   const working = new Set<string>(); // merge runs this process drives now
+  const changedCache = new Map<string, string[]>();
   const runDir = (runId: string) => join(deps.root, "runs", runId);
   const journalFile = (runId: string) => join(runDir(runId), "journal.jsonl");
 
@@ -129,7 +130,8 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     const goal = await goalOf(runId, recs);
     if (!goal) return null;
     const s: BoardMerge & { goal: Goal; committed: string | null; auto: string | null } = {
-      runId, board: goal.merge.board, base: goal.merge.base, task: goal.merge.task, status: "preparing", reason: null, detail: null,
+      runId, board: goal.merge.board, base: goal.merge.base, task: goal.merge.task, ...(goal.merge.source === "head" ? { source: "head" as const } : {}),
+      status: "preparing", reason: null, detail: null,
       completion: null, conflicts: [], outside: [], interference: false, retrying: false, dir: null, createdAt: goal.createdAt, goal, committed: null, auto: null
     };
     for (const r of recs) {
@@ -252,8 +254,9 @@ export function createBoardMerge(deps: BoardMergeDeps) {
       passed = await runChecks(runId, ws, g.project, tree, 2);
       if (passed === false) return status(runId, "paused", "merge_checks_failed", { interference: true });
     }
-    const commit = await commitMerge(ws, tree, [g.merge.base, g.merge.task.commit],
-      `Raoden Loom: merge ${g.merge.task.key} into the board's result\n\nRaoden-Merge: ${runId}\nRaoden-Task: ${g.merge.task.key} ${g.merge.task.runId}\n`);
+    const commit = await commitMerge(ws, tree, [g.merge.base, g.merge.task.commit], g.merge.source === "head"
+      ? `Raoden Loom: update the board's result from HEAD\n\nRaoden-Merge: ${runId}\nRaoden-Head: ${g.merge.task.commit}\n`
+      : `Raoden Loom: merge ${g.merge.task.key} into the board's result\n\nRaoden-Merge: ${runId}\nRaoden-Task: ${g.merge.task.key} ${g.merge.task.runId}\n`);
     await append(runId, "merge.committed", { commit, tree });
     try {
       await advanceBoardRef(ws, g.merge.board, commit, g.merge.base);
@@ -281,6 +284,50 @@ export function createBoardMerge(deps: BoardMergeDeps) {
   }
 
   const head = (workspaceId: string, project: string) => withRepo(project, async (r) => (await boardRefs(r, workspaceId)).at(-1) ?? null);
+
+  // A merge into the current head — of a task's result, or (source "head") of the project's HEAD as it is now: its run is
+  // created now, the merge goes on in the background. Refused while another merge into this head goes on or waits for
+  // the person (one at a time, §4.2); a result in the head already starts nothing (§4.6).
+  const begin = (input: { workspaceId: string; project: string; task: { id: string; key: string }; taskRunId: string; commit: string; language: "ru" | "en" },
+    source: "head" | null) =>
+    new Promise<{ runId: string } | { already: true }>((resolve, reject) => {
+      if (!source && !OID.test(input.commit)) return reject(new Refusal("invalid_argument", "commit"));
+      // recovery first, outside this queue: it queues its own work there
+      void recovered().then(() => inQueue(Q(input.workspaceId, input.project), async () => {
+        const h = await head(input.workspaceId, input.project) ?? refuse("no_head", "the board has no merged head");
+        const open = (await all()).find((m) => m.board === h.ref && !["completed", "stopped", "failed"].includes(m.status));
+        if (open) refuse("merge_busy", `${open.task.key} is being merged or waits for you`);
+        // the checks of the merged code are the project's saved ones, never guessed (§4.2)
+        if (await deps.checks(input.project) === null) refuse("merge_no_settings", "the project's settings are not saved");
+        const commit = source ? await withRepo(input.project, projectHead) ?? refuse("no_project_head", "the project has no commit") : input.commit;
+        const already = await withRepo(input.project, (r) => isAncestor(r, commit, h.commit));
+        if (already && source) refuse("head_current", "the board's result has the project's HEAD already");
+        if (source && !(await withRepo(input.project, (r) => onHeadLine(r, h.commit, commit)))) refuse("head_other_line", "HEAD is on another line than the board's result started from");
+        const runId = randomUUID();
+        const g: Goal = {
+          v: 3, kind: "merge", createdAt: Date.now(), workspaceId: input.workspaceId, project: input.project,
+          text: source ? (input.language === "ru" ? "Обновление итога доски от HEAD" : "Update of the board's result from HEAD")
+            : input.language === "ru" ? `Объединение ${input.task.key} в итог доски` : `Merge ${input.task.key} into the board's result`,
+          merge: { board: h.ref, base: h.commit, task: { ...input.task, runId: input.taskRunId, commit }, ...(source ? { source } : {}) }
+        };
+        await deps.own(runId, input.workspaceId);
+        await mkdir(runDir(runId), { recursive: true, mode: 0o700 });
+        const ref = await putText(runId, canonical(g));
+        await append(runId, "run.created", { goal: ref });
+        try {
+          // already in the head (§4.6): a run that says so, so the task is marked and nothing asks to merge it again
+          if (already) await status(runId, "completed", "already");
+          else await status(runId, "preparing");
+        } catch (error) {
+          await status(runId, "failed", "error", { detail: String((error as Error)?.message ?? error).slice(0, 500) }).catch(() => {});
+          throw error;
+        }
+        if (already) return resolve({ already: true });
+        resolve({ runId });
+        // in the background: the queue is free once the run is «preparing», which keeps the next merge out (one at a time)
+        void drive(runId, g);
+      })).catch(reject);
+    });
 
   return {
     recovered,
@@ -313,7 +360,14 @@ export function createBoardMerge(deps: BoardMergeDeps) {
       for (const p of places) {
         const h = await head(p.workspaceId, p.project).catch(() => null);
         if (!h) continue;
-        out.push({ workspaceId: p.workspaceId, project: p.project, ref: h.ref, n: h.n, commit: h.commit,
+        // C2 (decision 13): the person's commits after the head started, read from HEAD only
+        // another line checked out (a branch that does not go on from the head's start) is not «behind»: never offered
+        const { behind, branch, otherLine } = await withRepo(p.project, async (r) => {
+          const now = await projectHead(r);
+          const on = !!now && await onHeadLine(r, h.commit, now);
+          return { behind: on ? await behindBy(r, h.commit, now!) : null, branch: await projectBranch(r), otherLine: !!now && !on };
+        }).catch(() => ({ behind: null, branch: null, otherLine: false }));
+        out.push({ workspaceId: p.workspaceId, project: p.project, ref: h.ref, n: h.n, commit: h.commit, behind, branch, ...(otherLine ? { otherLine } : {}),
           merges: merges.filter((m) => m.board === h.ref && m.goal.project === p.project).map(({ goal: _g, committed: _c, auto: _a, ...m }) => m) });
       }
       return out;
@@ -323,40 +377,11 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     // Refused while another merge into this head goes on or waits for the person (one at a time, §4.2); a result in the
     // head already starts nothing (§4.6).
     merge: (input: { workspaceId: string; project: string; task: { id: string; key: string }; taskRunId: string; commit: string; language: "ru" | "en" }) =>
-      new Promise<{ runId: string } | { already: true }>((resolve, reject) => {
-        if (!OID.test(input.commit)) return reject(new Refusal("invalid_argument", "commit"));
-        // recovery first, outside this queue: it queues its own work there
-        void recovered().then(() => inQueue(Q(input.workspaceId, input.project), async () => {
-          const h = await head(input.workspaceId, input.project) ?? refuse("no_head", "the board has no merged head");
-          const open = (await all()).find((m) => m.board === h.ref && !["completed", "stopped", "failed"].includes(m.status));
-          if (open) refuse("merge_busy", `${open.task.key} is being merged or waits for you`);
-          // the checks of the merged code are the project's saved ones, never guessed (§4.2)
-          if (await deps.checks(input.project) === null) refuse("merge_no_settings", "the project's settings are not saved");
-          const already = await withRepo(input.project, (r) => isAncestor(r, input.commit, h.commit));
-          const runId = randomUUID();
-          const g: Goal = {
-            v: 3, kind: "merge", createdAt: Date.now(), workspaceId: input.workspaceId, project: input.project,
-            text: input.language === "ru" ? `Объединение ${input.task.key} в итог доски` : `Merge ${input.task.key} into the board's result`,
-            merge: { board: h.ref, base: h.commit, task: { ...input.task, runId: input.taskRunId, commit: input.commit } }
-          };
-          await deps.own(runId, input.workspaceId);
-          await mkdir(runDir(runId), { recursive: true, mode: 0o700 });
-          const ref = await putText(runId, canonical(g));
-          await append(runId, "run.created", { goal: ref });
-          try {
-            // already in the head (§4.6): a run that says so, so the task is marked and nothing asks to merge it again
-            if (already) await status(runId, "completed", "already");
-            else await status(runId, "preparing");
-          } catch (error) {
-            await status(runId, "failed", "error", { detail: String((error as Error)?.message ?? error).slice(0, 500) }).catch(() => {});
-            throw error;
-          }
-          if (already) return resolve({ already: true });
-          resolve({ runId });
-          // in the background: the queue is free once the run is «preparing», which keeps the next merge out (one at a time)
-          void drive(runId, g);
-        })).catch(reject);
-      }),
+      begin(input, null),
+    // C2 (owner's decision 13): «Обновить итог от текущего HEAD» — the project's HEAD merged into the head by the same
+    // merge run: in a copy, checked, moved only from the expected value; a conflict waits for the person. Only read: HEAD.
+    fromHead: (input: { workspaceId: string; project: string; language: "ru" | "en" }) =>
+      begin({ ...input, task: { id: "HEAD", key: "HEAD" }, taskRunId: "", commit: "" }, "head"),
 
     // «Готово, проверить» (§4.3): the copy as the person left it, the mechanical condition, then checks, commit, head.
     // outside: files out of the conflict the resolution changed — needs «Да, я менял и их» (confirm).
@@ -412,11 +437,23 @@ export function createBoardMerge(deps: BoardMergeDeps) {
     }),
     apply: (workspaceId: string, project: string) => withRepo(project, async (r) => {
       const h = (await boardRefs(r, workspaceId)).at(-1) ?? refuse("no_head", "the board has no merged head");
-      return applyBoard(r, h.commit);
+      // C2: after an update from HEAD, the changes on top of the HEAD it took in (the newest such merge)
+      const updated = (await all()).find((m) => m.board === h.ref && m.goal.merge.source === "head" && m.status === "completed" && m.reason !== "already");
+      return applyBoard(r, h.commit, updated?.task.commit);
     }),
     // the merges into a head as their journals say, newest first (no recovery awaited: safe inside other queues)
     mergesInto: async (ref: string): Promise<BoardMerge[]> => (await all()).filter((m) => m.board === ref),
     copyOf: async (runId: string): Promise<string | null> => (await stateOf(runId))?.dir ?? null,
+    // C2 (§4.7): the paths changed between two commits of a project (a run's base and its last checkpoint); kept, as
+    // commits never change. ponytail: the cache grows with the checkpoints seen in this process (a few per run)
+    changed: async (project: string, from: string, to: string): Promise<string[]> => {
+      const key = `${project}\0${from}\0${to}`;
+      const known = changedCache.get(key);
+      if (known) return known;
+      const paths = (await withRepo(project, (r) => changedPaths(r, from, to))).slice(0, 2000);
+      changedCache.set(key, paths);
+      return paths;
+    },
     exists: (runId: string) => stat(journalFile(runId)).then(() => true, () => false)
   };
 }

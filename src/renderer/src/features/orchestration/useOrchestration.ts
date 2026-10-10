@@ -274,6 +274,7 @@ export function useOrchestration() {
         if (!r.ok) refused = r;
         return r;
       }, (r) => {
+        if (r.queued) return; // C2: waits for a place, no run on the link yet
         setCanvas((c) => ({
           ...c, links: c.links.map((l) => (l.linkId === input.linkId && !l.runIds.includes(r.runId) ? { ...l, runIds: [...l.runIds, r.runId] } : l))
         }));

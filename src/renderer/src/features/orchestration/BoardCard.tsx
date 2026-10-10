@@ -4,7 +4,7 @@
 import { useState } from "react";
 import type { LocaleId, SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationAgentLink } from "../../../../shared/orchestration";
-import { AUTOPILOT_BUDGET, baseOf, mergeMark, parallelOf, type AutopilotBudget, type AutopilotState, type BoardHead, type BoardTask, type RunTaskFacts, type TaskColumn, type TaskStatus } from "../../../../shared/taskBoard";
+import { AUTOPILOT_BUDGET, isCopy, startBase, mergeMark, parallelOf, type AutopilotBudget, type AutopilotState, type BoardHead, type BoardMerge, type BoardTask, type RunTaskFacts, type TaskColumn, type TaskStatus } from "../../../../shared/taskBoard";
 import { t } from "../../lib/i18n";
 import { Dialog } from "./OrchestrationDialogs";
 import { ACTIVE_STATUSES } from "./runModel";
@@ -56,7 +56,7 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
   // C1: a link whose runs go on in separate copies is free for another task (main checks the slot and the mode)
   const busy = (l: OrchestrationAgentLink) => l.runIds.slice(-4).some((id) => {
     const v = orch.runs[id]?.view;
-    return !!v && ((ACTIVE_STATUSES.includes(v.status) && v.workMode !== "copy") || !!v.newer);
+    return !!v && ((ACTIVE_STATUSES.includes(v.status) && !isCopy(v.workMode)) || !!v.newer);
   });
   const say = (taskId: string | null, text: string) => {
     setMessage({ taskId, text });
@@ -68,7 +68,8 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
     const links = orch.canvas.links.filter((l) => leadOf(l)?.project === task.project);
     const link = links.find((l) => !busy(l));
     if (!link) { say(task.id, tr(locale, "boardNoLink", { project: task.project })); return; }
-    const base = view ? baseOf(task, view.board, board.statuses, view.facts) : null;
+    // C2: a place with the board's merged head starts from it (its dependencies are there, decision 9); else B's base
+    const base = view ? startBase(task, view.board, board.statuses, view.facts, view.heads ?? []) : null;
     ui.openGoal(link.linkId, { id: task.id, key: task.key, title: task.title, text: task.text, criteria: task.criteria, ...(startAnyway ? { anyway: true } : {}), ...(base ? { base } : {}) });
   };
   const projects = [...new Set([...orch.canvas.agents.map((a) => a.project), ...(props.defaultProject ? [props.defaultProject] : [])])];
@@ -77,6 +78,8 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
   const heads = (view?.heads ?? []).filter((h) => h.workspaceId === workspaceId);
   const headOf = (task: BoardTask) => heads.find((h) => h.project === task.project);
   const [merging, setMerging] = useState<string | null>(null); // «Объединить» of a task not started from the head, asked
+  const [over, setOver] = useState<string | null>(null); // C2: «Запустить сейчас сверх лимита» asked for this task
+  const queueAct = async (action: "run" | "cancel", task: BoardTask) => { setOver(null); const f = failure(await board.queue(action, task.id)); if (f) say(task.id, f); };
   const mergeTask = async (task: BoardTask) => { setMerging(null); const f = failure(await board.merge(task.id, language)); if (f) say(task.id, f); };
 
   return (
@@ -138,9 +141,13 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                   // C1 (§4.4): «Done · in the board's result / merging / not merged: why», from the merge journals
                   const head = headOf(task);
                   const mark = st.done ? mergeMark(task.id, head, st.current) : null;
-                  const markText = mark && (mark.kind === "in_board" ? t(locale, mark.checks ? "boardMark_in_board" : "boardMark_in_board_nochecks")
+                  // decision 15: «already in the result» when nothing was merged; «without checks» only when there were none
+                  const markText = mark && (mark.kind === "in_board" ? t(locale, mark.already ? "boardMark_in_board_already" : mark.checks ? "boardMark_in_board" : "boardMark_in_board_nochecks")
                     : mark.kind === "merging" ? t(locale, "boardMark_merging") : tr(locale, "boardMark_not_merged", { reason: tr(locale, `boardMergeReason_${mark.reason}`) || mark.reason }));
-                  const canMerge = !!st.done && fact?.workMode === "copy" && (!mark || (mark.kind === "not_merged" && !mark.waits));
+                  const canMerge = !!st.done && isCopy(fact?.workMode) && (!mark || (mark.kind === "not_merged" && !mark.waits));
+                  // C2: a start waiting for a place (decision 12), and the files it shares with others (§4.7)
+                  const queued = view?.queued?.find((q) => q.taskId === task.id);
+                  const overlaps = board.overlaps.get(task.id) ?? [];
                   return (
                     <li key={task.id} className={`board-task board-task--${st.column}${st.done ? ` board-task--done-${st.done}` : ""}`}
                       data-board-task={task.key} data-board-task-column={st.column} data-board-done={st.done ?? undefined} data-board-reason={st.reason ?? undefined}>
@@ -156,7 +163,22 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                       {asks > ASKS_HINT_OVER && <div className="board-task__line board-task__hint" data-board-asks-hint>{t(locale, "boardAsksHint")}</div>}
                       {st.depsNote && <div className="board-task__line board-task__hint" data-board-deps-note={st.depsNote}>{t(locale, `boardDepsNote_${st.depsNote}`)}</div>}
                       {after && <div className="board-task__line" data-board-after title={after}>{after}</div>}
-                      {markText && <div className="board-task__line" data-board-merge-mark={mark!.kind} title={markText}>{markText}</div>}
+                      {markText && <div className="board-task__line" data-board-merge-mark={mark!.kind === "in_board" && mark!.already ? "already" : mark!.kind} title={markText}>{markText}</div>}
+                      {queued && !queued.failed && <div className="board-task__line" data-board-queued title={tr(locale, "boardQueued", { busy: queued.busy, limit: queued.limit })}>
+                        {tr(locale, "boardQueued", { busy: queued.busy, limit: queued.limit })}</div>}
+                      {queued?.failed && <div className="board-task__line board-task__hint" data-board-queued-failed={queued.failed}>
+                        {tr(locale, "boardQueuedFailed", { reason: tr(locale, `orchError_${queued.failed}`) || queued.failed })}</div>}
+                      {overlaps.map((o) => {
+                        const text = tr(locale, o.kind === "now" ? "boardOverlapNow" : "boardOverlapMaybe", { key: o.key, files: o.files.slice(0, 5).join(", ") + (o.files.length > 5 ? " …" : "") });
+                        return <div key={`${o.kind}:${o.key}`} className="board-task__line board-task__hint" data-board-overlap={o.kind} data-board-overlap-with={o.key} title={o.files.join(", ")}>{text}</div>;
+                      })}
+                      {over === task.id && queued && (
+                        <div className="board-task__confirm" role="alertdialog" aria-label={t(locale, "boardQueuedOver")} data-board-over-confirm>
+                          <p>{tr(locale, "boardQueuedOverWhy", { busy: queued.busy, limit: queued.limit, key: task.key })}</p>
+                          <button type="button" className="orch-primary" data-board-over-yes onClick={() => void queueAct("run", task)}>{t(locale, "boardQueuedOver")}</button>
+                          <button type="button" onClick={() => setOver(null)}>{t(locale, "orchCancel")}</button>
+                        </div>
+                      )}
                       {merging === task.id && (
                         <div className="board-task__confirm" role="alertdialog" aria-label={t(locale, "boardMerge")} data-board-merge-confirm>
                           <p>{tr(locale, "boardMergeNotFromHead", { key: task.key })}</p>
@@ -193,7 +215,11 @@ export function BoardCard(props: BoardCardProps): React.JSX.Element {
                           ) : (
                             <>
                               {/* §4.2: by its dependencies, whatever its own column — ready: «Start»; not: «Start anyway», confirmed first */}
-                              {(st.column === "queue" || st.reason === "no_checks") && st.reason !== "run_newer" && (st.depsWait
+                              {queued && !queued.failed && over !== task.id && <>
+                                <button type="button" data-board-over onClick={() => setOver(task.id)}>{t(locale, "boardQueuedOver")}</button>
+                                <button type="button" data-board-queue-cancel onClick={() => void queueAct("cancel", task)}>{t(locale, "boardQueuedCancel")}</button>
+                              </>}
+                              {(st.column === "queue" || st.reason === "no_checks") && st.reason !== "run_newer" && !(queued && !queued.failed) && (st.depsWait
                                 ? <button type="button" data-board-start-anyway onClick={() => setAnyway(task.id)}>{t(locale, "boardStartAnyway")}</button>
                                 : <button type="button" data-board-start onClick={() => start(task)}>{t(locale, st.attempts ? "boardStartAgain" : "boardStart")}</button>)}
                               {runId && st.reason === "waits_permission"
@@ -355,26 +381,34 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
   locale: LocaleId; head: BoardHead; tasks: BoardTask[]; statuses: ReadonlyMap<string, TaskStatus>; facts: readonly RunTaskFacts[]; board: Board;
   workspaceId: string; say(text: string): void; failure(r: { ok: boolean; code?: string; message?: string }): string | null;
 }): React.JSX.Element {
-  const [asking, setAsking] = useState<null | "branch" | "apply" | "new">(null);
+  const [asking, setAsking] = useState<null | "branch" | "apply" | "new" | "update">(null);
   const [answer, setAnswer] = useState<{ runId: string; kind: "unresolved" | "confirm"; files: string[] } | null>(null);
   const language = locale === "ru" ? "ru" : "en";
   const done = head.merges.filter((m) => m.status === "completed");
-  const keys = [...new Set([...done].reverse().map((m) => m.task.key))];
-  const checks = done.length ? (done.some((m) => m.completion === "no_checks") ? t(locale, "boardHeadNoChecks") : t(locale, "boardHeadChecked")) : null;
+  const keys = [...new Set([...done].reverse().filter((m) => m.source !== "head").map((m) => m.task.key))];
+  // C2: an update from HEAD is named as such, not as a task
+  const nameOf = (m: BoardMerge) => (m.source === "head" ? t(locale, "boardHeadFromHead") : m.task.key);
+  // C2 (decision 13): the person's commits the head does not have; its update only by the person
+  const behind = head.behind ?? 0;
+  const many = locale === "ru" ? (behind % 10 === 1 && behind % 100 !== 11 ? "one" : [2, 3, 4].includes(behind % 10) && ![12, 13, 14].includes(behind % 100) ? "few" : "many") : behind === 1 ? "one" : "many";
+  // decision 15: a merge that found nothing new checked nothing — it says nothing of the checks
+  const merged = done.filter((m) => m.reason !== "already");
+  const checks = merged.length ? (merged.some((m) => m.completion === "no_checks") ? t(locale, "boardHeadNoChecks") : t(locale, "boardHeadChecked")) : null;
   const notMerged = tasks.filter((x) => {
     const st = statuses.get(x.id);
     const f = facts.find((y) => y.runId === st?.current);
-    return x.project === head.project && st?.done && f?.workMode === "copy" && f.board === head.ref && !done.some((m) => m.task.id === x.id);
+    return x.project === head.project && st?.done && isCopy(f?.workMode) && f!.board === head.ref && !done.some((m) => m.task.id === x.id);
   });
   const going = head.merges.find((m) => m.status === "preparing" || m.status === "running");
   const waits = head.merges.find((m) => m.status === "paused");
-  const act = async (action: "branch" | "apply" | "new") => {
+  const act = async (action: "branch" | "apply" | "new" | "update") => {
     setAsking(null);
-    const r = await board.head(action, workspaceId, head.project);
+    const r = await board.head(action, workspaceId, head.project, language);
     const f = failure(r);
     if (f || !r.ok) return say(f ?? "");
     const v = r.value as { name?: string; applied?: boolean; files?: string[]; n?: number };
     say(action === "branch" ? tr(locale, "boardHeadBranchDone", { name: v.name ?? "" }) : action === "new" ? tr(locale, "boardHeadNewDone", { n: v.n ?? 0 })
+      : action === "update" ? t(locale, "boardHeadUpdateStarted")
       : v.applied ? t(locale, "boardHeadApplied") : tr(locale, "boardHeadApplyConflict", { files: (v.files ?? []).join(", ") }));
   };
   const check = async (runId: string, confirm: boolean) => {
@@ -387,8 +421,8 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
     <div className="board-card__head" data-board-head={head.ref}>
       <div className="board-card__head-line">
         <strong data-board-head-tasks>{keys.length ? tr(locale, "boardHeadTasks", { keys: keys.join(", ") }) : t(locale, "boardHeadEmpty")}</strong>
-        {checks && <span data-board-head-checks={done.some((m) => m.completion === "no_checks") ? "none" : "passed"}>{` · ${checks}`}</span>}
-        {going && <span data-board-head-merging>{` · ${tr(locale, "boardHeadMerging", { key: going.task.key })}`}</span>}
+        {checks && <span data-board-head-checks={merged.some((m) => m.completion === "no_checks") ? "none" : "passed"}>{` · ${checks}`}</span>}
+        {going && <span data-board-head-merging>{` · ${tr(locale, "boardHeadMerging", { key: nameOf(going) })}`}</span>}
         <span className="board-card__header-actions">
           {keys.length > 0 && <button type="button" data-board-head-branch onClick={() => setAsking("branch")}>{t(locale, "boardHeadBranch")}</button>}
           {keys.length > 0 && <button type="button" data-board-head-apply onClick={() => setAsking("apply")}>{t(locale, "boardHeadApply")}</button>}
@@ -397,12 +431,21 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
       </div>
       {asking && (
         <div className="board-task__confirm" role="alertdialog" data-board-head-confirm={asking}>
-          <p>{t(locale, asking === "branch" ? "boardHeadBranchWhy" : asking === "apply" ? "boardHeadApplyWhy" : "boardHeadNewWhy")}</p>
+          <p>{asking === "update" ? tr(locale, "boardHeadUpdateWhy", { branch: head.branch ?? "HEAD" })
+            : t(locale, asking === "branch" ? "boardHeadBranchWhy" : asking === "apply" ? "boardHeadApplyWhy" : "boardHeadNewWhy")}</p>
           <button type="button" className="orch-primary" data-board-head-yes onClick={() => void act(asking)}>
-            {t(locale, asking === "branch" ? "boardHeadBranch" : asking === "apply" ? "boardHeadApply" : "boardHeadNew")}</button>
+            {t(locale, asking === "branch" ? "boardHeadBranch" : asking === "apply" ? "boardHeadApply" : asking === "update" ? "boardHeadUpdate" : "boardHeadNew")}</button>
           <button type="button" onClick={() => setAsking(null)}>{t(locale, "orchCancel")}</button>
         </div>
       )}
+      {behind > 0 && (
+        <div className="board-card__head-line" data-board-head-behind={behind}>
+          <span className="orch-hint orch-hint--warn">{tr(locale, `boardHeadBehind_${many}`, { n: behind })}</span>
+          {!going && !waits && asking !== "update" && <button type="button" data-board-head-update onClick={() => setAsking("update")}>{t(locale, "boardHeadUpdate")}</button>}
+        </div>
+      )}
+      {head.otherLine && <div className="board-card__head-line orch-hint orch-hint--warn" data-board-head-other-line>
+        {tr(locale, "boardHeadOtherLine", { branch: head.branch ?? "HEAD" })}</div>}
       {notMerged.length > 0 && !going && !waits && (
         <div className="board-card__head-line" data-board-not-merged>
           <span>{tr(locale, "boardNotMerged", { keys: notMerged.map((x) => x.key).join(", ") })}</span>
@@ -411,7 +454,7 @@ function HeadRow({ locale, head, tasks, statuses, facts, board, workspaceId, say
       )}
       {waits && (
         <div className="board-card__merge" role="alert" data-board-merge-waits={waits.reason ?? ""}>
-          <strong>{tr(locale, "boardMergeWaits", { key: waits.task.key, why: tr(locale, `boardMergeReason_${waits.reason}`) || String(waits.reason) })}</strong>
+          <strong>{tr(locale, "boardMergeWaits", { key: nameOf(waits), why: tr(locale, `boardMergeReason_${waits.reason}`) || String(waits.reason) })}</strong>
           {waits.conflicts.length > 0 && <p data-board-merge-conflicts>{tr(locale, "boardMergeConflictFiles", { files: waits.conflicts.join(", ") })}</p>}
           {waits.reason === "merge_checks_failed" && <p>{t(locale, "boardMergeChecksFailed")}</p>}
           <p className="orch-hint">{t(locale, "boardMergeHow")}</p>

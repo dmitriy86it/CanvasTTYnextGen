@@ -375,7 +375,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     language: locale === "ru" ? "ru" : "en", // the agents write what the person reads in the interface's language
     ...(Object.keys(accessOverride).length ? { accessOverride } : {}),
     ...(task ? { task: { id: task.id, key: task.key } } : {}),
-    ...(task?.base && fromBranch && workMode === "copy" && optionalChecks ? { base: task.base } : {}),
+    ...(task?.base && fromBranch && (workMode === "copy" || workMode === "worktree") && optionalChecks ? { base: task.base } : {}),
     ...(chosen && (chosen.commit || chosen.push || chosen.qa) ? { finish: chosen } : {}),
     limits: Object.fromEntries(LIMITS.flatMap((kind) => {
       const n = Number(limits[kind]);
@@ -394,7 +394,7 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     if (request.current?.fingerprint !== fingerprint) request.current = { fingerprint, id: crypto.randomUUID() };
     setBusy(true);
     setError(null);
-    const { outcome, refused } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway ? { anyway: true } : {}), ...(withoutBase ? { withoutBase: true } : {}) });
+    const { outcome, refused, value } = await orch.startOnLink({ linkId: link.linkId, requestId: request.current.id, goal, ...(task?.anyway ? { anyway: true } : {}), ...(withoutBase ? { withoutBase: true } : {}) });
     setBusy(false);
     // taken after the readiness check: the hint below names the run and its workspace instead of the bare refusal
     if (outcome.kind === "refused" && outcome.code === "folder_busy" && folderBusy?.(refused)) {
@@ -404,6 +404,12 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
     const message = outcomeText(locale, outcome);
     if (message) {
       setError(message);
+      return;
+    }
+    // C2 (owner's decision 12): every place is taken — the start waits in the queue, the board says so
+    if (outcome.kind === "accepted" && value?.queued) {
+      window.dispatchEvent(new Event("raoden:board-queued"));
+      ui.closeGoal();
       return;
     }
     ui.openPanel(link.linkId);
@@ -439,12 +445,13 @@ function GoalDialog({ orch, ui, locale, folderBusy }: { orch: Orchestration; ui:
           </div>
         )}
         {/* owner's decision 11: outside the autopilot the person chooses what the copy starts from */}
-        {withoutBase && <small className="orch-hint orch-hint--warn" data-goal-base-without>{t(locale, "goalBaseWithout").replace("{key}", task!.base!.key)}</small>}
-        {task?.base && workMode === "copy" && optionalChecks && (
+        {withoutBase && <small className="orch-hint orch-hint--warn" data-goal-base-without>{task!.base!.key === "T-0" ? t(locale, "goalBaseWithoutHead")
+          : t(locale, "goalBaseWithout").replace("{key}", task!.base!.key)}</small>}
+        {task?.base && (workMode === "copy" || workMode === "worktree") && optionalChecks && (
           <fieldset className="orch-field" data-goal-base>
             <legend>{t(locale, "goalBase")}</legend>
             <label><input type="radio" name="goal-base" checked={fromBranch} onChange={() => setFromBranch(true)} data-goal-base-branch />
-              {t(locale, "goalBaseBranch").replace("{key}", task.base.key).replace("{branch}", task.base.branch)}</label>
+              {task.base.key === "T-0" ? t(locale, "goalBaseHead") : t(locale, "goalBaseBranch").replace("{key}", task.base.key).replace("{branch}", task.base.branch)}</label>
             <label><input type="radio" name="goal-base" checked={!fromBranch} onChange={() => setFromBranch(false)} data-goal-base-folder /> {t(locale, "goalBaseFolder")}</label>
           </fieldset>
         )}
