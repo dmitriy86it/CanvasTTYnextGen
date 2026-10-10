@@ -108,6 +108,9 @@ export function withProposal(answer, schema) {
 export function scriptedTurn(cwd = process.cwd()) {
   let dir = process.env.MOCK_SCRIPT;
   if (!dir) return null;
+  // MOCK_TURN_DELAY_MS: each scripted turn takes this long (runs that must overlap on a fast machine)
+  const delay = Number(process.env.MOCK_TURN_DELAY_MS ?? 0);
+  if (delay > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay);
   if (process.env.MOCK_SCRIPT_PER_CWD === "1") dir = path.join(dir, slotOf(dir, fs.realpathSync(cwd)));
   const counter = path.join(dir, "counter");
   let n = 1;

@@ -251,10 +251,10 @@ function scripts(...sets) {
   });
   return dir;
 }
-function manager(script) {
+function manager(script, extra = {}) {
   const root = path.join(TMP, `root-${++n}`);
   const file = path.join(TMP, `providers-${++n}.json`);
-  const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script, MOCK_SCRIPT_PER_CWD: "1" } };
+  const p = { path: `${TMP}:/usr/bin:/bin`, env: { HOME: TMP, MOCK_STATE: fs.mkdtempSync(path.join(TMP, "state-")), MOCK_SCRIPT: script, MOCK_SCRIPT_PER_CWD: "1", ...extra } };
   fs.writeFileSync(file, JSON.stringify({ codex: { executable: CODEX, version: "codex-cli 0.155.1", ...p }, claude: { executable: CLAUDE, version: "2.1.281 (Claude Code)", ...p },
     shell: SHELL, checkEnv: { ...CHECK_ENV, HOME: TMP } }));
   const m = createRunManager({ platform: "darwin", root, gitPath: () => GIT, launch: () => LAUNCH, nodePath: () => NODE, stopGraceMs: 2000,
@@ -272,7 +272,8 @@ async function linkOn(m, src) {
 
 test("two independent tasks at once on one link (parallelism 2, separate copies): both «Done», both in the board's result with its checks; the working folder untouched", OPTS, async () => {
   const src = project();
-  const m = manager(scripts(turns("x.txt"), turns("y.txt")));
+  // 2 s a turn: the autopilot starts one task a beat (1.5 s), so the first run is still on when the second starts
+  const m = manager(scripts(turns("x.txt"), turns("y.txt")), { MOCK_TURN_DELAY_MS: "2000" });
   await createProfileStore(m.root).save(src, { ...(await suggestProfile(src)), workMode: "copy", checks: ["test -f keep.txt"] });
   const input = (title) => ({ workspaceId: WS, project: src, title, text: "write a file", criteria: ["the file says done"] });
   const a = (await m.boardCreate(input("A"))).value;
@@ -281,18 +282,18 @@ test("two independent tasks at once on one link (parallelism 2, separate copies)
   const linkId = await linkOn(m, src);
   assert.equal((await m.boardBudget(linkId, { ...AUTOPILOT_BUDGET, parallel: 2 })).ok, true);
   assert.ok((await m.boardAutopilot(linkId, true, "ru")).ok);
-  // both runs go on at once, on one link
-  const both = await until(async () => {
-    const v = (await m.board()).value;
-    const live = v.facts.filter((f) => ["preparing", "running", "paused"].includes(f.status));
-    return live.length === 2 ? live : null;
-  }, "two runs at once");
-  assert.deepEqual(both.map((f) => f.taskKey).sort(), [a.key, b.key].sort());
-  const link = (await m.canvas()).value.links.find((l) => l.linkId === linkId);
-  assert.equal(link.runIds.length, 2);
+  const link = () => m.canvas().then((r) => r.value.links.find((l) => l.linkId === linkId));
   const end = await until(async () => { const s = (await m.board()).value.autopilot[linkId]; return s && !s.on ? s : null; }, "the autopilot to end", 240_000);
   assert.equal(end.stop.code, "all_done", JSON.stringify(end));
   const v = (await m.board()).value;
+  // both runs on one link, at once: their journals' spans (created → last status) overlap
+  assert.deepEqual(v.facts.map((f) => f.taskKey).sort(), [a.key, b.key].sort());
+  assert.deepEqual((await link()).runIds.slice().sort(), v.facts.map((f) => f.runId).sort());
+  const spans = v.facts.map((f) => {
+    const recs = fs.readFileSync(path.join(m.root, "runs", f.runId, "journal.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    return [Date.parse(recs[0].ts), Date.parse(recs.filter((r) => r.type === "run.status").at(-1).ts)];
+  });
+  assert.ok(spans[0][0] < spans[1][1] && spans[1][0] < spans[0][1], `the runs went on at once: ${JSON.stringify(spans)}`);
   const st = boardStatuses(v.board, v.facts);
   assert.deepEqual([a, b].map((t) => st.get(t.id).done), ["confirmed", "confirmed"]);
   const [h] = v.heads;
