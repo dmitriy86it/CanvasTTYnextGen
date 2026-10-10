@@ -493,7 +493,7 @@ function checkGoal(input: GoalInput, registryOf: (commands: string[] | null) => 
   };
 }
 
-// B4: a base for a separate copy — a branch of the project and the commit it named when the run was asked for (the
+// B4: a base for a separate copy (C2: or a worktree) — a branch of the project and the commit it named when the run was asked for (the
 // commit is what the copy starts from: a branch moved later changes nothing here)
 function checkBase(b: unknown, v2: boolean, workMode: GoalInput["workMode"], bad: (m: string) => never): { branch: string; commit: string; key: string } {
   const o = b as Record<string, unknown> | null;
@@ -502,7 +502,7 @@ function checkBase(b: unknown, v2: boolean, workMode: GoalInput["workMode"], bad
   if (typeof o!.commit !== "string" || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(o!.commit)) bad("base.commit must be a full commit id");
   if (typeof o!.key !== "string" || !/^T-\d{1,6}$/.test(o!.key)) bad("base.key must be T-<n>");
   if (!v2) bad("base: recorded only in a journal v2 goal");
-  if (workMode !== "copy") bad("base: a separate copy only");
+  if (workMode !== "copy" && workMode !== "worktree") bad("base: a separate copy or a worktree only"); // C2: a worktree too
   return { branch: o!.branch as string, commit: o!.commit as string, key: o!.key as string };
 }
 

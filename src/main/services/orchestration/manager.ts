@@ -53,7 +53,7 @@ import type { RunMode } from "./canvasStore.ts";
 import { createBoardMerge } from "./boardMerge.ts";
 import { createBoardStore } from "./boardStore.ts";
 import type { TaskInput } from "./boardStore.ts";
-import { boardStatuses, mergeOfTask, runPhase, type BoardHead } from "../../../shared/taskBoard.ts";
+import { boardStatuses, isCopy, mergeOfTask, namedPaths, parallelOf, runPhase, type BoardHead } from "../../../shared/taskBoard.ts";
 import { AUTOPILOT_BUDGET, baseOf, type AutopilotBudget, type BoardPlace, type BoardTask, type BoardView, type RunTaskFacts } from "../../../shared/taskBoard.ts";
 import type { OrchestrationTurnPurpose, OrchestrationWorkMode } from "../../../shared/orchestration.ts";
 import { runOwners, workspaceOf } from "../../../shared/workspaceOwnership.ts";
@@ -790,7 +790,7 @@ export function createRunManager(deps: RunManagerDeps) {
           runId, ...meta, workspaceId, status: view.status, reason: view.reason, newer: !!view.newer, halted: !!view.halted,
           limit: view.progress?.budget?.reached ?? null, completion: view.progress?.completion ?? null,
           phase: runPhase(view, (last?.purpose as OrchestrationTurnPurpose | undefined) ?? null),
-          permission: !!view.permission, workMode, taken
+          permission: !!view.permission, workMode, taken, ...(st && isCopy(workMode) ? await touched(runId, st) : {})
         };
       }
     }
@@ -798,6 +798,28 @@ export function createRunManager(deps: RunManagerDeps) {
     // text of a run not held that is damaged after its facts were kept shows as before until the journal changes
     if (!handles.has(runId)) factsCache.set(runId, { stamp, facts });
     return facts;
+  }
+  // C2 (§4.7): what a run in a copy or a worktree touches — the paths from its base to its last checkpoint (the
+  // project's Git, read only) and the paths its plan names. Nothing on a failure: a warning less, never a refusal.
+  const planPaths = new Map<string, string[]>();
+  async function touched(runId: string, st: RunState): Promise<Pick<RunTaskFacts, "files" | "named">> {
+    const out: Pick<RunTaskFacts, "files" | "named"> = {};
+    const w = st.workspace;
+    const last = w && Object.entries(w.checkpoints).sort(([a], [b]) => Number(b) - Number(a))[0]?.[1];
+    if (w && last) {
+      const place = await readWorkspacePlace(deps.root, runId).catch(() => null);
+      if (place) out.files = await merges.changed(place.source, w.baseline.commit, last.commit).catch(() => []);
+    }
+    const plan = st.orch.plan?.ref;
+    if (plan) {
+      let named = planPaths.get(plan.sha256);
+      if (!named) {
+        named = await readText(deps.root, runId, plan).then((b) => namedPaths(b.toString("utf8")).slice(0, 200), () => []);
+        planPaths.set(plan.sha256, named);
+      }
+      out.named = named;
+    }
+    return out;
   }
   async function taskFacts(inQueue?: OrchestrationCanvas): Promise<RunTaskFacts[]> {
     const names = await readdir(join(deps.root, "runs")).catch(() => [] as string[]);
@@ -810,7 +832,11 @@ export function createRunManager(deps: RunManagerDeps) {
     const r = await board.read();
     const places = [...new Map(r.board.tasks.map((t) => [`${t.workspaceId}\0${t.project}`, { workspaceId: t.workspaceId, project: t.project }])).values()];
     const heads = await merges.heads(places).catch(() => [] as BoardHead[]);
-    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey), autopilot: await autopilot.state(), ...(heads.length ? { heads } : {}) };
+    // C2: the starts that wait for a place, and the ones whose start from the queue was refused (until asked again)
+    const queued = [...startQueue.map((q) => ({ taskId: q.taskId, linkId: q.linkId, at: q.at, busy: q.busy, limit: q.limit, failed: null })),
+      ...[...queueFailed].map(([taskId, f]) => ({ taskId, linkId: f.linkId, at: f.at, busy: 0, limit: 0, failed: f.code }))];
+    return { board: r.board, readOnly: r.readOnly, facts: (await taskFacts()).filter((f) => f.taskId || f.taskKey), autopilot: await autopilot.state(),
+      ...(heads.length ? { heads } : {}), ...(queued.length ? { queued } : {}) };
   }
   // C1 (§4.5): «Объединить» — a task «Done» in a separate copy into its place's head (started if it has none); its result
   // branch is made first, if it has none (the same as decision 8)
@@ -822,7 +848,7 @@ export function createRunManager(deps: RunManagerDeps) {
     const st = boardStatuses(b, await taskFacts()).get(t.id)!;
     if (!st.done || !st.current) refuse("merge_unavailable", `${t.key} is not «Done»`);
     let run = (await taskFacts()).find((f) => f.runId === st.current);
-    if (run?.workMode !== "copy") refuse("merge_unavailable", "only a result of a separate copy is merged");
+    if (!isCopy(run?.workMode)) refuse("merge_unavailable", "only a result of a separate copy or a worktree is merged");
     if (!run!.taken?.commit) {
       const info = await takeState(run!.runId);
       const made = await takeResult(run!.runId, { action: "branch", name: info.info.suggested });
@@ -848,8 +874,8 @@ export function createRunManager(deps: RunManagerDeps) {
     const statuses = boardStatuses(b, facts);
     const into = await merges.mergesInto(h.ref);
     const todo = b.tasks.map((t) => ({ t, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
-      .filter(({ t, run }) => t.workspaceId === workspaceId && t.project === project && statuses.get(t.id)?.done && run?.workMode === "copy" && run.board === h.ref
-        && mergeOfTask({ merges: into }, t.id, run.runId)?.status !== "completed")
+      .filter(({ t, run }) => t.workspaceId === workspaceId && t.project === project && statuses.get(t.id)?.done && isCopy(run?.workMode) && run!.board === h.ref
+        && mergeOfTask({ merges: into }, t.id, run!.runId)?.status !== "completed")
       .sort((a, z) => a.run!.createdAt - z.run!.createdAt).map(({ t }) => t);
     void (async () => {
       for (const t of todo) {
@@ -940,13 +966,120 @@ export function createRunManager(deps: RunManagerDeps) {
       if (!ok) refuse("invalid_base", `the base is not the branch of a result of what ${t!.key} depends on`);
     }
     if (anyway) return;
-    const statusesNow = boardStatuses(b, facts);
+    // C2: a place with the board's merged head — its dependencies count once in it (decision 9); a start from the working
+    // folder without them is the person's choice (withoutBase), said in the goal dialog
+    const heads = await merges.heads([{ workspaceId: t!.workspaceId, project: source }]).catch(() => [] as BoardHead[]);
+    const statusesNow = boardStatuses(b, facts, heads);
     const wait = statusesNow.get(t!.id)?.depsWait;
-    if (wait) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
+    if (wait && !(wait.reason === "waits_head" && withoutBase)) refuse("task_not_ready", `${t!.key} waits for ${wait.waitsFor.join(", ")}: start anyway?`);
+    const inHeadOnly = t!.dependsOn.filter((d) => {
+      const run = facts.find((f) => f.runId === statusesNow.get(d)?.current);
+      return !!run && isCopy(run.workMode) && !run.taken?.applied;
+    });
+    if (heads.length && !goal.base && !withoutBase && inHeadOnly.length) refuse("task_not_ready", `the results ${t!.key} depends on are in the board's result: start from it, or start anyway?`);
     // a dependency's result in a branch only (decision 11) is seen by a separate copy from that branch alone: a start
     // without it (another mode, or the working folder chosen) goes without that result — the person says so (withoutBase)
     const inBranch = !goal.base && !withoutBase && baseOf(t!, b, statusesNow, facts);
     if (inBranch) refuse("task_not_ready", `the result of ${inBranch.key} is in the branch ${inBranch.branch} only: start from it, or start anyway?`);
+  }
+
+  // A start on a link (the button, the queue, the autopilot). queue: a task's start in a separate copy or a worktree
+  // when every place of the project is taken goes to the start queue instead (C2, owner's decision 12).
+  async function startOn(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean },
+    queue: boolean): Promise<{ runId: string; created: boolean; queued?: { busy: number; limit: number } }> {
+    notOpen();
+    platformOk();
+    // C1 (§3.1): a run in a separate copy (C2: or a worktree) is held off only by a run that is not in one
+    const project = await leadProject(input.linkId);
+    const mode = input.goal?.workMode ?? (input.goal?.mode ? ((await profiles.get(project)) ?? await suggestProfile(project)).workMode : undefined);
+    // a merge into the board's result reads the project's repository and moves its ref: the project folder waits
+    if (mode !== "copy" && mode !== "worktree" && await merges.active(project)) refuse("folder_busy", "a merge into the board's result goes on in this project");
+    const queues = queue && !!input.goal?.task && isCopy(mode);
+    try {
+      return await canvas.startOnLink(input.linkId, input.requestId, busy, exists, async (source, current) => {
+        // in the canvas queue: two starts at once cannot both take the last place
+        if (queues) {
+          const p = await placesOf(current, source, input.linkId, input.requestId);
+          if (p.busy >= p.limit) throw Object.assign(new Refusal("places_full", `${p.busy} of ${p.limit} places are taken`), p);
+        }
+        return createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}), ...(input.withoutBase ? { withoutBase: true } : {}) }, current);
+      }, isCopy(mode) ? runMode : null);
+    } catch (error) {
+      if (!(error instanceof Refusal) || error.code !== "places_full") throw error;
+      const { busy: n, limit } = error as Refusal & { busy: number; limit: number };
+      const taskId = input.goal.task!.id;
+      const entry = { ...input, taskId, at: startQueue.find((q) => q.taskId === taskId)?.at ?? Date.now(), busy: n, limit };
+      const i = startQueue.findIndex((q) => q.taskId === taskId);
+      if (i >= 0) startQueue[i] = entry; else startQueue.push(entry);
+      queueFailed.delete(taskId);
+      queueTimer ??= setInterval(() => void drainQueue(), 2000);
+      queueTimer.unref?.();
+      return { runId: input.requestId, created: false, queued: { busy: n, limit } };
+    }
+  }
+  // C2 (owner's decision 12): the places of a project — its runs in a copy or a worktree that are not over (a pause
+  // holds its place, as in §2.1), on any link of the folder, a run being created too; as many as the link's parallelism
+  const HOLDS_PLACE = new Set(["created", "preparing", "running", "pausing", "stopping", "paused"]);
+  async function placesOf(c: OrchestrationCanvas, project: string, linkId: string, except: string): Promise<{ busy: number; limit: number }> {
+    const limit = parallelOf((await board.peek()).board.autopilot?.[linkId] ?? AUTOPILOT_BUDGET);
+    const ids = c.links.filter((l) => c.agents.find((a) => a.agentId === l.fromAgentId)?.project === project).flatMap((l) => l.runIds).filter((id) => id !== except);
+    const facts = new Map((await taskFacts(c)).map((f) => [f.runId, f]));
+    const n = ids.filter((id) => {
+      const f = facts.get(id);
+      return f ? isCopy(f.workMode) && HOLDS_PLACE.has(f.status) : creating.has(id);
+    }).length;
+    return { busy: n, limit };
+  }
+  // The start queue: in memory (a restart empties it, as it turns the autopilot off), oldest first per project. A start
+  // from the board's head takes the head as it is when the place frees. A refusal takes the task out, said on its card.
+  type Queued = { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean; taskId: string; at: number; busy: number; limit: number };
+  const startQueue: Queued[] = [];
+  const queueFailed = new Map<string, { linkId: string; code: string; at: number }>();
+  let queueTimer: ReturnType<typeof setInterval> | null = null;
+  let draining = false;
+  async function fromHeadNow(q: Queued): Promise<OrchestrationGoalInput> {
+    const base = q.goal.base;
+    if (!base || !BOARD_REF.test(base.branch)) return q.goal;
+    const t = (await board.read()).board.tasks.find((x) => x.id === q.taskId);
+    const h = t ? await merges.head(t.workspaceId, t.project).catch(() => null) : null;
+    return h?.ref === base.branch ? { ...q.goal, base: { ...base, commit: h.commit } } : q.goal;
+  }
+  async function startQueued(q: Queued, queue: boolean): Promise<Awaited<ReturnType<typeof startOn>>> {
+    return startOn({ linkId: q.linkId, requestId: q.requestId, goal: await fromHeadNow(q), ...(q.anyway ? { anyway: true } : {}), ...(q.withoutBase ? { withoutBase: true } : {}) }, queue);
+  }
+  async function drainQueue(): Promise<void> {
+    if (draining || closing) return;
+    draining = true;
+    try {
+      const full = new Set<string>(); // the projects whose places are still taken: nothing later of them jumps the queue
+      for (const q of [...startQueue]) {
+        const project = await leadProject(q.linkId).catch(() => null);
+        if (project && full.has(project)) continue;
+        const r = await result(() => startQueued(q, true));
+        if (!startQueue.includes(q)) continue; // cancelled or started over the limit meanwhile
+        if (r.ok && r.value.queued) { if (project) full.add(project); continue; }
+        startQueue.splice(startQueue.indexOf(q), 1);
+        // another start of the task (the autopilot's, another link's) went first: nothing to say
+        if (!r.ok && r.code !== "task_active_run") queueFailed.set(q.taskId, { linkId: q.linkId, code: r.code, at: Date.now() });
+      }
+    } finally {
+      draining = false;
+      if (!startQueue.length && queueTimer) { clearInterval(queueTimer); queueTimer = null; }
+    }
+  }
+  // «Запустить сейчас сверх лимита» (confirmed) and «Убрать из очереди»
+  async function queueAction(action: "run" | "cancel", taskId: string): Promise<{ runId: string } | null> {
+    const q = startQueue.find((x) => x.taskId === taskId);
+    queueFailed.delete(taskId);
+    if (!q) { if (action === "run") refuse("not_queued", "the task does not wait in the queue"); return null; }
+    startQueue.splice(startQueue.indexOf(q), 1);
+    if (action === "cancel") return null;
+    try {
+      return { runId: (await startQueued(q, false)).runId };
+    } catch (error) {
+      if (error instanceof Refusal) queueFailed.set(taskId, { linkId: q.linkId, code: error.code, at: Date.now() });
+      throw error;
+    }
   }
 
   const api = {
@@ -980,6 +1113,13 @@ export function createRunManager(deps: RunManagerDeps) {
     boardHeadBranch: (workspaceId: string, project: string) => result(async () => { notOpen(); return merges.branch(workspaceId, await placeProject(project)); }),
     boardHeadApply: (workspaceId: string, project: string) => result(async () => { notOpen(); return merges.apply(workspaceId, await placeProject(project)); }),
     boardHeadNew: (workspaceId: string, project: string) => result(async () => { notOpen(); workspaceOk(workspaceId); return merges.newHead(workspaceId, await placeProject(project)); }),
+    // C2 (owner's decision 13): «Обновить итог от текущего HEAD» — only by the person, never by the autopilot
+    boardHeadUpdate: (workspaceId: string, project: string, language: "ru" | "en" = "en") => result(async () => {
+      notOpen(); platformOk(); workspaceOk(workspaceId);
+      return merges.fromHead({ workspaceId, project: await placeProject(project), language });
+    }),
+    // C2 (owner's decision 12): a start waiting for a place — started now over the limit, or taken out of the queue
+    boardQueue: (action: "run" | "cancel", taskId: string) => result(() => queueAction(action, taskId)),
 
     catalog: () => result(async (): Promise<OrchestrationCatalog> => ({
       ...CHECK_CATALOG,
@@ -1022,20 +1162,10 @@ export function createRunManager(deps: RunManagerDeps) {
     // Only a link that holds a newer version's run (busy says "newer" for that run), and only its own run.
     releaseNewerLink: (input: { commandId: string; linkId: string; runId: string }) =>
       result(() => canvas.releaseNewer({ ...input, appVersion: deps.appVersion?.() ?? "unknown" }, busy)),
-    startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }) => result(() => {
-      notOpen();
-      platformOk();
-      return (async () => {
-        // C1 (§3.1): a run in a separate copy is held off only by a run that is not in one
-        const project = await leadProject(input.linkId);
-        const mode = input.goal?.workMode ?? (input.goal?.mode ? ((await profiles.get(project)) ?? await suggestProfile(project)).workMode : undefined);
-        // a merge into the board's result reads the project's repository and moves its ref: the project folder waits
-        if (mode !== "copy" && mode !== "worktree" && await merges.active(project)) refuse("folder_busy", "a merge into the board's result goes on in this project");
-        return canvas.startOnLink(input.linkId, input.requestId, busy, exists,
-          (source, current) => createRun({ requestId: input.requestId, source, goal: input.goal, ...(input.anyway ? { anyway: true } : {}), ...(input.withoutBase ? { withoutBase: true } : {}) }, current),
-          mode === "copy" ? runMode : null);
-      })();
-    }),
+    // C2 (owner's decision 12): a task's start when the project's places are all taken waits in the queue (queued);
+    // overLimit — «Запустить сейчас сверх лимита», confirmed by the person
+    startOnLink: (input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean; overLimit?: boolean }) =>
+      result(() => startOn(input, input.overLimit !== true)),
 
     command: (runId: string, input: { commandId: string; expectedRevision: number; command: RunCommand }) => result(async (): Promise<CommandOutcome> => {
       notOpen();
@@ -1284,6 +1414,8 @@ export function createRunManager(deps: RunManagerDeps) {
     async shutdown(): Promise<void> {
       closing = true;
       autopilot.shutdown();
+      if (queueTimer) { clearInterval(queueTimer); queueTimer = null; }
+      startQueue.length = 0;
       await Promise.allSettled([...[...creating.values()].map((c) => c.p), ...opening.values(), ...stopping.values()]);
       await Promise.allSettled([...handles.values()].map((h) => h.shutdown()));
       handles.clear();
@@ -1303,7 +1435,8 @@ export function createRunManager(deps: RunManagerDeps) {
     optionalChecks: deps.journalV2 === true,
     journal: async (runId) => (await journal(runId)).map((r) => ({ ts: r.ts, type: r.type, data: r.data })),
     readiness: (input) => api.readiness(input),
-    start: (input) => api.startOnLink(input),
+    // the autopilot keeps its own places (autopilotParallelStep): never the start queue
+    start: (input) => result(() => startOn(input, false)),
     take: async (runId) => {
       const info = await api.take(runId);
       return info.ok ? api.takeResult(runId, { action: "branch", name: info.value.suggested }) : info;

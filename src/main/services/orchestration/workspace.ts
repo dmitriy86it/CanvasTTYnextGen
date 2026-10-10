@@ -317,12 +317,13 @@ async function assertNoGitlinks(ctx: GitContext, tree: string): Promise<void> {
 
 // ---------- create / open / verify ----------
 
-// from (B4, owner's decision 11; copy mode only): a commit of the project to start from instead of its working folder —
+// from (B4, owner's decision 11; a copy, and with C2 a worktree): a commit of the project to start from instead of its
+// working folder (a worktree: instead of HEAD) —
 // the result branch of the task this run's task depends on. The working folder, its index and HEAD are not read for the
 // baseline then; the commit becomes the baseline's parent (what «Take the result» builds on).
 export async function createWorkspace(opts: { root: string; runId: string; source: string; gitPath: string; userHome?: string; mode?: WorkMode; from?: string }): Promise<Workspace> {
   const mode: WorkMode = opts.mode ?? "copy";
-  if (opts.from !== undefined && (mode !== "copy" || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(opts.from))) fail("invalid_base", "a base commit is a full object id, for a separate copy only");
+  if (opts.from !== undefined && (mode === "project" || !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(opts.from))) fail("invalid_base", "a base commit is a full object id, for a separate copy or a worktree only");
   const rd = runDir(opts?.root, opts?.runId);
   requireAbsolute(opts.gitPath, "gitPath");
   await requireRun(rd);
@@ -371,7 +372,7 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
       ? await runText(controlCtx(ws), ["rev-parse", "--verify", "--quiet", `${opts.from}^{commit}`]).catch(() => fail("invalid_base", "the base commit is not in the project"))
       : info.head;
     if (parent !== info.head) { ws.head = parent; ws.baseline.parent = parent; }
-    const tree = mode === "worktree" ? await runText(controlCtx(ws), ["rev-parse", `${info.head}^{tree}`])
+    const tree = mode === "worktree" ? await runText(controlCtx(ws), ["rev-parse", `${parent}^{tree}`])
       : opts.from !== undefined ? await runText(controlCtx(ws), ["rev-parse", `${parent}^{tree}`]) : await withIndex(ws.tmp, async (indexFile) => {
       const paths = await presentPaths(info.path, info.paths);
       const ctx = controlCtx(ws, { workTree: info.path, indexFile });
@@ -403,9 +404,13 @@ export async function createWorkspace(opts: { root: string; runId: string; sourc
       await run({ gitPath: ws.gitPath, gitDir: copyGit, workTree: ws.repo, home: homeOf(ws) }, ["checkout", "-q", "--detach", commit], HEAVY);
     }
 
-    // 5b. the worktree (worktree mode): a new branch at HEAD in the user's repository, visible in `git worktree list`
+    // 5b. the worktree (worktree mode): a new branch at HEAD (C2: at the base) in the user's repository, visible in
+    //     `git worktree list`; in the repository's queue — parallel runs add worktrees and branches at once (C2, §3.3)
     if (mode === "worktree") {
-      await run(sourceCtx(ws), ["worktree", "add", "-q", "-b", ws.branch!, "--", ws.repo, info.head!], HEAVY);
+      await inSourceQueue(info.gitDir, async () => {
+        if (await revParse(sourceCtx(ws), `refs/heads/${ws.branch}`) !== null) fail("ref_conflict", `the branch ${ws.branch} already exists`, { ref: `refs/heads/${ws.branch}` });
+        await run(sourceCtx(ws), ["worktree", "add", "-q", "-b", ws.branch!, "--", ws.repo, parent!], HEAVY);
+      });
     }
 
     // 6. fingerprints and the ownership marker; only now the copy exists
@@ -505,12 +510,12 @@ export async function openWorkspace(opts: { root: string; runId: string; gitPath
 }
 
 // Where a run's agents work, from its marker only (nothing verified, nothing written): for the view of a run no process holds.
-export async function readWorkspacePlace(root: string, runId: string): Promise<{ mode: WorkMode; repo: string; branch: string | null }> {
+export async function readWorkspacePlace(root: string, runId: string): Promise<{ mode: WorkMode; repo: string; branch: string | null; source: string }> {
   const rd = runDir(root, runId);
   const dir = join(rd, "workspace");
   const marker = await readMarker(dir, runId);
   const mode: WorkMode = marker.mode === "project" || marker.mode === "worktree" ? marker.mode : "copy";
-  return { mode, repo: repoPath(mode, marker.sourcePath, rd, dir), branch: marker.branch ?? null };
+  return { mode, repo: repoPath(mode, marker.sourcePath, rd, dir), branch: marker.branch ?? null, source: marker.sourcePath };
 }
 
 export async function verifyWorkspace(ws: Workspace): Promise<void> {
@@ -1130,6 +1135,20 @@ export async function startBoardRef(r: BoardRepo, workspaceId: string, n: number
 }
 
 export const boardRefCommit = (r: BoardRepo, ref: string) => revParse(boardCtx(r), ref);
+// C2 (owner's decision 13): the project's HEAD commit, read only; null — no commit yet
+export const projectHead = (r: BoardRepo) => revParse(boardCtx(r), "HEAD");
+// the commits of `of` that `head` does not have
+export async function behindBy(r: BoardRepo, head: string, of: string): Promise<number> {
+  requireOid(head, "head");
+  requireOid(of, "of");
+  return Number(await runText(boardCtx(r), ["rev-list", "--count", `${head}..${of}`]));
+}
+// C2 (§4.7): the paths changed between two commits of the project (renames as a deletion and an addition)
+export async function changedPaths(r: BoardRepo, from: string, to: string): Promise<string[]> {
+  requireOid(from, "from");
+  requireOid(to, "to");
+  return splitZ(await run(boardCtx(r), ["diff", "--name-only", "-z", "--no-renames", "--no-ext-diff", from, to], HEAVY));
+}
 export async function isAncestor(r: BoardRepo, commit: string, of: string): Promise<boolean> {
   requireOid(commit, "commit");
   requireOid(of, "of");
@@ -1147,10 +1166,16 @@ export async function boardBranch(r: BoardRepo, name: string, commit: string): P
 }
 
 // «Apply»: the head's changes since it started (its first commit of its own) onto the working folder, only if all of
-// it applies to the files as they are now; the index is not touched (as applyToProject).
-export async function applyBoard(r: BoardRepo, head: string): Promise<{ applied: true } | { applied: false; files: string[]; detail: string }> {
+// it applies to the files as they are now; the index is not touched (as applyToProject). from (C2, decision 13): the
+// project's commit the head was last updated from — the changes on top of it (the person's folder has it already).
+export async function applyBoard(r: BoardRepo, head: string, from?: string): Promise<{ applied: true } | { applied: false; files: string[]; detail: string }> {
   requireOid(head, "head");
-  const start = await runText(boardCtx(r), ["rev-list", "--first-parent", "--no-merges", "-n", "1", head]);
+  if (from !== undefined) requireOid(from, "from");
+  const first = await runText(boardCtx(r), ["rev-list", "--first-parent", "--no-merges", "-n", "1", head]);
+  // after an update from HEAD the folder is that HEAD with what was not committed when the head started: their merge
+  // (git merge-tree, objects only); a conflict between them — that HEAD alone (what does not apply is refused below)
+  const start = from === undefined ? first
+    : await runText(boardCtx(r), ["merge-tree", "--write-tree", "--no-messages", first, from]).then((t) => t.split("\n")[0]!, () => from);
   const patch = await run(boardCtx(r), ["diff", "--binary", "--full-index", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", `${start}^{tree}`, `${head}^{tree}`], HEAVY);
   if (patch.length === 0) return { applied: true };
   const project = boardCtx(r, { workTree: r.path });

@@ -590,7 +590,10 @@ export interface OrchestrationApi {
   // link is removed and its folder freed, the run's files stay as they are. A repeat of commandId answers the same.
   releaseNewerLink(input: { commandId: string; linkId: string; runId: string }): Promise<OrchestrationResult<OrchestrationReleasedNewerRun>>;
   // Creates a run on the link: the source is the lead card's project, chosen in main.
-  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }): Promise<OrchestrationResult<{ runId: string; created: boolean }>>;
+  // C2 (owner's decision 12): queued — a task's start waits for a free place of the project (no run yet); overLimit:
+  // «Запустить сейчас сверх лимита», confirmed by the person
+  startOnLink(input: { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean; overLimit?: boolean }):
+    Promise<OrchestrationResult<{ runId: string; created: boolean; queued?: { busy: number; limit: number } }>>;
   // The listener gets the run's current state first (the snapshot, as an event), then only newer states in order;
   // `snapshot` is the same result. One main subscription per run and page, however many listeners. unwatch() stops it.
   // Activity batches of the run travel on the same subscription (onActivity listeners get them while it is held).
@@ -627,8 +630,12 @@ export interface OrchestrationApi {
   boardMergeResolve(runId: string, confirm: boolean): Promise<OrchestrationResult<{ result: "checking" } | { result: "unresolved" | "confirm"; files: string[] }>>;
   boardMergeSkip(runId: string): Promise<OrchestrationResult<void>>;
   boardMergeOpen(runId: string): Promise<OrchestrationResult<null>>;
-  boardHead(action: "branch" | "apply" | "new", workspaceId: string, project: string): Promise<OrchestrationResult<
-    { name: string; commit: string } | { applied: true } | { applied: false; files: string[]; detail: string } | { n: number; ref: string; commit: string }>>;
+  // C2 (owner's decision 13): «update» — «Обновить итог от текущего HEAD» (a merge run, as a task's)
+  boardHead(action: "branch" | "apply" | "new" | "update", workspaceId: string, project: string, language?: "ru" | "en"): Promise<OrchestrationResult<
+    { name: string; commit: string } | { applied: true } | { applied: false; files: string[]; detail: string } | { n: number; ref: string; commit: string }
+    | { runId: string } | { already: true }>>;
+  // C2 (owner's decision 12): a task's start waiting for a free place — «run»: over the limit now (confirmed), «cancel»
+  boardQueue(action: "run" | "cancel", taskId: string): Promise<OrchestrationResult<{ runId: string } | null>>;
   // The same checks the start makes, without starting anything (no model, no run).
   // full: «Проверить сейчас» — also the preparation and the commands on the source (a temporary work folder), within timeoutMs
   readiness(input: { linkId: string; commands: string[]; workMode: OrchestrationWorkMode; models?: Partial<OrchestrationRoleModels>; accessOverride?: Partial<Record<"claude" | "codex", "terminal">>; full?: boolean; timeoutMs?: number }): Promise<OrchestrationResult<OrchestrationReadiness>>;

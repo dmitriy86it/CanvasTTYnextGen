@@ -350,9 +350,11 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
       { commandId: string; linkId: string; runId: string }];
   }, manager.releaseNewerLink));
   handleMain(IPC.orchestrationLinkStart, (_e, input: unknown) => checked(() => {
-    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway", "withoutBase"]);
-    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway), ...withoutBase(o.withoutBase) }] as [
-      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean }];
+    const o = obj(input, "request", ["linkId", "requestId", "goal"], ["anyway", "withoutBase", "overLimit"]);
+    if (o.overLimit !== undefined && o.overLimit !== true) bad("overLimit must be true when given");
+    return [{ linkId: uuid(o.linkId, "linkId"), requestId: uuid(o.requestId, "requestId"), goal: parseGoal(o.goal), ...anyway(o.anyway), ...withoutBase(o.withoutBase),
+      ...(o.overLimit === true ? { overLimit: true } : {}) }] as [
+      { linkId: string; requestId: string; goal: OrchestrationGoalInput; anyway?: boolean; withoutBase?: boolean; overLimit?: boolean }];
   }, manager.startOnLink));
   handleMain(IPC.orchestrationActivity, (_e, runId: unknown, afterId: unknown, limit: unknown) => checked(
     () => [uuid(runId, "runId"), int(afterId, "afterId", 0), int(limit, "limit", 1, 500)] as [string, number, number], manager.activity));
@@ -431,11 +433,17 @@ export function registerOrchestrationIpc(handleMain: Handle, manager: RunManager
     const error = openPath ? await openPath(dir.value) : "no shell";
     return error ? { ok: false as const, code: "open_failed", message: error } : { ok: true as const, value: null };
   }));
-  handleMain(IPC.orchestrationBoardHead, (_e, action: unknown, workspaceId: unknown, project: unknown) => checked(() => {
-    if (action !== "branch" && action !== "apply" && action !== "new") bad("action must be branch, apply or new");
-    return [action as "branch" | "apply" | "new", str(workspaceId, "workspaceId", 64), str(project, "project", 4096)] as ["branch" | "apply" | "new", string, string];
-  }, async (action: "branch" | "apply" | "new", ws: string, project: string): Promise<OrchestrationResult<unknown>> => (action === "branch" ? manager.boardHeadBranch(ws, project)
-    : action === "apply" ? manager.boardHeadApply(ws, project) : manager.boardHeadNew(ws, project))));
+  type HeadAction = "branch" | "apply" | "new" | "update";
+  handleMain(IPC.orchestrationBoardHead, (_e, action: unknown, workspaceId: unknown, project: unknown, language: unknown) => checked(() => {
+    if (action !== "branch" && action !== "apply" && action !== "new" && action !== "update") bad("action must be branch, apply, new or update");
+    return [action as HeadAction, str(workspaceId, "workspaceId", 64), str(project, "project", 4096), language === undefined ? "en" : lang(language)] as [HeadAction, string, string, "ru" | "en"];
+  }, async (action: HeadAction, ws: string, project: string, language: "ru" | "en"): Promise<OrchestrationResult<unknown>> => (action === "branch" ? manager.boardHeadBranch(ws, project)
+    : action === "apply" ? manager.boardHeadApply(ws, project) : action === "update" ? manager.boardHeadUpdate(ws, project, language) : manager.boardHeadNew(ws, project))));
+  // C2 (owner's decision 12): a start waiting for a place — over the limit now, or out of the queue
+  handleMain(IPC.orchestrationBoardQueue, (_e, action: unknown, taskId: unknown) => checked(() => {
+    if (action !== "run" && action !== "cancel") bad("action must be run or cancel");
+    return [action as "run" | "cancel", uuid(taskId, "taskId")] as ["run" | "cancel", string];
+  }, manager.boardQueue));
   handleMain(IPC.orchestrationReadiness, (_e, input: unknown) => checked(() => {
     const o = obj(input, "request", ["linkId", "commands", "workMode"], ["models", "accessOverride", "full", "timeoutMs"]);
     if (o.workMode !== "project" && o.workMode !== "copy" && o.workMode !== "worktree") bad("workMode must be project, worktree or copy");

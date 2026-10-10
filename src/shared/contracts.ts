@@ -1186,6 +1186,7 @@ export const IPC = {
   orchestrationBoardMergeSkip: "orchestration:board-merge-skip",
   orchestrationBoardMergeOpen: "orchestration:board-merge-open",
   orchestrationBoardHead: "orchestration:board-head",
+  orchestrationBoardQueue: "orchestration:board-queue",
   orchestrationReadiness: "orchestration:readiness",
   orchestrationProfileGet: "orchestration:profile-get",
   orchestrationProfileSave: "orchestration:profile-save",

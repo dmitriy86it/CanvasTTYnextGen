@@ -42,6 +42,17 @@ export interface BoardView {
   facts: RunTaskFacts[];
   autopilot: Record<string, AutopilotState>; // linkId → the board's autopilot of that link, as main holds it now
   heads?: BoardHead[]; // C1: the board's merged head of each workspace and project that has one
+  queued?: QueuedStart[]; // C2 (owner's decision 12): task starts waiting for a free place, in order
+}
+
+// C2 (owner's decision 12): a person's start of a task that waits for a free place of the project (in main's memory)
+export interface QueuedStart {
+  taskId: string;
+  linkId: string;
+  at: number;
+  busy: number; // the project's runs that hold a place now
+  limit: number; // the places: the link's parallelism
+  failed: string | null; // the code its start was refused with last (it left the queue)
 }
 
 // C1 (stage-c-parallel.md §4): the board's merged head — a ref of the project outside refs/heads that only a merge run
@@ -53,10 +64,14 @@ export interface BoardHead {
   n: number;
   commit: string;
   merges: BoardMerge[]; // into this head, the newest first
+  // C2 (owner's decision 13): the commits of the project's HEAD not in the head (the person committed after it started);
+  // null: HEAD unknown (no commit, detached at nothing)
+  behind?: number | null;
 }
 export type BoardMergeStatus = "preparing" | "running" | "paused" | "completed" | "stopped" | "failed";
 export interface BoardMerge {
   runId: string;
+  source?: "head"; // C2 (decision 13): an update of the head from the project's HEAD, not a task (task.key "HEAD")
   board: string; // the head's ref
   base: string; // the head it was built on
   task: { id: string; key: string; runId: string; commit: string };
@@ -76,13 +91,14 @@ export interface BoardMerge {
 
 // A task's mark on the board (§4.4): its latest merge into the current head of its place — of its current run (a task
 // run again is a new result: an older merge says nothing of it)
-export type MergeMark = { kind: "in_board"; checks: boolean } | { kind: "merging" } | { kind: "not_merged"; reason: string; waits: boolean; runId: string } | null;
+// already (decision 15): the result was in the head before, nothing was merged
+export type MergeMark = { kind: "in_board"; checks: boolean; already: boolean } | { kind: "merging" } | { kind: "not_merged"; reason: string; waits: boolean; runId: string } | null;
 export const mergeOfTask = (head: Pick<BoardHead, "merges"> | null | undefined, taskId: string, runId?: string | null): BoardMerge | undefined =>
   head?.merges.find((x) => x.task.id === taskId && (runId === undefined || x.task.runId === runId));
 export function mergeMark(taskId: string, head: BoardHead | undefined, runId?: string | null): MergeMark {
   const m = mergeOfTask(head, taskId, runId);
   if (!m) return null;
-  if (m.status === "completed") return { kind: "in_board", checks: m.completion === "confirmed" };
+  if (m.status === "completed") return { kind: "in_board", checks: m.completion === "confirmed", already: m.reason === "already" };
   if (m.status === "preparing" || m.status === "running") return { kind: "merging" };
   return { kind: "not_merged", reason: m.reason ?? m.status, waits: m.status === "paused", runId: m.runId };
 }
@@ -140,12 +156,14 @@ export interface RunTaskFacts {
   // «Take the result» of its current result (taken.json): the branch made and the commit it points to, applied or not
   taken: { branch: string | null; commit?: string | null; applied: boolean } | null;
   board?: string | null; // C1: the board head ref its copy started from (goal.base.branch), else null
+  files?: string[]; // C2 (§4.7): the paths its work changed, from its base to its last checkpoint (a copy or a worktree)
+  named?: string[]; // C2 (§4.7): the paths its goal and the lead's plan name
 }
 
 export type TaskColumn = "queue" | "work" | "review" | "done";
 export type TaskReason =
   | "run_unreadable" | "waits_permission" | "waits_answer" | "waits_decision" | "limit_reached" | "waits_task"
-  | "waits_result" | "waits_merge" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other";
+  | "waits_result" | "waits_merge" | "waits_head" | "last_stopped" | "last_failed" | "no_checks" | "stopping" | "run_newer" | "paused_other";
 
 export interface TaskStatus {
   column: TaskColumn;
@@ -159,7 +177,8 @@ export interface TaskStatus {
   // B3 (§4.2): what its dependencies are now, whatever its own column: «waits_task» (one not «Done», or a cycle),
   // «waits_result» (a result where this task would not see it), or null — ready. main refuses a start without «Start
   // anyway» unless it is null; the board offers «Start» or «Start anyway» by it.
-  depsWait: { reason: "waits_task" | "waits_result" | "waits_merge"; waitsFor: string[]; cycle: boolean } | null;
+  // C2: «waits_head» — a dependency «Done» and not in the board's merged head of the place yet (decision 9)
+  depsWait: { reason: "waits_task" | "waits_result" | "waits_merge" | "waits_head"; waitsFor: string[]; cycle: boolean } | null;
   // B3 (§4.2): a «Done» task on a dependency that is not «Done» now — never rolled back, only said: «changed» (it was
   // «Done» when this task's run started, then lost it), «not_ready» (it was not: this task was started anyway). It goes
   // on to the tasks after it. Recomputing a result is stage D.
@@ -185,7 +204,8 @@ const isDone = (s: TaskStatus | undefined) => !!s?.done;
 // The statuses of all tasks of a board from the facts of all runs. Dependencies are followed without trusting the file:
 // the tasks on a cycle (a hand-edited board.json) are found first; one not started waits («waits_task», cycle), and
 // nothing loops. A run counts for a task of its own workspace only.
-export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[]): Map<string, TaskStatus> {
+// heads (C2): the board's merged heads — a task of a place that has one waits for its dependencies there (decision 9)
+export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[], heads: readonly BoardHead[] = []): Map<string, TaskStatus> {
   const byId = new Map(board.tasks.map((t) => [t.id, t]));
   const depsOf = (t: BoardTask) => t.dependsOn.filter((d) => byId.has(d));
   const runsOf = new Map<string, RunTaskFacts[]>();
@@ -215,7 +235,8 @@ export function boardStatuses(board: Pick<Board, "tasks">, facts: readonly RunTa
     // a task off every cycle depends only on tasks off cycles or on them (never recursed into): this ends
     const depsWait: TaskStatus["depsWait"] = onCycle.has(id)
       ? { reason: "waits_task", cycle: true, waitsFor: depsOf(task).filter((d) => onCycle.has(d)).map((d) => byId.get(d)!.key) }
-      : dependencies(depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf);
+      : dependencies(depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf,
+        heads.find((h) => h.workspaceId === task.workspaceId && h.project === task.project));
     let s: TaskStatus = { ...mine, depsWait };
     if (s.done && !onCycle.has(id)) s = { ...s, depsNote: noteOf(task, s, depsOf(task).map((d) => [byId.get(d)!, statusOf(d)] as const), runsOf) };
     // the queue shows what it waits for; a task at work or in review keeps its run's reason
@@ -265,9 +286,16 @@ export function own(task: Pick<BoardTask, "accepted">, runs: readonly RunTaskFac
 
 // What a task's dependencies make it wait for: the tasks not «Done», then a result that is not where a dependent task
 // would see it (stage-b-board.md §5.2, the base rule); null — ready.
-function dependencies(deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>): TaskStatus["depsWait"] {
+function dependencies(deps: readonly (readonly [BoardTask, TaskStatus])[], runsOf: Map<string, RunTaskFacts[]>, head?: BoardHead): TaskStatus["depsWait"] {
   const notDone = deps.filter(([, d]) => !isDone(d)).map(([t]) => t.key);
   if (notDone.length) return { reason: "waits_task", waitsFor: notDone, cycle: false };
+  // C2 (decision 9): with the board's merged head, a dependency counts once its current result is in it — or in the
+  // working folder (it worked there, or was applied), which the head started from; no merge is left to the person
+  if (head) {
+    const out = deps.filter(([t, d]) => mergeOfTask(head, t.id, d.current)?.status !== "completed"
+      && resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current)) !== "folder").map(([t]) => t.key);
+    return out.length ? { reason: "waits_head", waitsFor: out, cycle: false } : null;
+  }
   const where = deps.map(([t, d]) => [t, resultOf(runsOf.get(t.id)?.find((r) => r.runId === d.current))] as const);
   const notTaken = where.filter(([, w]) => w === "none").map(([t]) => t.key);
   if (notTaken.length) return { reason: "waits_result", waitsFor: notTaken, cycle: false };
@@ -359,7 +387,7 @@ export function goalFor(task: Pick<BoardTask, "id" | "key" | "text" | "criteria"
     ...(opts.optionalChecks ? { models: p.models } : {}),
     text: task.text, criteria: [...task.criteria], checks: [], commands: p.commands, workMode: p.workMode, mode: "autopilot", reviewPlan: false,
     language: opts.language, task: { id: task.id, key: task.key }, ...finish, limits: {},
-    ...(opts.base && p.workMode === "copy" ? { base: opts.base } : {})
+    ...(opts.base && (p.workMode === "copy" || p.workMode === "worktree") ? { base: opts.base } : {})
   };
 }
 
@@ -370,14 +398,16 @@ const ACTIVE = new Set(["created", "preparing", "running", "pausing", "stopping"
 
 // The working time of a run by its journal: from its first record, without the pauses that wait for the person, to its
 // end or now. A permission request is not journaled: it counts as work (§5.2 — the budget ends sooner, never later).
-export function activeMs(records: readonly { ts: string; type: string; data: Record<string, unknown> }[], now: number): number {
+// waits: the pauses that wait for the person — a merge run's are all of them (C2, decision 14: its preparation and checks count)
+export function activeMs(records: readonly { ts: string; type: string; data: Record<string, unknown> }[], now: number,
+  waits: (reason: string) => boolean = (r) => WAIT_PAUSES.has(r)): number {
   let total = 0;
   let from: number | null = records.length ? Date.parse(records[0]!.ts) : null;
   for (const r of records) {
     if (r.type !== "run.status") continue;
     const at = Date.parse(r.ts);
     const status = String(r.data.status ?? "");
-    const working = status !== "paused" ? ACTIVE.has(status) : !WAIT_PAUSES.has(String(r.data.reason ?? ""));
+    const working = status !== "paused" ? ACTIVE.has(status) : !waits(String(r.data.reason ?? ""));
     if (from !== null && !working) { total += Math.max(0, at - from); from = null; } else if (from === null && working) from = at;
   }
   return total + (from !== null ? Math.max(0, now - from) : 0);
@@ -445,9 +475,11 @@ export function autopilotStep(board: Pick<Board, "tasks">, facts: readonly RunTa
 // nothing waits for the person. started: the runs it started (stops of those decide); slots count every run of the place.
 export type AutopilotParallelStep = AutopilotStep | { kind: "head" } | { kind: "merge"; taskId: string; key: string; runId: string; commit: string };
 const MERGE_ACTIVE = new Set(["preparing", "running"]);
+// C2: a worktree goes as a separate copy does — its own folder, from the head, merged into it
+export const isCopy = (mode: OrchestrationWorkMode | null | undefined): boolean => mode === "copy" || mode === "worktree";
 export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[], at: { workspaceId: string; project: string },
   started: readonly string[], used: { runs: number; ms: number }, budget: AutopilotBudget, head: BoardHead | null): AutopilotParallelStep {
-  const statuses = boardStatuses(board, facts);
+  const statuses = boardStatuses(board, facts, head ? [head] : []);
   const place = board.tasks.filter((t) => t.workspaceId === at.workspaceId && t.project === at.project);
   const mergeOf = (taskId: string) => mergeOfTask(head, taskId, statuses.get(taskId)?.current ?? null);
   const inHead = (taskId: string) => mergeOf(taskId)?.status === "completed";
@@ -490,7 +522,7 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
   const retrying = merges.some((m) => m.retrying);
   // what is «Done», started from this head and not in it yet: the oldest first (reconciliation, §4.5)
   const pending = place.map((t) => ({ t, s: statuses.get(t.id)!, run: facts.find((f) => f.runId === statuses.get(t.id)?.current) }))
-    .filter(({ t, s, run }) => s.done && run && head && run.board === head.ref && run.workMode === "copy" && !mergeOf(t.id)
+    .filter(({ t, s, run }) => s.done && run && head && run.board === head.ref && isCopy(run.workMode) && !mergeOf(t.id)
       && (run.taken?.commit || autoTakeOnDone(s, run) === "branch"))
     .sort((a, b) => a.run!.createdAt - b.run!.createdAt);
   const take = pending.find(({ s, run }) => autoTakeOnDone(s, run) === "branch");
@@ -528,4 +560,61 @@ export function autopilotParallelStep(board: Pick<Board, "tasks">, facts: readon
   if (idle.allDone) return { kind: "off", code: "all_done", detail: null, key: null };
   const detail = idle.waiting.map((w) => (w.waitsFor.length ? `${w.key} (${w.reason}: ${w.waitsFor.join(", ")})` : `${w.key} (${w.reason ?? "-"})`)).join("; ");
   return { kind: "off", code: "others_wait", detail, key: null, waiting: idle.waiting };
+}
+
+// C2 (stage-c-parallel.md §4.7): the tasks of a place that may touch the same files — a warning on their cards, never a
+// refusal. A task's files: what its current run changed (to its last checkpoint) and the paths its goal, its
+// requirements and the lead's plan name. now — two tasks at work (or «Done» and not in the head yet); maybe — a task
+// still to start and one at work. Two tasks that both wait to start are not marked: neither has changed anything.
+export interface Overlap { key: string; files: string[]; kind: "now" | "maybe" }
+// ponytail: a path is a word with a slash or an extension (src/auth.ts, README.md); «e.g.» and versions are not
+const PATH_WORD = /(?:^|[\s`'"(<[])((?:[\w@.-]+\/)*[\w@-][\w@.-]*\.[A-Za-z][A-Za-z0-9]{0,7}|(?:[\w@.-]+\/)+[\w@.-]+)(?=$|[\s`'"),.:;!?>\]])/g;
+export function namedPaths(text: string): string[] {
+  const out = new Set<string>();
+  for (const m of text.matchAll(PATH_WORD)) {
+    const p = m[1]!.replace(/^\.\//, "").replace(/\/+$/, "");
+    const last = p.split("/").at(-1)!;
+    // «e.g», «i.e»: a name of one letter before its extension is a word, not a file
+    if (/^(?:https?:|www\.)/.test(p) || /^\d/.test(p) || last.length < 3 || (!p.includes("/") && /^[^.]?\./.test(last))) continue;
+    out.add(p);
+  }
+  return [...out];
+}
+// the same file: equal, or one a path that ends with the other («auth.ts» named, «src/auth.ts» changed)
+const samePath = (a: string, b: string) => a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+export function overlapsOf(board: Pick<Board, "tasks">, facts: readonly RunTaskFacts[], statuses: ReadonlyMap<string, TaskStatus>,
+  heads: readonly BoardHead[] = []): Map<string, Overlap[]> {
+  const out = new Map<string, Overlap[]>();
+  const OVER = new Set(["stopped", "failed", "unreadable"]);
+  type Side = { t: BoardTask; files: string[]; going: boolean };
+  const places = new Map<string, Side[]>();
+  for (const t of board.tasks) {
+    if (t.archivedAt) continue;
+    const s = statuses.get(t.id);
+    if (!s) continue;
+    const named = namedPaths(`${t.text}\n${t.criteria.join("\n")}`);
+    const run = s.current ? facts.find((f) => f.runId === s.current) : undefined;
+    let side: Side | null = null;
+    if (run && !run.newer && !OVER.has(run.status)) {
+      const head = heads.find((h) => h.workspaceId === t.workspaceId && h.project === t.project);
+      // a result in the head is not at work any more: what it changed is the base of the others
+      if (!(s.done && mergeOfTask(head, t.id, run.runId)?.status === "completed")) side = { t, files: [...(run.files ?? []), ...(run.named ?? []), ...named], going: true };
+    } else if (!run && s.column === "queue") side = { t, files: named, going: false };
+    if (!side?.files.length) continue;
+    const k = `${t.workspaceId}\0${t.project}`;
+    places.set(k, [...(places.get(k) ?? []), side]);
+  }
+  const add = (id: string, o: Overlap) => out.set(id, [...(out.get(id) ?? []), o]);
+  for (const sides of places.values()) {
+    for (const [i, a] of sides.entries()) {
+      for (const b of sides.slice(i + 1)) {
+        if (!a.going && !b.going) continue;
+        const files = [...new Set(a.files.filter((x) => b.files.some((y) => samePath(x, y))))].sort();
+        if (!files.length) continue;
+        if (a.going && b.going) { add(a.t.id, { key: b.t.key, files, kind: "now" }); add(b.t.id, { key: a.t.key, files, kind: "now" }); }
+        else add((a.going ? b : a).t.id, { key: (a.going ? a : b).t.key, files, kind: "maybe" });
+      }
+    }
+  }
+  return out;
 }

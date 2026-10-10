@@ -5,7 +5,7 @@
 // Whether it is on lives here only: a restart of the application turns it off.
 import type { OrchestrationGoalInput, OrchestrationProjectProfile, OrchestrationReadiness, OrchestrationResult, OrchestrationTakeOutcome } from "../../../shared/orchestration.ts";
 import {
-  activeMs, autopilotParallelStep, autopilotStep, goalFor,
+  activeMs, autopilotParallelStep, autopilotStep, goalFor, isCopy,
   type AutopilotBudget, type BoardHead, type AutopilotState, type AutopilotStop, type AutopilotStopCode, type AutopilotWaiting, type Board, type RunTaskFacts
 } from "../../../shared/taskBoard.ts";
 
@@ -31,7 +31,9 @@ export interface BoardAutopilotDeps {
 
 interface Live {
   language: "ru" | "en";
+  workspaceId: string;
   project: string;
+  since: number; // when it was turned on: the merges into the head since then count in its minutes (decision 14)
   print: string; // the profile's fingerprint when turned on
   grants: OrchestrationProjectProfile["grants"];
   started: string[];
@@ -61,9 +63,13 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     if (!live.size && timer) { clearInterval(timer); timer = null; }
   }
 
-  async function used(l: Live): Promise<{ runs: number; ms: number }> {
+  // its runs' working minutes, and (C2, owner's decision 14) the merge runs into the place's head since it was turned
+  // on — its own and the person's, the updates from HEAD too: their preparation and checks, never a pause for the person
+  async function used(l: Live, head?: BoardHead | null): Promise<{ runs: number; ms: number }> {
     let ms = 0;
     for (const id of l.started) ms += activeMs(await deps.journal(id).catch(() => []), deps.now());
+    const merges = (head === undefined ? await deps.head(l.workspaceId, l.project).catch(() => null) : head)?.merges ?? [];
+    for (const m of merges.filter((x) => x.createdAt >= l.since)) ms += activeMs(await deps.journal(m.runId).catch(() => []), deps.now(), () => true);
     return { runs: l.started.length, ms };
   }
 
@@ -82,10 +88,11 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
     const profile = await deps.profile(at.project);
     const { board, facts } = await deps.view();
     if (live.get(linkId) !== l) return; // turned off meanwhile
-    // C1: a separate copy goes with N slots and the board's merged head; the project folder and a worktree as in B
-    const next = profile.workMode === "copy"
-      ? autopilotParallelStep(board, facts, at, l.started, await used(l), await budgetOf(linkId), await deps.head(at.workspaceId, at.project))
-      : autopilotStep(board, facts, { ...at, workMode: profile.workMode }, l.started.at(-1) ?? null, await used(l), await budgetOf(linkId));
+    // C1: a separate copy goes with N slots and the board's merged head (C2: a worktree too); the project folder as in B
+    const head = isCopy(profile.workMode) ? await deps.head(at.workspaceId, at.project) : null;
+    const next = isCopy(profile.workMode)
+      ? autopilotParallelStep(board, facts, at, l.started, await used(l, head), await budgetOf(linkId), head)
+      : autopilotStep(board, facts, { ...at, workMode: profile.workMode }, l.started.at(-1) ?? null, await used(l, null), await budgetOf(linkId));
     l.waits = next.kind === "wait" ? next.why : null;
     if (next.kind === "wait") return;
     if (next.kind === "off") return off(linkId, next.code, next.detail, next.key, next.waiting);
@@ -142,7 +149,7 @@ export function createBoardAutopilot(deps: BoardAutopilotDeps, budgetOf: (linkId
       const at = await deps.link(linkId);
       if (!at) throw Object.assign(new Error("no such link"), { code: "link_not_found" });
       const profile = await deps.profile(at.project);
-      live.set(linkId, { language, project: at.project, print: fingerprint(profile), grants: profile.grants, started: [], pending: null, waits: null, busy: false });
+      live.set(linkId, { language, workspaceId: at.workspaceId, project: at.project, since: deps.now(), print: fingerprint(profile), grants: profile.grants, started: [], pending: null, waits: null, busy: false });
       stops.delete(linkId);
       // the first step on the next beat; the timer alone never keeps the process up
       timer ??= setInterval(() => { for (const id of live.keys()) void tick(id); }, tickMs);

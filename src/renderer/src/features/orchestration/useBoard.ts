@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionBounds } from "../../../../shared/contracts";
 import type { OrchestrationResult } from "../../../../shared/orchestration";
-import { boardStatuses, type AutopilotBudget, type BoardTask, type BoardTaskInput, type BoardTaskPatch, type BoardView, type TaskStatus } from "../../../../shared/taskBoard";
+import { boardStatuses, overlapsOf, type AutopilotBudget, type Overlap, type BoardTask, type BoardTaskInput, type BoardTaskPatch, type BoardView, type TaskStatus } from "../../../../shared/taskBoard";
 import type { Orchestration } from "./useOrchestration";
 
 export function useBoard(orch: Orchestration) {
@@ -28,7 +28,8 @@ export function useBoard(orch: Orchestration) {
 
   // B4: while an autopilot of a link is on, its steps (a take, a stop) may change nothing the runs show: read every 2 s
   const anyOn = !!view && (Object.values(view.autopilot ?? {}).some((s) => s.on)
-    || !!view.heads?.some((h) => h.merges.some((m) => m.status === "preparing" || m.status === "running"))); // C1: a merge has no run on a link
+    || !!view.heads?.some((h) => h.merges.some((m) => m.status === "preparing" || m.status === "running")) // C1: a merge has no run on a link
+    || !!view.queued?.some((q) => !q.failed)); // C2: a start in the queue begins in main when a place frees
   useEffect(() => {
     if (!anyOn) return;
     const id = window.setInterval(() => void reload(), 2000);
@@ -48,7 +49,15 @@ export function useBoard(orch: Orchestration) {
     void reloadCanvas();
   }, [view, canvas, reloadCanvas]);
 
-  const statuses = useMemo(() => (view ? boardStatuses(view.board, view.facts) : new Map<string, TaskStatus>()), [view]);
+  // C2: a place with the board's merged head waits for its dependencies there (decision 9)
+  const statuses = useMemo(() => (view ? boardStatuses(view.board, view.facts, view.heads ?? []) : new Map<string, TaskStatus>()), [view]);
+  const overlaps = useMemo(() => (view ? overlapsOf(view.board, view.facts, statuses, view.heads ?? []) : new Map<string, Overlap[]>()), [view, statuses]);
+  // C2: a start that went to the queue changes no run: the goal dialog says so
+  useEffect(() => {
+    const onQueued = () => void reload();
+    window.addEventListener("raoden:board-queued", onQueued);
+    return () => window.removeEventListener("raoden:board-queued", onQueued);
+  }, [reload]);
   // the task of a run (agent cards, the summary): from the facts main read in its goal
   const taskOfRun = useCallback((runId: string): BoardTask | null => {
     const f = view?.facts.find((x) => x.runId === runId);
@@ -62,7 +71,7 @@ export function useBoard(orch: Orchestration) {
   }, [reload]);
 
   return {
-    view, failed, statuses, taskOfRun, reload,
+    view, failed, statuses, overlaps, taskOfRun, reload,
     create: (input: BoardTaskInput) => act(() => api.boardCreate(input)),
     update: (id: string, patch: BoardTaskPatch) => act(() => api.boardUpdate(id, patch)),
     archive: (id: string, archived: boolean) => act(() => api.boardArchive(id, archived)),
@@ -77,7 +86,9 @@ export function useBoard(orch: Orchestration) {
     resolve: (runId: string, confirm: boolean) => act(() => api.boardMergeResolve(runId, confirm)),
     skip: (runId: string) => act(() => api.boardMergeSkip(runId)),
     openMerge: (runId: string) => act(() => api.boardMergeOpen(runId)),
-    head: (action: "branch" | "apply" | "new", workspaceId: string, project: string) => act(() => api.boardHead(action, workspaceId, project))
+    head: (action: "branch" | "apply" | "new" | "update", workspaceId: string, project: string, language: "ru" | "en" = "en") => act(() => api.boardHead(action, workspaceId, project, language)),
+    // C2 (decision 12): a start waiting for a place — over the limit now, or out of the queue
+    queue: (action: "run" | "cancel", taskId: string) => act(() => api.boardQueue(action, taskId))
   };
 }
 
